@@ -4,8 +4,14 @@ import {
   resolveDeliveryAttemptDispatchQueueMode,
   resolveDeliveryAttemptDispatchTarget,
   resolveDeliveryAttemptQueueReaderMode,
+  resolveDeliverySummaryReadyEventReaderMode,
+  resolveDeliverySummaryReadyEventDrainLoopOptions,
+  resolveDeliverySummaryReadyEventQueueOptions,
 } from '../apps/delivery-service/src/delivery-service-provider-tokens';
 import { resolveEventRelayLoopOptions } from '../apps/event-relay/src/event-relay-provider-tokens';
+import { resolveReaderValueRuntimeOptions } from '../apps/intelligence-worker/src/reader-value-runtime-options';
+import { resolveReaderValueScoringApiKey, resolveReaderValueScoringSelection } from
+  '../libs/relevance/interfaces/rest/reader-value-scoring-provider-tokens';
 import {
   resolveIngestionRabbitMqScanQueueReaderOptions,
   resolveIngestionScanQueueReaderMode,
@@ -34,6 +40,7 @@ import {
 } from '../libs/monitoring/interfaces/rest/monitoring-provider-tokens';
 import { resolveMetricsRuntimeConfig } from '../libs/platform/metrics/src/metrics-runtime-config';
 import {
+  resolveRelevanceContentQualityReviewerMode,
   resolveRelevanceMemoryProjectionMode,
   resolveRelevancePersistenceMode,
 } from '../libs/relevance/interfaces/rest/relevance-provider-tokens';
@@ -51,6 +58,7 @@ import {
   resolveReaderSummaryTopicLabelerMode,
   resolveSummaryYoutubeVideoSummaryProviderMode,
 } from '../libs/summary/interfaces/rest/summary-provider-tokens';
+import { resolveReaderSummaryAgentRuntimeTransport } from '../libs/summary/interfaces/rest/summary-agent-runtime-provider-tokens';
 import { resolveUsagePersistenceMode } from '../libs/usage/interfaces/rest/usage-provider-tokens';
 
 const betaEnv = {
@@ -239,15 +247,26 @@ assertThrows(
     ),
   'READER_SUMMARY_TOPIC_LABELER must reject deterministic mode in beta runtime',
 );
-assert(
-  resolveReaderSummaryModelProviderMode({ ...betaEnv, READER_SUMMARY_MODEL_PROVIDER: 'openai-responses' }) ===
-    'openai-responses',
-  'reader summary beta model provider',
+assertThrows(
+  () =>
+    resolveReaderSummaryModelProviderMode({
+      ...betaEnv,
+      READER_SUMMARY_MODEL_PROVIDER: 'openai-responses',
+    }),
+  'READER_SUMMARY_MODEL_PROVIDER must reject openai-responses mode in beta runtime',
 );
 assert(
-  resolveReaderSummaryModelProviderMode({ ...betaEnv, READER_SUMMARY_MODEL_PROVIDER: 'openai-responses' }) ===
-    'openai-responses',
-  'canonical readerSummary beta model provider',
+  resolveReaderSummaryAgentRuntimeTransport(betaEnv) === 'agent-runtime',
+  'reader summary beta transport defaults to the agent-runtime gRPC service',
+);
+assert(
+  resolveReaderSummaryAgentRuntimeTransport({ ...betaEnv, AGENT_RUNTIME_TRANSPORT: 'gateway-llm' }) ===
+    'gateway-llm',
+  'reader summary beta transport accepts the durable account-gateway llm transport',
+);
+assertThrows(
+  () => resolveReaderSummaryAgentRuntimeTransport({ ...betaEnv, AGENT_RUNTIME_TRANSPORT: 'direct' }),
+  'AGENT_RUNTIME_TRANSPORT must reject unknown or process-local transports',
 );
 assert(
   resolveSummaryRabbitMqJobQueueOptions(rabbitMqEnv).routes?.['summary.job.execute']?.queueType === 'quorum',
@@ -461,4 +480,60 @@ assertThrows(
   'EVENT_RELAY_LOOP must reject disabled mode in beta runtime',
 );
 
+assertThrows(() => resolveDeliverySummaryReadyEventReaderMode(betaEnv),
+  'beta ReaderSummary delivery must require the durable shared event reader');
+assertThrows(() => resolveDeliverySummaryReadyEventDrainLoopOptions({ ...betaEnv, DELIVERY_SUMMARY_READY_EVENT_DRAIN_LOOP: 'disabled' }),
+  'beta ReaderSummary delivery must not disable the shared drain loop');
+assert(resolveDeliverySummaryReadyEventReaderMode({ ...rabbitMqEnv, DELIVERY_SUMMARY_READY_EVENT_READER: 'rabbitmq' }) === 'rabbitmq',
+  'ReaderSummary delivery must use the existing RabbitMQ runtime selector');
+for (const routingKey of ['#', 'reader_summary.ready', 'summary.failed']) {
+  assertThrows(() => resolveDeliverySummaryReadyEventQueueOptions({ ...rabbitMqEnv, RABBITMQ_SUMMARY_READY_EVENT_ROUTING_KEY: routingKey }),
+    'shared summary queue routing must retain its exact legacy binding');
+}
+assert(resolveDeliverySummaryReadyEventQueueOptions(rabbitMqEnv).routingKey === 'summary.ready',
+  'shared queue must retain legacy summary.ready alongside the explicit reader binding');
+
 console.log('Runtime profile guards OK');
+
+assertThrows(() => resolveReaderValueRuntimeOptions({}),
+  'primary reader value default requires durable persistence');
+assert(resolveReaderValueRuntimeOptions({ RELEVANCE_PERSISTENCE: 'prisma',
+  SUMMARY_PERSISTENCE: 'prisma' }).mode === 'jev_primary_v3',
+  'reader value defaults to Jev primary publication');
+assert(resolveReaderValueRuntimeOptions({ READER_VALUE_MODE: 'legacy_v2' }).mode === 'legacy_v2',
+  'legacy reader value remains an explicit rollback mode');
+assertThrows(() => resolveReaderValueRuntimeOptions({ READER_VALUE_MODE: 'jev_shadow' }),
+  'reader value scoring requires durable bounded scope');
+assertThrows(() => resolveReaderValueRuntimeOptions({ READER_VALUE_MODE: 'jev_primary_v3', RELEVANCE_PERSISTENCE: 'prisma', READER_VALUE_SCORING_LOOP: 'enabled',
+  READER_VALUE_DISCOVERY_SCOPES: '[{"tenantId":"11111111-1111-4111-8111-111111111111","workspaceId":"22222222-2222-4222-8222-222222222222","interestId":"44444444-4444-4444-8444-444444444444"}]',
+  READER_VALUE_BACKFILL_FROM: '2026-09-01T00:00:00.000Z', INTELLIGENCE_READER_SUMMARY_JOB_LOOP: 'disabled',
+}), 'primary reader value mode cannot strand deferred work with a disabled poller');
+
+assert(resolveReaderValueScoringSelection({ OPENAI_API_KEY: 'fixture-only' }).provider === 'openrouter-systemone',
+  'reader value default must not infer its provider from available credentials');
+assertThrows(() => resolveReaderValueScoringSelection({ READER_VALUE_SCORING_PROVIDER: 'auto' }),
+  'reader value scoring must reject unknown selectors');
+for (const provider of ['openrouter-systemone', 'openai-decisions'] as const) {
+  const selected = resolveReaderValueScoringSelection({ READER_VALUE_SCORING_PROVIDER: provider });
+  assert(selected.provider === provider && selected.configuration.modelConfigVersion.length > 0,
+    'reader value preparation must select provider identity without a secret');
+  assert(resolveReaderValueScoringApiKey({}, provider, false) === '',
+    'disabled scoring must remain credential-free');
+  const key = provider === 'openai-decisions' ? 'OPENAI_API_KEY' : 'OPENROUTER_API_KEY';
+  const otherKey = provider === 'openai-decisions' ? 'OPENROUTER_API_KEY' : 'OPENAI_API_KEY';
+  assertThrows(() => resolveReaderValueScoringApiKey({ [otherKey]: 'fixture-only' }, provider, true),
+    'enabled scoring must require its selected credential even when another key exists');
+  assert(resolveReaderValueScoringApiKey({ [key]: 'fixture-only' }, provider, true) === 'fixture-only',
+    'enabled scoring must accept only its selected credential');
+}
+
+assert(resolveRelevanceContentQualityReviewerMode({
+  ...betaEnv, AGENT_RUNTIME_GRPC_ADDRESS: 'synthetic-runtime:50051',
+}) === 'agent-runtime', 'assessment auto must reuse the hosted pool without API credentials');
+assert(resolveRelevanceContentQualityReviewerMode({}, 'agent-runtime') === 'agent-runtime',
+  'canonical capture must select its supplied runtime');
+assert(resolveRelevanceContentQualityReviewerMode({ RELEVANCE_CONTENT_QUALITY_REVIEWER: 'disabled',
+  AGENT_RUNTIME_GRPC_ADDRESS: 'synthetic-runtime:50051',
+}) === 'disabled', 'explicit assessment disable must remain fail closed');
+assertThrows(() => resolveRelevanceContentQualityReviewerMode({ RELEVANCE_CONTENT_QUALITY_REVIEWER: 'invalid' }),
+  'unknown assessment modes must be rejected');

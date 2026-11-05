@@ -169,7 +169,7 @@ describe("groundedReaderHeadline", () => {
     );
   });
 
-  it("replaces a vague daily wrap headline with the concrete lead title", () => {
+  it("replaces a vague daily wrap headline with the complete lead title in a Reports discuss frame", () => {
     const lead = {
       ...topRead(),
       title: "Acme launches a lower-cost coding model",
@@ -181,7 +181,53 @@ describe("groundedReaderHeadline", () => {
         topReads: [lead],
         sourceMix: [],
       }),
-    ).toBe("Acme launches a lower-cost coding model");
+    ).toBe("Reports discuss Acme launches a lower-cost coding model");
+  });
+
+  it("frames the fallback headline around the lead narrative title, not the top card", () => {
+    const lead = {
+      ...topRead(),
+      title:
+        "Week in review (Hidden implant in Ledger wallets; linked to $93M theft)",
+      confidence: {
+        level: "low" as const,
+        score: 0.4,
+        rationale: "Single source",
+      },
+      confirmedProviderKeys: ["rss"],
+    };
+
+    expect(
+      groundedReaderHeadline({
+        headline: "Acme's release tops a day of model-cost and access chatter",
+        topReads: [lead],
+        sourceMix: [],
+        narrativeLeadTitle: "Source-reported Unreal Engine integration",
+      }),
+    ).toBe("Reports discuss Source-reported Unreal Engine integration");
+  });
+
+  it("keeps a neutral frame when the lead narrative title is not a complete short heading", () => {
+    const lead = {
+      ...topRead(),
+      title: "Week in review (Hidden implant in Ledger wallets)",
+      confidence: {
+        level: "low" as const,
+        score: 0.4,
+        rationale: "Single source",
+      },
+      confirmedProviderKeys: ["rss"],
+    };
+
+    expect(
+      groundedReaderHeadline({
+        headline: "Acme's release tops a day of model-cost and access chatter",
+        topReads: [lead],
+        sourceMix: [],
+        narrativeLeadTitle:
+          "An X discussion reports the release. The post then explains setup steps.",
+      }),
+    ).toBe("Discussion from monitored sources");
   });
 
   it("does not trust a thematic headline when its citations come from one provider group", () => {
@@ -206,7 +252,7 @@ describe("groundedReaderHeadline", () => {
     ).toBe("Reports discuss Agent tooling expands across apps");
   });
 
-  it("source-frames an unverified legal lead when replacing a vague headline", () => {
+  it("uses a neutral headline for an unverified legal lead", () => {
     const lead = {
       ...topRead(),
       title: "Acme sues Example Labs over alleged model theft",
@@ -227,10 +273,10 @@ describe("groundedReaderHeadline", () => {
         topReads: [lead],
         sourceMix: [],
       }),
-    ).toBe("Reports say Acme sued Example Labs over alleged model theft");
+    ).toBe("Discussion from monitored sources");
   });
 
-  it("removes a trailing quote-bearing report clause before compacting a legal headline", () => {
+  it("does not extract a legal headline from a quote-bearing source report", () => {
     const lead = {
       ...topRead(),
       title:
@@ -252,13 +298,11 @@ describe("groundedReaderHeadline", () => {
       sourceMix: [],
     });
 
-    expect(headline).toBe(
-      "Reports say Apple sued OpenAI over alleged trade secret theft",
-    );
+    expect(headline).toBe("Discussion from monitored sources");
     expect(headline).not.toMatch(/['‘’“”]/u);
   });
 
-  it("source-frames a direct legal headline when community reports do not include a filing", () => {
+  it("uses a neutral fallback when legal reports do not include a filing", () => {
     const lead = {
       ...topRead(),
       title: "Acme sues Example Labs over alleged model theft",
@@ -279,7 +323,7 @@ describe("groundedReaderHeadline", () => {
         topReads: [lead],
         sourceMix: [],
       }),
-    ).toBe("Reports say Acme sued Example Labs over alleged model theft");
+    ).toBe("Discussion from monitored sources");
 
     expect(
       groundedReaderHeadline({
@@ -290,7 +334,7 @@ describe("groundedReaderHeadline", () => {
     ).toBe("Reports say Acme sued Example Labs over alleged model theft");
   });
 
-  it("does not double-prefix an already source-framed legal top-read title", () => {
+  it("keeps unverified source-framed legal context behind a neutral headline", () => {
     const lead = {
       ...topRead(),
       title: "Reports say Apple sued OpenAI over alleged trade secret theft",
@@ -310,10 +354,10 @@ describe("groundedReaderHeadline", () => {
         topReads: [lead],
         sourceMix: [],
       }),
-    ).toBe("Reports say Apple sued OpenAI over alleged trade secret theft");
+    ).toBe("Discussion from monitored sources");
   });
 
-  it("collapses an already duplicated legal report prefix", () => {
+  it("does not rewrite a duplicated legal report into a new assertion", () => {
     const lead = {
       ...topRead(),
       title:
@@ -334,7 +378,7 @@ describe("groundedReaderHeadline", () => {
         topReads: [lead],
         sourceMix: [],
       }),
-    ).toBe("Reports say Apple sued OpenAI over alleged trade secret theft");
+    ).toBe("Discussion from monitored sources");
   });
 
   it("keeps a first-party legal action concrete", () => {
@@ -357,7 +401,7 @@ describe("groundedReaderHeadline", () => {
         topReads: [lead],
         sourceMix: [],
       }),
-    ).toBe("Acme sues Example Labs over alleged model theft");
+    ).toBe("Reports discuss Acme sues Example Labs over alleged model theft");
   });
 
   it("does not let unrelated cross-source coverage validate a single-source lead", () => {
@@ -392,7 +436,7 @@ describe("groundedReaderHeadline", () => {
     ).toBe("Reports discuss Agent tooling expands across apps");
   });
 
-  it("uses one clean lead title instead of joining source-framed reasons", () => {
+  it("uses a neutral label when a legal lead has source-only support", () => {
     const lead = {
       ...topRead(),
       title: "Apple sues OpenAI over alleged trade secret theft",
@@ -421,9 +465,7 @@ describe("groundedReaderHeadline", () => {
         ],
         sourceMix: [],
       }),
-    ).toBe(
-      "Reports discuss Apple sues OpenAI over alleged trade secret theft",
-    );
+    ).toBe("Discussion from monitored sources");
   });
 
   it("preserves an explicitly source-framed single-source headline", () => {

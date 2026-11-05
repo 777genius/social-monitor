@@ -116,6 +116,150 @@ describe("SourceContentQualityPolicy", () => {
     );
   });
 
+  it("keeps numbered AI-tool dumps and follow-farms out of Top Reads", () => {
+    const dumps = [
+      {
+        title: "50 AI tools that will save you hundreds of hours in 2026.",
+        bodyPreview:
+          "1. Claude — Solve any problem 2. Perplexity — Research anything 3. CapCut — Edit videos",
+      },
+      {
+        title: "100 CYBERSECURITY X ACCOUNTS WORTH FOLLOWING",
+        bodyPreview:
+          "[01] BUG BOUNTY & WEB SECURITY @NahamSec → Bug bounty @hakluke → Bug bounty tools",
+      },
+      {
+        title: "60 Cybersecurity Tools Every Security Researcher Should Know",
+        bodyPreview: "1. Nmap — Network scanning 2. Masscan — High-speed port scanning",
+      },
+    ];
+
+    for (const dump of dumps) {
+      const verdict = policy.evaluate({
+        providerKey: "x-twitter",
+        authorHandle: "growth_dump",
+        canonicalUrl: "https://x.com/growth_dump/status/example",
+        providerMetadata: {
+          kind: "x_post",
+          searchQuery: "AI cybersecurity developer tools",
+          likes: 1900,
+          reposts: 600,
+        },
+        ...dump,
+      });
+      expect(verdict.eligibleForTopRead).toBe(false);
+      expect(verdict.flags).toContain("engagement_bait");
+    }
+  });
+
+  it("still promotes a concrete Anthropic news post and an HN benchmark", () => {
+    const news = policy.evaluate({
+      providerKey: "x-twitter",
+      authorHandle: "IndianTechGuide",
+      title:
+        "Anthropic revealed that Claude was misused for malicious activity supporting weapons development",
+      bodyPreview:
+        "Anthropic said Claude was misused for malicious activity supporting biological and conventional weapons.",
+      canonicalUrl: "https://x.com/IndianTechGuide/status/example",
+      providerMetadata: {
+        kind: "x_post",
+        searchQuery: "Anthropic Claude cybersecurity",
+        likes: 1263,
+        reposts: 60,
+      },
+    });
+    expect(news.eligibleForTopRead).toBe(true);
+    expect(news.flags).not.toContain("engagement_bait");
+
+    const hn = policy.evaluate({
+      providerKey: "hacker-news",
+      title: "Real-SWE: Benchmarking AI models on private, real-world, enterprise codebases",
+      canonicalUrl: "https://news.ycombinator.com/item?id=49676820",
+      providerMetadata: {
+        kind: "hacker_news_story",
+        points: 257,
+        interestQuerySnapshot: {
+          query: "AI agents, LLM tooling, developer tools, Flutter, Dart, TypeScript, Python, open source AI, and cybersecurity",
+        },
+      },
+    });
+    expect(hn.decision).toBe("promote");
+    expect(hn.eligibleForTopRead).toBe(true);
+    expect(hn.flags).not.toContain("engagement_bait");
+  });
+
+  it("keeps ChatGPT image-showcase memes out of Top Reads", () => {
+    const verdict = policy.evaluate({
+      providerKey: "reddit",
+      title: "Skyrim: Soviet Edition",
+      bodyPreview: "Made using chatgpt images v2.5 and minimax h3 max!",
+      canonicalUrl: "https://www.reddit.com/r/ChatGPT/comments/example/",
+      providerMetadata: {
+        kind: "reddit_post",
+        score: 9830,
+        upvoteRatio: 0.78,
+        subreddit: "ChatGPT",
+        query:
+          "AI agents, LLM tooling, developer tools, Flutter, Dart, TypeScript, Python, open source AI, and cybersecurity",
+      },
+    });
+    expect(verdict.eligibleForTopRead).toBe(false);
+    expect(verdict.flags).toContain("engagement_bait");
+  });
+
+  it("treats Claude/OpenAI/Anthropic news as on-topic for the AI interest query", () => {
+    const interestQuery =
+      "AI agents, LLM tooling, developer tools, Flutter, Dart, TypeScript, Python, open source AI, and cybersecurity";
+    const news = policy.evaluate({
+      providerKey: "x-twitter",
+      authorHandle: "IndianTechGuide",
+      title:
+        "Anthropic revealed that Claude was misused for malicious activity supporting weapons development",
+      bodyPreview:
+        "Anthropic said Claude was misused for malicious activity supporting biological and conventional weapons.",
+      canonicalUrl: "https://x.com/IndianTechGuide/status/example",
+      providerMetadata: {
+        kind: "x_post",
+        query: interestQuery,
+        likes: 1263,
+        reposts: 60,
+      },
+    });
+    expect(news.flags).not.toContain("weak_topic_match");
+    expect(news.eligibleForTopRead).toBe(true);
+
+    const titleOnly = policy.evaluate({
+      providerKey: "reddit",
+      title: "Kimi routed to Claude",
+      canonicalUrl: "https://www.reddit.com/r/ClaudeAI/comments/example/",
+      providerMetadata: {
+        kind: "reddit_post",
+        score: 1035,
+        upvoteRatio: 0.93,
+        subreddit: "ClaudeAI",
+        query: interestQuery,
+      },
+    });
+    expect(titleOnly.flags).not.toContain("weak_topic_match");
+    expect(titleOnly.eligibleForTopRead).toBe(true);
+  });
+
+  it("still downranks off-topic HN that does not name an AI product or lab", () => {
+    const verdict = policy.evaluate({
+      providerKey: "hacker-news",
+      title: "Linux Zoom client proactively reading everything written to X11 clipboard",
+      canonicalUrl: "https://news.ycombinator.com/item?id=49675902",
+      providerMetadata: {
+        kind: "hacker_news_story",
+        points: 408,
+        query:
+          "AI agents, LLM tooling, developer tools, Flutter, Dart, TypeScript, Python, open source AI, and cybersecurity",
+      },
+    });
+    expect(verdict.flags).toEqual(expect.arrayContaining(["weak_topic_match"]));
+    expect(verdict.eligibleForTopRead).toBe(false);
+  });
+
   it("keeps technical courses without income promises eligible", () => {
     const verdict = policy.evaluate({
       providerKey: "x-twitter",
@@ -284,6 +428,107 @@ describe("SourceContentQualityPolicy", () => {
     expect(verdict.flags).toEqual(
       expect.arrayContaining(["prediction_market_rumor"]),
     );
+  });
+
+  it("keeps hedged extraordinary-capability rumors out of Top Reads", () => {
+    const rumor = policy.evaluate({
+      providerKey: "x-twitter",
+      authorHandle: "Prathkum",
+      title:
+        "Google has (allegedly) achieved RSI. It’s a bigger deal than another model release.",
+      bodyPreview:
+        "RSI = recursive self-improvement. The idea is an AI system helping build the next version of itself.",
+      canonicalUrl: "https://x.com/Prathkum/status/example",
+      providerMetadata: {
+        kind: "x_post",
+        query:
+          "AI agents, LLM tooling, developer tools, Flutter, Dart, TypeScript, Python, open source AI, and cybersecurity",
+        likes: 1644,
+        reposts: 123,
+      },
+    });
+    expect(rumor.decision).toBe("downrank");
+    expect(rumor.eligibleForTopRead).toBe(false);
+    expect(rumor.flags).toContain("rumor_only");
+
+    const research = policy.evaluate({
+      providerKey: "hacker-news",
+      title:
+        "Measuring recursive self-improvement loops of AI models in toy training setups",
+      bodyPreview:
+        "The paper reports measured RSI-style loops on a public benchmark without a lab announcement.",
+      canonicalUrl: "https://news.ycombinator.com/item?id=1",
+      providerMetadata: {
+        kind: "hacker_news_story",
+        interestQuerySnapshot: {
+          query:
+            "AI agents, LLM tooling, developer tools, Flutter, Dart, TypeScript, Python, open source AI, and cybersecurity",
+        },
+      },
+    });
+    expect(research.eligibleForTopRead).toBe(true);
+    expect(research.flags).not.toContain("rumor_only");
+  });
+
+  it("keeps first-person opinion openers out of Top Reads", () => {
+    const chinese = policy.evaluate({
+      providerKey: "reddit",
+      title: "I have to say something as a chinese",
+      bodyPreview:
+        "As someone familiar with China’s AI community, I have a few thoughts on Anthropic’s recent accusations.",
+      canonicalUrl: "https://www.reddit.com/r/ClaudeAI/comments/example/",
+      providerMetadata: {
+        kind: "reddit_post",
+        subreddit: "ClaudeAI",
+        score: 603,
+        upvoteRatio: 0.69,
+        query:
+          "AI agents, LLM tooling, developer tools, Flutter, Dart, TypeScript, Python, open source AI, and cybersecurity",
+      },
+    });
+    expect(chinese.decision).toBe("downrank");
+    expect(chinese.eligibleForTopRead).toBe(false);
+    expect(chinese.flags).toContain("generic_question");
+
+    const opinion = policy.evaluate({
+      providerKey: "x-twitter",
+      authorHandle: "EWErickson",
+      title:
+        "I personally think Anthropic is trying to set the stage for regulatory capture of the AI industry",
+      bodyPreview:
+        "The essay reads like a bid to lock smaller labs out of the frontier.",
+      canonicalUrl: "https://x.com/EWErickson/status/example",
+      providerMetadata: {
+        kind: "x_post",
+        query:
+          "AI agents, LLM tooling, developer tools, Flutter, Dart, TypeScript, Python, open source AI, and cybersecurity",
+        likes: 900,
+        reposts: 80,
+      },
+    });
+    expect(opinion.decision).toBe("downrank");
+    expect(opinion.eligibleForTopRead).toBe(false);
+    expect(opinion.flags).toContain("generic_question");
+  });
+
+  it("keeps vendor-handle infrastructure pitches out of Top Reads", () => {
+    const verdict = policy.evaluate({
+      providerKey: "x-twitter",
+      authorHandle: "Heis_sosa",
+      title: "The Infrastructure Behind Autonomous Commerce",
+      bodyPreview:
+        "These questions are just as important as the intelligence of the agent itself. @termix_ai is focused on the infrastructure needed for AI-agent commerce, while AACP provides a framework for capabilities.",
+      canonicalUrl: "https://x.com/Heis_sosa/status/example",
+      providerMetadata: {
+        kind: "x_post",
+        query:
+          "AI agents, LLM tooling, developer tools, Flutter, Dart, TypeScript, Python, open source AI, and cybersecurity",
+        likes: 246,
+        reposts: 198,
+      },
+    });
+    expect(verdict.eligibleForTopRead).toBe(false);
+    expect(verdict.flags).toContain("engagement_bait");
   });
 
   it("keeps unreleased-model rumor posts out of non-X top reads", () => {

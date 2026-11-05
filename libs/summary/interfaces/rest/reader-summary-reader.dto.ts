@@ -1,3 +1,4 @@
+import { ReaderSummaryCapturedSourceDto, ReaderSummaryDisplayHeadlineDto } from "./reader-summary-display-headline.dto";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 import {
@@ -6,6 +7,8 @@ import {
   readerSummaryReaderPrimaryActionKinds,
   readerSummaryReaderQualityStatuses,
 } from "./reader-summary-contract.constants";
+import { ReaderSummaryPromotionAttestationDto } from
+  "./reader-summary-promotion-attestation.dto";
 
 export class ReaderSummaryProviderMetricDto {
   @ApiProperty()
@@ -41,8 +44,20 @@ export class ReaderSummaryPreviewMediaDto {
 }
 
 export class ReaderSummaryReaderItemDto {
+  @ApiPropertyOptional({ type: () => ReaderSummaryDisplayHeadlineDto })
+  declare readonly displayHeadline?: ReaderSummaryDisplayHeadlineDto;
+
+  @ApiPropertyOptional({ type: () => ReaderSummaryCapturedSourceDto })
+  declare readonly capturedSource?: ReaderSummaryCapturedSourceDto;
+
+  @ApiPropertyOptional({ type: () => ReaderSummaryPromotionAttestationDto })
+  declare readonly promotionAttestation?: ReaderSummaryPromotionAttestationDto;
+
   @ApiProperty()
   declare readonly title: string;
+
+  @ApiPropertyOptional({ minLength: 1, maxLength: 300 })
+  declare readonly summary?: string;
 
   @ApiProperty()
   declare readonly providerKey: string;
@@ -437,11 +452,32 @@ export class ReaderSummaryReaderBriefDto {
   @ApiProperty({ type: () => [ReaderSummarySourceMixEntryDto] })
   declare readonly sourceMix: readonly ReaderSummarySourceMixEntryDto[];
 
-  @ApiProperty({ type: () => [ReaderSummaryReaderItemDto] })
+  @ApiProperty({
+    type: () => [ReaderSummaryReaderItemDto],
+    maxItems: 12,
+    description: "Top posts: ranked sources only, ordered by the hybrid score " +
+      "0.4 * model (important 1.0, useful 0.5) + 0.6 * popularity percentile " +
+      "inside the source network (0 when the metric is unknown), then " +
+      "publishedAt descending.",
+  })
   declare readonly topReads: readonly ReaderSummaryReaderItemDto[];
 
-  @ApiProperty({ type: () => [ReaderSummaryReaderItemDto] })
+  @ApiProperty({
+    type: () => [ReaderSummaryReaderItemDto],
+    description: "\"Show more\" for Top: ranked posts after the first 12, same order, " +
+      "followed by supplemental GitHub Trending rows.",
+  })
   declare readonly selectedPosts: readonly ReaderSummaryReaderItemDto[];
+
+  @ApiProperty({
+    type: () => [ReaderSummaryReaderItemDto],
+    maxItems: 16,
+    description: "News without rating: posts from sources without a popularity " +
+      "rating (for example RSS). Never part of topReads or selectedPosts; one post " +
+      "per story, ordered by usefulness then publishedAt descending. Each item " +
+      "carries promotionAttestation.placement = \"news\" and signalScore = 0.",
+  })
+  declare readonly newsWithoutRatingPosts: readonly ReaderSummaryReaderItemDto[];
 
   @ApiProperty({ type: () => [ReaderSummaryClaimDto] })
   declare readonly claimBoard: readonly ReaderSummaryClaimDto[];

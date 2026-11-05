@@ -1,5 +1,7 @@
 import type { ReaderSummaryArtifact } from "../../../domain";
 
+import { encodeDisplaySourceContent } from "./prisma-reader-summary-display-source";
+
 export const serializeReaderSummaryArtifact = (
   artifact: ReaderSummaryArtifact,
 ): Readonly<Record<string, unknown>> => {
@@ -8,6 +10,7 @@ export const serializeReaderSummaryArtifact = (
   return jsonObjectForPrisma(
     {
       ...snapshot,
+      content: encodeDisplaySourceContent(snapshot.content),
       period: {
         cadence: snapshot.period.cadence,
         startedAt: snapshot.period.startedAt.toISOString(),
@@ -19,6 +22,12 @@ export const serializeReaderSummaryArtifact = (
         ...snapshot.sourceWindow,
         startedAt: snapshot.sourceWindow.startedAt.toISOString(),
         endedAt: snapshot.sourceWindow.endedAt.toISOString(),
+        ...(snapshot.sourceWindow.ingestionCutoff === undefined ? {} : {
+          ingestionCutoff: snapshot.sourceWindow.ingestionCutoff.toISOString(),
+          ...(snapshot.sourceWindow.exactIngestionCutoff === undefined ? {} : {
+            exactIngestionCutoff: snapshot.sourceWindow.exactIngestionCutoff,
+          }),
+        }),
       },
       storyClusters: snapshot.storyClusters.map((cluster) => ({
         ...cluster,

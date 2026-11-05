@@ -19,6 +19,13 @@ final class FeedProviderVisuals {
 
 FeedProviderVisuals feedProviderVisuals(String providerKey) {
   return switch (providerKey.toLowerCase()) {
+    'telegram' => const FeedProviderVisuals(
+      label: 'Telegram',
+      originLabel: 'Public channel',
+      icon: Icons.telegram,
+      tone: AppStatusTone.neutral,
+      accent: Color(0xFF229ED9),
+    ),
     'reddit' => const FeedProviderVisuals(
       label: 'Reddit',
       icon: Icons.forum_outlined,

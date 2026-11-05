@@ -22,5 +22,6 @@ services:
       POSTGRES_RUNTIME_PROCESS: daily-runner
       POSTGRES_RUNTIME_POOL_MIN: "0"
       POSTGRES_RUNTIME_POOL_MAX: "2"
+      POSTGRES_RUNTIME_POOL_CONNECTION_TIMEOUT_MS: "30000"
     deploy:
       replicas: 1

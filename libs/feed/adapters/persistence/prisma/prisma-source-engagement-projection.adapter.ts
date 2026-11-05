@@ -47,6 +47,11 @@ export class PrismaSourceEngagementProjectionAdapter
   constructor(
     private readonly prisma: PrismaSourceEngagementClient,
     private readonly ids: IdGenerator,
+    private readonly options: {
+      readonly retention?: "default" | "skip";
+      readonly sampleGuard?: (transaction: PrismaSourceEngagementTransactionClient,
+        command: ProjectSourceEngagementCommand, sample: SourceEngagementSample) => Promise<void>;
+    } = {},
   ) {}
 
   async project(
@@ -97,6 +102,7 @@ export class PrismaSourceEngagementProjectionAdapter
     | "retentionRollupsPurged"
     | "retentionPurgeDeferred"
   >> {
+    if (this.options.retention === "skip") return {};
     const scopeKey = `${command.tenantId}:${command.workspaceId}`;
     const lastPurgeAt = this.lastRetentionPurgeAtByScope.get(scopeKey);
     if (
@@ -153,6 +159,7 @@ export class PrismaSourceEngagementProjectionAdapter
     command: ProjectSourceEngagementCommand,
     sample: SourceEngagementSample,
   ): Promise<ProjectSourceEngagementResult> {
+    await this.options.sampleGuard?.(prisma, command, sample);
     const sourceItem = await prisma.sourceItem.findFirst({
       where: {
         tenantId: command.tenantId,
@@ -180,11 +187,16 @@ export class PrismaSourceEngagementProjectionAdapter
       where: { tenantId_workspaceId_sourceItemId: scopeKey },
     });
     const previousMetrics = metricsFromSnapshot(current);
-    const isLatest =
-      current === null ||
-      command.observedAt.getTime() >= current.lastObservedAt.getTime();
     const metricsChanged =
       current === null || current.metricsHash !== sample.metricsFingerprint;
+    const observedAtComparison =
+      current === null
+        ? 1
+        : command.observedAt.getTime() - current.lastObservedAt.getTime();
+    const isLatest =
+      current === null ||
+      observedAtComparison > 0 ||
+      (observedAtComparison === 0 && !metricsChanged);
     const hasRegression =
       previousMetrics !== null &&
       engagementMetricsHaveRegression({
@@ -192,8 +204,9 @@ export class PrismaSourceEngagementProjectionAdapter
         current: sample.metrics,
       });
     const observationDue =
-      current === null ||
-      command.observedAt.getTime() >= current.nextObservationDueAt.getTime();
+      isLatest &&
+      (current === null ||
+        command.observedAt.getTime() >= current.nextObservationDueAt.getTime());
     const bucketStartedAt = engagementObservationBucketStartedAt(
       command.observedAt,
     );
@@ -265,7 +278,9 @@ export class PrismaSourceEngagementProjectionAdapter
           providerKey: command.providerKey,
           ...metricColumns(sample.metrics, true),
           metricsHash: sample.metricsFingerprint,
-          firstObservedAt: command.observedAt,
+          // INSERT constraints run before ON CONFLICT chooses the update branch.
+          // Keep its retained cadence timestamps inside the original timeline.
+          firstObservedAt: current?.firstObservedAt ?? command.observedAt,
           lastObservedAt: command.observedAt,
           lastChangedAt: command.observedAt,
           lastObservationAt: observationAt,

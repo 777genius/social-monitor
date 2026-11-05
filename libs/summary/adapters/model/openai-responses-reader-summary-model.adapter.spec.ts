@@ -1,9 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
-
 import type { ReaderSummaryModelInput } from "../../ports";
 import {
   OpenAiResponsesReaderSummaryModelAdapter,
@@ -14,7 +12,11 @@ import {
   currentReaderSummaryPromptRelease,
 } from "./openai-responses-reader-summary-prompt";
 import { coveragePlanLeadFixture } from "./reader-summary-coverage-plan-test-fixture";
-
+import {
+  eligiblePromotionQuality,
+  jsonResponse,
+  redditPromotionFacts,
+} from "./reader-summary-model-promotion.spec-support";
 describe("OpenAiResponsesReaderSummaryModelAdapter", () => {
   it("calls the Responses API and normalizes a cited reader summary draft", async () => {
     const capturedCalls: {
@@ -825,6 +827,9 @@ const readerSummaryInput = (
       windowId: "workspace:openai-reader-summary",
       startedAt: new Date("2026-06-23T08:00:00.000Z"),
       endedAt: new Date("2026-06-23T08:30:00.000Z"),
+      periodStartedAt: new Date("2026-06-23T00:00:00.000Z"),
+      periodEndedAt: new Date("2026-06-24T00:00:00.000Z"),
+      ingestionCutoff: new Date("2026-06-23T08:30:00.000Z"),
       selectedFeedItemIds: params.empty ? [] : ["feed-reddit"],
       storyClusterIds: params.empty ? [] : ["story:ai-tooling"],
     },
@@ -862,6 +867,8 @@ const readerSummaryInput = (
             observedAt: new Date("2026-06-23T08:01:00.000Z"),
             score: 2.4,
             whyImportant: ["Fresh item"],
+            contentQuality: eligiblePromotionQuality(),
+            promotionFacts: redditPromotionFacts("https://example.com/ai-tooling"),
             ...(params.withConversationContext
               ? {
                   conversationContext: {
@@ -947,6 +954,9 @@ const multiStoryReaderSummaryInput = (
         windowId: "workspace:openai-reader-summary",
         startedAt: new Date("2026-06-23T08:00:00.000Z"),
         endedAt: new Date("2026-06-23T08:30:00.000Z"),
+        periodStartedAt: new Date("2026-06-23T00:00:00.000Z"),
+        periodEndedAt: new Date("2026-06-24T00:00:00.000Z"),
+        ingestionCutoff: new Date("2026-06-23T08:30:00.000Z"),
         selectedFeedItemIds,
         storyClusterIds: selectedFeedItemIds.map(
           (_, index) => `story:ai-tooling-${index + 1}`,
@@ -979,13 +989,11 @@ const multiStoryReaderSummaryInput = (
         observedAt: new Date("2026-06-23T08:01:00.000Z"),
         score: 2.4 - index * 0.01,
         whyImportant: [`Fresh item ${index + 1}`],
+        contentQuality: eligiblePromotionQuality(),
+        promotionFacts: redditPromotionFacts(
+          `https://example.com/ai-tooling-${index + 1}`,
+        ),
       })),
     },
   };
 };
-
-const jsonResponse = (body: unknown): Response =>
-  new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-  });

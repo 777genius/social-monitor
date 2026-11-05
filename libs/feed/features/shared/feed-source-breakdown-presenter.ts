@@ -27,7 +27,7 @@ export const buildFeedSourceBreakdown = (
       contentType,
       sourceBindingIds: new Set<string>(),
       itemCount: 0,
-      sampleItemIds: [],
+      sampleItems: [],
     };
 
     accumulator.sourceBindingIds.add(item.sourceBindingId);
@@ -44,9 +44,7 @@ export const buildFeedSourceBreakdown = (
       }
     }
 
-    if (accumulator.sampleItemIds.length < SAMPLE_ITEM_LIMIT) {
-      accumulator.sampleItemIds.push(item.id);
-    }
+    accumulator.sampleItems.push(item);
 
     bySource.set(key, accumulator);
   }
@@ -73,7 +71,7 @@ type FeedSourceBreakdownAccumulator = {
   latestPublishedAt?: string;
   maxSignalScore?: number;
   maxSignalBand?: FeedSourceBreakdownEntry['maxSignalBand'];
-  readonly sampleItemIds: string[];
+  readonly sampleItems: FeedItemListEntry[];
 };
 
 const toSourceBreakdownEntry = (
@@ -90,8 +88,18 @@ const toSourceBreakdownEntry = (
   latestPublishedAt: accumulator.latestPublishedAt,
   maxSignalScore: accumulator.maxSignalScore,
   maxSignalBand: accumulator.maxSignalBand,
-  sampleItemIds: accumulator.sampleItemIds,
+  sampleItemIds: [...accumulator.sampleItems]
+    .sort(compareSampleItems)
+    .slice(0, SAMPLE_ITEM_LIMIT)
+    .map((item) => item.id),
 });
+
+const compareSampleItems = (
+  left: FeedItemListEntry,
+  right: FeedItemListEntry,
+): number =>
+  right.observedAt.localeCompare(left.observedAt, 'en-US') ||
+  right.publishedAt.localeCompare(left.publishedAt, 'en-US');
 
 const compareSourceBreakdownEntries = (
   left: FeedSourceBreakdownEntry,

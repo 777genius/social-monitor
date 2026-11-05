@@ -5,20 +5,20 @@ import type {
   ListSourceBindingsQuery,
   ListSourceBindingsResult,
   SourceBindingRepositoryPort,
+  SourceBindingConfigIdentity,
 } from '../../ports';
+import { InMemoryInterestCreationState, monitoringSourceBindingIdKey,
+  monitoringSourceBindingProviderKey } from './in-memory-interest-creation-state';
 import { encodeOffsetCursor, parseOffsetCursor } from './offset-pagination';
 
 export class InMemorySourceBindingRepository implements SourceBindingRepositoryPort {
-  private readonly bindingsByInterestProvider = new Map<string, SourceBinding>();
-  private readonly bindingsById = new Map<string, SourceBinding>();
+  constructor(private readonly state = new InMemoryInterestCreationState()) {}
+
+  private get bindingsByInterestProvider() { return this.state.sourceBindingsByInterestProvider; }
+  private get bindingsById() { return this.state.sourceBindingsById; }
 
   async save(binding: SourceBinding): Promise<void> {
-    const snapshot = binding.toSnapshot();
-    this.bindingsByInterestProvider.set(
-      this.key(snapshot.tenantId, snapshot.workspaceId, snapshot.interestId, snapshot.providerKey),
-      binding,
-    );
-    this.bindingsById.set(this.idKey(snapshot.tenantId, snapshot.workspaceId, snapshot.id), binding);
+    this.state.saveSourceBinding(binding);
   }
 
   async findByInterestAndProvider(params: {
@@ -26,9 +26,21 @@ export class InMemorySourceBindingRepository implements SourceBindingRepositoryP
     workspaceId: WorkspaceId;
     interestId: string;
     providerKey: string;
+    configIdentity?: SourceBindingConfigIdentity;
   }): Promise<SourceBinding | null> {
+    if (params.configIdentity !== undefined) {
+      const { field, value } = params.configIdentity;
+      return [...this.bindingsById.values()].find((binding) => {
+        const snapshot = binding.toSnapshot();
+        return snapshot.tenantId === params.tenantId &&
+          snapshot.workspaceId === params.workspaceId &&
+          snapshot.interestId === params.interestId &&
+          snapshot.providerKey === params.providerKey &&
+          snapshot.config[field] === value;
+      }) ?? null;
+    }
     return (
-      this.bindingsByInterestProvider.get(this.key(params.tenantId, params.workspaceId, params.interestId, params.providerKey)) ??
+      this.bindingsByInterestProvider.get(monitoringSourceBindingProviderKey(params.tenantId, params.workspaceId, params.interestId, params.providerKey)) ??
       null
     );
   }
@@ -38,7 +50,7 @@ export class InMemorySourceBindingRepository implements SourceBindingRepositoryP
     workspaceId: WorkspaceId;
     sourceBindingId: string;
   }): Promise<SourceBinding | null> {
-    return this.bindingsById.get(this.idKey(params.tenantId, params.workspaceId, params.sourceBindingId)) ?? null;
+    return this.bindingsById.get(monitoringSourceBindingIdKey(params.tenantId, params.workspaceId, params.sourceBindingId)) ?? null;
   }
 
   async listByInterest(query: ListSourceBindingsQuery): Promise<ListSourceBindingsResult> {
@@ -67,13 +79,7 @@ export class InMemorySourceBindingRepository implements SourceBindingRepositoryP
     };
   }
 
-  private key(tenantId: TenantId, workspaceId: WorkspaceId, interestId: string, providerKey: string): string {
-    return `${tenantId}:${workspaceId}:${interestId}:${providerKey}`;
-  }
 
-  private idKey(tenantId: TenantId, workspaceId: WorkspaceId, sourceBindingId: string): string {
-    return `${tenantId}:${workspaceId}:${sourceBindingId}`;
-  }
 }
 
 const compareSourceBindingsByCreation = (left: SourceBinding, right: SourceBinding): number => {

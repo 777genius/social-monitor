@@ -1,31 +1,11 @@
-import { FeedItem } from "@social-monitor/feed/domain";
-import type {
-  FeedItemReadRepositoryPort,
-  ListFeedItemsQuery,
-  ListFeedItemsResult,
-} from "@social-monitor/feed/ports";
-import {
-  FixedClock,
-  tenantId,
-  workspaceId,
-  type JsonObject,
-} from "@social-monitor/shared-kernel";
-
-import {
-  RankingPolicy,
-  UserRelevanceProfile,
-  type UserRelevanceProfile as UserRelevanceProfileEntity,
-} from "../../domain";
-import type {
-  BuildRelevanceMemoryGuidanceQuery,
-  RelevanceMemoryGuidanceReaderPort,
-  RelevanceMemoryGuidanceResult,
-  SourceContentQualityReviewerPort,
-  SourceContentQualityReviewRequest,
-  SourceContentQualityReviewResult,
-  UserRelevanceProfileRepositoryPort,
-} from "../../ports";
+import type { FeedItemReadRepositoryPort } from "@social-monitor/feed/ports";
+import { FixedClock, tenantId, workspaceId } from "@social-monitor/shared-kernel";
+import { RankingPolicy, UserRelevanceProfile } from "../../domain";
 import { RankFeedItemsUseCase } from "./rank-feed-items.use-case";
+import {
+  addFeedItem, FakeFeedItemReadRepository, FakeUserRelevanceProfileRepository,
+  CapturingMemoryGuidanceReader, CapturingSourceContentQualityReviewer,
+} from "./rank-feed-items.use-case.spec-support";
 
 describe("RankFeedItemsUseCase", () => {
   it("ranks by user weights, clusters similar items and sandboxes unsafe source text", async () => {
@@ -290,8 +270,9 @@ describe("RankFeedItemsUseCase", () => {
         "https://reddit.example/r/MachineLearning/comments/reliability",
       publishedAt: new Date("2026-06-22T09:40:00.000Z"),
       providerMetadata: {
+        kind: "reddit_post",
         subreddit: "MachineLearning",
-        score: 540,
+        score: 100_000,
         numComments: 126,
         upvoteRatio: 0.91,
       },
@@ -357,6 +338,7 @@ describe("RankFeedItemsUseCase", () => {
       canonicalUrl: "https://reddit.example/r/MachineLearning/comments/major",
       publishedAt: new Date("2026-06-22T06:00:00.000Z"),
       providerMetadata: {
+        kind: "reddit_post",
         subreddit: "MachineLearning",
         score: 2400,
         numComments: 510,
@@ -581,138 +563,230 @@ describe("RankFeedItemsUseCase", () => {
     ]);
     expect(result.value.items[0]?.contentQuality.eligibleForTopRead).toBe(true);
   });
-});
+  it("excludes forbidden conversation units before promotion ranking truncation", async () => {
+    const tenant = tenantId("tenant-promotion-ranking");
+    const workspace = workspaceId("workspace-promotion-ranking");
+    const feedItems = new FakeFeedItemReadRepository();
+    addFeedItem(feedItems, {
+      id: "noisy-comment",
+      tenantId: tenant,
+      workspaceId: workspace,
+      interestId: "interest-ai",
+      providerKey: "reddit",
+      title: "Noisy reply about an AI release",
+      bodyPreview: "Conversation context only.",
+      canonicalUrl: "https://reddit.test/comments/noisy/comment",
+      publishedAt: new Date("2026-08-18T11:00:00.000Z"),
+      providerMetadata: {
+        kind: "reddit_comment",
+        role: "reply",
+        score: 1_000_000,
+        replies: 500_000,
+        depth: 2,
+      },
+    });
+    addFeedItem(feedItems, {
+      id: "qualified-original",
+      tenantId: tenant,
+      workspaceId: workspace,
+      interestId: "interest-ai",
+      providerKey: "reddit",
+      title: "Original AI release announcement",
+      bodyPreview: "The original post contains the release details.",
+      canonicalUrl: "https://reddit.test/comments/original",
+      publishedAt: new Date("2026-08-18T10:00:00.000Z"),
+      providerMetadata: { kind: "reddit_post", score: 50, comments: 0 },
+    });
+    const useCase = new RankFeedItemsUseCase(
+      feedItems,
+      new FakeUserRelevanceProfileRepository(),
+      new FixedClock(new Date("2026-08-18T12:00:00.000Z")),
+      undefined, undefined, undefined, undefined, undefined,
+      { readCurrent: async (scope) => ({ kind: "available", interest: { ...scope, query: "AI developer tools" } }) },
+    );
 
-const addFeedItem = (
-  repository: FakeFeedItemReadRepository,
-  props: {
-    readonly id: string;
-    readonly tenantId: ReturnType<typeof tenantId>;
-    readonly workspaceId: ReturnType<typeof workspaceId>;
-    readonly interestId: string;
-    readonly providerKey: string;
-    readonly title: string;
-    readonly bodyPreview: string;
-    readonly canonicalUrl: string;
-    readonly publishedAt: Date;
-    readonly authorHandle?: string;
-    readonly observedAt?: Date;
-    readonly providerMetadata?: JsonObject;
-  },
-): void => {
-  repository.upsert(
-    FeedItem.publish({
-      ...props,
-      sourceItemId: `${props.id}:source`,
-      sourceBindingId: `${props.providerKey}:binding`,
-      observedAt:
-        props.observedAt ?? new Date(props.publishedAt.getTime() + 60_000),
-      authorHandle: props.authorHandle,
-      providerMetadata: props.providerMetadata,
-    }),
-  );
-};
+    const result = await useCase.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      limit: 1,
+      rankingProfile: "reader_post_promotion",
+      publishedAtOrAfter: new Date("2026-08-18T00:00:00.000Z"),
+      publishedBefore: new Date("2026-08-19T00:00:00.000Z"),
+      observedBefore: new Date("2026-08-19T00:00:00.000Z"),
+    });
 
-class FakeFeedItemReadRepository implements FeedItemReadRepositoryPort {
-  readonly queries: ListFeedItemsQuery[] = [];
-  private readonly items: FeedItem[] = [];
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.items.map((item) => item.feedItemId)).toEqual([
+      "qualified-original",
+    ]);
+    expect(result.value.items[0]?.sourceText).toBe(
+      "The original post contains the release details.",
+    );
+  });
 
-  upsert(item: FeedItem): void {
-    this.items.push(item);
-  }
-
-  async list(query: ListFeedItemsQuery): Promise<ListFeedItemsResult> {
-    this.queries.push(query);
-    const offset = query.cursor === undefined ? 0 : Number(query.cursor);
-    const items = this.items
-      .filter((item) => {
-        const snapshot = item.toSnapshot();
-
-        return (
-          snapshot.tenantId === query.tenantId &&
-          snapshot.workspaceId === query.workspaceId &&
-          (query.interestId === undefined ||
-            snapshot.interestId === query.interestId) &&
-          (query.observedAfter === undefined ||
-            snapshot.observedAt.getTime() > query.observedAfter.getTime()) &&
-          (query.observedBefore === undefined ||
-            snapshot.observedAt.getTime() < query.observedBefore.getTime()) &&
-          (query.publishedAtOrAfter === undefined ||
-            snapshot.publishedAt.getTime() >=
-              query.publishedAtOrAfter.getTime()) &&
-          (query.publishedBefore === undefined ||
-            snapshot.publishedAt.getTime() < query.publishedBefore.getTime())
-        );
-      })
-      .sort(
-        (left, right) =>
-          right.toSnapshot().publishedAt.getTime() -
-          left.toSnapshot().publishedAt.getTime(),
-      );
-    const page = items.slice(offset, offset + query.limit);
-    const nextOffset = offset + page.length;
-
-    return {
-      items: page,
-      nextCursor: nextOffset < items.length ? String(nextOffset) : undefined,
+  it("fails closed when a promotion repository hides reads beyond the raw ceiling page", async () => {
+    const tenant = tenantId("tenant-promotion-raw-read-bound");
+    const workspace = workspaceId("workspace-promotion-raw-read-bound");
+    const feedItems = new FakeFeedItemReadRepository();
+    addFeedItem(feedItems, {
+      id: "qualified-raw-bound-original",
+      tenantId: tenant,
+      workspaceId: workspace,
+      interestId: "interest-ai",
+      providerKey: "reddit",
+      title: "Original release evidence",
+      bodyPreview: "Validated original evidence.",
+      canonicalUrl: "https://reddit.test/comments/raw-bound",
+      publishedAt: new Date("2026-08-18T10:00:00.000Z"),
+      providerMetadata: { kind: "reddit_post", score: 50, comments: 0 },
+    });
+    const repository: FeedItemReadRepositoryPort = {
+      list: (query) => feedItems.list(query),
+      readPromotionSnapshot: async () => ({
+        ok: false,
+        reason: "physical_row_ceiling_exceeded",
+        physicalRowsRead: 100_001,
+        eligibleItemCount: 1,
+        exhausted: false,
+      }),
+      findById: async () => null,
     };
-  }
 
-  async findById(): Promise<FeedItem | null> {
-    return null;
-  }
-}
+    const result = await new RankFeedItemsUseCase(
+      repository,
+      new FakeUserRelevanceProfileRepository(),
+      new FixedClock(new Date("2026-08-18T12:00:00.000Z")),
+      undefined, undefined, undefined, undefined, undefined,
+      { readCurrent: async (scope) => ({ kind: "available", interest: { ...scope, query: "AI developer tools" } }) },
+    ).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      limit: 1,
+      rankingProfile: "reader_post_promotion",
+      publishedAtOrAfter: new Date("2026-08-18T00:00:00.000Z"),
+      publishedBefore: new Date("2026-08-19T00:00:00.000Z"),
+      observedBefore: new Date("2026-08-19T00:00:00.000Z"),
+    });
 
-class FakeUserRelevanceProfileRepository implements UserRelevanceProfileRepositoryPort {
-  private readonly profiles = new Map<string, UserRelevanceProfileEntity>();
-
-  async save(profile: UserRelevanceProfileEntity): Promise<void> {
-    const snapshot = profile.toSnapshot();
-    this.profiles.set(
-      `${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.userId}`,
-      profile,
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.message).toBe(
+      "Promotion candidate snapshot exceeded its bounded scan",
     );
-  }
+  });
 
-  async findByUser(params: {
-    readonly tenantId: string;
-    readonly workspaceId: string;
-    readonly userId: string;
-  }): Promise<UserRelevanceProfileEntity | null> {
-    return (
-      this.profiles.get(
-        `${params.tenantId}:${params.workspaceId}:${params.userId}`,
-      ) ?? null
+  it.each([
+    [{ code: "P2028" }, "promotion_snapshot_timeout"],
+    [new Error("connection closed"), "promotion_snapshot_transaction_failed"],
+  ] as const)("maps promotion transaction failure to %s", async (failure, reason) => {
+    const repository: FeedItemReadRepositoryPort = {
+      list: async () => ({ items: [] }),
+      readPromotionSnapshot: async () => { throw failure; },
+      findById: async () => null,
+    };
+    const result = await new RankFeedItemsUseCase(
+      repository,
+      new FakeUserRelevanceProfileRepository(),
+      new FixedClock(new Date("2026-08-18T13:00:00.000Z")),
+      undefined, undefined, undefined, undefined, undefined,
+      { readCurrent: async (scope) => ({ kind: "available", interest: { ...scope, query: "AI developer tools" } }) },
+    ).execute({
+      tenantId: tenantId("tenant-promotion-transaction-failure"),
+      workspaceId: workspaceId("workspace-promotion-transaction-failure"),
+      limit: 1,
+      rankingProfile: "reader_post_promotion",
+      publishedAtOrAfter: new Date("2026-08-18T00:00:00.000Z"),
+      publishedBefore: new Date("2026-08-19T00:00:00.000Z"),
+      observedBefore: new Date("2026-08-19T00:00:00.000Z"),
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toMatchObject({
+      code: "operation.conflict",
+      details: { reason },
+    });
+  });
+
+  it("fails closed when 1,000 eligible originals are followed by a stronger eligible original", async () => {
+    const tenant = tenantId("tenant-promotion-exact-bound");
+    const workspace = workspaceId("workspace-promotion-exact-bound");
+    const feedItems = new FakeFeedItemReadRepository();
+    for (let index = 0; index < 1_001; index += 1) {
+      addFeedItem(feedItems, {
+        id: `eligible-${index.toString().padStart(4, "0")}`,
+        tenantId: tenant,
+        workspaceId: workspace,
+        interestId: "interest-ai",
+        providerKey: "reddit",
+        title: `Eligible original ${index}`,
+        bodyPreview: "Validated original evidence.",
+        canonicalUrl: `https://reddit.test/comments/${index}`,
+        publishedAt: new Date(Date.UTC(2026, 7, 18, 12) - index * 1_000),
+        providerMetadata: {
+          kind: "reddit_post",
+          score: index === 1_000 ? 1_000_000 : 1,
+          comments: 0,
+        },
+      });
+    }
+
+    const result = await new RankFeedItemsUseCase(
+      feedItems,
+      new FakeUserRelevanceProfileRepository(),
+      new FixedClock(new Date("2026-08-18T13:00:00.000Z")),
+      undefined, undefined, undefined, undefined, undefined,
+      { readCurrent: async (scope) => ({ kind: "available", interest: { ...scope, query: "AI developer tools" } }) },
+    ).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      limit: 1,
+      rankingProfile: "reader_post_promotion",
+      publishedAtOrAfter: new Date("2026-08-18T00:00:00.000Z"),
+      publishedBefore: new Date("2026-08-19T00:00:00.000Z"),
+      observedBefore: new Date("2026-08-19T00:00:00.000Z"),
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.message).toBe(
+      "Promotion candidate snapshot exceeded its bounded scan",
     );
-  }
-}
+  });
 
-class CapturingMemoryGuidanceReader implements RelevanceMemoryGuidanceReaderPort {
-  readonly queries: BuildRelevanceMemoryGuidanceQuery[] = [];
+  it("accepts honest exhaustion on exactly 100,000 physical reads", async () => {
+    const tenant = tenantId("tenant-promotion-physical-boundary");
+    const workspace = workspaceId("workspace-promotion-physical-boundary");
+    const repository: FeedItemReadRepositoryPort = {
+      list: async () => ({ items: [] }),
+      readPromotionSnapshot: async () => ({
+        ok: true,
+        candidates: [],
+        sourceContent: [],
+        physicalRowsRead: 100_000,
+        exhausted: true,
+      }),
+      findById: async () => null,
+    };
 
-  constructor(private readonly result: RelevanceMemoryGuidanceResult) {}
+    const result = await new RankFeedItemsUseCase(
+      repository,
+      new FakeUserRelevanceProfileRepository(),
+      new FixedClock(new Date("2026-08-18T13:00:00.000Z")),
+      undefined, undefined, undefined, undefined, undefined,
+      { readCurrent: async (scope) => ({ kind: "available", interest: { ...scope, query: "AI developer tools" } }) },
+    ).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      limit: 1,
+      rankingProfile: "reader_post_promotion",
+      publishedAtOrAfter: new Date("2026-08-18T00:00:00.000Z"),
+      publishedBefore: new Date("2026-08-19T00:00:00.000Z"),
+      observedBefore: new Date("2026-08-19T00:00:00.000Z"),
+    });
 
-  async buildGuidance(
-    query: BuildRelevanceMemoryGuidanceQuery,
-  ): Promise<RelevanceMemoryGuidanceResult> {
-    this.queries.push(query);
+    expect(result.ok).toBe(true);
+    expect(result.ok ? result.value.items : []).toEqual([]);
+  });
 
-    return this.result;
-  }
-}
-
-class CapturingSourceContentQualityReviewer implements SourceContentQualityReviewerPort {
-  readonly requests: SourceContentQualityReviewRequest[] = [];
-
-  constructor(
-    private readonly reviews: readonly SourceContentQualityReviewResult[],
-  ) {}
-
-  async reviewBatch(
-    requests: readonly SourceContentQualityReviewRequest[],
-  ): Promise<readonly SourceContentQualityReviewResult[]> {
-    this.requests.push(...requests);
-
-    return this.reviews;
-  }
-}
+});

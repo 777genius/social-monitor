@@ -1,5 +1,8 @@
 import { existsSync, globSync, readFileSync } from 'node:fs';
 
+import { migrationAuthorizesForwardRlsOperations } from
+  './lib/tenant-db-guard-owner-binding.mjs';
+
 const contractPath = 'ops/security/tenant-db-guard-contract.json';
 const schemaPath = 'prisma/schema.prisma';
 const publicationBootstrapPath =
@@ -283,7 +286,9 @@ function assertRlsMigration() {
     }
   }
 
-  const publicationBootstrap = readFileSync(publicationBootstrapPath, 'utf8');
+  const publicationBootstrap = readFileSync(publicationBootstrapPath, 'utf8')
+    .replace('\\ir reader-summary-publication-tenant-ownership.sql', () => readFileSync(
+      'scripts/sql/reader-summary-publication-tenant-ownership.sql', 'utf8'));
   for (const required of [
     "social_monitor.bootstrap_system_runtime_role",
     "CREATE ROLE social_monitor_tenant_system_runtime",
@@ -316,6 +321,12 @@ function assertRlsMigration() {
     )?.[1];
     if (serviceBlock === undefined || !serviceBlock.includes('SYSTEM_DATABASE_URL')) {
       violations.push(`${productionRuntimeComposePath}: ${service} must use SYSTEM_DATABASE_URL`);
+    }
+    if (
+      service === 'daily-runner' &&
+      !serviceBlock?.includes('POSTGRES_RUNTIME_POOL_CONNECTION_TIMEOUT_MS: "30000"')
+    ) {
+      violations.push(`${productionRuntimeComposePath}: daily-runner must tolerate 30s PostgreSQL admission latency`);
     }
   }
   const apiBlock = productionRuntimeComposeWithSentinel.match(
@@ -406,12 +417,9 @@ function assertForwardRlsCoverage(coverage) {
     );
     return;
   }
-  const sql = readFileSync(coverage.migrationPath, 'utf8').replace(/\n/g, ' ');
+  const migrationSqlForCoverage = readFileSync(coverage.migrationPath, 'utf8');
+  const sql = migrationSqlForCoverage.replace(/\n/g, ' ');
   for (const [label, pattern] of [
-    [
-      'owner role',
-      new RegExp(`SET LOCAL ROLE "${escapeRegex(coverage.ownerRole)}"`),
-    ],
     [
       'ENABLE ROW LEVEL SECURITY',
       new RegExp(
@@ -436,6 +444,17 @@ function assertForwardRlsCoverage(coverage) {
         `${coverage.migrationPath}: "${coverage.table}" is missing explicit ${label}`,
       );
     }
+  }
+  if (!migrationAuthorizesForwardRlsOperations({
+    sql: migrationSqlForCoverage,
+    table: coverage.table,
+    requiredRole: coverage.ownerRole,
+  })) {
+    violations.push(
+      `${coverage.migrationPath}: "${coverage.table}" must have a target-table ALTER `
+      + 'or policy operation, and every such operation must execute under active role '
+      + `"${coverage.ownerRole}"`,
+    );
   }
 }
 

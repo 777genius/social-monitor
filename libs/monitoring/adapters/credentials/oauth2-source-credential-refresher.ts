@@ -2,6 +2,8 @@ import { Buffer } from 'node:buffer';
 
 import { redactSensitiveResponseText, validateOutboundUrl } from '@social-monitor/shared-kernel';
 
+import { GuardedOAuth2TokenHttpClient, type OAuth2TokenHttpClientPort } from './guarded-oauth2-token-http-client';
+
 import type {
   SourceCredentialRefreshPort,
   SourceCredentialRefreshResult,
@@ -18,6 +20,7 @@ export type OAuth2SourceCredentialRefresherOptions = {
   readonly timeoutMs?: number;
   readonly refreshSkewMs?: number;
   readonly tokenUrlPolicy?: OAuth2TokenUrlPolicy;
+  readonly httpClient?: OAuth2TokenHttpClientPort;
 };
 
 type OAuth2TokenResponse = {
@@ -32,11 +35,13 @@ export class OAuth2SourceCredentialRefresher implements SourceCredentialRefreshP
   private readonly timeoutMs: number;
   private readonly refreshSkewMs: number;
   private readonly tokenUrlPolicy: OAuth2TokenUrlPolicy;
+  private readonly httpClient: OAuth2TokenHttpClientPort;
 
   constructor(options: OAuth2SourceCredentialRefresherOptions = {}) {
     this.timeoutMs = options.timeoutMs ?? 10_000;
     this.refreshSkewMs = options.refreshSkewMs ?? 60_000;
     this.tokenUrlPolicy = options.tokenUrlPolicy ?? validateOAuth2TokenUrl;
+    this.httpClient = options.httpClient ?? new GuardedOAuth2TokenHttpClient();
   }
 
   async refreshIfNeeded(
@@ -87,15 +92,15 @@ export class OAuth2SourceCredentialRefresher implements SourceCredentialRefreshP
       throw new Error(`OAuth2 source credential token URL rejected: ${tokenUrlResult.reason}`);
     }
 
-    const response = await fetch(tokenUrlResult.url, {
-      method: 'POST',
+    const response = await this.httpClient.post({
+      url: tokenUrlResult.url.toString(),
       headers,
-      body,
-      signal: AbortSignal.timeout(this.timeoutMs),
+      body: body.toString(),
+      timeoutMs: this.timeoutMs,
     });
-    const responseText = await response.text();
+    const responseText = response.body;
 
-    if (!response.ok) {
+    if (response.status < 200 || response.status >= 300) {
       throw new Error(`OAuth2 source credential refresh failed with HTTP ${response.status}: ${redactedBodyPreview(responseText)}`);
     }
 

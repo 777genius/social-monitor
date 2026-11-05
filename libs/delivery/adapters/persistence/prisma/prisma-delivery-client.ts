@@ -143,6 +143,12 @@ export type PrismaDeliveryClient = {
         readonly tenantId?: string;
         readonly workspaceId?: string;
         readonly state?: PrismaDeliveryAttemptState | { readonly in: readonly PrismaDeliveryAttemptState[] };
+        readonly OR?: readonly {
+          readonly state: PrismaDeliveryAttemptState | { readonly in: readonly PrismaDeliveryAttemptState[] };
+          readonly executionLeaseExpiresAt?: null | { readonly lte: Date };
+          readonly assemblingAt?: { readonly lte: Date };
+          readonly sendingAt?: { readonly lte: Date };
+        }[];
       };
       readonly orderBy:
         | readonly [

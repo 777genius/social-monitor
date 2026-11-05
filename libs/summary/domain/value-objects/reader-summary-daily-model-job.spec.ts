@@ -26,7 +26,7 @@ describe("readerSummaryDailyModelJobIdentity", () => {
       runtimeEngine: readerSummaryDailyRuntimeEngine,
     });
     expect(first.value).toBe(
-      "f123d4830e295b2ee638b0a9c0c0d95362c2d0c36d127c5b99a5a418c7e50143",
+      "8bebb9705b3371f1b86b2f453e1114cf38f029d91d454c1a5618a23258464150",
     );
     expect(first.value).toMatch(/^[0-9a-f]{64}$/u);
     expect(Object.isFrozen(first)).toBe(true);

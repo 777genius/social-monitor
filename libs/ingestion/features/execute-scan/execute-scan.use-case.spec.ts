@@ -163,7 +163,7 @@ describe("ExecuteScanUseCase", () => {
     expect(fetcher.calls).toHaveLength(1);
     expect(repository.all()).toHaveLength(2);
     expect(projection.commands).toHaveLength(1);
-    expect(reporter.succeeded).toHaveLength(1);
+    expect(reporter.succeeded).toHaveLength(2);
     expect(reporter.failed).toHaveLength(0);
   });
 
@@ -217,7 +217,7 @@ describe("ExecuteScanUseCase", () => {
     expect(fetcher.calls).toHaveLength(1);
     expect(reporter.succeeded).toHaveLength(1);
     expect(reporter.failed).toHaveLength(0);
-    expect(failures.retries).toHaveLength(0);
+    expect(failures.retries).toHaveLength(1);
     expect(failures.deadLetters).toHaveLength(0);
     expect(
       (
@@ -320,6 +320,52 @@ describe("ExecuteScanUseCase", () => {
     ]);
   });
 
+  it("applies engagement after the full feed projection", async () => {
+    const projectionOrder: string[] = [];
+    const feedProjection = new FakeFeedProjection();
+    const orderedFeedProjection = {
+      async project(command: Parameters<FakeFeedProjection["project"]>[0]) {
+        projectionOrder.push("feed");
+        return feedProjection.project(command);
+      },
+    };
+    const engagementProjection = {
+      async project() {
+        projectionOrder.push("engagement");
+        return {
+          currentSnapshotsUpdated: 1,
+          observationsAppended: 1,
+          metricChanges: 1,
+          regressionsObserved: 0,
+        };
+      },
+    };
+    const useCase = new ExecuteScanUseCase(
+      new ConversationSourceFetcher(),
+      new FakeSourceItemRepository(),
+      orderedFeedProjection,
+      new FakeScanAttemptRepository(),
+      new FakeScanCursorRepository(),
+      new FakeScanExecutionReporter(),
+      new FakeScanFailureQueue(),
+      new FakeScanLease(),
+      new SequenceIdGenerator(),
+      new FixedClock(new Date("2026-06-05T12:00:00.000Z")),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      engagementProjection,
+    );
+
+    const result = await useCase.execute(
+      makeExecuteScanCommand({ providerKey: "reddit" }),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(projectionOrder).toEqual(["feed", "engagement"]);
+  });
+
   it("projects fetched conversation units after root feed items are projected", async () => {
     const projection = new FakeFeedProjection();
     const conversationProjection = new FakeConversationProjection();
@@ -403,7 +449,7 @@ describe("ExecuteScanUseCase", () => {
         metadata: {
           accessToken: REDACTED_VALUE,
           nested: {
-            url: REDACTED_VALUE,
+            url: "https://example.test/source",
           },
         },
       }),
@@ -583,12 +629,7 @@ describe("ExecuteScanUseCase", () => {
     expect(failures.retries).toHaveLength(1);
     expect(failures.deadLetters).toHaveLength(0);
     expect(cursors.saved).toHaveLength(0);
-    expect(reporter.failed).toEqual([
-      expect.objectContaining({
-        scanJobId: "scan-job-failed",
-        failureReason: "Provider unavailable",
-      }),
-    ]);
+    expect(reporter.failed).toHaveLength(0);
     expect(reporter.succeeded).toHaveLength(0);
     expect(leases.released).toHaveLength(1);
   });

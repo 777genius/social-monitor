@@ -107,8 +107,14 @@ export const assertPublicationEvidenceSemantics = (
 
 export const canonicalProviderEvidence = (
   input: readonly ReaderSummaryWeeklyPublicationProviderEvidence[],
+  profile: "legacy" | "v3" = "legacy",
 ): readonly ReaderSummaryWeeklyPublicationProviderEvidence[] => {
-  assertReaderSummaryWeeklyDenseArray(input, "publication provider evidence");
+  const maxTextLength = profile === "v3" ? 64_000 : 16_384;
+  assertReaderSummaryWeeklyDenseArray(
+    input,
+    "publication provider evidence",
+    profile === "v3" ? 1_024 : 512,
+  );
   const evidence = input.map((item) => {
     assertReaderSummaryWeeklyExactObject(
       item,
@@ -148,10 +154,11 @@ export const canonicalProviderEvidence = (
         item.canonicalUrl,
         "provider canonical URL",
       ),
-      title: exactPublicationText(item.title, "provider title"),
+      title: exactPublicationText(item.title, "provider title", maxTextLength),
       sourceText: exactPublicationText(
         item.sourceText,
         "provider source text",
+        maxTextLength,
       ),
       publishedAt: exactReaderSummaryWeeklyUtcTimestamp(
         item.publishedAt,
@@ -265,8 +272,12 @@ const exactCitationField = (
   return value;
 };
 
-const exactPublicationText = (value: unknown, label: string): string => {
-  if (typeof value !== "string" || value.length > 16_384) {
+const exactPublicationText = (
+  value: unknown,
+  label: string,
+  maxLength: number,
+): string => {
+  if (typeof value !== "string" || value.length > maxLength) {
     throw new Error(`Reader summary weekly ${label} is invalid`);
   }
   return value;

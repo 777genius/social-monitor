@@ -130,6 +130,7 @@ describe("current public reader-summary bindings", () => {
 
     const wrongRequestedDate = cloneRows(rows);
     wrongRequestedDate[0]!.exactProof.requestedUtcDate = "2026-07-15";
+    wrongRequestedDate[0]!.publicationRequestedUtcDate = "2026-07-15";
     wrongRequestedDate[0]!.proofSha256 = canonicalJsonSha256(
       wrongRequestedDate[0]!.exactProof,
     );
@@ -206,6 +207,26 @@ describe("current public reader-summary bindings", () => {
         expectedManifest,
       }),
     ).toThrow("drifted from target manifest");
+  });
+
+  it("accepts an exact historical publication requested after its target day", () => {
+    const rows = cloneRows(fixtureRows());
+    const historical = rows[0]!;
+    const requestedAt = "2026-07-21T00:01:00.000Z";
+    historical.publicationRequestedUtcDate = historical.collectionDate;
+    historical.publicationRequestedAt = new Date(requestedAt);
+    historical.exactProof.requestedUtcDate = historical.collectionDate;
+    historical.exactProof.requestedAt = requestedAt;
+    historical.proofSha256 = canonicalJsonSha256(historical.exactProof);
+
+    expect(() =>
+      buildCurrentPublicArtifactSnapshot({
+        rows,
+        databaseUrl: databaseUrl(),
+        scope: scope(),
+        collectionDates: dates(),
+      }),
+    ).not.toThrow();
   });
 
   it("rejects a different database and slots replaced after capture", () => {

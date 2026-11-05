@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+LC_ALL=C
+export LC_ALL
+
 PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
@@ -51,6 +54,7 @@ RELEASE_A_PATHS=(
 HEALTH_LIBRARY=ops/deploy/backend-runtime-health-lib.sh
 QUORUM_SCRIPT=ops/deploy/rabbitmq-quorum-health.sh
 RECOVERY_SCRIPT=ops/deploy/rabbitmq-quorum-recovery.sh
+BACKEND_CLASSIFICATION_LIBRARY=ops/deploy/production-backend-classification-lib.sh
 BRIDGE_CONTROL_PATHS=(
   ops/deploy/social-monitor-production-deploy.sh
   ops/deploy/deploy-control-lib.sh
@@ -60,8 +64,90 @@ BRIDGE_CONTROL_PATHS=(
   ops/deploy/deploy-control-bridge-lib.sh
 )
 
+assert_reviewed_upload_delta() {
+  local bridge=$1 candidate=$2 timeout_line fallback_line scoped_timeout scoped_fallback
+  [[ -f $candidate && ! -L $candidate && $(stat -c %a "$candidate") == 644 ]] || return 1
+  cmp -s "$bridge" "$candidate" && return 0
+  [[ $(git -C "$PROJECT_ROOT" hash-object "$candidate") == \
+    d245faeac28a99be7c22ecec3d330698059fba12 ]] || return 1
+  timeout_line='    timeout 180 tar --no-same-owner --no-same-permissions -xzf "$temp" -C "$extracted"'
+  fallback_line='    tar --no-same-owner --no-same-permissions -xzf "$temp" -C "$extracted"'
+  scoped_timeout="    (umask 022; ${timeout_line#    })"
+  scoped_fallback="    (umask 022; ${fallback_line#    })"
+  [[ $(grep -Fxc "$scoped_timeout" "$candidate") == 1 && \
+     $(grep -Fxc "$scoped_fallback" "$candidate") == 1 ]] || return 1
+  # Retain the separately reviewed historical two-line upload delta only.
+  cmp -s "$bridge" <(sed \
+    -e "s|^$scoped_timeout\$|$timeout_line|" \
+    -e "s|^$scoped_fallback\$|$fallback_line|" "$candidate")
+}
+
+assert_rolling_entrypoint_bridge() {
+  local current graph_target bridge_blob current_blob bridge_file candidate_file variant
+  local reviewed_candidate_blob=d245faeac28a99be7c22ecec3d330698059fba12
+  current=$(git -C "$PROJECT_ROOT" rev-parse 'HEAD^{commit}')
+  REPO=$PROJECT_ROOT
+  fail() { printf 'rolling-entrypoint-bridge-error: %s\n' "$*" >&2; exit 1; }
+  # shellcheck source=ops/deploy/production-forward-bridge-host-lib.sh
+  source "$SCRIPT_DIR/production-forward-bridge-host-lib.sh"
+  # Verify the immutable historical bridge at its canonical forward commit.
+  # Current main is beyond the graph verifier's bounded 256-hop interval.
+  graph_target=$(git -C "$PROJECT_ROOT" log --first-parent --format='%H %P' "$current" | \
+    awk -v main="$PRODUCTION_FORWARD_MAIN_SHA" \
+      '$2 == main && NF == 3 && !found {found=$1} END {print found}')
+  [[ $graph_target =~ ^[0-9a-f]{40}$ ]] || fail 'canonical forward merge is absent'
+  git -C "$PROJECT_ROOT" merge-base --is-ancestor "$graph_target" "$current" || \
+    fail 'current rolling entrypoint has lost the canonical forward lineage'
+  production_forward_derive_graph "$graph_target"
+  production_forward_verify_target_graph "$PRODUCTION_FORWARD_B" "$graph_target"
+  ROLLING_ENTRYPOINT_BRIDGE_SHA=$PRODUCTION_FORWARD_W
+  bridge_blob=$(git -C "$PROJECT_ROOT" rev-parse \
+    "$ROLLING_ENTRYPOINT_BRIDGE_SHA:ops/deploy/social-monitor-production-deploy.sh")
+  current_blob=$(git -C "$PROJECT_ROOT" rev-parse \
+    'HEAD:ops/deploy/social-monitor-production-deploy.sh')
+  bridge_file=$FIXTURE/rolling-bridge.sh
+  candidate_file=$FIXTURE/rolling-reviewed-uploader.sh
+  git -C "$PROJECT_ROOT" cat-file blob "$bridge_blob" > "$bridge_file"
+  git -C "$PROJECT_ROOT" cat-file blob "$reviewed_candidate_blob" > "$candidate_file"
+  chmod 0644 "$candidate_file"
+  [[ $current_blob == 4322ac0ed50279d168db0dd71f0a6844c417c934 &&
+     $(git -C "$PROJECT_ROOT" hash-object "$SCRIPT_DIR/social-monitor-production-deploy.sh") == "$current_blob" ]] || {
+    echo 'current rolling entrypoint differs from the pinned release' >&2
+    exit 1
+  }
+  # Compare W with the historical reviewed uploader, independent of HEAD.
+  [[ $bridge_blob == "$reviewed_candidate_blob" ]] || \
+    assert_reviewed_upload_delta "$bridge_file" "$candidate_file" || {
+    echo 'rolling entrypoint bridge has an unreviewed uploader delta' >&2
+    exit 1
+  }
+  assert_reviewed_upload_delta "$bridge_file" "$bridge_file"
+  for variant in extra-edit missing-timeout missing-fallback wrong-umask missing symlink mode-drift; do
+    cp "$candidate_file" "$FIXTURE/$variant.sh"
+    case $variant in
+      missing) rm "$FIXTURE/$variant.sh" ;;
+      symlink) rm "$FIXTURE/$variant.sh"; ln -s "$candidate_file" "$FIXTURE/$variant.sh" ;;
+      mode-drift) chmod 0755 "$FIXTURE/$variant.sh" ;;
+      extra-edit) printf '\n# unreviewed edit\n' >> "$FIXTURE/$variant.sh" ;;
+      missing-timeout) sed '/(umask 022; timeout /d' "$candidate_file" > "$FIXTURE/$variant.sh" ;;
+      missing-fallback) sed '/(umask 022; tar /d' "$candidate_file" > "$FIXTURE/$variant.sh" ;;
+      wrong-umask) sed 's/umask 022;/umask 000;/' "$candidate_file" > "$FIXTURE/$variant.sh" ;;
+    esac
+    if assert_reviewed_upload_delta "$bridge_file" "$FIXTURE/$variant.sh"; then
+      printf 'unreviewed uploader variant was accepted: %s\n' "$variant" >&2
+      exit 1
+    fi
+  done
+}
+
+assert_rolling_entrypoint_bridge
+bash "$SCRIPT_DIR/frontend-upload-file-modes.test.sh"
+
 assert_real_bridge_target_assets() {
-  local path entry mode type object tree_path expected_digest alternate_digest actual_digest actual_mode
+  local path entry mode type object tree_path expected_digest alternate_digest reviewed_digest
+  local release_b_candidate_digest release_b_sealed_digest rolling_repair_digest
+  local current_release_digest
+  local actual_digest actual_mode
   local repository_root actual_path actual_real
 
   repository_root=$(readlink -f -- "$PROJECT_ROOT")
@@ -90,24 +176,48 @@ assert_real_bridge_target_assets() {
     }
     expected_digest=$(git -C "$PROJECT_ROOT" show "$BRIDGE_RELEASE_SHA:$path" | sha256sum | awk '{print $1}')
     alternate_digest=
+    reviewed_digest=
+    release_b_candidate_digest=
+    release_b_sealed_digest=
+    rolling_repair_digest=
+    current_release_digest=
     actual_digest=$(sha256sum "$actual_real" | awk '{print $1}')
     case $path in
       ops/deploy/social-monitor-production-deploy.sh)
-        expected_digest=e76db96e9cc7bdb62cb09a3be509a7776e09a0499ff41a0d3769d8b499bde04f
-        alternate_digest=ac82c9cfebf88646e9cdc21dcb822c8cc50409832da24a726cd9307cc2be8bcb
+        expected_digest=ac82c9cfebf88646e9cdc21dcb822c8cc50409832da24a726cd9307cc2be8bcb
+        alternate_digest=101b80c5c0ee6ea5ff4e908e5661a7c2bbd03ad2048fb7eb8b5d26966b0e4860
+        reviewed_digest=cc869266046dbe9edc590e83944e93bab8ebdf19e8ef66f4917c896bbd48fcde
+        current_release_digest=3295d8c6c0056284828c016c4a8d8b170dfc72b6e22b879aca9679c1c882e0fc
         ;;
       ops/deploy/deploy-control-lib.sh)
         expected_digest=d18854822ef36d5571289e72c7691fff8db4a7d5c516787441a733d6960a88a9
+        # The ordinary-release controller preserves the frozen B0 authority
+        # and verifies current installed bytes before treating recovery as a no-op.
+        current_release_digest=fa3a3078cfcc485b1d39be5155c458317f911d5cceef201e50b311a8574c0264
+        ;;
+      ops/deploy/x-collector-image-deploy-lib.sh)
+        current_release_digest=77e4cf95a66a30b36c0095680b7edf65b7cdad7e3e553e738811cf8a96ce6ecf
         ;;
       ops/deploy/postgres-runtime-deploy-lib.sh)
         expected_digest=261fb030bea2f203564c59e0c22db8058b310fb5d979c7db622938fe6045545a
         alternate_digest=6ac29042e94f9ef40498c70beeed37af13660fae629216d3ae2ea70270d0ffb1
+        current_release_digest=6c693394e5a27a2d589660f278611dc13bfce789f44bd873e2053d39f6a2fbf3
         ;;
       ops/deploy/backend-image-rescue-lib.sh)
         expected_digest=68f13213e6d1662d943185df7cdd1c11678261e76977021f74493c4e6c643b59
+        alternate_digest=c8d363b8d64402ee77e42d62aac67ce9d4543135e328255557d2036c8ef3a398
+        # Current release keeps the public collector snapshot readable and
+        # rejects unsafe snapshot modes before a rollback recreate.
+        current_release_digest=85ef1cf10c357ee3a40004ccd677bfbafa2e2fe5553ea5963fe879d050643884
         ;;
       ops/deploy/deploy-control-bridge-lib.sh)
         expected_digest=e6f958555966b77d02b85da8d0b9195e13a200dcb2b19c8afc010fab6d28b65d
+        alternate_digest=d6f3b562e3445dce3ac3d21364793b43afa53fe56011c0b73d02fac721040cf7
+        reviewed_digest=14ab26a66e982128770947a9b66a764cd4cef6eca1bb017c13f97819ae611a7a
+        release_b_candidate_digest=bea119047fbbd2295185c84e0adeb773dc852e63b951daf5c7a831356a73a371
+        release_b_sealed_digest=1718617b4bbb92f4dbfd92a59fcc482ef7a098734730b8460d21aaced44386c2
+        rolling_repair_digest=1945f2b07f110d16694affc15c66b4589d294b81a4e593a9680dacf11fbc5d4d
+        current_release_digest=4d5083cf3af758640633482b89d6644e463dc717ea3deb4bf72b908bbe26451d
         ;;
     esac
     if [[ $path == ops/deploy/social-monitor-production-deploy.sh ]]; then
@@ -135,13 +245,60 @@ assert_real_bridge_target_assets() {
         echo 'OpenAPI snapshot backend-classification exception is not exact' >&2
         exit 1
       }
+      [[ $(grep -Fc 'ops/deploy/production-runtime/rolling-summary-container-run.sh' "$actual_real") == 1 ]] || {
+        echo 'rolling container runner image-classification exception is not exact' >&2
+        exit 1
+      }
+      [[ $(grep -Fc 'ops/deploy/production-runtime/rolling-summary-receipt.mjs' "$actual_real") == 2 ]] || {
+        echo 'rolling receipt image/runtime-classification exception is not exact' >&2
+        exit 1
+      }
     fi
     [[ $actual_digest == "$expected_digest" ||
-       (-n $alternate_digest && $actual_digest == "$alternate_digest") ]] || {
+       (-n $alternate_digest && $actual_digest == "$alternate_digest") ||
+       (-n $reviewed_digest && $actual_digest == "$reviewed_digest") ||
+       (-n $release_b_candidate_digest && $actual_digest == "$release_b_candidate_digest") ||
+       (-n $release_b_sealed_digest && $actual_digest == "$release_b_sealed_digest") ||
+       (-n $rolling_repair_digest && $actual_digest == "$rolling_repair_digest") ||
+       (-n $current_release_digest && $actual_digest == "$current_release_digest") ]] || {
       printf 'current bridge asset digest drifted from V4A4: %s\n' "$path" >&2
       exit 1
     }
   done
+}
+
+assert_current_backend_classification_asset() {
+  local repository_root path actual_real
+  repository_root=$(readlink -f -- "$PROJECT_ROOT")
+  path=$PROJECT_ROOT/$BACKEND_CLASSIFICATION_LIBRARY
+  [[ -f $path && ! -L $path ]] || {
+    echo 'current backend classification library is not a regular file' >&2
+    exit 1
+  }
+  actual_real=$(readlink -f -- "$path")
+  [[ $actual_real == "$repository_root/$BACKEND_CLASSIFICATION_LIBRARY" ]] || {
+    echo 'current backend classification library escaped its canonical path' >&2
+    exit 1
+  }
+  [[ $(stat -c '%a' "$actual_real") == 644 ]] || {
+    echo 'current backend classification library mode drifted' >&2
+    exit 1
+  }
+  # Relative to 16c1f3c2, only the relocated scripts/sql ownership path is added
+  # to the migrate-service classification; all other bytes remain frozen.
+  [[ $(sha256sum "$actual_real" | awk '{print $1}') == \
+     1a910a08936b2bab4ec0eda1c65be48d826d9ce4c139550a958b50570d2035b8 ]] || {
+    echo 'current backend classification library digest drifted' >&2
+    exit 1
+  }
+  [[ $(grep -Fc 'ops/deploy/production-runtime/rolling-summary-container-run.sh' "$actual_real") == 1 ]] || {
+    echo 'rolling container runner backend-classification exception is not exact' >&2
+    exit 1
+  }
+  [[ $(grep -Fc 'ops/deploy/production-runtime/rolling-summary-receipt.mjs' "$actual_real") == 1 ]] || {
+    echo 'rolling receipt backend-classification exception is not exact' >&2
+    exit 1
+  }
 }
 
 materialize_bridge_release_a_path() {
@@ -217,13 +374,16 @@ prepare_case() {
   CASE_CONTROL=$CASE_ROOT/control
   CASE_STATE=$CASE_CONTROL/deploy-state
   CASE_EVENTS=$base_source/events
-  install -d "$CASE_REPO/ops/deploy" "$CASE_REPO/apps/api-gateway" "$CASE_STATE"
+  install -d "$CASE_REPO/ops/deploy/production-runtime" \
+    "$CASE_REPO/apps/api-gateway" "$CASE_STATE"
   git init -q -b main "$CASE_REPO"
   git -C "$CASE_REPO" config user.name 'RabbitMQ quorum bridge fixture'
   git -C "$CASE_REPO" config user.email rabbitmq-bridge@example.invalid
 
-  cp "$SCRIPT_DIR"/{postgres-runtime-deploy-lib.sh,postgres-runtime-weekly-timer-state-lib.sh,postgres-runtime-daily-c1-readiness-lib.sh,postgres-runtime-activation-boundary-lib.sh,backend-image-rescue-lib.sh,x-collector-image-deploy-lib.sh,backend-runtime-health-lib.sh,docker-maintenance-lib.sh,daily-runner-image-bootstrap-lib.sh,reader-summary-recovery-maintenance-lib.sh} \
+  cp "$SCRIPT_DIR"/{postgres-runtime-deploy-lib.sh,postgres-runtime-asset-lib.sh,postgres-runtime-weekly-timer-state-lib.sh,postgres-runtime-daily-c1-readiness-lib.sh,postgres-runtime-activation-boundary-lib.sh,backend-image-rescue-lib.sh,backend-image-rescue-pin-cleanup-lib.sh,x-collector-image-deploy-lib.sh,backend-runtime-health-lib.sh,docker-maintenance-lib.sh,daily-runner-image-bootstrap-lib.sh,reader-summary-recovery-maintenance-lib.sh} \
     "$CASE_REPO/ops/deploy/"
+  cp "$SCRIPT_DIR/production-runtime"/{reader-summary-scheduler-hold-common.sh,reader-summary-scheduler-hold-restore.sh} \
+    "$CASE_REPO/ops/deploy/production-runtime/"
   printf 'legacy entrypoint\n' > "$CASE_REPO/ops/deploy/social-monitor-production-deploy.sh"
   printf 'legacy deploy control\n' > "$CASE_REPO/ops/deploy/deploy-control-lib.sh"
   for path in \
@@ -348,6 +508,8 @@ run_release_b() (
     install -d "$backup"
     printf '%s\n' "$backup"
   }
+  # Invoked indirectly by deploy_release after the fixture sources the target.
+  # shellcheck disable=SC2317
   rollback_backend_and_runtime_control() { return 1; }
   cleanup_stopped_project_containers() { :; }
   backend_image_rescue_prepare() { :; }
@@ -428,6 +590,7 @@ assert_bridge_backend_rejection() {
 backend_path_block=$(sed -n '/^BACKEND_PATHS=(/,/^)/p' \
   "$SCRIPT_DIR/social-monitor-production-deploy.sh")
 assert_real_bridge_target_assets
+assert_current_backend_classification_asset
 grep -Fx "  $HEALTH_LIBRARY" <<< "$backend_path_block" >/dev/null
 grep -Fx "  $QUORUM_SCRIPT" <<< "$backend_path_block" >/dev/null
 grep -Fx "  $RECOVERY_SCRIPT" <<< "$backend_path_block" >/dev/null

@@ -15,6 +15,8 @@ import {
   topReadPrimaryMinimumForLimit,
   topReadProviderCapForLimit,
 } from "@social-monitor/summary/domain/policies/top-read-provider-diversity-policy";
+import { hasValidReaderDisplayTitle } from
+  "@social-monitor/summary/domain/policies/reader-display-title-quality";
 import {
   isFallbackReaderReason,
   isUnpolishedReaderTitle,
@@ -23,7 +25,7 @@ import {
   presentReaderSummaryArtifact,
   readerSummaryContentForArtifact,
 } from "@social-monitor/summary/features/shared/reader-summary-artifact-presenter";
-import { readerSummaryProviderIdentity } from "@social-monitor/summary/domain/value-objects/reader-summary-provider-identity";
+import { readerSummaryIndependentProviderFamily } from "@social-monitor/summary/domain/value-objects/reader-summary-provider-identity";
 
 import {
   collectionDateOptionOrDefault,
@@ -31,6 +33,7 @@ import {
   fingerprint,
   noRawSecretFragments,
   normalizeLineEndings,
+  readOption,
   readDominantFeedScope,
   yesterdaySocialQualityDatabaseUrl,
   yesterdaySocialQualityPoolConfig,
@@ -107,7 +110,8 @@ export type AtomicTopReadRankingReportOperations = {
   readonly removeFile: (path: string) => void;
 };
 
-const outputPath = "ops/evals/reader-summary-top-read-ranking.v1.json";
+const outputPath = readOption("--output-path") ??
+  "ops/evals/reader-summary-top-read-ranking.v1.json";
 const update = process.argv.includes("--update");
 const writeFailedReport = process.argv.includes("--write-failed-report");
 const artifactOnly = process.argv.includes("--artifact-only");
@@ -238,7 +242,7 @@ async function buildReportFromDatabase(
     const citationProviderById = new Map(
       view.citations.map((citation) => [
         citation.citationId,
-        readerSummaryProviderIdentity(citation).providerKey,
+        rankingCitationProviderFamily(citation),
       ]),
     );
     const windowStart = dayStart(collectionDate);
@@ -341,7 +345,7 @@ async function buildReportFromDatabase(
           severeSameProviderMissedCandidates(missedSameProviderCandidates)
             .length === 0,
         topReadTitlesAreReaderFacing: topReads.every(
-          (item) => !isUnpolishedReaderTitle(item.title),
+          (item) => hasValidReaderDisplayTitle(item),
         ),
         topReadReasonsAreReaderFacing: topReads.every(
           (item) => !isFallbackReaderReason(item.reason),
@@ -553,6 +557,11 @@ const defaultAtomicReportOperations: AtomicTopReadRankingReportOperations = {
     renameSync(sourcePath, targetPath),
   removeFile: (path) => rmSync(path, { force: true }),
 };
+
+export const rankingCitationProviderFamily = (citation: {
+  readonly providerKey: string;
+  readonly canonicalUrl?: string;
+}): string => readerSummaryIndependentProviderFamily(citation);
 
 function rounded(value: number): number {
   return Number(value.toFixed(3));

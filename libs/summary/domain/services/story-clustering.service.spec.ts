@@ -285,7 +285,7 @@ describe("StoryClusteringService", () => {
       providerKeys: ["reddit", "x-twitter"],
     });
     expect(selection.clusters[0]?.whyImportant).toContain(
-      "Confirmed by 2 source groups: reddit, x-twitter",
+      "Confirmed by 2 source groups: reddit, x",
     );
   });
 

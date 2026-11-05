@@ -1,0 +1,115 @@
+import type { XAdmission, XDigest, XSendOutcome } from "../../domain/x-observation/x-observation-contract";
+import type { XAcquiredPost, XSupplementaryCell, XSupplementaryQuery } from "../../domain/x-observation/x-observation-acquisition-contract";
+
+export const xReceiptIngestionNamespace = "x-receipt-ingestion-v2";
+export type XReceiptPredicatePolicy = Readonly<{ searchQuery: string; requireQueryMatch: boolean;
+  minLikes?: number; minReposts?: number; minReplies?: number }>;
+// Selection is a collection concern owned by F2, never part of accepts(post).
+export type XResolvedReceiptPolicy = Readonly<{
+  predicates: Readonly<Record<string, XReceiptPredicatePolicy>>;
+  selectionCaps: Readonly<Record<string, number>>;
+}>;
+// Transitional transaction ABI: preserve the existing maxItems algorithm until F2 integrates.
+export type XReceiptIngestionPolicy = XReceiptPredicatePolicy & Readonly<{ maxItems: number }>;
+
+function policyRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) {
+    throw new Error("INGESTION_POLICY_INVALID");
+  }
+  const copy: Record<string, unknown> = Object.create(null);
+  for (const key of Reflect.ownKeys(value)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
+    if (typeof key !== "string" || !key || !descriptor.enumerable || !("value" in descriptor)) {
+      throw new Error("INGESTION_POLICY_INVALID");
+    }
+    copy[key] = descriptor.value;
+  }
+  return copy;
+}
+
+export function snapshotXReceiptPredicate(value: unknown): XReceiptPredicatePolicy {
+  const leaf = policyRecord(value);
+  if (typeof leaf.searchQuery !== "string" || !leaf.searchQuery.trim() ||
+      typeof leaf.requireQueryMatch !== "boolean" || Object.keys(leaf).some((key) =>
+        !["searchQuery", "requireQueryMatch", "minLikes", "minReposts", "minReplies"].includes(key)) ||
+      ["minLikes", "minReposts", "minReplies"].some((key) => key in leaf &&
+        (typeof leaf[key] !== "number" || !Number.isSafeInteger(leaf[key]) || (leaf[key] as number) < 0 || Object.is(leaf[key], -0)))) {
+    throw new Error("INGESTION_POLICY_INVALID");
+  }
+  return Object.freeze({ ...leaf }) as XReceiptPredicatePolicy;
+}
+
+// Descriptor reads reject getters/toJSON/hidden fields instead of invoking caller code.
+// This entire detachment runs synchronously, before hashing or any store await.
+export function snapshotXResolvedReceiptPolicy(value: unknown): XResolvedReceiptPolicy {
+  const root = policyRecord(value);
+  if (Object.keys(root).sort().join() !== "predicates,selectionCaps") throw new Error("INGESTION_POLICY_INVALID");
+  const predicates = policyRecord(root.predicates), caps = policyRecord(root.selectionCaps);
+  if (!Object.keys(predicates).length || Object.keys(predicates).length !== Object.keys(caps).length ||
+      Object.keys(predicates).some((key) => !Object.hasOwn(caps, key))) {
+    throw new Error("INGESTION_POLICY_INVALID");
+  }
+  const leaves: Record<string, XReceiptPredicatePolicy> = {};
+  const selectionCaps: Record<string, number> = {};
+  for (const key of Object.keys(predicates)) {
+    const cap = caps[key];
+    if (typeof cap !== "number" || !Number.isSafeInteger(cap) || cap < 1 || cap > 100 || key === "__proto__") {
+      throw new Error("INGESTION_POLICY_INVALID");
+    }
+    Object.defineProperty(leaves, key, { value: snapshotXReceiptPredicate(predicates[key]), enumerable: true });
+    Object.defineProperty(selectionCaps, key, { value: cap, enumerable: true });
+  }
+  return Object.freeze({ predicates: Object.freeze(leaves), selectionCaps: Object.freeze(selectionCaps) });
+}
+
+export function xReceiptPolicyMatchesGrant(policy: XResolvedReceiptPolicy, admission: XAdmission, digest: XDigest): boolean {
+  const grant = admission.grant;
+  if (grant.schemaVersion !== 2 || Object.keys(policy.predicates).length !== grant.supplementary.queries.length) return false;
+  return grant.supplementary.queries.every((query) => {
+    const leaf = policy.predicates[query.queryId];
+    const slot = grant.days.find((day) => day.day === query.day)?.queries.find((q) => q.queryId === query.queryId);
+    return !!leaf && !!slot && slot.query === leaf.searchQuery && slot.product === query.product && digest(slot) === query.queryHash &&
+      grant.supplementary.cells.some((cell) => cell.day === query.day && cell.sourceBindingId === query.sourceBindingId && cell.queryIds.includes(query.queryId));
+  });
+}
+
+export type XReceiptIngestionBatch = Readonly<{ admission: XAdmission; receipt: XSendOutcome;
+  cell: XSupplementaryCell; query: XSupplementaryQuery; policy: XReceiptIngestionPolicy;
+  indexes: readonly number[]; prior: readonly XReceiptIngestionProof[]; witnesses: readonly XReceiptIngestionIntent[] }>;
+export type XReceiptIngestionIntent = Readonly<{ schemaVersion: 2; namespace: typeof xReceiptIngestionNamespace;
+  key: string; grantHash: string; receiptHash: string; resultHash: string; reservationHash: string;
+  sequence: number; sourceBindingId: string; interestId: string; scanJobId: string; scanPolicyId: string; queryId: string; day: string; policyHash: string; indexes: readonly number[]; preimageHash: string; effectPreimageHash: string; preimageSourceId: string | null; preimageFeedId: string | null }>;
+export type XReceiptDisposition = Readonly<{ index: number; storageKey: string; publishedAt: string;
+  observedAt: string; contentHash: string; metricsHash: string }> & (
+  { readonly state: "REJECTED"; readonly reason: "INVALID_POST" | "METRIC_OVERFLOW" | "METRIC_THRESHOLD" | "IRRELEVANT" | "ITEM_BUDGET" } |
+  { readonly state: "DUPLICATE"; readonly priorKey: string; readonly priorIndex: number; readonly sourceItemId: string; readonly feedItemId: string } |
+  { readonly state: "PERSISTED"; readonly source: "INSERTED" | "UNCHANGED" | "CONTENT_UPDATED";
+    readonly feed: "INSERTED" | "EXISTING"; readonly sourceItemId: string; readonly feedItemId: string;
+    readonly engagement: "PROJECTED" | "UNAVAILABLE"; readonly samples: number });
+export type XReceiptIngestionProof = Readonly<{ intent: XReceiptIngestionIntent; requestHash: string;
+  sourceInserts: number; feedInserts: number; projectionAttempts: number; engagementSamples: number;
+  dispositions: readonly XReceiptDisposition[]; effectsHash: string;
+  authority: readonly { table: string; id: string; hash: string }[] }>;
+export type XReceiptReconciliation = { state: "NO_EFFECT" } | { state: "RECONCILED"; proof: XReceiptIngestionProof } | { state: "UNRESOLVED" };
+export interface XReceiptIngestionStore {
+  validateCells(admission: XAdmission): Promise<boolean>;
+  prepare(batch: XReceiptIngestionBatch): Promise<XReceiptIngestionIntent>;
+  reconcile(batch: XReceiptIngestionBatch, intent: XReceiptIngestionIntent): Promise<XReceiptReconciliation>;
+  commit(batch: XReceiptIngestionBatch, intent: XReceiptIngestionIntent): Promise<void>;
+}
+export const xReceiptPostHashes = (post: XAcquiredPost, digest: XDigest) => ({
+  contentHash: digest({ primaryId: post.primaryId, canonicalUrl: post.canonicalUrl, text: post.text,
+    publishedAt: post.publishedAt, authorHandle: post.authorHandle ?? null, contentKind: post.contentKind ?? null }),
+  metricsHash: digest(post.metrics),
+});
+// Identity depends on frozen grant authority, not on a fabricated predicate at ledger read time.
+export function xReceiptIntentIdentity<T extends Pick<XReceiptIngestionBatch, "admission" | "receipt" | "cell" | "query" | "indexes">>(batch: T, digest: XDigest) {
+  const grant = batch.admission.grant;
+  if (grant.schemaVersion !== 2) throw new Error("INGESTION_AUTHORITY_INVALID");
+  const identity = { schemaVersion: 2 as const, namespace: xReceiptIngestionNamespace as typeof xReceiptIngestionNamespace,
+    grantHash: batch.admission.grantHash, receiptHash: digest(batch.receipt), resultHash: batch.receipt.resultHash,
+    reservationHash: batch.receipt.reservationHash, sequence: batch.receipt.sequence,
+    sourceBindingId: batch.cell.sourceBindingId, interestId: batch.cell.interestId, scanJobId: batch.cell.scanJobId, scanPolicyId: batch.cell.scanPolicyId, queryId: batch.query.queryId, day: batch.cell.day,
+    policyHash: grant.supplementary.ingestionPolicyHash, indexes: batch.indexes };
+  return { ...identity, key: digest({ operationId: grant.operationId, ...identity }) };
+}

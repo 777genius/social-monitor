@@ -15,6 +15,19 @@ export type PrismaFeedSignalBaselineSampleRecord = {
 };
 
 export type PrismaFeedClient = {
+  readonly $executeRawUnsafe?: (query: string) => Promise<number>;
+  readonly $queryRawUnsafe?: <Result>(
+    query: string,
+    ...values: readonly unknown[]
+  ) => Promise<Result>;
+  readonly $transaction?: <Result>(
+    operation: (transaction: PrismaFeedClient) => Promise<Result>,
+    options: {
+      readonly isolationLevel: "RepeatableRead" | "Serializable";
+      readonly maxWait?: number;
+      readonly timeout?: number;
+    },
+  ) => Promise<Result>;
   readonly feedItem: {
     upsert(args: {
       readonly where: {
@@ -33,7 +46,6 @@ export type PrismaFeedClient = {
         readonly title: string;
         readonly bodyPreview: string;
         readonly authorHandle?: string | null;
-        readonly publishedAt: Date;
         readonly providerMetadata?: Readonly<Record<string, unknown>> | null;
       };
       readonly create: {
@@ -66,7 +78,6 @@ export type PrismaFeedClient = {
         readonly title?: string;
         readonly bodyPreview?: string;
         readonly authorHandle?: string | null;
-        readonly publishedAt?: Date;
         readonly providerMetadata?: Readonly<Record<string, unknown>> | null;
       };
     }): Promise<PrismaFeedItemRecord>;
@@ -83,6 +94,7 @@ export type PrismaFeedClient = {
         readonly observedAt?: {
           readonly gte?: Date;
           readonly gt?: Date;
+          readonly lte?: Date;
           readonly lt?: Date;
         };
         readonly publishedAt?: {
@@ -90,12 +102,27 @@ export type PrismaFeedClient = {
           readonly lt?: Date;
         };
         readonly providerKey?: string;
+        readonly AND?: readonly {
+          readonly OR: readonly (
+            | { readonly publishedAt: { readonly lt: Date } }
+            | { readonly observedAt: { readonly lt: Date } }
+            | {
+                readonly publishedAt: Date;
+                readonly id: { readonly lte?: string; readonly lt?: string };
+              }
+            | {
+                readonly observedAt: Date;
+                readonly id: { readonly lte?: string; readonly lt?: string };
+              }
+          )[];
+        }[];
       };
-      readonly orderBy: readonly [
-        { readonly publishedAt: "desc" },
-        { readonly id: "desc" },
-      ];
-      readonly skip: number;
+      readonly orderBy?: readonly [(
+        { readonly publishedAt: "desc" } |
+        { readonly observedAt: "desc" }
+      ), { readonly id: "desc" }];
+      readonly skip?: number;
+      readonly cursor?: { readonly id: string };
       readonly take: number;
       readonly include?: {
         readonly sourceItem: {
@@ -127,9 +154,21 @@ export type PrismaFeedClient = {
         readonly sourceItemId?: string;
         readonly status: "VISIBLE";
         readonly observedAt?: {
+          readonly gte?: Date;
+          readonly gt?: Date;
+          readonly lte?: Date;
           readonly lt?: Date;
         };
+        readonly publishedAt?: {
+          readonly gte?: Date;
+          readonly lt?: Date;
+        };
+        readonly providerKey?: string;
       };
+      readonly orderBy?: readonly [
+        { readonly observedAt: "desc" },
+        { readonly id: "desc" },
+      ];
     }): Promise<PrismaFeedItemRecord | null>;
   };
   readonly feedSignalBaselineSample: {
@@ -189,5 +228,16 @@ export type PrismaFeedClient = {
         readonly feedItemId: string;
       };
     }): Promise<{ readonly count: number }>;
+  };
+  readonly sourceItemEngagementSnapshot?: {
+    findUnique(args: {
+      readonly where: {
+        readonly tenantId_workspaceId_sourceItemId: {
+          readonly tenantId: string;
+          readonly workspaceId: string;
+          readonly sourceItemId: string;
+        };
+      };
+    }): Promise<{ readonly lastObservedAt: Date } | null>;
   };
 };

@@ -1,57 +1,329 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
+
+/* global structuredClone */
 
 import {
   admitSubscriptionRuntimeWrapperRequest,
+  readerPromotionV2CanaryActivationCapability,
+  readerPromotionV2CanaryOutputSchema,
+  readerPromotionV2CanaryPurpose,
+  readerPromotionV2CanarySchemaName,
+  readerPromotionV2CanarySchemaVersion,
   subscriptionOnlyCodexEnvironment,
+  subscriptionRuntimeWrapperPurposeProfiles,
 } from "./subscription-runtime-purpose-model-policy.mjs";
 
-test("MJS policy removes both schema-name fields for output_text", () => {
-  const admission = admitSubscriptionRuntimeWrapperRequest({
-    provider: "codex",
-    request: {
-      context: { purpose: "social_monitor.reader_summary.weekly.generate" },
-      task: {
-        outputSchemaName: "weekly-summary",
-        controls: {
-          outputSchemaName: "weekly-summary",
-          responseFormat: "text",
+test("canary purpose is private, exact-schema-only, and deeply frozen", () => {
+  assert.equal(
+    Object.hasOwn(
+      subscriptionRuntimeWrapperPurposeProfiles(),
+      readerPromotionV2CanaryPurpose,
+    ),
+    false,
+  );
+  assert.equal(everyObjectIsFrozen(readerPromotionV2CanaryOutputSchema), true);
+  const input = canaryInput(readerPromotionV2CanaryOutputSchema);
+  assert.throws(
+    () => admitSubscriptionRuntimeWrapperRequest(input),
+    /purpose is not admitted/u,
+  );
+  assert.throws(
+    () => admitSubscriptionRuntimeWrapperRequest({
+      ...input,
+      request: { ...input.request, activationCapability: true },
+    }),
+    /purpose is not admitted/u,
+  );
+  assert.doesNotThrow(() => admitSubscriptionRuntimeWrapperRequest(
+    input,
+    readerPromotionV2CanaryActivationCapability,
+  ));
+  assert.throws(
+    () => admitSubscriptionRuntimeWrapperRequest(
+      {
+        ...input,
+        request: {
+          ...input.request,
+          task: { ...input.request.task, logicalThread: {} },
         },
-        metadata: { runtimeOutput: "output_text" },
       },
-    },
-  });
-  const task = admission.canonicalRequest.task;
+      readerPromotionV2CanaryActivationCapability,
+    ),
+    /rejects continuation/u,
+  );
 
-  assert.equal(Object.hasOwn(task, "outputSchemaName"), false);
-  assert.equal(Object.hasOwn(task.controls, "outputSchemaName"), false);
-  assert.equal(task.controls.responseFormat, "text");
-  assert.equal(task.metadata.runtimeOutput, "output_text");
+  for (const schema of mutatedSchemas()) {
+    assert.throws(
+      () => admitSubscriptionRuntimeWrapperRequest(
+        canaryInput(schema),
+        readerPromotionV2CanaryActivationCapability,
+      ),
+      /outputSchema conflicts with purpose policy/u,
+    );
+  }
+  for (const [key, value] of [
+    ["outputSchemaName", "wrong"],
+    ["schemaVersion", "wrong"],
+  ]) {
+    const malformed = canaryInput(readerPromotionV2CanaryOutputSchema);
+    malformed.request.task.controls[key] = value;
+    assert.throws(
+      () => admitSubscriptionRuntimeWrapperRequest(
+        malformed,
+        readerPromotionV2CanaryActivationCapability,
+      ),
+      /conflicts with purpose policy/u,
+    );
+  }
+  const wrongTaskSchemaName = canaryInput(readerPromotionV2CanaryOutputSchema);
+  wrongTaskSchemaName.request.task.outputSchemaName = "wrong";
+  assert.throws(
+    () => admitSubscriptionRuntimeWrapperRequest(
+      wrongTaskSchemaName,
+      readerPromotionV2CanaryActivationCapability,
+    ),
+    /task\.outputSchemaName conflicts with purpose policy/u,
+  );
+  for (const override of [
+    { model: "gpt-5.5" },
+    { reasoningEffort: "xhigh" },
+  ]) {
+    assert.throws(
+      () => admitSubscriptionRuntimeWrapperRequest(
+        { ...input, ...override },
+        readerPromotionV2CanaryActivationCapability,
+      ),
+      /conflicts with purpose policy/u,
+    );
+  }
 });
 
-test("MJS policy preserves structured schema names", () => {
-  const admission = admitSubscriptionRuntimeWrapperRequest({
+test("standard MJS canonical JSON bytes stay frozen for every purpose", () => {
+  for (const golden of standardCanonicalGoldens) {
+    const admission = admitSubscriptionRuntimeWrapperRequest(
+      standardGoldenInput(golden.purpose, golden.outputKind),
+    );
+    assert.equal(
+      JSON.stringify(admission.canonicalRequest),
+      golden.bytes,
+      golden.purpose,
+    );
+  }
+});
+
+test("text canonicalization removes both schema-name fields", () => {
+  for (const purpose of [
+    "social_monitor.reader_summary.daily.canonical_recovery.v2",
+    "social_monitor.reader_summary.weekly.generate.v2",
+  ]) {
+    const task = admitSubscriptionRuntimeWrapperRequest(
+      standardGoldenInput(purpose, "output_text"),
+    ).canonicalRequest.task;
+
+    assert.equal(Object.hasOwn(task, "outputSchemaName"), false, purpose);
+    assert.equal(
+      Object.hasOwn(task.controls, "outputSchemaName"),
+      false,
+      purpose,
+    );
+    assert.equal(task.controls.schemaVersion, "golden.v1", purpose);
+  }
+});
+
+test("active v2 admits high and rejects xhigh and every legacy reader-summary purpose", () => {
+  const request = (purpose, reasoningEffort, outputKind = "structured_output") => ({
     provider: "codex",
+    model: "gpt-5.6-sol",
+    reasoningEffort,
     request: {
-      context: { purpose: "social_monitor.reader_summary.generate" },
+      context: { purpose },
       task: {
-        outputSchemaName: "daily-summary",
         controls: {
-          outputSchemaName: "daily-summary",
-          outputSchema: { type: "object" },
-          responseFormat: "json",
+          model: "gpt-5.6-sol",
+          reasoningEffort,
+          ...(outputKind === "structured_output"
+            ? { outputSchema: { type: "object" } }
+            : {}),
+          responseFormat: outputKind === "structured_output" ? "json" : "text",
         },
-        metadata: { runtimeOutput: "structured_output" },
+        metadata: { reasoningEffort, runtimeOutput: outputKind },
       },
     },
   });
-  const task = admission.canonicalRequest.task;
 
-  assert.equal(task.outputSchemaName, "daily-summary");
-  assert.equal(task.controls.outputSchemaName, "daily-summary");
-  assert.deepEqual(task.controls.outputSchema, { type: "object" });
-  assert.equal(task.controls.responseFormat, "json");
-  assert.equal(task.metadata.runtimeOutput, "structured_output");
+  assert.doesNotThrow(() => admitSubscriptionRuntimeWrapperRequest(
+    request("social_monitor.reader_summary.generate.v2", "high"),
+  ));
+  assert.throws(
+    () => admitSubscriptionRuntimeWrapperRequest(
+      request("social_monitor.reader_summary.generate.v2", "xhigh"),
+    ),
+    /runtime reasoning effort conflicts with purpose policy/u,
+  );
+  assert.doesNotThrow(() => admitSubscriptionRuntimeWrapperRequest(request(
+    "social_monitor.reader_summary.daily.canonical_recovery.v2",
+    "high",
+    "output_text",
+  )));
+  assert.throws(() => admitSubscriptionRuntimeWrapperRequest(request(
+    "social_monitor.reader_summary.daily.canonical_recovery.v2",
+    "xhigh",
+    "output_text",
+  )), /runtime reasoning effort conflicts with purpose policy/u);
+  for (const purpose of [
+    "social_monitor.reader_summary.generate",
+    "social_monitor.reader_summary.repair",
+    "social_monitor.reader_summary.topic_map.label",
+    "social_monitor.reader_summary.topic_map.verify_relations",
+    "social_monitor.reader_summary.verify_story_relations",
+    "social_monitor.reader_summary.verify_related_topic_relations",
+    "social_monitor.reader_summary.weekly.review",
+    "social_monitor.reader_summary.weekly.generate",
+  ]) {
+    assert.throws(
+      () => admitSubscriptionRuntimeWrapperRequest(request(purpose, "xhigh")),
+      /purpose is not admitted/u,
+    );
+  }
+});
+
+test("V3 promotion presentation admits only the active structured default", () => {
+  const accepted = admitSubscriptionRuntimeWrapperRequest({
+    ...standardGoldenInput(
+      "social_monitor.reader_summary.promotion_presentation.v3",
+      "structured_output",
+    ),
+    model: "gpt-5.6-sol",
+    reasoningEffort: "high",
+  });
+  assert.equal(accepted.profile.reasoningEffort, "high");
+  assert.throws(() => admitSubscriptionRuntimeWrapperRequest({
+    ...standardGoldenInput(
+      "social_monitor.reader_summary.promotion_presentation.v3",
+      "structured_output",
+    ),
+    model: "gpt-5.6-sol",
+    reasoningEffort: "xhigh",
+  }), /runtime reasoning effort conflicts with purpose policy/u);
+});
+
+const mimoMarkers = {
+  "social_monitor.reader_summary.promotion_presentation.v3": ["social_monitor_reader_post_presentation_v3", "reader_post_presentation.v3"],
+  "social_monitor.reader_summary.generate.v2": ["social_monitor_reader_summary_artifact", "reader_summary.artifact.v1"],
+  "social_monitor.reader_summary.repair.v2": ["social_monitor_reader_summary_artifact", "reader_summary.artifact.v1"],
+  "social_monitor.reader_summary.topic_map.label.v2": ["social_monitor_reader_summary_topic_map_labels", "reader_summary.topic_map.v1"],
+  "social_monitor.reader_summary.topic_map.verify_relations.v2": ["social_monitor_reader_summary_topic_relations", "reader_summary.topic_relation.v1"],
+  "social_monitor.reader_summary.verify_story_relations.v2": ["social_monitor_reader_summary_story_relations", "reader_summary.story_relation.v1"],
+  "social_monitor.reader_summary.verify_related_topic_relations.v2": ["social_monitor_reader_summary_related_topic_relations", "reader_summary.related_topic_relation.v1"],
+};
+
+const mimoInput = (purpose) => {
+  const input = standardGoldenInput(purpose, "structured_output");
+  const [name, version] = mimoMarkers[purpose];
+  input.request.task.outputSchemaName = name;
+  input.request.task.controls.outputSchemaName = name;
+  input.request.task.controls.schemaVersion = version;
+  input.request.task.controls.modelBackend = "xiaomi-mimo-token-plan";
+  const required = purpose.includes("generate.v2") || purpose.includes("repair.v2")
+    ? ["headline", "executiveSummary", "narrativeSections", "content", "topStories", "interestHighlights", "repeatedSignals", "risksAndUnknowns", "citationMap", "qualityFlags", "confidence", "noSignalReason"]
+    : purpose.includes("topic_map.label.v2") ? ["nodeLabels", "groups"]
+      : purpose.endsWith("promotion_presentation.v3") ? ["presentations"] : ["decisions"];
+  input.request.task.controls.outputSchema = {
+    type: "object", additionalProperties: false, required,
+    properties: Object.fromEntries(required.map((key) => [key, {
+      type: key === "headline" ? "string" : "array",
+    }])),
+  };
+  input.model = "mimo-v2.6-pro";
+  return input;
+};
+
+test("MiMo admission covers only the seven named daily summary purposes", () => {
+  for (const purpose of Object.keys(mimoMarkers)) {
+    const input = mimoInput(purpose);
+    const admitted = admitSubscriptionRuntimeWrapperRequest(input);
+    assert.equal(admitted.profile.provider, "codex");
+    assert.equal(admitted.profile.model, "mimo-v2.6-pro");
+    assert.equal(admitted.profile.modelBackend, "xiaomi-mimo-token-plan");
+    const effort = purpose.endsWith("promotion_presentation.v3") ? "none" : "high";
+    assert.equal(admitted.profile.reasoningEffort, effort);
+    const wrongEffort = structuredClone(input);
+    wrongEffort.reasoningEffort = effort === "none" ? "high" : "none";
+    assert.throws(() => admitSubscriptionRuntimeWrapperRequest(wrongEffort), /runtime reasoning effort conflicts with purpose policy/u);
+    assert.equal(admitted.canonicalRequest.task.controls.model, "mimo-v2.6-pro");
+    const conflicting = structuredClone(input);
+    conflicting.request.task.metadata.modelBackend = "openai-chatgpt";
+    assert.throws(() => admitSubscriptionRuntimeWrapperRequest(conflicting),
+      /metadata\.modelBackend conflicts with purpose policy/u);
+    for (const mutate of [
+      (bad) => { bad.request.task.outputSchemaName = "wrong"; },
+      (bad) => { bad.request.task.controls.outputSchemaName = "wrong"; },
+      (bad) => { bad.request.task.controls.schemaVersion = "wrong"; },
+      (bad) => { bad.request.task.controls.toolsEnabled = true; },
+      (bad) => { bad.request.task.controls.outputSchema = { type: "object" }; },
+      (bad) => { bad.provider = "claude"; },
+    ]) {
+      const bad = structuredClone(input);
+      mutate(bad);
+      assert.throws(() => admitSubscriptionRuntimeWrapperRequest(bad),
+        /conflicts with (MiMo )?purpose policy/u);
+    }
+  }
+  for (const purpose of [
+    "social_monitor.relevance.assess_source_content.v1",
+    "social_monitor.reader_summary.weekly.review.v2",
+    "social_monitor.reader_summary.daily.canonical_recovery.v2",
+    "social_monitor.summary.generate",
+  ]) {
+    const input = standardGoldenInput(purpose, "structured_output");
+    input.request.task.controls.modelBackend = "xiaomi-mimo-token-plan";
+    assert.throws(() => admitSubscriptionRuntimeWrapperRequest(input),
+      /modelBackend conflicts with purpose policy/u);
+  }
+});
+
+test("MiMo launcher fails closed without a key file and never logs a synthetic token", () => {
+  const root = mkdtempSync(join(
+    process.env.TMPDIR ?? tmpdir(), "social-monitor-mimo-policy-",
+  ));
+  try {
+    const input = mimoInput("social_monitor.reader_summary.generate.v2");
+    input.request.timeoutMs = 10_000;
+    const inputPath = join(root, "request.json");
+    writeFileSync(inputPath, JSON.stringify(input.request));
+    const run = (extraEnv) => spawnSync(process.execPath, [
+      "apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs",
+      "--provider", "codex", "--model", "mimo-v2.6-pro",
+      "--input", inputPath,
+    ], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: {
+        PATH: process.env.PATH,
+        HOME: root,
+        AGENT_RUNTIME_REASONING_EFFORT: "high",
+        ...extraEnv,
+      },
+    });
+    const missing = run({});
+    assert.notEqual(missing.status, 0);
+    assert.match(missing.stderr, /MiMo Token Plan key file is not configured/u);
+    const syntheticToken = "synthetic-token-never-log-this-value";
+    const unavailable = run({
+      AGENT_RUNTIME_MIMO_API_KEY_FILE: "/synthetic/key-file",
+      MIMO_TOKEN_PLAN_API_KEY: syntheticToken,
+    });
+    assert.notEqual(unavailable.status, 0);
+    assert.match(unavailable.stderr, /MiMo Token Plan key file is unavailable/u);
+    assert.equal(`${unavailable.stdout}${unavailable.stderr}`.includes(syntheticToken), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("Codex subprocess environment admits only safe execution basics", () => {
@@ -101,4 +373,135 @@ test("Codex subprocess environment admits only safe execution basics", () => {
     safeEnvironment,
   );
   assert.equal({}.polluted, undefined);
+});
+
+const canaryInput = (schema) => ({
+  provider: "codex",
+  model: "gpt-5.6-sol",
+  reasoningEffort: "high",
+  request: {
+    context: { purpose: readerPromotionV2CanaryPurpose },
+    task: {
+      outputSchemaName: readerPromotionV2CanarySchemaName,
+      controls: {
+        outputSchemaName: readerPromotionV2CanarySchemaName,
+        schemaVersion: readerPromotionV2CanarySchemaVersion,
+        outputSchema: schema,
+      },
+      metadata: {},
+    },
+  },
+});
+
+const structuredBytes = (
+  purpose,
+  schemaName = "golden-schema",
+  schemaVersion = "golden.v1",
+  metadataMarkers = "",
+) =>
+  `{"protocolVersion":1,"runId":"golden-run","task":{"kind":"structured-prompt","outputSchemaName":"${schemaName}","controls":{"outputSchemaName":"${schemaName}","schemaVersion":"${schemaVersion}","outputSchema":{"type":"object"},"model":"gpt-5.6-sol","reasoningEffort":"REASONING","responseFormat":"json"},"metadata":{"marker":"kept","outputKind":"structured_output","runtimeOutput":"structured_output"${metadataMarkers},"model":"gpt-5.6-sol","reasoningEffort":"REASONING"}},"context":{"purpose":"${purpose}"}}`;
+
+const textBytes = (purpose) =>
+  `{"protocolVersion":1,"runId":"golden-run","task":{"kind":"structured-prompt","controls":{"schemaVersion":"golden.v1","model":"gpt-5.6-sol","reasoningEffort":"high","responseFormat":"text"},"metadata":{"marker":"kept","outputKind":"output_text","runtimeOutput":"output_text","model":"gpt-5.6-sol","reasoningEffort":"high"}},"context":{"purpose":"${purpose}"}}`;
+
+const standardCanonicalGoldens = [
+  ["social_monitor.summary.generate", "xhigh"],
+  ["social_monitor.reader_summary.generate.v2", "high"],
+  ["social_monitor.reader_summary.repair.v2", "high"],
+  ["social_monitor.reader_summary.topic_map.label.v2", "high"],
+  ["social_monitor.reader_summary.topic_map.verify_relations.v2", "high"],
+  ["social_monitor.reader_summary.verify_story_relations.v2", "high"],
+  ["social_monitor.reader_summary.promotion_presentation.v3", "high"],
+  ["social_monitor.reader_summary.weekly.review.v2", "high"],
+].map(([purpose, effort]) => ({
+  purpose,
+  outputKind: "structured_output",
+  bytes: structuredBytes(purpose).replaceAll("REASONING", effort),
+}));
+standardCanonicalGoldens.push({
+  purpose: "social_monitor.reader_summary.verify_related_topic_relations.v2",
+  outputKind: "structured_output",
+  bytes: structuredBytes(
+    "social_monitor.reader_summary.verify_related_topic_relations.v2",
+    "social_monitor_reader_summary_related_topic_relations",
+    "reader_summary.related_topic_relation.v1",
+    ",\"taskRole\":\"related_topic_relation\",\"verificationLane\":\"related_topic\"",
+  ).replaceAll("REASONING", "high"),
+});
+for (const purpose of [
+  "social_monitor.reader_summary.daily.canonical_recovery.v2",
+  "social_monitor.reader_summary.weekly.generate.v2",
+]) {
+  standardCanonicalGoldens.push({
+    purpose,
+    outputKind: "output_text",
+    bytes: textBytes(purpose),
+  });
+}
+
+const standardGoldenInput = (purpose, outputKind) => {
+  const related = purpose ===
+    "social_monitor.reader_summary.verify_related_topic_relations.v2";
+  const schemaName = related
+    ? "social_monitor_reader_summary_related_topic_relations"
+    : "golden-schema";
+  return {
+    provider: "codex",
+    request: {
+      protocolVersion: 1,
+      runId: "golden-run",
+      task: {
+        kind: "structured-prompt",
+        outputSchemaName: schemaName,
+        controls: {
+          outputSchemaName: schemaName,
+          schemaVersion: related
+            ? "reader_summary.related_topic_relation.v1"
+            : "golden.v1",
+          ...(outputKind === "structured_output"
+            ? { outputSchema: { type: "object" } }
+            : {}),
+          outputKind,
+          runtimeOutput: outputKind,
+          selectedOutputKind: outputKind,
+        },
+        metadata: {
+          marker: "kept",
+          outputKind,
+          runtimeOutput: outputKind,
+          ...(related
+            ? {
+                taskRole: "related_topic_relation",
+                verificationLane: "related_topic",
+              }
+            : {}),
+        },
+      },
+      context: { purpose },
+    },
+  };
+};
+
+const mutatedSchemas = () => {
+  const extra = structuredClone(readerPromotionV2CanaryOutputSchema);
+  extra.extra = true;
+  const missing = structuredClone(readerPromotionV2CanaryOutputSchema);
+  delete missing.properties.decisions;
+  const nested = structuredClone(readerPromotionV2CanaryOutputSchema);
+  nested.properties.decisions.items.properties.sameStory = { type: "string" };
+  return [extra, missing, nested];
+};
+
+const everyObjectIsFrozen = (value) =>
+  value === null || typeof value !== "object" ||
+  (Object.isFrozen(value) && Object.values(value).every(everyObjectIsFrozen));
+
+
+test("assessment uses the standard structured pool profile with no retry", () => {
+  const result = admitSubscriptionRuntimeWrapperRequest(standardGoldenInput(
+    "social_monitor.relevance.assess_source_content.v1", "structured_output"));
+  assert.equal(result.profile.retryMode, "never");
+  assert.equal(result.profile.outputKind, "structured_output");
+  assert.equal(result.profile.model, "gpt-5.6-sol");
+  assert.equal(result.profile.reasoningEffort, "low");
 });

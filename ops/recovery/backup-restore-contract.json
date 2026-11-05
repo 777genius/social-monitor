@@ -56,6 +56,8 @@
     "reader_summary_publications",
     "reader_summary_publication_slots",
     "reader_summary_recovery_receipts",
+    "reader_summary_promotion_v2_rollback_receipts",
+    "reader_summary_promotion_v2_canary_publication_receipts",
     "reader_summary_weekly_certification_seals",
     "reader_summary_weekly_publication_evidence",
     "reader_summary_weekly_review_manifests",
@@ -80,7 +82,9 @@
     "outbox_events",
     "inbox_records",
     "idempotency_keys",
-    "social_research_result_cache_entries"
+    "social_research_result_cache_entries",
+    "reader_summary_new_input_refresh_reconciliations",
+    "reader_summary_new_input_refresh_reconciliation_counters"
   ],
   "operationalStateTables": [
     "api_keys",
@@ -117,6 +121,8 @@
     "reader_summary_publications",
     "reader_summary_publication_slots",
     "reader_summary_recovery_receipts",
+    "reader_summary_promotion_v2_rollback_receipts",
+    "reader_summary_promotion_v2_canary_publication_receipts",
     "reader_summary_weekly_publication_evidence",
     "reader_summary_policies",
     "reader_summary_topic_recommendation_decisions",
@@ -178,6 +184,8 @@
     "select count(*) from reader_summary_publications",
     "select count(*) from reader_summary_publication_slots",
     "select count(*) from reader_summary_recovery_receipts",
+    "select count(*) from reader_summary_promotion_v2_rollback_receipts",
+    "select count(*) from reader_summary_promotion_v2_canary_publication_receipts",
     "select count(*) from reader_summary_weekly_publication_evidence",
     "select count(*) from reader_summary_policies",
     "select count(*) from reader_summary_topic_recommendation_decisions",

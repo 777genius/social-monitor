@@ -6,13 +6,17 @@ import {
 } from '@social-monitor/platform-persistence';
 import { loadPrismaRuntimeClient } from '@social-monitor/platform-persistence/prisma-runtime-client';
 
-import type { PrismaDeliveryClient } from './prisma-delivery-client';
+import type { PrismaReaderSummaryProjectionClient } from './prisma-reader-summary-projection-client';
 
-type PrismaDeliveryRuntimeClient = PrismaDeliveryClient & {
+import type { PrismaDeliveryClient } from './prisma-delivery-client';
+import type { PrismaDeliveryWorkflowClient } from './prisma-delivery-workflow-client';
+
+type PrismaDeliveryRuntimeClient = PrismaDeliveryClient & PrismaReaderSummaryProjectionClient & PrismaDeliveryWorkflowClient & {
   $disconnect(): Promise<void>;
 };
 
 export class PrismaDeliveryConnection implements PrismaDeliveryClient {
+  readonly workflow: PrismaDeliveryWorkflowClient;
   readonly deliveryAttempt: PrismaDeliveryClient['deliveryAttempt'];
   readonly digest: PrismaDeliveryClient['digest'];
   readonly digestSchedule: PrismaDeliveryClient['digestSchedule'];
@@ -45,6 +49,7 @@ export class PrismaDeliveryConnection implements PrismaDeliveryClient {
   ) {
     this.runtime = runtime;
     this.client = this.runtime.client;
+    this.workflow = this.client;
 
     this.deliveryAttempt = this.client.deliveryAttempt;
     this.digest = this.client.digest;
@@ -57,6 +62,9 @@ export class PrismaDeliveryConnection implements PrismaDeliveryClient {
     this.summaryArtifact = this.client.summaryArtifact;
     this.feedItem = this.client.feedItem;
   }
+
+  $transaction: PrismaReaderSummaryProjectionClient['$transaction'] = (operation, options) =>
+    this.client.$transaction(operation, options);
 
   close(): Promise<void> {
     return this.runtime.close();

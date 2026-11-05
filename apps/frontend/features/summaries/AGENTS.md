@@ -55,6 +55,8 @@ When growing, use the tactical folders from the shared DDD standard. Do not crea
 - Do not add raw route paths, direct environment flag reads, persistent cache packages or console logging in feature code.
 - Realtime input needs event id, schema version, cursor, sequence, workspace scope and order guarding.
 - Cache is in-memory by default and scoped to workspace unless an ADR approves persistence.
+- The only persisted value is the Top posts sort order UI preference (ADR 398), behind `TopPostsSortPreferenceStore` and `infrastructure/storage/`. Another persisted value needs its own ADR decision and architecture-test allowlist entry.
+- The Top posts sort order reorders only the visible ranked lane in presentation; it never changes domain lists, lane membership, attested slots or News without rating.
 - Keep fixtures in `test/support` and do not store realistic tokens, API keys, secrets or raw provider payloads.
 
 ## Local Done Checks

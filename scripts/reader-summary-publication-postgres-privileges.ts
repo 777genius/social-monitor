@@ -1,4 +1,6 @@
-import { readFileSync } from "node:fs";
+import { dropPublicationFixtureFirstPublicationRole, type PublicationFixtureFirstPublicationRoleOwnership } from "./reader-summary-publication-fixture-firstpub-role";
+export { provisionPublicationFixtureFirstPublicationRole, type PublicationFixtureFirstPublicationRoleOwnership } from "./reader-summary-publication-fixture-firstpub-role";
+import { readPublicationBootstrapSql } from "./lib/reader-summary-publication-bootstrap-sql";
 import { Pool, type PoolClient } from "pg";
 import { assertPostgres18CreatorAndPsqlRegression } from "./reader-summary-publication-postgres18-regression";
 const protectedOwner = "social_monitor_reader_summary_publication_owner";
@@ -144,8 +146,7 @@ export const runReaderSummaryPublicationBootstrapSql = async (
   systemRuntimeRole: string = applicationRole,
 ): Promise<void> => {
   const path = `ops/deploy/reader-summary-publication-${phase}-migration.sql`;
-  const sql = readFileSync(path, "utf8")
-    .replace(/^\\set[^\n]*\n/gm, "")
+  const sql = readPublicationBootstrapSql(path)
     .replaceAll(":'runtime_role'", quoteLiteral(applicationRole))
     .replaceAll(':"runtime_role"', quoteIdentifier(applicationRole))
     .replaceAll(":'system_runtime_role'", quoteLiteral(systemRuntimeRole))
@@ -210,6 +211,10 @@ export const createPublicationFixtureRuntimeRole = async (params: {
        NOSUPERUSER NOCREATEDB CREATEROLE INHERIT NOREPLICATION NOBYPASSRLS`,
     );
     provisionerCreated = true;
+    // PostgreSQL 18 records a protected creator edge for a CREATEROLE issuer.
+    // Pin its optional membership bits before CREATE ROLE so the edge is the
+    // sole ADMIN-only, non-inheritable, non-settable bootstrap membership.
+    await provisioner.query("SET createrole_self_grant = ''");
     await provisioner.query(
       `CREATE ROLE ${quoteIdentifier(params.runtimeRole)} LOGIN PASSWORD ${quoteLiteral(params.runtimePassword)}
        NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT NOREPLICATION NOBYPASSRLS`,
@@ -621,10 +626,15 @@ export const dropPublicationFixtureDatabaseAndRoles = async (params: {
   readonly schemaOwnerRolePreexisting: boolean; readonly tenantSystemCapabilityRolePreexisting: boolean; readonly dailyActivationDefinerRolePreexisting: boolean;
   readonly fixtureDatabaseCreated: boolean; readonly fixtureMigrationAdminRoleCreated: boolean;
   readonly fixtureRuntimeRoleCreated: boolean; readonly fixtureDailyTerminalRoleCreated?: boolean;
+  readonly fixtureFirstPublicationRoleOwnership?: PublicationFixtureFirstPublicationRoleOwnership;
   readonly systemRuntimeRole?: string; readonly systemRuntimeRoleCreated?: boolean;
 }): Promise<void> => {
   if (params.fixtureDatabaseCreated) {
     await params.serverAdmin.query(`DROP DATABASE ${quoteIdentifier(params.databaseName)} WITH (FORCE)`);
+  }
+  if (params.fixtureFirstPublicationRoleOwnership !== undefined) {
+    assert(params.fixtureDatabaseCreated, "first publication fixture database cleanup is uncertain");
+    await dropPublicationFixtureFirstPublicationRole(params.serverAdmin, params.fixtureFirstPublicationRoleOwnership);
   }
   if (params.systemRuntimeRoleCreated === true && params.systemRuntimeRole !== undefined) {
     await params.serverAdmin.query(`DROP ROLE ${quoteIdentifier(params.systemRuntimeRole)}`);

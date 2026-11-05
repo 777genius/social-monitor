@@ -131,6 +131,31 @@ describe("GetReaderSummaryJobStatusUseCase", () => {
       error: expect.objectContaining({ code: "resource.not_found" }),
     });
   });
+
+  it("shows a historical V3 quota marker as failed without exposing the marker", async () => {
+    const startedAt = new Date("2026-06-23T08:01:00.000Z");
+    const request = ReaderSummaryJob.request({
+      id: "v3-recovery", tenantId: tenant, workspaceId: workspace,
+      scope: { type: "workspace" }, period, idempotencyKey: "v3-recovery",
+      requestedAt: new Date("2026-06-23T08:00:00.000Z"),
+      selectionStrategy: "jev_primary_v3",
+    });
+    const failed = ReaderSummaryJob.rehydrate({ ...request.toSnapshot(),
+      status: "failed", startedAt, failedAt: startedAt,
+      failureReason: "v3_retryable_provider_rate_limited",
+      preparationNextCheckAt: new Date("2026-06-23T08:02:00.000Z") });
+    const repository = new FakeReaderSummaryJobRepository([failed]);
+    const subject = new GetReaderSummaryJobStatusUseCase(repository);
+    const query = { tenantId: tenant, workspaceId: workspace,
+      readerSummaryJobId: "v3-recovery" };
+
+    const pending = await subject.execute(query);
+    expect(pending).toMatchObject({ ok: true, value: {
+      status: "failed", failureReason: undefined, failureClass: "system_failure",
+      failedAt: startedAt.toISOString(), startedAt: startedAt.toISOString(),
+    } });
+    expect(JSON.stringify(pending)).not.toContain("v3_");
+  });
 });
 
 const tenant = tenantId("tenant-reader-summary-job-status");
@@ -145,7 +170,9 @@ const period = {
 };
 
 class FakeReaderSummaryJobRepository implements ReaderSummaryJobRepositoryPort {
-  constructor(private readonly jobs: readonly ReaderSummaryJob[]) {}
+  constructor(private jobs: readonly ReaderSummaryJob[]) {}
+
+  replace(job: ReaderSummaryJob): void { this.jobs = [job]; }
 
   async save(job: ReaderSummaryJob): Promise<void> {
     void job;

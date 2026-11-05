@@ -49,9 +49,9 @@ void main() {
       find.byKey(const ValueKey('workspace-summary-period-navigation')),
     );
     for (final finder in [
-      find.byTooltip('Previous period'),
+      _findTooltip('Previous period'),
       find.byKey(const ValueKey('workspace-summary-period-calendar')),
-      find.byTooltip('Next period'),
+      _findTooltip('Next period'),
     ]) {
       final rect = tester.getRect(finder);
       expect(rect.left, greaterThanOrEqualTo(navigationRect.left));
@@ -357,3 +357,9 @@ BoxDecoration _calendarDayDecoration(WidgetTester tester, String dateKey) {
   );
   return day.decoration! as BoxDecoration;
 }
+
+Finder _findTooltip(String message) => find.byWidgetPredicate(
+  (widget) =>
+      widget is AppTooltip &&
+      (widget.message ?? widget.richMessage?.toPlainText()) == message,
+);

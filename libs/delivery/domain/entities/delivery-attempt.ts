@@ -113,6 +113,17 @@ export class DeliveryAttempt {
   fail(params: { readonly failedAt: Date; readonly failureReason: string; readonly retryable?: boolean }): DeliveryAttempt {
     this.assertState(['sending'], 'Delivery attempt can only fail from sending state');
 
+    return this.failureTransition(params);
+  }
+
+  recoverInterrupted(params: { readonly failedAt: Date; readonly failureReason: string; readonly retryable?: boolean }): DeliveryAttempt {
+    this.assertState(['assembling', 'sending'], 'Only an interrupted active delivery can be recovered');
+
+    return this.failureTransition(params);
+  }
+
+  private failureTransition(params: { readonly failedAt: Date; readonly failureReason: string; readonly retryable?: boolean }): DeliveryAttempt {
+
     if (params.failureReason.trim().length === 0) {
       throw new Error('Failed delivery attempt must include a reason');
     }

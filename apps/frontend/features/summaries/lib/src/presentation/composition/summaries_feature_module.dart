@@ -4,25 +4,32 @@ import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 import '../../application/contracts/reader_source_launcher.dart';
 import '../../application/contracts/summary_review_catalog.dart';
 import '../../application/use_cases/decide_topic_recommendation_use_case.dart';
+import '../../application/use_cases/list_reader_posts_use_case.dart';
 import '../../application/use_cases/list_summaries_use_case.dart';
 import '../../application/use_cases/load_post_ratings_use_case.dart';
 import '../../application/use_cases/load_summary_detail_use_case.dart';
+import '../../application/use_cases/load_top_posts_sort_order_use_case.dart';
 import '../../application/use_cases/load_topic_recommendations_use_case.dart';
 import '../../application/use_cases/load_workspace_summary_history_use_case.dart';
 import '../../application/use_cases/load_workspace_summary_job_status_use_case.dart';
 import '../../application/use_cases/load_workspace_summary_use_case.dart';
 import '../../application/use_cases/open_reader_source_use_case.dart';
 import '../../application/use_cases/regenerate_summary_use_case.dart';
+import '../../application/use_cases/remember_top_posts_sort_order_use_case.dart';
 import '../../application/use_cases/request_workspace_summary_use_case.dart';
 import '../../application/use_cases/submit_post_rating_use_case.dart';
 import '../../application/use_cases/submit_reader_action_use_case.dart';
 import '../../application/use_cases/submit_summary_feedback_use_case.dart';
+import '../../infrastructure/api_clients/generated_reader_post_catalog.dart';
 import '../../infrastructure/api_clients/generated_summaries_api_client.dart';
 import '../../infrastructure/api_clients/in_memory_summaries_api_client.dart';
 import '../../infrastructure/api_clients/summaries_api_client.dart';
 import '../../infrastructure/data_sources/url_launcher_reader_source_launcher.dart';
 import '../../infrastructure/repositories/generated_summary_review_catalog.dart';
+import '../../infrastructure/storage/browser_top_posts_sort_preference_store.dart';
+import '../stores/reader_posts_browse_store.dart';
 import '../stores/summaries_review_store.dart';
+import '../stores/top_posts_sort_store.dart';
 import '../workflows/summaries_review_store_dependencies.dart';
 
 final class SummariesFeatureModule extends Module {
@@ -135,6 +142,25 @@ final class SummariesFeatureModule extends Module {
       ),
       scope: scope,
       userId: userId,
+    );
+  }
+
+  ReaderPostsBrowseStore? createReaderPostsBrowseStore() {
+    final runtime = generatedApiRuntime;
+    if (runtime == null) return null;
+    return ReaderPostsBrowseStore(
+      scope: scope,
+      list: ListReaderPostsUseCase(
+        GeneratedReaderPostCatalog(runtime: runtime),
+      ),
+    );
+  }
+
+  TopPostsSortStore createTopPostsSortStore() {
+    const preferences = BrowserTopPostsSortPreferenceStore();
+    return TopPostsSortStore(
+      loadSortOrder: const LoadTopPostsSortOrderUseCase(preferences),
+      rememberSortOrder: const RememberTopPostsSortOrderUseCase(preferences),
     );
   }
 

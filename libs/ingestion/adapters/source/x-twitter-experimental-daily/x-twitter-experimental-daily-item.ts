@@ -5,8 +5,12 @@ import {
 } from "@social-monitor/shared-kernel";
 
 import { sourceItemRelevanceScore } from "../../../domain";
+import { createHash } from "node:crypto";
+import { validatedXQuotedPost } from "./x-quoted-post";
+import { unicodePrefix } from "../../../domain/value-objects/source-content-capture";
 import type { FetchedSourceItem } from "../../../ports";
 import type { XExperimentalDailyScanConfig } from "./x-twitter-experimental-daily-config";
+import type { VerifiedXPromotionAuthorityIdentity } from "../../../ports";
 import type {
   XDailyCollectedPost,
   XDailyCollectorWarning,
@@ -19,6 +23,8 @@ export const normalizeXPost = (
   post: XDailyCollectedPost,
   searchQuery: string,
   maxItems: number,
+  verifiedAuthority?: VerifiedXPromotionAuthorityIdentity,
+  acquiredAt?: Date,
 ): FetchedSourceItem => ({
   externalId: `${providerKey}:${post.tweetId}`,
   canonicalUrl: post.canonicalUrl,
@@ -28,6 +34,8 @@ export const normalizeXPost = (
   publishedAt: post.publishedAt,
   metadata: normalizeJsonObject({
     kind: "x_post",
+    ...(post.contentKind === undefined ? {} : { contentKind: post.contentKind }),
+    ...quotedPostMetadata(post, acquiredAt),
     provider: providerKey,
     tweetId: post.tweetId,
     ...(post.authorHandle === undefined
@@ -42,8 +50,8 @@ export const normalizeXPost = (
     },
     sourceProduct: post.sourceProduct,
     trendScore: post.trendScore,
-    likes: post.metrics.likes,
-    retweets: post.metrics.retweets,
+    ...(post.metrics.likes === undefined ? {} : { likes: post.metrics.likes }),
+    ...(post.metrics.retweets === undefined ? {} : { retweets: post.metrics.retweets }),
     replies: post.metrics.replies,
     ...(post.metrics.quotes === undefined
       ? {}
@@ -52,8 +60,8 @@ export const normalizeXPost = (
       ? {}
       : { impressions: post.metrics.views }),
     publicMetrics: {
-      like_count: post.metrics.likes,
-      retweet_count: post.metrics.retweets,
+      ...(post.metrics.likes === undefined ? {} : { like_count: post.metrics.likes }),
+      ...(post.metrics.retweets === undefined ? {} : { retweet_count: post.metrics.retweets }),
       reply_count: post.metrics.replies,
       ...(post.metrics.quotes === undefined
         ? {}
@@ -63,17 +71,43 @@ export const normalizeXPost = (
         : { impression_count: post.metrics.views }),
     },
     metrics: xPostMetricsMetadata(post.metrics),
+    promotionMetricsState: post.metrics.eligibilityState ?? "missing",
+    ...(post.authorHandle !== undefined && verifiedAuthority !== undefined &&
+      verifiedAuthority.canonicalHandle ===
+        post.authorHandle.trim().replace(/^@/u, "").toLowerCase() ? {
+      promotionAuthority: {
+        status: "attested",
+        official: true,
+        trusted: true,
+        attestedBy: "source_catalog",
+      },
+    } : {}),
     mediaUrls: post.mediaUrls,
   }),
 });
+
+const quotedPostMetadata = (post: XDailyCollectedPost, acquiredAt?: Date): JsonObject => {
+  if (acquiredAt === undefined || !Number.isFinite(acquiredAt.getTime()) || acquiredAt < post.publishedAt) return {};
+  const quoted = post.contentKind === "quote"
+    ? validatedXQuotedPost(post.quotedPost, post.tweetId, post.publishedAt) : undefined;
+  const text = quoted === undefined ? "" : redactSensitiveText(quoted.text);
+  return quoted === undefined ? {} : { quotedPost: {
+    version: "x_quoted_post.v1", parentTweetId: post.tweetId,
+    tweetId: quoted.tweetId, canonicalUrl: quoted.canonicalUrl,
+    authorHandle: quoted.authorHandle, publishedAt: quoted.publishedAt.toISOString(),
+    availableAt: acquiredAt.toISOString(),
+    text, bodySha256: createHash("sha256").update(text).digest("hex"),
+  } };
+};
 
 export const xPostMatchesMetricThresholds = (
   metrics: XDailyPostMetrics,
   config: XExperimentalDailyScanConfig,
 ): boolean =>
-  (config.minLikes === undefined || metrics.likes >= config.minLikes) &&
+  (config.minLikes === undefined ||
+    (metrics.likes !== undefined && metrics.likes >= config.minLikes)) &&
   (config.minRetweets === undefined ||
-    metrics.retweets >= config.minRetweets) &&
+    (metrics.retweets !== undefined && metrics.retweets >= config.minRetweets)) &&
   (config.minReplies === undefined || metrics.replies >= config.minReplies);
 
 export const xPostMatchesSearchQuery = (
@@ -99,8 +133,8 @@ export const compareXCollectedPosts = (
 
 export const xPostSignalScore = (post: XDailyCollectedPost): number =>
   post.trendScore +
-  post.metrics.likes +
-  post.metrics.retweets * 2 +
+  (post.metrics.likes ?? 0) +
+  (post.metrics.retweets ?? 0) * 2 +
   post.metrics.replies * 1.5 +
   (post.metrics.quotes ?? 0) * 2;
 
@@ -115,8 +149,8 @@ export const formatXCollectorWarning = (
 
 const xPostMetricsMetadata = (metrics: XDailyPostMetrics): JsonObject =>
   normalizeJsonObject({
-    likes: metrics.likes,
-    retweets: metrics.retweets,
+    ...(metrics.likes === undefined ? {} : { likes: metrics.likes }),
+    ...(metrics.retweets === undefined ? {} : { retweets: metrics.retweets }),
     replies: metrics.replies,
     ...(metrics.quotes === undefined ? {} : { quotes: metrics.quotes }),
     ...(metrics.views === undefined ? {} : { views: metrics.views }),
@@ -125,7 +159,7 @@ const xPostMetricsMetadata = (metrics: XDailyPostMetrics): JsonObject =>
 const titleForPost = (post: XDailyCollectedPost): string => {
   const author = post.authorHandle ?? "unknown";
   const text = post.text.replace(/\s+/gu, " ").trim();
-  const preview = text.length > 96 ? `${text.slice(0, 93)}...` : text;
+  const preview = text.length > 96 ? `${unicodePrefix(text, 93)}...` : text;
 
   return `X post by @${author}: ${preview}`;
 };

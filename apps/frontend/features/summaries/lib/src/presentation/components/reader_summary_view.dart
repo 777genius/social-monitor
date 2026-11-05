@@ -95,47 +95,69 @@ class ReaderSummaryView extends StatelessWidget {
             ? summary.content.selectedPosts.length
             : summary.content.topReads.length);
 
-    return SelectionArea(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _ExecutiveBoardCard(
-            summary: summary,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (isRefreshing) ...[
+          const _ReaderSummaryRefreshStatus(),
+          const SizedBox(height: AppSpacing.sm),
+        ],
+        _ExecutiveBoardCard(
+          summary: summary,
+          citationsById: citationsById,
+          readerActionState: readerActionState,
+          intentForAction: intentForAction,
+          onAction: onAction,
+          onOpenUrl: onOpenUrl,
+        ),
+        if (topicRecommendationState case final state?)
+          if (onTopicRecommendationDecision case final onDecision?)
+            ReaderSummaryTopicRecommendationsPanel(
+              state: state,
+              onDecision: onDecision,
+            ),
+        if (summary.content.claimBoard.isNotEmpty ||
+            summary.content.reliabilityReport.risks.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.md + 2),
+          ReaderSummaryTrustPanel(
+            claims: summary.content.claimBoard,
+            reliabilityReport: summary.content.reliabilityReport,
             citationsById: citationsById,
-            readerActionState: readerActionState,
-            intentForAction: intentForAction,
-            onAction: onAction,
             onOpenUrl: onOpenUrl,
           ),
-          if (topicRecommendationState case final state?)
-            if (onTopicRecommendationDecision case final onDecision?)
-              ReaderSummaryTopicRecommendationsPanel(
-                state: state,
-                onDecision: onDecision,
-              ),
-          if (summary.content.claimBoard.isNotEmpty ||
-              summary.content.reliabilityReport.risks.isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.md + 2),
-            ReaderSummaryTrustPanel(
-              claims: summary.content.claimBoard,
-              reliabilityReport: summary.content.reliabilityReport,
-              citationsById: citationsById,
-              onOpenUrl: onOpenUrl,
-            ),
-          ],
-          if (topPostsProjection != null && !topPostsProjection.isEmpty) ...[
-            const SizedBox(height: AppSpacing.md + 2),
-            ReaderSummaryTopPosts(
-              projection: topPostsProjection,
-              selectedPostCount: selectedPostCount,
-              period: summary.period,
-              citationsById: citationsById,
-              ratingFor: topPostRatingFor,
-              onRated: onTopPostRating,
-              onOpenUrl: onOpenUrl,
-            ),
-          ],
         ],
+        if (topPostsProjection != null &&
+            topPostsProjection.hasRankedPosts) ...[
+          const SizedBox(height: AppSpacing.md + 2),
+          ReaderSummaryTopPosts(
+            projection: topPostsProjection,
+            selectedPostCount: selectedPostCount,
+            period: summary.period,
+            citationsById: citationsById,
+            ratingFor: topPostRatingFor,
+            onRated: onTopPostRating,
+            onOpenUrl: onOpenUrl,
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _ReaderSummaryRefreshStatus extends StatelessWidget {
+  const _ReaderSummaryRefreshStatus();
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      liveRegion: true,
+      label: 'Updating selected summary',
+      child: const Align(
+        alignment: Alignment.centerRight,
+        child: AppStatusBadge(
+          key: ValueKey('reader-summary-refreshing'),
+          label: 'Refreshing',
+        ),
       ),
     );
   }
@@ -217,11 +239,11 @@ class _ExecutiveBoardCard extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (hasCoverage) ...[
-              ReaderSummaryCoverageBySourceBand(summary: summary),
-              const SizedBox(height: AppSpacing.lg),
-            ],
             boardBody,
+            if (hasCoverage) ...[
+              const SizedBox(height: AppSpacing.lg),
+              ReaderSummaryCoverageBySourceBand(summary: summary),
+            ],
           ],
         );
       },

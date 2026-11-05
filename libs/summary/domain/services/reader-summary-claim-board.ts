@@ -10,6 +10,8 @@ import type {
   TopReadConfidence,
 } from "../entities/top-read";
 import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item";
+import { readerSummaryIndependentProviderFamilies } from
+  "../value-objects/reader-summary-provider-identity";
 import { compactUnique, nonEmpty } from "../value-objects/summary-text";
 
 export type ReaderSummaryClaimBoardInput = {
@@ -90,7 +92,9 @@ const claimFromNarrativeSection = (
     return undefined;
   }
   const confidence = conservativeConfidence(supportingReads, evidence.length);
-  const providerKeys = compactUnique(evidence.map((item) => item.providerKey));
+  const providerKeys = readerSummaryIndependentProviderFamilies(
+    evidence.map((item) => item.providerKey),
+  );
 
   return {
     id: section.id,

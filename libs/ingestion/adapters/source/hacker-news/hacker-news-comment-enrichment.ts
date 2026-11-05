@@ -26,6 +26,14 @@ export type NormalizedHackerNewsStoriesResult = {
   readonly warnings: readonly string[];
 };
 
+type TargetWindow = { readonly startInclusive: Date; readonly endExclusive: Date };
+const maxCommentParentHops = 32;
+
+const commentInWindow = (comment: HackerNewsStory, window: TargetWindow): boolean =>
+  comment.time !== undefined &&
+  comment.time * 1000 >= window.startInclusive.getTime() &&
+  comment.time * 1000 < window.endExclusive.getTime();
+
 export const commentExpansionForHackerNewsPass = (params: {
   readonly pass: HackerNewsScanPass;
   readonly fallbackIncludeComments: boolean;
@@ -58,6 +66,7 @@ export const normalizeHackerNewsStoriesWithOptionalComments = async (params: {
   readonly maxCommentedStories: number | undefined;
   readonly maxCommentsPerPost: number | undefined;
   readonly commentDepth: number;
+  readonly targetWindow?: TargetWindow;
 }): Promise<NormalizedHackerNewsStoriesResult> => {
   const expansion = params.includeComments
     ? {
@@ -79,20 +88,33 @@ export const normalizeHackerNewsCommentSearchPass = async (params: {
   readonly comments: readonly HackerNewsStory[];
   readonly sourceKey: string;
   readonly searchQuery: string | undefined;
+  readonly targetWindow?: TargetWindow;
 }): Promise<NormalizedHackerNewsStoriesResult> => {
   const items: FetchedSourceItem[] = [];
   const conversationUnits = new Map<string, FetchedConversationUnit>();
   const warnings: string[] = [];
 
   for (const comment of params.comments) {
-    if (comment.kind !== "comment" || comment.storyId === undefined) {
+    if (params.targetWindow !== undefined && !commentInWindow(comment, params.targetWindow)) {
+      if (comment.time === undefined) warnings.push(`Hacker News comment missing timestamp (${comment.id}); comment skipped.`);
       continue;
     }
+    if (comment.kind !== "comment") {
+      continue;
+    }
+
+    const storyId = comment.storyId ?? await resolveHackerNewsCommentRootId({
+      client: params.client,
+      itemsById: params.rootStoriesById,
+      comment,
+      warnings,
+    });
+    if (storyId === null) continue;
 
     const rootStory = await readHackerNewsRootStory({
       client: params.client,
       rootStoriesById: params.rootStoriesById,
-      storyId: comment.storyId,
+      storyId,
       commentId: comment.id,
       warnings,
     });
@@ -108,18 +130,24 @@ export const normalizeHackerNewsCommentSearchPass = async (params: {
     );
     if (rootItems.length === 0) {
       warnings.push(
-        `Hacker News comment root story was not projectable (comment:${comment.id}); comment skipped.`,
+        `Hacker News comment coverage incomplete: root story was not projectable (comment:${comment.id}).`,
       );
       continue;
     }
 
-    items.push(...rootItems);
-    for (const unit of normalizeHackerNewsCommentConversationUnit(
+    const units = normalizeHackerNewsCommentConversationUnit(
       comment,
       rootStory,
       params.sourceKey,
       params.searchQuery,
-    )) {
+    );
+    if (units.length === 0) {
+      warnings.push(`Hacker News comment coverage incomplete: comment was not projectable (comment:${comment.id}).`);
+      continue;
+    }
+
+    items.push(...rootItems);
+    for (const unit of units) {
       conversationUnits.set(unit.providerUnitId, unit);
     }
   }
@@ -137,6 +165,7 @@ const normalizeStoriesWithCommentExpansion = async (params: {
   readonly sourceKey: string;
   readonly searchQuery: string | undefined;
   readonly expansion: HackerNewsCommentExpansion | undefined;
+  readonly targetWindow?: TargetWindow;
 }): Promise<NormalizedHackerNewsStoriesResult> => {
   const items: FetchedSourceItem[] = [];
   const conversationUnits: FetchedConversationUnit[] = [];
@@ -151,13 +180,18 @@ const normalizeStoriesWithCommentExpansion = async (params: {
     );
     items.push(...rootItems);
 
+    if (rootItems.length === 0 && params.targetWindow !== undefined &&
+        !story.deleted && !story.dead && story.kind !== 'comment' &&
+        story.time !== undefined && Number.isFinite(story.time) && story.time > 0) {
+      warnings.push(`Hacker News historical story coverage incomplete: story was not projectable (story:${story.id}).`);
+    }
+
     const rootItem = rootItems[0];
-    if (
-      rootItem === undefined ||
-      params.expansion === undefined ||
-      commentedStoryCount >=
-        (params.expansion.maxCommentedStories ?? Number.POSITIVE_INFINITY)
-    ) {
+    if (rootItem === undefined || params.expansion === undefined) {
+      continue;
+    }
+    if (commentedStoryCount >= (params.expansion.maxCommentedStories ?? Number.POSITIVE_INFINITY)) {
+      if (params.targetWindow !== undefined) warnings.push('Hacker News comment expansion incomplete: maxCommentedStories exceeded');
       continue;
     }
     commentedStoryCount += 1;
@@ -168,25 +202,83 @@ const normalizeStoriesWithCommentExpansion = async (params: {
         storyId: story.id,
         limit: params.expansion.maxCommentsPerPost ?? 5,
         depth: params.expansion.commentDepth,
+        expectedComments: story.comments,
+        requireComplete: params.targetWindow !== undefined,
       });
     } catch (error) {
       warnings.push(formatCommentEnrichmentWarning(rootItem, error));
       continue;
     }
 
-    conversationUnits.push(
-      ...comments.flatMap((comment) =>
-        normalizeHackerNewsCommentConversationUnit(
-          comment,
-          story,
-          params.sourceKey,
-          params.searchQuery,
-        ),
-      ),
-    );
+    const boundedComments = params.targetWindow === undefined ? comments : comments.filter((comment) => {
+      if (comment.time === undefined) warnings.push(`Hacker News comment missing timestamp (${comment.id}); comment skipped.`);
+      return commentInWindow(comment, params.targetWindow!);
+    });
+    for (const comment of boundedComments) {
+      const units = normalizeHackerNewsCommentConversationUnit(
+        comment,
+        story,
+        params.sourceKey,
+        params.searchQuery,
+      );
+      if (units.length === 0) {
+        warnings.push(`Hacker News comment coverage incomplete: comment was not projectable (comment:${comment.id}).`);
+      }
+      conversationUnits.push(...units);
+    }
   }
 
   return { items, conversationUnits, warnings };
+};
+
+const resolveHackerNewsCommentRootId = async (params: {
+  readonly client: HackerNewsClientPort;
+  readonly itemsById: Map<number, HackerNewsStory | null>;
+  readonly comment: HackerNewsStory;
+  readonly warnings: string[];
+}): Promise<number | null> => {
+  const visited = new Set<number>([params.comment.id]);
+  let parentId = params.comment.parentId;
+
+  for (let hops = 0; hops < maxCommentParentHops; hops += 1) {
+    if (parentId === undefined || !Number.isSafeInteger(parentId) || parentId <= 0) {
+      params.warnings.push(`Hacker News comment coverage incomplete: parent unavailable (comment:${params.comment.id}).`);
+      return null;
+    }
+    if (visited.has(parentId)) {
+      params.warnings.push(`Hacker News comment coverage incomplete: parent cycle (comment:${params.comment.id}).`);
+      return null;
+    }
+    visited.add(parentId);
+
+    let parent = params.itemsById.get(parentId);
+    if (!params.itemsById.has(parentId)) {
+      try {
+        parent = await params.client.getStory(parentId);
+        params.itemsById.set(parentId, parent);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown Hacker News parent lookup error";
+        params.warnings.push(`Hacker News comment coverage incomplete: parent lookup failed (comment:${params.comment.id}): ${redactSensitiveText(message)}`);
+        return null;
+      }
+    }
+    if (parent === null || parent === undefined || parent.id !== parentId) {
+      params.warnings.push(`Hacker News comment coverage incomplete: parent unavailable (comment:${params.comment.id}).`);
+      return null;
+    }
+    if (parent.kind === "comment") {
+      parentId = parent.parentId;
+      continue;
+    }
+    if (parent.kind === "story" || (parent.kind === undefined && parent.title !== undefined)) {
+      return parent.id;
+    }
+    params.warnings.push(`Hacker News comment coverage incomplete: parent type unknown (comment:${params.comment.id}).`);
+    return null;
+  }
+
+  params.warnings.push(`Hacker News comment coverage incomplete: parent depth exceeded (comment:${params.comment.id}).`);
+  return null;
 };
 
 const readHackerNewsRootStory = async (params: {
@@ -205,7 +297,7 @@ const readHackerNewsRootStory = async (params: {
     params.rootStoriesById.set(params.storyId, rootStory);
     if (rootStory === null) {
       params.warnings.push(
-        `Hacker News comment root story was unavailable (comment:${params.commentId}); comment skipped.`,
+        `Hacker News comment coverage incomplete: root story was unavailable (comment:${params.commentId}).`,
       );
     }
 
@@ -217,7 +309,7 @@ const readHackerNewsRootStory = async (params: {
         ? error.message
         : "Unknown Hacker News root story lookup error";
     params.warnings.push(
-      `Hacker News comment root story lookup degraded (comment:${params.commentId}): ${redactSensitiveText(message)}`,
+      `Hacker News comment coverage incomplete: root story lookup failed (comment:${params.commentId}): ${redactSensitiveText(message)}`,
     );
 
     return null;

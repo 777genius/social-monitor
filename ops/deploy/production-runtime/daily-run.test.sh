@@ -24,16 +24,22 @@ grep -Fx \
   "$DAILY_RUN" >/dev/null
 grep -F 'scripts/run-reader-summary-production-day.ts \' "$DAILY_RUN" >/dev/null
 grep -F -- '--date "$requested_date" --update' "$DAILY_RUN" >/dev/null
+grep -F 'reader-summary-date-lock.sh \' "$DAILY_RUN" >/dev/null
+grep -F -- '--date-lock-dir "$public_dir/.reader-summary-date-locks"' \
+  "$DAILY_RUN" >/dev/null
 grep -F 'scripts/verify-reader-summary-production-day-publication.mjs' \
   "$DAILY_RUN" >/dev/null
 grep -F 'scripts/verify-reader-summary-production-day-state.mjs' \
   "$DAILY_RUN" >/dev/null
+grep -F 'scripts/check-reader-summary-production-day-publication-gap.ts' \
+  "$DAILY_RUN" >/dev/null
+grep -F 'advance_verified_gap' "$DAILY_RUN" >/dev/null
 grep -F 'latest-state.v1.json' "$DAILY_RUN" >/dev/null
 grep -F 'DURABLE_READER_SUMMARY_PUBLICATION_RECOVERY_DIR=' \
   "$DAILY_RUN" >/dev/null
 grep -F '.reader-summary-publication.$requested_date' "$DAILY_RUN" >/dev/null
 ! grep -F 'migrate:deploy' "$PRODUCTION_DAY_RUNNER"
-grep -F 'exec npm run migrate:deploy' "$PUBLICATION_DEPLOY" >/dev/null
+grep -F 'npm run migrate:deploy' "$PUBLICATION_DEPLOY" >/dev/null
 grep -F \
   'public_dir=${READER_SUMMARY_DAILY_RUN_PUBLIC_DIR:-/var/lib/social-monitor/artifacts/reports/reader-summary-production-v2}' \
   "$DAILY_RUN" >/dev/null
@@ -48,6 +54,7 @@ grep -F 'historicalMode === "true" && expected < previous' "$DAILY_RUN" >/dev/nu
 grep -F 'if [ "$transition" = historical ]; then' "$DAILY_RUN" >/dev/null
 grep -F -- '--dated-state "$requested_state"' "$DAILY_RUN" >/dev/null
 grep -F 'DATE_FLAG=${1:---yesterday}' "$DAILY_RUN" >/dev/null
+! grep -F 'exec "$ROOT/control/rolling-run.sh"' "$DAILY_RUN" >/dev/null
 ! grep -Eq 'READER_SUMMARY.*(MAINTENANCE|HISTORICAL).*DATE_FLAG' "$DAILY_RUN"
 
 if grep -Eq \
@@ -59,10 +66,10 @@ fi
 
 # The systemd path is live-production only. Historical recovery uses the
 # separately hash-bound dataset-manifest flow and cannot weaken this timer.
-! grep -F 'allow-historical' "$DAILY_RUN" "$DAILY_SERVICE" "$DAILY_TIMER"
+! grep -F 'allow-historical' "$DAILY_SERVICE" "$DAILY_TIMER"
 ! grep -F -- '--frozen-date' "$DAILY_RUN" "$DAILY_SERVICE" "$DAILY_TIMER"
 
-grep -Fx 'ExecStart=/var/data/social-monitor/control/daily-run.sh --yesterday' \
+grep -Fx 'ExecStart=/var/data/social-monitor/control/postgres-runtime-current/reader-summary-one-shot.sh daily' \
   "$DAILY_SERVICE" >/dev/null
 [[ $(grep -c '^ExecStart=' "$DAILY_SERVICE") -eq 1 ]]
 ! grep -Eq '^Exec(Condition|StartPre|StopPost)=' "$DAILY_SERVICE"
@@ -74,6 +81,17 @@ grep -Fx 'Persistent=true' "$DAILY_TIMER" >/dev/null
 test_root=$(mktemp -d /tmp/social-monitor-daily-run-test.XXXXXX)
 trap 'rm -rf "$test_root"' EXIT HUP INT TERM
 mkdir -p "$test_root/control/postgres-runtime-current"
+mkdir -p "$test_root/control/deploy-state"
+cp "$SCRIPT_DIR/x-launch-guard.py" "$test_root/control/postgres-runtime-current/"
+SOCIAL_MONITOR_X_LAUNCH_TEST_MODE=1 \
+SOCIAL_MONITOR_X_LAUNCH_TEST_ROOT=$test_root \
+  python3 "$SCRIPT_DIR/x-launch-guard.py" init
+SOCIAL_MONITOR_X_LAUNCH_TEST_MODE=1 \
+SOCIAL_MONITOR_X_LAUNCH_TEST_ROOT=$test_root \
+  python3 "$SCRIPT_DIR/x-launch-guard.py" allow
+cp "$SCRIPT_DIR/reader-summary-scheduler-hold-common.sh" \
+  "$SCRIPT_DIR/reader-summary-scheduler-hold-status.sh" \
+  "$test_root/control/postgres-runtime-current/"
 fake_flock=$test_root/fail-flock
 cat >"$fake_flock" <<'EOF'
 #!/usr/bin/env bash
@@ -111,7 +129,7 @@ grep -Fx -- '-n 9' "$fake_flock.calls" >/dev/null
 [[ $(wc -l <"$fake_flock.calls") -eq 1 ]]
 [[ ! -e "$work_marker" ]]
 
-for invalid in 2026-07-22 2026-08-13 not-a-date; do
+for invalid in 2026-07-22 2026-09-19 not-a-date; do
   set +e
   SOCIAL_MONITOR_DAILY_RUN_TEST_MODE=1 \
   SOCIAL_MONITOR_DAILY_RUN_TEST_ROOT="$test_root" \
@@ -124,5 +142,31 @@ for invalid in 2026-07-22 2026-08-13 not-a-date; do
   grep -Fx 'historical daily production-day date is outside the reviewed recovery bound' \
     "$test_root/invalid" >/dev/null
 done
+
+set +e
+SOCIAL_MONITOR_DAILY_RUN_TEST_MODE=1 \
+SOCIAL_MONITOR_DAILY_RUN_TEST_ROOT="$test_root" \
+SOCIAL_MONITOR_DAILY_RUN_TEST_FLOCK="$fake_flock" \
+SOCIAL_MONITOR_DAILY_RUN_TEST_DOCKER="$fake_docker" \
+  bash "$DAILY_RUN" --maintenance-date 2026-09-13 \
+    >"$test_root/valid-bound-stdout" 2>"$test_root/valid-bound-stderr"
+status=$?
+set -e
+[[ $status -eq 75 ]]
+grep -Fx 'daily production-day run already active' \
+  "$test_root/valid-bound-stderr" >/dev/null
+
+set +e
+SOCIAL_MONITOR_DAILY_RUN_TEST_MODE=1 \
+SOCIAL_MONITOR_DAILY_RUN_TEST_ROOT="$test_root" \
+SOCIAL_MONITOR_DAILY_RUN_TEST_FLOCK="$fake_flock" \
+SOCIAL_MONITOR_DAILY_RUN_TEST_DOCKER="$fake_docker" \
+  bash "$DAILY_RUN" --maintenance-date 2026-09-17 \
+    >"$test_root/valid-mid-sep-stdout" 2>"$test_root/valid-mid-sep-stderr"
+status=$?
+set -e
+[[ $status -eq 75 ]]
+grep -Fx 'daily production-day run already active' \
+  "$test_root/valid-mid-sep-stderr" >/dev/null
 
 printf 'daily V6 reader-summary schedule wiring test passed\n'

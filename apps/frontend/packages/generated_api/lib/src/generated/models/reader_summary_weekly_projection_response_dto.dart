@@ -39,16 +39,16 @@ class ReaderSummaryWeeklyProjectionResponseDto {
     ReaderSummaryWeeklyProjectionResponseDtoBlockingReasonsBlockingReasons
   >
   blockingReasons;
-  final List<String> certifiedDailyEvidenceDates;
+  final List<DateTime> certifiedDailyEvidenceDates;
   final List<ReaderSummaryWeeklyProjectionEvidenceLimitationDto>
   evidenceLimitations;
-  final List<String> missingDailyEvidenceDates;
+  final List<DateTime> missingDailyEvidenceDates;
   final ReaderSummaryWeeklyProjectionResponseDtoSchemaVersionSchemaVersion
   schemaVersion;
   final ReaderSummaryWeeklyProjectionResponseDtoStatusStatus status;
   final String tenantId;
-  final String weekEndedOn;
-  final String weekStartedOn;
+  final DateTime weekEndedOn;
+  final DateTime weekStartedOn;
   final String workspaceId;
 
   Map<String, Object?> toJson() =>

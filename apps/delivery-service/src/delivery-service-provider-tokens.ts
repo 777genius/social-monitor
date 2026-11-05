@@ -1,4 +1,5 @@
 import { assertRuntimeProfileAllowsMode } from '@social-monitor/platform-config';
+import { deliveryCommandQueueOptions } from '@social-monitor/delivery/interfaces/rest/delivery-command-queue-options';
 import {
   parseRabbitMqDeadLetterExchange,
   parseRabbitMqDeliveryLimit,
@@ -251,22 +252,7 @@ export const resolveDeliverySummaryReadyEventReaderMode = (
 
 export const resolveDeliveryRabbitMqAttemptQueueOptions = (
   env: NodeJS.ProcessEnv,
-) => ({
-  exchange: nonEmptyOrFallback(env.RABBITMQ_DELIVERY_ATTEMPT_EXCHANGE, 'social-monitor.commands'),
-  exchangeType: 'direct' as const,
-  routes: {
-    'delivery.attempt.send': {
-      queue: nonEmptyOrFallback(env.RABBITMQ_DELIVERY_ATTEMPT_QUEUE, 'jobs.delivery.attempt.send'),
-      routingKey: 'delivery.attempt.send',
-      deadLetterExchange: parseRabbitMqDeadLetterExchange(env.RABBITMQ_DEAD_LETTER_EXCHANGE, {
-        runtimeProfile: env.SOCIAL_MONITOR_RUNTIME_PROFILE,
-        settingName: 'DELIVERY_ATTEMPT_DISPATCH_QUEUE=rabbitmq',
-      }),
-      queueType: parseRabbitMqQueueType(env.RABBITMQ_QUEUE_TYPE),
-      deliveryLimit: parseRabbitMqDeliveryLimit(env.RABBITMQ_QUEUE_DELIVERY_LIMIT),
-    },
-  },
-});
+) => deliveryCommandQueueOptions(env);
 
 export const resolveDeliveryRabbitMqAttemptQueueReaderOptions = (
   env: NodeJS.ProcessEnv,
@@ -285,7 +271,7 @@ export const resolveDeliverySummaryReadyEventQueueOptions = (
 ): DeliverySummaryReadyEventQueueOptions => ({
   exchange: nonEmptyOrFallback(env.RABBITMQ_EVENT_EXCHANGE, 'social-monitor.events'),
   queue: nonEmptyOrFallback(env.RABBITMQ_SUMMARY_READY_EVENT_QUEUE, 'events.delivery.summary.ready'),
-  routingKey: nonEmptyOrFallback(env.RABBITMQ_SUMMARY_READY_EVENT_ROUTING_KEY, 'summary.ready'),
+  routingKey: resolveSummaryReadyRoutingKey(env.RABBITMQ_SUMMARY_READY_EVENT_ROUTING_KEY),
   deadLetterExchange: parseRabbitMqDeadLetterExchange(env.RABBITMQ_DEAD_LETTER_EXCHANGE, {
     runtimeProfile: env.SOCIAL_MONITOR_RUNTIME_PROFILE,
     settingName: 'DELIVERY_SUMMARY_READY_EVENT_READER=rabbitmq',
@@ -383,3 +369,12 @@ const parseBoundedInteger = (
 
   return parsed;
 };
+
+// This shared queue accepts exactly these two domain events. A wildcard or an
+// override cannot silently remove the legacy binding or route arbitrary events.
+function resolveSummaryReadyRoutingKey(value: string | undefined): 'summary.ready' {
+  if (value !== undefined && value !== 'summary.ready') {
+    throw new Error('RABBITMQ_SUMMARY_READY_EVENT_ROUTING_KEY must be summary.ready');
+  }
+  return 'summary.ready';
+}

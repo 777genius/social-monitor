@@ -1,0 +1,228 @@
+import { EventEmitter } from "node:events";
+import { spawn } from "node:child_process";
+jest.mock("node:child_process", () => ({ spawn: jest.fn() }));
+import { cliExecutionResult, parseSubscriptionRuntimeCliResult, runCli } from "./subscription-runtime-cli-support";
+
+describe("subscription-runtime CLI result telemetry", () => {
+  it("reads exact usage and duration from protocol telemetry only", () => {
+    const result = parseSubscriptionRuntimeCliResult(JSON.stringify({
+      status: "completed",
+      structuredOutput: {},
+      warnings: [],
+      usage: { inputTokens: 999, outputTokens: 1, totalTokens: 1_000 },
+      telemetry: {
+        usage: { inputTokens: 12, outputTokens: 5, totalTokens: 17 },
+        durationMs: 25,
+      },
+    }));
+
+    expect(result).toMatchObject({
+      usage: { inputTokens: 12, outputTokens: 5, totalTokens: 17 },
+      durationMs: 25,
+    });
+  });
+
+  it.each([
+    ["inconsistent total", { inputTokens: 12, outputTokens: 5, totalTokens: 99 }],
+    ["negative", { inputTokens: -1, outputTokens: 5, totalTokens: 4 }],
+    ["unsafe", {
+      inputTokens: Number.MAX_SAFE_INTEGER + 1,
+      outputTokens: 0,
+      totalTokens: Number.MAX_SAFE_INTEGER + 1,
+    }],
+  ])("drops %s usage without dropping duration", (_label, usage) => {
+    const result = parseSubscriptionRuntimeCliResult(JSON.stringify({
+      status: "completed",
+      structuredOutput: {},
+      warnings: [],
+      telemetry: { usage, durationMs: 25 },
+    }));
+
+    expect(result.usage).toBeUndefined();
+    expect(result.durationMs).toBe(25);
+  });
+
+  it("keeps unrelated results valid when telemetry is absent", () => {
+    expect(parseSubscriptionRuntimeCliResult(JSON.stringify({
+      status: "completed",
+      structuredOutput: {},
+      warnings: [],
+    }))).toMatchObject({ status: "completed" });
+  });
+});
+
+// A parseable intermediate print is not proof of successful process completion.
+describe("subscription CLI terminal process receipt", () => {
+  it.each([
+    { exitCode: 1, signal: null, timedOut: false },
+    { exitCode: null, signal: "SIGTERM" as const, timedOut: false },
+    { exitCode: 0, signal: null, timedOut: true },
+  ])("rejects successful JSON from unsuccessful termination %j", (termination) => {
+    expect(cliExecutionResult({ ...termination, stderr: "", stdout: JSON.stringify({
+      status: "completed", structuredOutput: { reviews: [] }, warnings: [],
+    }) }).status).toBe("failed");
+  });
+  it("accepts successful JSON after clean exit", () => {
+    expect(cliExecutionResult({ exitCode: 0, signal: null, timedOut: false, stderr: "",
+      stdout: JSON.stringify({ status: "completed", structuredOutput: {}, warnings: [] }),
+    }).status).toBe("completed");
+  });
+});
+
+describe("subscription CLI safe failure diagnostic values", () => {
+  it("drops unrecognized diagnostic labels instead of logging provider-selected text", () => {
+    const result = parseSubscriptionRuntimeCliResult(JSON.stringify({
+      status: "failed", warnings: [], failure: { details: {
+        outputValidationStage: "provider-selected-text", outputValidationCode: "provider-selected-text",
+        outputValidationKeyword: "provider-selected-text", presentationOutputValidatorCalled: "true\n",
+        presentationOutputValidatorAccepted: "provider-selected-text", presentationRejectedCandidateIndex: "-1",
+      } },
+    }));
+    expect(result.failure?.details).toEqual({});
+  });
+  it("retains finite output rejection diagnostics without provider-controlled details", () => {
+    const result = parseSubscriptionRuntimeCliResult(JSON.stringify({
+      status: "failed", warnings: [], failure: {
+        code: "unknown_runtime_failure", details: {
+          outputValidationStage: "schema_normalization",
+          outputValidationCode: "schema_normalization_failed",
+          outputValidationKeyword: "maxLength",
+          presentationValidationStage: "schema_parse_or_normalization",
+          presentationOutputValidatorCalled: "false",
+          rawCause: "must-not-cross-boundary", outputValidationSchemaPath: "must-not-cross-boundary",
+          presentationRejectedCandidateIndex: "4", presentationRejectedPredicate: "provider-chosen-text",
+        },
+      },
+    }));
+    expect(result.failure?.details).toEqual({
+      outputValidationStage: "schema_normalization", outputValidationCode: "schema_normalization_failed",
+      outputValidationKeyword: "maxLength", presentationValidationStage: "schema_parse_or_normalization",
+      presentationOutputValidatorCalled: "false",
+    });
+  });
+  it.each([
+    ["capacityReason", "quota_recheck_identity_changed"],
+    ["capacityReason", "quota_recheck_inconclusive"],
+    ["capacityReason", "quota_recheck_failed"],
+    ["capacityReason", "rate_limit_threshold"],
+    ["capacityReason", "quota_limited"],
+    ["capacityReason", "account_exhausted"],
+    ["safeExecutorStatus", "waiting_capacity"],
+    ["safeExecutorStatus", "partial"],
+    ["safeExecutorStatus", "failed"],
+    ["safeExecutorStatus", "aborted"],
+  ])("preserves recognized %s=%s separately from classification", (key, value) => {
+    const details = { reason: "account_unavailable", [key]: value };
+    const result = parseSubscriptionRuntimeCliResult(JSON.stringify({
+      status: "failed", warnings: [], failure: {
+        code: "unknown_runtime_failure", details,
+      },
+    }));
+    expect(result.failure?.details).toEqual(details);
+    expect(result.failure?.code).toBe("provider_session_invalid");
+  });
+});
+
+
+describe("assessment spawn budget and incremental transport", () => {
+  const child = () => Object.assign(new EventEmitter(), {
+    stdout: Object.assign(new EventEmitter(), { destroy: jest.fn() }),
+    stderr: Object.assign(new EventEmitter(), { destroy: jest.fn() }),
+    kill: jest.fn(() => true), unref: jest.fn(),
+  });
+  beforeEach(() => { jest.useFakeTimers({ now: 1_000_000 }); jest.clearAllMocks(); });
+  afterEach(() => jest.useRealTimers());
+
+  it.each([
+    [true, 39_999, false], [true, 40_000, true], [true, 41_000, true],
+    [true, 61_000, true], [false, 61_000, false],
+  ])("checks terminal monotonic time without timer dispatch: assessment=%s elapsed=%s", async (assessment, elapsed, timedOut) => {
+    let monotonic = 0;
+    const now = jest.spyOn(globalThis.performance, "now").mockImplementation(() => monotonic);
+    try {
+      const process = child();
+      jest.mocked(spawn).mockReturnValue(process as unknown as ReturnType<typeof spawn>);
+      const result = runCli({ command: "/synthetic", args: [], timeoutMs: 60_000,
+        ...(assessment ? { assessment: { onProgress: jest.fn() } } : {}) });
+      monotonic = elapsed;
+      jest.setSystemTime(1); // Wall-clock rollback cannot extend the work budget.
+      expect(process.kill).not.toHaveBeenCalled();
+      process.stdout.emit("data", Buffer.from(JSON.stringify({ status: "completed", warnings: [], structuredOutput: {} })));
+      process.emit("close", 0, null);
+      const receipt = await result;
+      expect(receipt.timedOut).toBe(timedOut);
+      expect(cliExecutionResult(receipt).status).toBe(timedOut ? "failed" : "completed");
+      if (timedOut) expect(cliExecutionResult(receipt).failure?.code).toBe("agent_runtime.cli_timeout");
+      expect(jest.getTimerCount()).toBe(0);
+      expect(process.kill).not.toHaveBeenCalled();
+    } finally { now.mockRestore(); }
+  });
+
+  it("counts synchronous spawn startup against the same early and hard deadlines", async () => {
+    const process = child();
+    jest.mocked(spawn).mockImplementation(() => {
+      jest.advanceTimersByTime(10_000);
+      return process as unknown as ReturnType<typeof spawn>;
+    });
+    const result = runCli({ command: "/synthetic", args: [], timeoutMs: 60_000,
+      env: { SOCIAL_MONITOR_ASSESSMENT_DEADLINE_MS: "9999999999" }, assessment: { onProgress: jest.fn() } });
+    expect(jest.mocked(spawn).mock.calls[0]?.[2]).toMatchObject({ env: { SOCIAL_MONITOR_ASSESSMENT_DEADLINE_MS: "1060000" } });
+    await jest.advanceTimersByTimeAsync(29_999); expect(process.kill).not.toHaveBeenCalled();
+    await jest.advanceTimersByTimeAsync(1); expect(process.kill.mock.calls).toEqual([["SIGTERM"]]);
+    await jest.advanceTimersByTimeAsync(20_000); expect(process.kill.mock.calls).toEqual([["SIGTERM"], ["SIGTERM"]]);
+    await jest.advanceTimersByTimeAsync(1000);
+    expect(await result).toMatchObject({ timedOut: true, exitCode: null, signal: null });
+    expect(process.kill.mock.calls).toEqual([["SIGTERM"], ["SIGTERM"], ["SIGKILL"]]);
+    process.emit("close", 0, null); process.emit("error", new Error("Synthetic late error"));
+    expect(await result).toMatchObject({ exitCode: null, signal: null }); expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it("non-assessment/health invocation strips ambient and explicit transport and keeps its old deadline", async () => {
+    const process = child(); jest.mocked(spawn).mockReturnValue(process as unknown as ReturnType<typeof spawn>);
+    const result = runCli({ command: "/synthetic", args: ["--help"], timeoutMs: 100,
+      env: { SOCIAL_MONITOR_ASSESSMENT_DEADLINE_MS: "9999999999" } });
+    expect(jest.mocked(spawn).mock.calls[0]?.[2]?.env).not.toHaveProperty("SOCIAL_MONITOR_ASSESSMENT_DEADLINE_MS");
+    process.stderr.emit("data", Buffer.from("subscription-runtime-run-agent-task"));
+    await jest.advanceTimersByTimeAsync(99); expect(process.kill).not.toHaveBeenCalled();
+    await jest.advanceTimersByTimeAsync(1); expect(process.kill).toHaveBeenCalledWith("SIGTERM");
+    process.emit("close", 1, "SIGTERM");
+    expect(await result).toMatchObject({ stderr: "subscription-runtime-run-agent-task", timedOut: true, exitCode: 1 });
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it("confines the child to the supplied cwd and terminates its process group at cutoff", async () => {
+    const process = Object.assign(child(), { pid: 700_001 });
+    const kill = jest.spyOn(globalThis.process, "kill").mockImplementation(() => true);
+    try {
+      jest.mocked(spawn).mockReturnValue(process as unknown as ReturnType<typeof spawn>);
+      const result = runCli({ command: "/synthetic", args: [], cwd: "/synthetic/admitted-project",
+        timeoutMs: 100 });
+      expect(jest.mocked(spawn).mock.calls[0]?.[2]).toMatchObject({
+        cwd: "/synthetic/admitted-project", detached: true,
+      });
+      await jest.advanceTimersByTimeAsync(100);
+      expect(kill).toHaveBeenCalledWith(-700_001, "SIGTERM");
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(kill).toHaveBeenCalledWith(-700_001, "SIGKILL");
+      expect(await result).toMatchObject({ timedOut: true, exitCode: null });
+    } finally {
+      kill.mockRestore();
+    }
+  });
+
+  it.each([[2_000, 64], [2_000_000, 0]])(
+    "does not retain raw assessment stderr: %i junk bytes allow %i records", async (junkBytes, expectedRecords) => {
+    const process = child(), receive = jest.fn();
+    jest.mocked(spawn).mockReturnValue(process as unknown as ReturnType<typeof spawn>);
+    const result = runCli({ command: "/synthetic", args: [], timeoutMs: 60_000, assessment: { onProgress: receive } });
+    const line = `assessment-progress-v1 ${JSON.stringify({ version: 1, phase: "setup", transition: "started",
+      elapsedMs: 0, remainingMs: 60_000, lastObservedPhase: "setup", providerOutcome: "unknown" })}\n`;
+    const junk = Buffer.alloc(junkBytes, 120); process.stderr.emit("data", junk);
+    process.stderr.emit("data", Buffer.from(`\n${line.repeat(100)}`));
+    expect(receive).toHaveBeenCalledTimes(expectedRecords);
+    process.emit("close", 1, null);
+    const receipt = await result;
+    expect(receipt.stderr).toBe(""); expect(receipt.stderrBytes).toBe(junk.length + 1 + 100 * Buffer.byteLength(line));
+    expect(cliExecutionResult(receipt).failure?.details).toMatchObject({ stderrBytes: String(receipt.stderrBytes) });
+  });
+});

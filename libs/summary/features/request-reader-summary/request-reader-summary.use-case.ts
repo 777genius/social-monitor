@@ -1,3 +1,4 @@
+import { isNativeReaderSummary, matchesReaderSummaryNativeOwner, type ReaderSummaryNativeOwner } from "../../application/contracts/reader-summary-native-owner";
 import {
   type Clock,
   DomainError,
@@ -13,6 +14,7 @@ import {
   readerSummaryScopeKey,
   resolveReaderSummaryPeriod,
   type ReaderSummaryJobProps,
+  type ReaderSummarySelectionStrategy,
 } from "../../domain";
 import type {
   ReaderSummaryJobQueuePort,
@@ -21,8 +23,23 @@ import type {
 } from "../../ports";
 import type { RequestReaderSummaryCommand } from "./request-reader-summary.command";
 import type { RequestReaderSummaryResult } from "./request-reader-summary.result";
+import { readerSummaryTransientRecoveryKey } from "../../domain/policies/reader-summary-transient-recovery";
 
 type RequestReaderSummaryFailure = DomainError | Error;
+
+export interface ReaderSummarySelectionStrategyResolver {
+  resolve(params: {
+    readonly tenantId: string;
+    readonly workspaceId: string;
+    readonly interestId?: string;
+  }): ReaderSummarySelectionStrategy;
+}
+
+const legacyReaderSummarySelectionStrategy: ReaderSummarySelectionStrategyResolver = {
+  resolve: () => "legacy_v2",
+};
+
+const v3SuccessorPrefix = "v3-successor:";
 
 export class RequestReaderSummaryUseCase {
   constructor(
@@ -31,6 +48,9 @@ export class RequestReaderSummaryUseCase {
     private readonly summaryQuota: SummaryQuotaPort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
+    private readonly selectionStrategy: ReaderSummarySelectionStrategyResolver =
+      legacyReaderSummarySelectionStrategy,
+    private readonly nativeOwner?: ReaderSummaryNativeOwner,
   ) {}
 
   async execute(
@@ -39,6 +59,11 @@ export class RequestReaderSummaryUseCase {
     const userId = normalizeOptionalText(command.userId);
     const subscriptionId = normalizeOptionalText(command.subscriptionId);
     const idempotencyKey = command.idempotencyKey.trim();
+    const native = matchesReaderSummaryNativeOwner(this.nativeOwner, { ...command, idempotencyKey });
+    if (isNativeReaderSummary(idempotencyKey) && !native ||
+        this.nativeOwner !== undefined && !native) {
+      return err(new DomainError("operation.conflict", "Native summary ownership mismatch"));
+    }
 
     try {
       assertReaderSummaryScope(command.scope);
@@ -106,12 +131,98 @@ export class RequestReaderSummaryUseCase {
         );
       }
 
+      if (native && (snapshot.selectionStrategy !== "jev_primary_v3" ||
+          snapshot.preparationCutoffAt !== this.nativeOwner!.cutoffAt ||
+          snapshot.preparationDeadlineAt !== this.nativeOwner!.preparationDeadlineAt)) {
+        return err(new DomainError("operation.conflict", "Native summary frozen identity mismatch"));
+      }
+      if (idempotencyKey.startsWith(v3SuccessorPrefix) &&
+          snapshot.selectionStrategy !== "jev_primary_v3") {
+        return err(new DomainError(
+          "operation.conflict",
+          "V3 successor key already belongs to a non-V3 reader summary job",
+        ));
+      }
+
+      const recoveryKey = command.recoverTransientFailure === true && !native
+        ? readerSummaryTransientRecoveryKey(snapshot, this.clock.now()) : undefined;
+      if (recoveryKey !== undefined && this.selectionStrategy.resolve({
+        tenantId: command.tenantId, workspaceId: command.workspaceId,
+        interestId: command.scope.type === "interest" ? command.scope.interestId : undefined,
+      }) === "jev_primary_v3") {
+        return this.execute({ ...command, idempotencyKey: recoveryKey });
+      }
       return ok({
         readerSummaryJobId: snapshot.id,
         period: periodToResult(snapshot.period),
         status: snapshot.status,
         created: false,
       });
+    }
+
+    let successorStrategy: ReaderSummarySelectionStrategy | undefined;
+    const successorSourceKey = idempotencyKey.startsWith(v3SuccessorPrefix)
+      ? idempotencyKey.slice(v3SuccessorPrefix.length)
+      : undefined;
+    if (successorSourceKey !== undefined) {
+      if (successorSourceKey.length === 0 || command.scope.type !== "workspace" ||
+          (period.cadence !== "daily" && period.cadence !== "weekly")) {
+        return err(new DomainError(
+          "validation.failed",
+          "V3 successor requests require a daily or weekly workspace period and source key",
+        ));
+      }
+      const source = await this.readerSummaryJobs.findByIdempotencyKey({
+        tenantId: command.tenantId,
+        workspaceId: command.workspaceId,
+        idempotencyKey: successorSourceKey,
+      });
+      if (source === null) {
+        return err(new DomainError(
+          "resource.not_found",
+          "Legacy reader summary job for V3 successor was not found",
+        ));
+      }
+      const snapshot = source.toSnapshot();
+      if (!isSameIdempotentReaderSummaryRequest(snapshot, {
+        scopeKey: readerSummaryScopeKey(command.scope),
+        periodKey: period.periodKey,
+        userId,
+        subscriptionId,
+      }) || (snapshot.status !== "completed" && snapshot.status !== "no_signal")) {
+        return err(new DomainError(
+          "operation.conflict",
+          "V3 successor requires a published reader summary for the same scope and period",
+        ));
+      }
+      if (snapshot.selectionStrategy === "jev_primary_v3") {
+        return ok({
+          readerSummaryJobId: snapshot.id,
+          period: periodToResult(snapshot.period),
+          status: snapshot.status,
+          created: false,
+        });
+      }
+      if (snapshot.selectionStrategy !== undefined &&
+          snapshot.selectionStrategy !== "legacy_v2") {
+        return err(new DomainError(
+          "operation.conflict",
+          "V3 successor source must be a legacy reader summary job",
+        ));
+      }
+      successorStrategy = this.selectionStrategy.resolve({
+        tenantId: command.tenantId,
+        workspaceId: command.workspaceId,
+      });
+      if (successorStrategy !== "jev_primary_v3") {
+        // Keep the published legacy period usable while V3 selection is rolled back.
+        return ok({
+          readerSummaryJobId: snapshot.id,
+          period: periodToResult(snapshot.period),
+          status: snapshot.status,
+          created: false,
+        });
+      }
     }
 
     const readerSummaryJobId = this.ids.generate();
@@ -122,7 +233,7 @@ export class RequestReaderSummaryUseCase {
       correlationId: command.correlationId,
       causationId: idempotencyKey,
     };
-    if (!(await this.readerSummaryJobQueue.canAccept(queueCommand))) {
+    if (!native && !(await this.readerSummaryJobQueue.canAccept(queueCommand))) {
       return err(
         new DomainError(
           "operation.backpressure",
@@ -151,9 +262,18 @@ export class RequestReaderSummaryUseCase {
       subscriptionId,
       idempotencyKey,
       requestedAt: this.clock.now(),
+      ...(native ? { preparationCutoffAt: this.nativeOwner!.cutoffAt,
+        preparationDeadlineAt: this.nativeOwner!.preparationDeadlineAt } : {}),
+      selectionStrategy: native ? "jev_primary_v3" : successorStrategy ?? this.selectionStrategy.resolve({
+        tenantId: command.tenantId,
+        workspaceId: command.workspaceId,
+        interestId: command.scope.type === "interest"
+          ? command.scope.interestId
+          : undefined,
+      }),
     });
     await this.readerSummaryJobs.save(job);
-    await this.readerSummaryJobQueue.enqueue(queueCommand);
+    if (!native) await this.readerSummaryJobQueue.enqueue(queueCommand);
     const snapshot = job.toSnapshot();
 
     return ok({

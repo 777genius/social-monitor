@@ -18,7 +18,7 @@ if [[ $1 == cat ]]; then
   [[ $# == 2 && $2 == social-monitor-daily.service ]] || exit 1
   printf '%s\n' \
     '[Service]' \
-    'ExecStart=/var/data/social-monitor/control/daily-run.sh --yesterday' \
+    'ExecStart=/var/data/social-monitor/control/postgres-runtime-current/reader-summary-one-shot.sh daily' \
     'TimeoutStartSec=19800' 'Restart=no'
   exit
 fi

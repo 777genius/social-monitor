@@ -2,7 +2,7 @@ import {
   minimumScanIntervalSecondsForProvider,
   providerScanCadenceProfile,
   validateProviderScanCadence,
-} from './scan-cadence-policy';
+} from '../../domain/policies/provider-scan-cadence';
 
 describe('scan cadence policy', () => {
   it('enforces daily cadence for canonical and legacy X provider keys', () => {

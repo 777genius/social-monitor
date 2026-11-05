@@ -6,6 +6,7 @@ import type {
   ListSourceBindingsQuery,
   ListSourceBindingsResult,
   SourceBindingRepositoryPort,
+  SourceBindingConfigIdentity,
 } from '../../../ports';
 import { encodeOffsetCursor, parseOffsetCursor } from '../offset-pagination';
 import type { PrismaMonitoringClient } from './prisma-monitoring-client';
@@ -54,6 +55,7 @@ export class PrismaSourceBindingRepository implements SourceBindingRepositoryPor
     workspaceId: WorkspaceId;
     interestId: string;
     providerKey: string;
+    configIdentity?: SourceBindingConfigIdentity;
   }): Promise<SourceBinding | null> {
     const sourceCatalogEntry = await this.prisma.sourceCatalogEntry.findUnique({
       where: { providerKey: params.providerKey },
@@ -69,6 +71,9 @@ export class PrismaSourceBindingRepository implements SourceBindingRepositoryPor
         interestId: params.interestId,
         sourceCatalogEntryId: sourceCatalogEntry.id,
         deletedAt: null,
+        ...(params.configIdentity === undefined ? {} : {
+          config: { path: [params.configIdentity.field], equals: params.configIdentity.value },
+        }),
       },
     });
 

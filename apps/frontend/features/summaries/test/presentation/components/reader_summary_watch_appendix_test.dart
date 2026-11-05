@@ -9,7 +9,7 @@ import '../../support/summaries_test_fixtures.dart';
 
 void main() {
   testWidgets(
-    'shared surface renders ordinary Watch and cited GitHub appendix',
+    'shared surface renders every Watch entry through the cited narrative',
     (tester) async {
       final openedUrls = <String>[];
       final summary = const SummaryMapper().readerSummaryToDomain(
@@ -79,7 +79,8 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('GitHub Trending'), findsOneWidget);
-      expect(find.text('Watch'), findsOneWidget);
+      expect(find.textContaining('example/valid-repository'), findsOneWidget);
+      expect(find.textContaining('+1,234 stars today.'), findsOneWidget);
       expect(find.textContaining('• Watch: •'), findsNothing);
       expect(
         find.byKey(
@@ -89,15 +90,15 @@ void main() {
         ),
         findsNothing,
       );
-      final validCitation = find.byKey(
+      final citationTrail = find.byKey(
         const ValueKey('reader-summary-github-watch-row-0-citation-c-valid'),
       );
-      expect(validCitation, findsOneWidget);
+      expect(citationTrail, findsOneWidget);
 
-      await tester.tap(validCitation);
+      await tester.tap(citationTrail);
       await tester.pumpAndSettle();
       final validSource = find.byKey(
-        const ValueKey('reader-summary-citation-source-c-valid'),
+        const ValueKey('reader-summary-url-action-citation-source-c-valid'),
       );
       expect(validSource, findsOneWidget);
       await tester.tap(validSource);

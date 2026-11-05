@@ -197,14 +197,18 @@ class _ToolbarIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return IconButton(
-      tooltip: tooltip,
-      constraints: const BoxConstraints.tightFor(width: 38, height: 38),
-      padding: EdgeInsets.zero,
-      color: color ?? colorScheme.onSurfaceVariant,
-      disabledColor: colorScheme.onSurfaceVariant.withValues(alpha: 0.38),
-      icon: Icon(icon, size: 20),
-      onPressed: onPressed,
+    return MergeSemantics(
+      child: AppTooltip(
+        message: tooltip,
+        child: IconButton(
+          constraints: const BoxConstraints.tightFor(width: 38, height: 38),
+          padding: EdgeInsets.zero,
+          color: color ?? colorScheme.onSurfaceVariant,
+          disabledColor: colorScheme.onSurfaceVariant.withValues(alpha: 0.38),
+          icon: Icon(icon, size: 20),
+          onPressed: onPressed,
+        ),
+      ),
     );
   }
 }

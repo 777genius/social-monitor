@@ -356,9 +356,14 @@ describe("XTwitterSourceProvider", () => {
     ).toEqual([12, 6, 10]);
   });
 
-  it("returns collected posts when a later configured query is rate limited", async () => {
+  it.each([
+    [status.RESOURCE_EXHAUSTED, "x-twitter.partial_rate_limit"],
+    [status.UNAVAILABLE, "x-twitter.partial_provider_failure"],
+    [status.DEADLINE_EXCEEDED, "x-twitter.partial_provider_failure"],
+  ] as const)("retains posts and query cursors after retryable gRPC %s", async (code, warningCode) => {
+    const collector = new FailingSecondQueryCollector(errorWithCode(code));
     const provider = new XTwitterSourceProvider(
-      new RateLimitedSecondQueryCollector(),
+      collector,
       {
         now: () => new Date("2026-06-27T00:00:00.000Z"),
       },
@@ -370,7 +375,7 @@ describe("XTwitterSourceProvider", () => {
       scanJobId: "scan-1",
       correlationId: "corr-1",
       config: {
-        searchQueries: ["mcp server"],
+        searchQueries: ["mcp server", "cursor ai"],
       },
     };
 
@@ -380,6 +385,7 @@ describe("XTwitterSourceProvider", () => {
         cursor: JSON.stringify({
           queries: {
             "mcp server": "previous-mcp-cursor",
+            "cursor ai": "previous-cursor-ai-cursor",
           },
         }),
       },
@@ -390,15 +396,51 @@ describe("XTwitterSourceProvider", () => {
       "x-twitter:ai-agents",
     ]);
     expect(result.warnings).toEqual([
-      "mcp server: x-twitter.partial_rate_limit: grpc 8",
+      `mcp server: ${warningCode}: grpc ${code}`,
     ]);
     expect(result.nextCursor).toBe(
       JSON.stringify({
         queries: {
+          "ai agents": "next-ai-cursor",
           "mcp server": "previous-mcp-cursor",
+          "cursor ai": "previous-cursor-ai-cursor",
         },
       }),
     );
+    expect(collector.requests.map((request) => request.query)).toEqual([
+      "ai agents",
+      "mcp server",
+    ]);
+  });
+
+  it.each([
+    [status.UNAVAILABLE, false, 0],
+    [status.DEADLINE_EXCEEDED, false, 0],
+    [status.RESOURCE_EXHAUSTED, false, 0],
+    [status.UNAVAILABLE, true, 30],
+    [status.UNAUTHENTICATED, true, 0],
+    [status.PERMISSION_DENIED, true, 0],
+    [status.INVALID_ARGUMENT, true, 0],
+    [status.INTERNAL, true, 0],
+  ] as const)("propagates gRPC %s with posts=%s and minLikes=%s when partial recovery is unsafe", async (code, includePosts, minLikes) => {
+    const failure = errorWithCode(code);
+    const provider = new XTwitterSourceProvider(
+      new FailingSecondQueryCollector(failure, includePosts),
+      { now: () => new Date("2026-06-27T00:00:00.000Z") },
+    );
+    const context = {
+      tenantId: tenantId("tenant-1"),
+      workspaceId: workspaceId("workspace-1"),
+      sourceBindingId: "binding-1",
+      scanJobId: "scan-1",
+      correlationId: "corr-1",
+      config: { searchQueries: ["mcp server"], minLikes },
+    };
+
+    await expect(provider.scan(
+      provider.planScan({ mode: "search", query: "ai agents" }, context),
+      context,
+    )).rejects.toBe(failure);
   });
 
   it("keeps invalid bindings non-retryable through validation", () => {
@@ -544,8 +586,13 @@ class MultiQueryCollector implements XDailyCollectorClientPort {
   }
 }
 
-class RateLimitedSecondQueryCollector implements XDailyCollectorClientPort {
+class FailingSecondQueryCollector implements XDailyCollectorClientPort {
   readonly requests: XDailyCollectorRequest[] = [];
+
+  constructor(
+    private readonly failure: Error,
+    private readonly includePosts = true,
+  ) {}
 
   async collectDailySearch(
     request: XDailyCollectorRequest,
@@ -554,18 +601,19 @@ class RateLimitedSecondQueryCollector implements XDailyCollectorClientPort {
   > {
     this.requests.push(request);
     if (this.requests.length > 1) {
-      throw errorWithCode(status.RESOURCE_EXHAUSTED);
+      throw this.failure;
     }
 
     return {
-      posts: [
+      posts: this.includePosts ? [
         xPost({
           tweetId: "ai-agents",
           text: "AI agents broad post",
           likes: 20,
           trendScore: 20,
         }),
-      ],
+      ] : [],
+      nextCursor: "next-ai-cursor",
       warnings: [],
     };
   }

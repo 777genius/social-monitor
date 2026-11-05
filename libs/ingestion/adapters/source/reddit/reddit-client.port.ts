@@ -94,3 +94,10 @@ export interface RedditClientPort {
   searchPosts(request: RedditSearchPostsRequest): Promise<RedditListingPage>;
   listPostComments(request: RedditListPostCommentsRequest): Promise<RedditCommentPage>;
 }
+
+// Capability-specific contract: ordinary collection clients need not support lookup.
+export interface RedditPostsByIdsClient {
+  getPostsByIds(request: {
+    readonly accessToken: string; readonly userAgent?: string; readonly ids: readonly string[];
+  }): Promise<{ readonly posts: readonly RedditPost[]; readonly omittedIds: readonly string[] }>;
+}

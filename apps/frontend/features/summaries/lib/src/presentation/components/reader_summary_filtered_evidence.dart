@@ -30,7 +30,7 @@ class _SourceFilterChips extends StatelessWidget {
         for (final entry in entries)
           FilterChip(
             key: ValueKey('reader-summary-source-filter-${entry.providerKey}'),
-            label: Tooltip(
+            label: AppTooltip(
               message: readerSummaryProviderLabel(entry.providerKey),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -101,7 +101,7 @@ class _SourceFilterStats extends StatelessWidget {
       return const SizedBox.shrink();
     }
     final colorScheme = Theme.of(context).colorScheme;
-    return Tooltip(
+    return AppTooltip(
       message: collectedCount == null
           ? 'Posts used by this summary; total reviewed count is unavailable'
           : 'Unique posts reviewed, used and not selected by this summary',
@@ -324,32 +324,43 @@ class _CitationCard extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: Column(
         children: [
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(citation.sourceLabel, maxLines: 2),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (snippet != null) Text(snippet, maxLines: 2),
-                if (url != null && url.trim().isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    url,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.primary,
-                      decoration: TextDecoration.underline,
-                      letterSpacing: 0,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-            trailing: url == null
+          Semantics(
+            key: url == null
                 ? null
-                : const Icon(Icons.chevron_right_rounded),
-            onTap: url == null ? null : () => onOpenUrl(url),
+                : readerSummaryUrlActionKey('fallback-citation', citation.id),
+            label: url == null
+                ? null
+                : readerSummaryUrlActionSemantics(
+                    'fallback-citation',
+                    citation.id,
+                  ),
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(citation.sourceLabel, maxLines: 2),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (snippet != null) Text(snippet, maxLines: 2),
+                  if (url != null && url.trim().isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      url,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: Theme.of(context).colorScheme.primary,
+                        decoration: TextDecoration.underline,
+                        letterSpacing: 0,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              trailing: url == null
+                  ? null
+                  : const Icon(Icons.chevron_right_rounded),
+              onTap: url == null ? null : () => onOpenUrl(url),
+            ),
           ),
           if (showDivider)
             Divider(

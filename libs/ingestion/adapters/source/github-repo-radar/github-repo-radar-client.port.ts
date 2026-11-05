@@ -21,6 +21,11 @@ export type GitHubRepoRadarCandidate = {
   readonly stars7d: number;
   readonly stars30d: number;
   readonly stars90d: number;
+  readonly forks24h: number;
+  readonly forks48h: number;
+  readonly forks7d: number;
+  readonly forks30d: number;
+  readonly forks90d: number;
   readonly rank: number;
   readonly primaryWindow: GitHubRepositoryTrendWindow;
 };

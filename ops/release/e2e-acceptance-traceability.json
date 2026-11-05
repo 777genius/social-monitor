@@ -342,16 +342,16 @@
     {
       "id": "negative.unsupported_source_request",
       "type": "negative",
-      "title": "Unsupported source requests are rejected and preserved as demand signal",
+      "title": "Private Telegram invite scopes are rejected before source binding creation",
       "required": true,
       "evidence": [
         {
           "kind": "e2e",
           "path": "test/e2e/source-bindings.create.e2e-spec.ts",
           "markers": [
-            "rejects deferred providers before creating bindings",
+            "rejects private Telegram preview scopes before creating bindings",
             "providerKey: 'telegram'",
-            "Source provider is not available for production-safe MVP scans"
+            "Telegram requires a public channel username or HTTPS t.me channel URL."
           ]
         },
         {

@@ -1,3 +1,9 @@
+import {
+  buildGitHubProjectionAudit as baseAudit,
+  uniqueGitHubProjectionValues as unique,
+  uniqueGitHubProjectionFindings as uniqueFindingsByCodeAndReason,
+} from "./reader-summary-github-projection-evaluation";
+import { evaluateArchivedGitHubProjection } from "./reader-summary-github-archived-projection";
 import type { ReaderSummaryArtifact } from "../entities/reader-summary-artifact";
 import {
   buildReaderSummaryGitHubProjectionCollectionTelemetry,
@@ -8,9 +14,6 @@ import {
   readerSummaryIsOrdinaryNoSignalWithoutEvidence,
   readerSummaryRequiresGitHubProjection,
   validEligibleBindingIds,
-  type ReaderSummaryGitHubProjectionAudit,
-  type ReaderSummaryGitHubProjectionBinding,
-  type ReaderSummaryGitHubProjectionCollectionTelemetry,
   type ReaderSummaryGitHubProjectionEvaluation,
   type ReaderSummaryGitHubProjectionItem,
   type ReaderSummaryGitHubProjectionViolationCode,
@@ -30,6 +33,9 @@ import {
   supplementalNarrativeFindings,
 } from "./reader-summary-github-projection-set";
 import { maxGitHubTrendingDisplayRepositories } from "./reader-summary-github-trending-policy";
+import { ordinaryNoSignalGitHubProjectionEvaluation } from "./reader-summary-github-projection-no-signal";
+
+export { githubProjectionItemTouchesDay } from "./reader-summary-github-projection-candidates";
 
 export {
   buildReaderSummaryGitHubProjectionCollectionTelemetry,
@@ -116,11 +122,9 @@ export const evaluateReaderSummaryGitHubProjection = (params: {
     snapshot.period.endedAt,
     snapshot.period.timezone,
   );
-  const eligibleBindingIds = [
-    ...unique(
-      params.eligibleBindingIds.filter((bindingId) => nonEmpty(bindingId)),
-    ),
-  ].sort();
+  const eligibleBindingIds = unique(
+    params.eligibleBindingIds.filter((bindingId) => nonEmpty(bindingId)),
+  ).sort();
   if (day === undefined) {
     return rejectedEvaluation({
       artifact: params.artifact,
@@ -135,6 +139,19 @@ export const evaluateReaderSummaryGitHubProjection = (params: {
         },
       ],
     });
+  }
+  if (ordinaryNoSignal) {
+    return ordinaryNoSignalGitHubProjectionEvaluation({
+      requestedUtcDay: day.day,
+      pageCount: params.pageCount,
+    });
+  }
+
+  const requestedItems = params.items.filter((item) =>
+    githubProjectionItemTouchesDay(item, day.startedAt, day.endedAt));
+  if (requestedItems.some((item) => item.observationKind === "archived" || item.archivedObservation !== undefined)) {
+    return evaluateArchivedGitHubProjection({ ...params, items: requestedItems, day,
+      hasNoPrimaryGitHubEvidence: readerSummaryHasNoPrimaryGitHubEvidence(params.artifact) });
   }
 
   const findings: {
@@ -398,10 +415,10 @@ export const evaluateReaderSummaryGitHubProjection = (params: {
       eligibleBindingIds,
       observedThrough: params.observedThrough.toISOString(),
       projectionCheckedAt:
-        selectedCandidates[0]?.item.checkedAt?.toISOString(),
+        topTenCandidates[0]?.item.checkedAt?.toISOString(),
       telemetry: buildReaderSummaryGitHubProjectionCollectionTelemetry({
         dayEndedAt: day.endedAt,
-        observedAt: selectedCandidates.map(
+        observedAt: topTenCandidates.map(
           (candidate) => candidate.item.observedAt,
         ),
       }),
@@ -440,53 +457,4 @@ const rejectedEvaluation = (params: {
     }),
     findings,
   };
-};
-
-const baseAudit = (params: {
-  readonly status: ReaderSummaryGitHubProjectionAudit["status"];
-  readonly requestedUtcDay: string;
-  readonly pageCount: number;
-  readonly scannedItemCount: number;
-  readonly eligibleBindingIds: readonly string[];
-  readonly observedThrough?: string;
-  readonly projectionCheckedAt?: string;
-  readonly telemetry?: ReaderSummaryGitHubProjectionCollectionTelemetry;
-  readonly bindings?: readonly ReaderSummaryGitHubProjectionBinding[];
-  readonly violationCodes?: readonly ReaderSummaryGitHubProjectionViolationCode[];
-  readonly reasons?: readonly string[];
-}): ReaderSummaryGitHubProjectionAudit => ({
-  schemaVersion: "reader_summary.github_projection.v1",
-  status: params.status,
-  requestedUtcDay: params.requestedUtcDay,
-  pageCount: params.pageCount,
-  scannedItemCount: params.scannedItemCount,
-  eligibleBindingIds: params.eligibleBindingIds,
-  ...(params.observedThrough === undefined
-    ? {}
-    : { observedThrough: params.observedThrough }),
-  ...(params.projectionCheckedAt === undefined
-    ? {}
-    : { projectionCheckedAt: params.projectionCheckedAt }),
-  ...(params.telemetry === undefined ? {} : { telemetry: params.telemetry }),
-  bindings: params.bindings ?? [],
-  violationCodes: params.violationCodes ?? [],
-  reasons: params.reasons ?? [],
-});
-
-const unique = <TValue>(values: readonly TValue[]): readonly TValue[] => [
-  ...new Set(values),
-];
-
-const uniqueFindingsByCodeAndReason = <
-  TFinding extends { readonly code: string; readonly reason: string },
->(findings: readonly TFinding[]): readonly TFinding[] => {
-  const seen = new Set<string>();
-  return findings.filter((finding) => {
-    const key = `${finding.code}\u0000${finding.reason}`;
-    if (seen.has(key)) {
-      return false;
-    }
-    seen.add(key);
-    return true;
-  });
 };

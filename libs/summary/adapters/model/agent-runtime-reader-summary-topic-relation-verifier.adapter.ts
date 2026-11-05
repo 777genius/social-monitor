@@ -4,7 +4,6 @@ import {
 } from "../../domain";
 import type {
   AgentRuntimeClientPort,
-  AgentRuntimeProvider,
   ReaderSummaryTopicMapAttemptContext,
   ReaderSummaryTopicRelationVerifierInput,
   ReaderSummaryTopicRelationVerifierPort,
@@ -29,27 +28,44 @@ import {
   verifyAndRecordReaderSummaryExecution,
   type VerifiedReaderSummaryExecutionAttestationSink,
 } from "./reader-summary-execution-attestation";
+import { assertStoryRelationResponseSchema } from "./story-relation-response-schema";
+import {
+  activeReaderSummaryModel,
+  activeReaderSummaryPurposes,
+  activeReaderSummaryReasoningEffort,
+  assertReaderSummaryBackendModel,
+  mimoReaderSummaryBackend,
+  readerSummaryRouteControls,
+  resolveReaderSummaryBackendEffort,
+  resolveReaderSummaryDailyTaskIdentityFromEnv,
+  type ReaderSummaryGenerationBackend,
+  verifyAndRecordMimoDailyExecution,
+} from "./active-reader-summary-generation-profile";
 
 export type AgentRuntimeReaderSummaryTopicRelationVerifierOptions = Pick<
   AgentRuntimeReaderSummaryTopicLabelerOptions,
-  "client" | "agentProvider" | "providerInstanceId" | "verifiedAttestationSink"
+  "client" | "agentProvider" | "providerInstanceId" | "verifiedAttestationSink" |
+  "reasoningEffort"
 > & {
   readonly model?: string;
+  readonly modelBackend?: ReaderSummaryGenerationBackend;
   readonly promptVersion?: string;
   readonly timeoutMs?: number;
   readonly maxOutputTokens?: number;
 };
 
-const defaultModel = "agent-runtime-reader-summary-topic-relation-verifier";
+const defaultModel = activeReaderSummaryModel;
 const defaultPromptVersion = "reader_summary.topic_relation.agent_runtime.v3";
-const defaultTimeoutMs = 300_000;
+export const defaultTimeoutMs = 300_000;
 const defaultMaxOutputTokens = 4_000;
 
 export class AgentRuntimeReaderSummaryTopicRelationVerifier implements ReaderSummaryTopicRelationVerifierPort {
   private readonly client: AgentRuntimeClientPort;
-  private readonly provider: AgentRuntimeProvider;
+  private readonly provider: "codex";
   private readonly providerInstanceId?: string;
   private readonly model: string;
+  private readonly modelBackend: ReaderSummaryGenerationBackend;
+  private readonly reasoningEffort: string;
   private readonly promptVersion: string;
   private readonly timeoutMs: number;
   private readonly maxOutputTokens: number;
@@ -59,7 +75,11 @@ export class AgentRuntimeReaderSummaryTopicRelationVerifier implements ReaderSum
     this.client = options.client;
     this.provider = options.agentProvider ?? "codex";
     this.providerInstanceId = options.providerInstanceId;
-    this.model = nonEmptyOrFallback(options.model, defaultModel);
+    this.model = options.model ?? defaultModel;
+    this.modelBackend = options.modelBackend ?? "openai-chatgpt";
+    assertReaderSummaryBackendModel(this.modelBackend, this.model);
+    this.reasoningEffort = resolveReaderSummaryBackendEffort(
+      this.modelBackend, options.reasoningEffort, activeReaderSummaryReasoningEffort, this.model);
     this.promptVersion = nonEmptyOrFallback(
       options.promptVersion,
       defaultPromptVersion,
@@ -101,7 +121,7 @@ export class AgentRuntimeReaderSummaryTopicRelationVerifier implements ReaderSum
       ),
       provider: this.provider,
       providerInstanceId: this.providerInstanceId,
-      purpose: "social_monitor.reader_summary.topic_map.verify_relations",
+      purpose: activeReaderSummaryPurposes.topicRelations,
       systemPrompt: agentRuntimeReaderSummaryTopicRelationVerifierInstructions,
       prompt: buildAgentRuntimeReaderSummaryTopicRelationVerifierPrompt(input),
       outputSchema: agentRuntimeReaderSummaryTopicRelationVerifierJsonSchema,
@@ -109,7 +129,11 @@ export class AgentRuntimeReaderSummaryTopicRelationVerifier implements ReaderSum
         interactive: false,
         outputSchemaName: "social_monitor_reader_summary_topic_relations",
         schemaVersion: "reader_summary.topic_relation.v1",
-        ...(this.model === defaultModel ? {} : { model: this.model }),
+        model: this.model,
+        ...(this.modelBackend === mimoReaderSummaryBackend
+          ? { modelBackend: this.modelBackend, toolsEnabled: false, toolPolicy: "none" }
+          : {}),
+        ...readerSummaryRouteControls(this.modelBackend, this.reasoningEffort),
         maxOutputTokens: this.maxOutputTokens,
       },
       timeoutMs: this.timeoutMs,
@@ -126,9 +150,14 @@ export class AgentRuntimeReaderSummaryTopicRelationVerifier implements ReaderSum
       parseJsonObject,
       "Reader summary topic relation verifier",
     );
+    if (this.modelBackend === mimoReaderSummaryBackend) {
+      assertStoryRelationResponseSchema(raw, command.outputSchema);
+    }
 
     const decisions = normalizeDecisions(raw, input.relations);
-    await verifyAndRecordReaderSummaryExecution({
+    await (this.modelBackend === mimoReaderSummaryBackend
+      ? verifyAndRecordMimoDailyExecution
+      : verifyAndRecordReaderSummaryExecution)({
       command,
       result,
       taskRole: "topic_relation",
@@ -158,7 +187,10 @@ export const resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions = (
     client,
     agentProvider: shared.agentProvider,
     providerInstanceId: shared.providerInstanceId,
-    model: env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_MODEL,
+    reasoningEffort: shared.reasoningEffort,
+    ...resolveReaderSummaryDailyTaskIdentityFromEnv(
+      env, env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_MODEL,
+    ),
     promptVersion:
       env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_PROMPT_VERSION,
     timeoutMs: parsePositiveInteger(

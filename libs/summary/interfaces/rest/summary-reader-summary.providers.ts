@@ -19,7 +19,6 @@ import {
 } from "@social-monitor/platform-queue/adapters/rabbitmq";
 import { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
 import { CryptoIdGenerator, SystemClock } from "@social-monitor/shared-kernel";
-
 import { ReaderSummaryArtifactContextProvider } from "../../adapters/context/reader-summary-artifact-context.provider";
 import { ConversationEvidenceContextReader } from "../../adapters/evidence/conversation-evidence-context.reader";
 import { ConversationReaderSummaryEvidenceSelector } from "../../adapters/evidence/conversation-reader-summary-evidence.selector";
@@ -29,6 +28,8 @@ import { FeedReaderSummaryTopicCollectionMetricsReader } from "../../adapters/ev
 import { RelevanceReaderSummaryEvidenceSelector } from "../../adapters/evidence/relevance-reader-summary-evidence.selector";
 import { SummaryMemoryReaderSummaryContextProvider } from "../../adapters/memory/summary-memory-reader-summary-context.provider";
 import { StoryRankingMetricsRecorder } from "../../adapters/metrics/story-ranking-metrics.recorder";
+import { ReaderSummaryPromotionMetricsRecorder } from
+  "../../adapters/metrics/reader-summary-promotion-metrics.recorder";
 import { ReaderSummaryJobQueuePublisherAdapter } from "../../adapters/messaging/reader-summary-job-queue.adapter";
 import { AgentRuntimeReaderSummaryModelAdapter } from "../../adapters/model/agent-runtime-reader-summary-model.adapter";
 import { AgentRuntimeReaderSummaryStoryRelationVerifier } from "../../adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter";
@@ -49,6 +50,7 @@ import type { PrismaSummaryClient } from "../../adapters/persistence/prisma/pris
 import { PrismaReaderSummaryTopicRecommendationDecisionRepository } from "../../adapters/persistence/prisma/prisma-reader-summary-topic-recommendation-decision.repository";
 import { BuildReaderSummaryTopicMapUseCase } from "../../features/build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
 import { ExecuteReaderSummaryJobUseCase } from "../../features/execute-reader-summary-job/execute-reader-summary-job.use-case";
+import { readerSummaryPromotionControl } from "../../features/execute-reader-summary-job/reader-summary-promotion-control";
 import { GetReaderSummaryJobStatusUseCase } from "../../features/get-reader-summary-job-status/get-reader-summary-job-status.use-case";
 import { GetReaderSummaryQualityRejectionUseCase } from "../../features/get-reader-summary-quality-rejection/get-reader-summary-quality-rejection.use-case";
 import { GetReaderSummaryUseCase } from "../../features/get-reader-summary/get-reader-summary.use-case";
@@ -71,6 +73,8 @@ import {
   type ReaderSummaryPolicyRepositoryPort,
   type ReaderSummaryPreviewMediaEnricherPort,
   type ReaderSummaryPublicationPort,
+  type ReaderSummaryV3PreflightPort,
+  type ReaderSummaryV3PromotionPort,
   type ReaderSummaryTopicCollectionMetricsReaderPort,
   type ReaderSummaryTopicRecommendationDecisionRepositoryPort,
   type ReaderSummaryWeeklyProjectionReaderPort,
@@ -86,6 +90,9 @@ import {
   READER_SUMMARY_JOB_QUEUE,
   READER_SUMMARY_JOB_REPOSITORY,
   READER_SUMMARY_MODEL_PROVIDER_MODE,
+  READER_SUMMARY_SELECTION_STRATEGY,
+  READER_SUMMARY_V3_PREFLIGHT,
+  READER_SUMMARY_V3_PROMOTION,
   READER_SUMMARY_OPENAI_RESPONSES_MODEL_OPTIONS,
   READER_SUMMARY_POLICY_REPOSITORY,
   READER_SUMMARY_PUBLICATION,
@@ -104,17 +111,24 @@ import {
   type SummaryJobQueueMode,
   type SummaryPersistenceMode,
 } from "./summary-provider-tokens";
+import type { ReaderSummarySelectionStrategyResolver } from
+  "../../features/request-reader-summary/request-reader-summary.use-case";
 import { readerSummaryCoverageProvider } from "./summary-reader-summary-coverage.provider";
 import { summaryReaderSummaryPersistenceProviders } from "./summary-reader-summary-persistence.providers";
 import { readerSummaryPublicationProvider } from "./summary-reader-summary-publication.provider";
+import { readerSummaryV3Providers } from
+  "./summary-reader-summary-v3.providers";
 
 export const summaryReaderSummaryProviders: Provider[] = [
+  CryptoIdGenerator,
+  SystemClock,
   InMemoryReaderSummaryJobRepository,
   InMemoryReaderSummaryArtifactRepository,
   InMemoryReaderSummaryPolicyRepository,
   InMemoryReaderSummaryTopicRecommendationDecisionRepository,
   ...summaryReaderSummaryPersistenceProviders,
   readerSummaryPublicationProvider,
+  ...readerSummaryV3Providers,
   {
     provide: StoryRankingMetricsRecorder,
     useFactory: (metrics: MetricsRecorderPort): StoryRankingMetricsPort =>
@@ -307,6 +321,7 @@ export const summaryReaderSummaryProviders: Provider[] = [
       readerSummaryJobs: ReaderSummaryJobRepositoryPort,
       readerSummaryJobQueue: ReaderSummaryJobQueuePort,
       summaryQuota: UsageSummaryQuotaAdapter,
+      selectionStrategy: ReaderSummarySelectionStrategyResolver,
     ) =>
       new RequestReaderSummaryUseCase(
         readerSummaryJobs,
@@ -314,11 +329,13 @@ export const summaryReaderSummaryProviders: Provider[] = [
         summaryQuota,
         new CryptoIdGenerator(),
         new SystemClock(),
+        selectionStrategy,
       ),
     inject: [
       READER_SUMMARY_JOB_REPOSITORY,
       READER_SUMMARY_JOB_QUEUE,
       UsageSummaryQuotaAdapter,
+      READER_SUMMARY_SELECTION_STRATEGY,
     ],
   },
   {
@@ -334,6 +351,11 @@ export const summaryReaderSummaryProviders: Provider[] = [
       userSummaryPreferences: UserSummaryPreferenceReaderPort,
       topicMapBuilder: BuildReaderSummaryTopicMapUseCase,
       githubProjectionReader: ReaderSummaryGitHubProjectionReaderPort,
+      metrics: MetricsRecorderPort,
+      ids: CryptoIdGenerator,
+      clock: SystemClock,
+      v3Preflight: ReaderSummaryV3PreflightPort | undefined,
+      v3Promotion: ReaderSummaryV3PromotionPort | undefined,
     ) =>
       new ExecuteReaderSummaryJobUseCase(
         readerSummaryJobs,
@@ -342,13 +364,22 @@ export const summaryReaderSummaryProviders: Provider[] = [
         evidenceSelector,
         readerSummaryModel,
         publications,
-        new CryptoIdGenerator(),
-        new SystemClock(),
+        ids,
+        clock,
+        readerSummaryPromotionControl(
+          new ReaderSummaryPromotionMetricsRecorder(metrics),
+        ),
         contextProvider,
         userSummaryPreferences,
         topicMapBuilder,
         undefined,
         githubProjectionReader,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        v3Preflight,
+        v3Promotion,
       ),
     inject: [
       READER_SUMMARY_JOB_REPOSITORY,
@@ -361,6 +392,11 @@ export const summaryReaderSummaryProviders: Provider[] = [
       SUMMARY_USER_SUMMARY_PREFERENCE_READER,
       BuildReaderSummaryTopicMapUseCase,
       READER_SUMMARY_GITHUB_PROJECTION_READER,
+      METRICS_RECORDER,
+      CryptoIdGenerator,
+      SystemClock,
+      READER_SUMMARY_V3_PREFLIGHT,
+      READER_SUMMARY_V3_PROMOTION,
     ],
   },
   {

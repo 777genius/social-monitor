@@ -8,6 +8,14 @@ class FakeScanJobs implements ScanJobRepositoryPort {
   private readonly jobsById = new Map<string, ScanJobEntity>();
   private readonly jobsByIdempotencyKey = new Map<string, ScanJobEntity>();
 
+  async saveTerminalOutcome(job: ScanJobEntity): Promise<boolean> {
+    const snapshot = job.toSnapshot();
+    const key = `${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.id}`;
+    if (this.jobsById.get(key)?.toSnapshot().status !== 'enqueued') return false;
+    await this.save(job);
+    return true;
+  }
+
   async save(job: ScanJobEntity): Promise<void> {
     const snapshot = job.toSnapshot();
     this.jobsById.set(

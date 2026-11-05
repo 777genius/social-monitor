@@ -1,4 +1,10 @@
-import type { JsonObject } from "@social-monitor/shared-kernel";
+import { createHash } from "node:crypto";
+
+import {
+  identityQueryEntries,
+  sanitizeUrlCredentials,
+  type JsonObject,
+} from "@social-monitor/shared-kernel";
 
 import type { UserRelevanceProfile } from "../entities/user-relevance-profile";
 import {
@@ -158,7 +164,8 @@ export class RankingPolicy {
         contentQuality,
       }),
       clusterId: canonicalClusterKey(
-        safety.sanitizedCanonicalUrl ?? candidate.canonicalUrl,
+        candidate.canonicalUrl,
+        safety.sanitizedCanonicalUrl,
         title,
       ),
       titleTokens: titleTokens(title),
@@ -175,8 +182,10 @@ const selectClusterWinners = (
   const clusters: ScoredRelevanceCandidate[][] = [];
 
   for (const candidate of candidates) {
-    const cluster = clusters.find((entry) =>
-      belongsToCluster(candidate, entry[0]),
+    const cluster = clusters.find(
+      (entry) =>
+        belongsToCluster(candidate, entry[0]) &&
+        entry.every((member) => !hasConflictingUrlIdentity(candidate, member)),
     );
 
     if (cluster === undefined) {
@@ -219,10 +228,30 @@ const selectClusterWinners = (
 const belongsToCluster = (
   candidate: ScoredRelevanceCandidate,
   clusterHead: ScoredRelevanceCandidate | undefined,
+): boolean => {
+  if (clusterHead === undefined) {
+    return false;
+  }
+
+  if (candidate.clusterId === clusterHead.clusterId) {
+    return true;
+  }
+
+  if (hasConflictingUrlIdentity(candidate, clusterHead)) {
+    return false;
+  }
+
+  return tokenSimilarity(candidate.titleTokens, clusterHead.titleTokens) >= 0.56;
+};
+
+const hasConflictingUrlIdentity = (
+  candidate: ScoredRelevanceCandidate,
+  other: ScoredRelevanceCandidate,
 ): boolean =>
-  clusterHead !== undefined &&
-  (candidate.clusterId === clusterHead.clusterId ||
-    tokenSimilarity(candidate.titleTokens, clusterHead.titleTokens) >= 0.56);
+  candidate.clusterId !== other.clusterId &&
+  candidate.clusterId.startsWith("url:") &&
+  other.clusterId.startsWith("url:") &&
+  candidate.clusterId.split("?")[0] === other.clusterId.split("?")[0];
 
 const buildWhyImportant = (params: {
   readonly interestWeight: number;
@@ -298,13 +327,28 @@ const compareScoredCandidates = (
   );
 };
 
-const canonicalClusterKey = (canonicalUrl: string, title: string): string => {
+const canonicalClusterKey = (
+  canonicalUrl: string,
+  sanitizedCanonicalUrl: string | undefined,
+  title: string,
+): string => {
   try {
-    const parsed = new URL(canonicalUrl);
-    parsed.hash = "";
-    parsed.search = "";
+    const parsed = new URL(sanitizedCanonicalUrl ?? canonicalUrl);
+    const safeOriginal = new URL(sanitizeUrlCredentials(canonicalUrl));
+    const pathKey = `url:${parsed.host.toLowerCase()}${parsed.pathname.replace(/\/+$/u, "")}`;
+    const query = identityQueryEntries(safeOriginal.hostname, safeOriginal.searchParams);
 
-    return `url:${parsed.hostname.toLocaleLowerCase("en-US")}${parsed.pathname.replace(/\/+$/u, "")}`;
+    if (query.length === 0) {
+      return pathKey;
+    }
+
+    // Cluster ids leave the domain as read-model data, so keep query values
+    // out of them even after credential redaction.
+    const queryDigest = createHash("sha256")
+      .update(JSON.stringify(query))
+      .digest("hex");
+
+    return `${pathKey}?q=${queryDigest}`;
   } catch {
     return `title:${titleTokens(title).join("-")}`;
   }

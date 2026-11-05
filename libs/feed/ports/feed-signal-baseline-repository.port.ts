@@ -21,4 +21,10 @@ export type ListFeedSignalBaselineSamplesQuery = {
 
 export interface FeedSignalBaselineRepositoryPort {
   listSamples(query: ListFeedSignalBaselineSamplesQuery): Promise<readonly FeedSignalBaselineSample[]>;
+  /** Returns a single bounded, round-robin window across requested cohorts. */
+  listCohortSamples?(
+    query: ListFeedSignalBaselineSamplesQuery & {
+      readonly cohortFilters: readonly FeedSignalBaselineCohortFilter[];
+    },
+  ): Promise<readonly FeedSignalBaselineSample[]>;
 }

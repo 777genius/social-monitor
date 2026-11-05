@@ -1,0 +1,38 @@
+{
+  "promotion.json": {
+    "ranked": "8eb5a6d76f70a96f3208820c2db08360cf808c9ca03d3b843891748a7f969ff8",
+    "primary": "6719168a8d42940a328dcf285328d60e03e73712c8aedaba8a871440cf64c3a3",
+    "supplemental": "b8c10fe3fd71db7fa2313eed770cbd7c7eb5cc25248d9a541ee27fa2a7f62c53"
+  },
+  "preparation.json": {
+    "rankingOrder": "0b21d46d3f81dc46455697dadfc3724d6428d3300c1508b2a223ab78b18756fe",
+    "rankedInventory": "f0589851012fa59ffcadd3425207454b6c0336c7711c9b9d4c0c546d6195bcd1",
+    "periodExcludedIds": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "defaultProviderExcludedIds": "15a6f6582e4a495c51bd6ff2aa63e9e26a7073ed601c2edffb43c003ab2b8340",
+    "periodFiltered": "f0589851012fa59ffcadd3425207454b6c0336c7711c9b9d4c0c546d6195bcd1",
+    "defaultProviderFiltered": "b0606514b43862289ef18caf6f196d23f981cbc924f1cc72c219c5eda52f45c6",
+    "candidateItems": "6f239e3823e98f4f1e28b9ece0652c87ad2cba591832e25d8f37a1d2a2474971",
+    "groupingInput": "b0606514b43862289ef18caf6f196d23f981cbc924f1cc72c219c5eda52f45c6",
+    "initialGrouping": "7346a9a267fd152bd4e5091f8e207359415349061af0580f03e71d7ffeac6e5d",
+    "authoritativeGrouping": "7346a9a267fd152bd4e5091f8e207359415349061af0580f03e71d7ffeac6e5d",
+    "initialUnclusteredIds": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "authoritativeUnclusteredIds": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "relationCandidates": "f487df8b6193ceee6762072e1f1db003fa5d53d46e8bf6b2ae9da7aaf88d953f",
+    "verifiedPairs": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "strictTitlePairs": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "approvedRelations": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "graduatedRelations": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "policyItems": "b0606514b43862289ef18caf6f196d23f981cbc924f1cc72c219c5eda52f45c6",
+    "prePolicySelection": "e7838c863547d694db97c2c625fa59a0f2a24b097da3595981d1bb6b380e0df1",
+    "admittedSupplemental": "d260f61ce31c326c5d8e464dfe430c6aec6ab9eb995968cb1e371ef983d1a280"
+  },
+  "selection.json": {
+    "rankingPolicyVersion": "aec9014bcc2c52954a7444f2616a957a219ac7e0732784df8ed5f920bbfad237",
+    "sourceWindow": "d3ab3cefc0c13fb7e7d75cd30cdc7d533a8188811bffdd0ad23f620dfb688a21",
+    "selectedEvidence": "854e329fbb534be3a59717cd9d909f9610f56c7824c0ee5847e6c2f13987eb95",
+    "clusters": "b8140c701c9c923050b9278ba2a5de4e74a45d86ac06e0ba1ddf25f7b1fef123",
+    "approvedSameStoryRelations": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "editorialSlate": "a0ed8e9cd11e3fb0eeff22120161007b15e691d900ce74d7ed7f3611d145b0c1",
+    "relatedTopicRelations": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  }
+}

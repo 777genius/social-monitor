@@ -1,13 +1,7 @@
 part of 'reader_summary_brief_surface.dart';
 
-const _githubTrendingProviderKey = readerSummaryGitHubTrendingProviderKey;
-
-enum _TopPostSort { editorial, engagement }
-
-enum _TopPostBoard { topPosts, moreSelected, githubTrending }
-
-/// "Top posts" board: sortable, filterable editorial picks with an optional
-/// engagement view.
+/// "Top posts" board: filterable picks in the backend-attested order, or in
+/// the reader-chosen [sortOrder] across the visible ranked sequence.
 class ReaderSummaryTopPosts extends StatefulWidget {
   const ReaderSummaryTopPosts({
     super.key,
@@ -18,6 +12,8 @@ class ReaderSummaryTopPosts extends StatefulWidget {
     required this.ratingFor,
     required this.onRated,
     required this.onOpenUrl,
+    this.sortOrder = TopPostsSortOrder.modelRank,
+    this.onSortOrderChanged,
   });
 
   final ReaderSummaryTopPostsProjection projection;
@@ -32,29 +28,28 @@ class ReaderSummaryTopPosts extends StatefulWidget {
   )?
   onRated;
   final ValueChanged<String> onOpenUrl;
+  final TopPostsSortOrder sortOrder;
+
+  /// `null` hides the order control.
+  final ValueChanged<TopPostsSortOrder>? onSortOrderChanged;
 
   @override
   State<ReaderSummaryTopPosts> createState() => _ReaderSummaryTopPostsState();
 }
 
 class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
-  _TopPostSort _sort = _TopPostSort.editorial;
-  late _TopPostBoard _board;
+  int _additionalVisibleCount = 0;
   final Set<String> _hiddenProviders = {};
   final ScrollController _postsScrollController = ScrollController();
   bool _denseView = false;
 
   @override
-  void initState() {
-    super.initState();
-    _board = _availableTopPostBoard(widget.projection);
-  }
-
-  @override
   void didUpdateWidget(covariant ReaderSummaryTopPosts oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!widget.projection.hasSameDatasetAs(oldWidget.projection)) {
-      _board = _availableTopPostBoard(widget.projection, preferred: _board);
+    if (!widget.projection.hasSameDatasetAs(oldWidget.projection) ||
+        widget.period != oldWidget.period) {
+      _additionalVisibleCount = 0;
+      _resetPostsScroll();
     }
   }
 
@@ -67,21 +62,17 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final topPostItems = widget.projection.curatedPosts;
-    final moreSelectedItems = widget.projection.moreSelectedPosts;
-    final githubTrendingItems = widget.projection.githubTrendingPosts;
-    final activeBoard = _board;
-    final boardItems = switch (activeBoard) {
-      _TopPostBoard.topPosts => topPostItems,
-      _TopPostBoard.moreSelected => moreSelectedItems,
-      _TopPostBoard.githubTrending => githubTrendingItems,
-    };
-    final filtered = orderTopPosts(
-      boardItems.where((item) => !_hiddenProviders.contains(item.providerKey)),
-      byEngagement:
-          activeBoard == _TopPostBoard.topPosts &&
-          _sort == _TopPostSort.engagement,
+    final display = ReaderSummaryRankedPostsDisplay(
+      projection: widget.projection,
+      additionalVisibleCount: _additionalVisibleCount,
+      sortOrder: widget.sortOrder,
+      hiddenProviders: _hiddenProviders,
     );
+    final filtered = display.items;
+    final rowKeys = [for (final item in filtered) _topPostRowKey(item)];
+    final rowIndexByKey = {
+      for (final (index, key) in rowKeys.indexed) key: index,
+    };
     final reservePreviewSpace = filtered.any(
       (item) => item.previewMedia != null,
     );
@@ -91,30 +82,25 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _TopPostsHeader(
-          board: activeBoard,
-          sort: _sort,
-          topPostCount: topPostItems.length,
-          moreSelectedPostCount: moreSelectedItems.length,
-          githubTrendingCount: githubTrendingItems.length,
-          curatedTopPostCount: widget.projection.curatedPosts.length,
-          selectedPostCount: widget.selectedPostCount,
-          providerKeys: {
-            for (final item in boardItems) item.providerKey,
-          }.toList(growable: false),
+          visibleCount: filtered.length,
+          availableCount: display.availableCount,
+          providerKeys: display.providerKeys,
           hiddenProviders: _hiddenProviders,
           denseView: _denseView,
-          onBoardChanged: _setBoard,
-          onSortChanged: _setSort,
+          sortOrder: widget.sortOrder,
           onProviderToggled: _toggleProvider,
           onDenseViewChanged: _setDenseView,
+          onSortOrderChanged: widget.onSortOrderChanged == null
+              ? null
+              : _setSortOrder,
         ),
         const SizedBox(height: AppSpacing.sm),
         if (filtered.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
             child: Text(
-              activeBoard == _TopPostBoard.githubTrending
-                  ? 'No GitHub Trending repositories in this summary window.'
+              display.remainingCount > 0
+                  ? 'No top posts match these source filters. Use Show more to view the remaining ranked posts.'
                   : 'No posts match the current source filters.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -134,21 +120,21 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
                 keyboardDismissBehavior:
                     ScrollViewKeyboardDismissBehavior.onDrag,
                 itemCount: filtered.length,
+                findItemIndexCallback: (key) => rowIndexByKey[key],
                 separatorBuilder: (context, index) =>
                     Divider(height: 1, color: colorScheme.outlineVariant),
                 itemBuilder: (context, index) {
                   final item = filtered[index];
                   return _TopPostRow(
-                    key: ValueKey(
-                      'reader-summary-top-post-'
-                      '${readerSummaryTopPostIdentity(item)}-$index',
-                    ),
+                    key: rowKeys[index],
                     index: index,
                     item: item,
                     dateLabel: _topPostDateLabel(item, widget.period),
                     citationsById: widget.citationsById,
                     dense: _denseView,
                     reservePreviewSpace: reservePreviewSpace,
+                    // Both ranked lanes carry the backend Signal.
+                    showSignal: true,
                     rating: widget.ratingFor?.call(item),
                     onRated: widget.onRated,
                     onOpenUrl: widget.onOpenUrl,
@@ -157,20 +143,23 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
               ),
             ),
           ),
+        if (display.showRevealControl)
+          _TopPostsShowMore(
+            expanded: display.remainingCount == 0,
+            remainingCount: display.remainingCount,
+            onPressed: () => _revealPosts(display.remainingCount),
+          ),
       ],
     );
   }
 
-  void _setBoard(_TopPostBoard board) {
+  void _revealPosts(int remainingCount) {
     setState(() {
-      _board = board;
+      _additionalVisibleCount = remainingCount == 0
+          ? 0
+          : _additionalVisibleCount + 12;
     });
-    _resetPostsScroll();
-  }
-
-  void _setSort(_TopPostSort sort) {
-    setState(() => _sort = sort);
-    _resetPostsScroll();
+    if (_additionalVisibleCount == 0) _resetPostsScroll();
   }
 
   void _toggleProvider(String providerKey) {
@@ -184,6 +173,11 @@ class _ReaderSummaryTopPostsState extends State<ReaderSummaryTopPosts> {
 
   void _setDenseView(bool dense) {
     setState(() => _denseView = dense);
+    _resetPostsScroll();
+  }
+
+  void _setSortOrder(TopPostsSortOrder order) {
+    widget.onSortOrderChanged?.call(order);
     _resetPostsScroll();
   }
 
@@ -203,155 +197,6 @@ double _topPostsListViewportHeight(BuildContext context) {
   return (windowHeight * 0.68).clamp(360.0, 760.0).toDouble();
 }
 
-class _TopPostsHeader extends StatelessWidget {
-  const _TopPostsHeader({
-    required this.board,
-    required this.sort,
-    required this.topPostCount,
-    required this.moreSelectedPostCount,
-    required this.githubTrendingCount,
-    required this.curatedTopPostCount,
-    required this.selectedPostCount,
-    required this.providerKeys,
-    required this.hiddenProviders,
-    required this.denseView,
-    required this.onBoardChanged,
-    required this.onSortChanged,
-    required this.onProviderToggled,
-    required this.onDenseViewChanged,
-  });
-
-  final _TopPostBoard board;
-  final _TopPostSort sort;
-  final int topPostCount;
-  final int moreSelectedPostCount;
-  final int githubTrendingCount;
-  final int curatedTopPostCount;
-  final int selectedPostCount;
-  final List<String> providerKeys;
-  final Set<String> hiddenProviders;
-  final bool denseView;
-  final ValueChanged<_TopPostBoard> onBoardChanged;
-  final ValueChanged<_TopPostSort> onSortChanged;
-  final ValueChanged<String> onProviderToggled;
-  final ValueChanged<bool> onDenseViewChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final colorScheme = Theme.of(context).colorScheme;
-    final subtitle = Text(
-      _topPostBoardSubtitle(
-        board,
-        curatedTopPostCount: curatedTopPostCount,
-        selectedPostCount: selectedPostCount,
-      ),
-      style: textTheme.labelSmall?.copyWith(
-        color: colorScheme.onSurfaceVariant,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0,
-      ),
-    );
-    final controls = Wrap(
-      spacing: AppSpacing.sm + 4,
-      runSpacing: AppSpacing.sm,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        if (board == _TopPostBoard.topPosts) ...[
-          Text(
-            'Sort by',
-            style: textTheme.labelSmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0,
-            ),
-          ),
-          _TopPostSortMenu(sort: sort, onSortChanged: onSortChanged),
-        ] else if (board == _TopPostBoard.moreSelected) ...[
-          const _MoreSelectedSortIndicator(),
-        ],
-        if (board != _TopPostBoard.githubTrending && providerKeys.isNotEmpty)
-          _TopPostFilterMenu(
-            providerKeys: providerKeys,
-            hiddenProviders: hiddenProviders,
-            onProviderToggled: onProviderToggled,
-          ),
-        _TopPostViewToggle(
-          denseView: denseView,
-          onDenseViewChanged: onDenseViewChanged,
-        ),
-      ],
-    );
-    final hasBoardItems = providerKeys.isNotEmpty;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _TopPostBoardToggle(
-          board: board,
-          topPostCount: topPostCount,
-          moreSelectedPostCount: moreSelectedPostCount,
-          githubTrendingCount: githubTrendingCount,
-          onChanged: onBoardChanged,
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            if (constraints.maxWidth < 640) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  subtitle,
-                  if (hasBoardItems) ...[
-                    const SizedBox(height: AppSpacing.sm),
-                    controls,
-                  ],
-                ],
-              );
-            }
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(child: subtitle),
-                if (hasBoardItems) controls,
-              ],
-            );
-          },
-        ),
-      ],
-    );
-  }
-}
-
-_TopPostBoard _availableTopPostBoard(
-  ReaderSummaryTopPostsProjection projection, {
-  _TopPostBoard? preferred,
-}) {
-  final hasTopPosts = projection.curatedPosts.isNotEmpty;
-  final hasMoreSelected = projection.moreSelectedPosts.isNotEmpty;
-  final hasGitHubTrending = projection.githubTrendingPosts.isNotEmpty;
-
-  if (preferred == _TopPostBoard.topPosts && hasTopPosts) {
-    return _TopPostBoard.topPosts;
-  }
-  if (preferred == _TopPostBoard.moreSelected && hasMoreSelected) {
-    return _TopPostBoard.moreSelected;
-  }
-  if (preferred == _TopPostBoard.githubTrending && hasGitHubTrending) {
-    return _TopPostBoard.githubTrending;
-  }
-  if (hasTopPosts) {
-    return _TopPostBoard.topPosts;
-  }
-  if (hasMoreSelected) {
-    return _TopPostBoard.moreSelected;
-  }
-  if (hasGitHubTrending) {
-    return _TopPostBoard.githubTrending;
-  }
-  return preferred ?? _TopPostBoard.githubTrending;
-}
-
 String _topPostDateLabel(TopRead item, SummaryPeriod fallbackPeriod) {
   final publishedAt = item.publishedAt;
   if (publishedAt == null) {
@@ -359,22 +204,4 @@ String _topPostDateLabel(TopRead item, SummaryPeriod fallbackPeriod) {
   }
 
   return summaryPublishedDayLabel(publishedAt);
-}
-
-String _topPostBoardSubtitle(
-  _TopPostBoard board, {
-  required int curatedTopPostCount,
-  required int selectedPostCount,
-}) {
-  return switch (board) {
-    _TopPostBoard.topPosts =>
-      curatedTopPostCount == 1
-          ? '1 editorial pick from $selectedPostCount selected'
-          : '$curatedTopPostCount editorial picks from '
-                '$selectedPostCount selected',
-    _TopPostBoard.moreSelected =>
-      'Additional selected evidence, ordered by Signal and support strength',
-    _TopPostBoard.githubTrending =>
-      'Top 10 repositories in GitHub Trending order',
-  };
 }

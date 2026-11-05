@@ -1,0 +1,72 @@
+name: Reader Promotion V2 production canary
+
+run-name: reader-promotion-v2-canary ${{ inputs.target_sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Exact protected-main and deployed release SHA
+        required: true
+        type: string
+      confirmation:
+        description: RUN-READER-PROMOTION-V2-CANARY-<SHA>
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: social-monitor-production
+  cancel-in-progress: false
+
+jobs:
+  canary:
+    environment: production
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate protected-main request
+        shell: bash
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == "777genius/social-monitor" ]]
+          [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$TARGET_SHA" == "$GITHUB_SHA" ]]
+          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]]
+          [[ "$CONFIRMATION" == "RUN-READER-PROMOTION-V2-CANARY-$GITHUB_SHA" ]]
+      - name: Configure restricted production SSH
+        shell: bash
+        env:
+          DEPLOY_KEY: ${{ secrets.READER_PROMOTION_V2_CANARY_SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.READER_PROMOTION_V2_CANARY_SSH_KNOWN_HOSTS }}
+        run: bash ops/deploy/github-production-deploy-client.sh configure
+      - name: Run isolated singleton canary
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ vars.READER_PROMOTION_V2_CANARY_SSH_HOST }}
+          DEPLOY_USER: ${{ vars.READER_PROMOTION_V2_CANARY_SSH_USER }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          fence=$(printf '%s' "$GITHUB_RUN_ID:$GITHUB_SHA" | sha256sum | cut -c1-32)
+          ssh -i "$HOME/.ssh/social-monitor-production" \
+            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$HOME/.ssh/known_hosts" -- \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "reader-promotion-v2-production-canary $TARGET_SHA reader-promotion-v2-production-canary $GITHUB_RUN_ID $GITHUB_RUN_ATTEMPT $fence $CONFIRMATION"
+      - name: Remove production SSH material
+        if: always()
+        shell: bash
+        run: bash ops/deploy/github-production-deploy-client.sh cleanup

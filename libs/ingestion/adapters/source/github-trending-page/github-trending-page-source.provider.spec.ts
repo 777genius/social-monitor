@@ -236,6 +236,17 @@ describe("GitHubTrendingPageSourceProvider", () => {
     expect(board(forward.items).map((item) => item.rank)).toEqual([
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
     ]);
+    const snapshotHashes = (items: typeof forward.items) =>
+      items.map(
+        (item) =>
+          parseGitHubTrendingPageRepositoryMetadata(item.metadata)?.trending
+            .snapshotContentHash,
+      );
+    expect(new Set(snapshotHashes(forward.items)).size).toBe(1);
+    expect(snapshotHashes(forward.items)[0]).toMatch(/^[a-f0-9]{64}$/u);
+    expect(snapshotHashes(reversed.items)).toEqual(
+      snapshotHashes(forward.items),
+    );
   });
 
   it("excludes rank 11 from source admission even when maxItems is larger", async () => {

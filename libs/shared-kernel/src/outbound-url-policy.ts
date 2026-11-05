@@ -27,7 +27,11 @@ export const validateOutboundUrl = (
     return { ok: false, reason: `${options.label} must use ${formatAllowedProtocols(options.allowedProtocols)}.` };
   }
 
-  const hostname = url.hostname.toLowerCase();
+  if (url.username || url.password) {
+    return { ok: false, reason: `${options.label} must not include userinfo.` };
+  }
+
+  const hostname = url.hostname.toLowerCase().replace(/\.+$/, '');
 
   if (blockedHosts.has(hostname) || hostname.endsWith('.localhost')) {
     return { ok: false, reason: `${options.label} host is not allowed.` };
@@ -74,14 +78,10 @@ const isPrivateOrLocalNetworkHost = (hostname: string): boolean => {
 
 const isPrivateIpv6Host = (hostname: string): boolean => {
   const normalized = hostname.replace(/^\[|\]$/g, '').toLowerCase();
-
-  return (
-    normalized === '::' ||
-    normalized === '::1' ||
-    normalized.startsWith('::ffff:') ||
-    normalized.startsWith('64:ff9b:') ||
-    normalized.startsWith('fe80:') ||
-    normalized.startsWith('fc') ||
-    normalized.startsWith('fd')
-  );
+  if (!normalized.includes(':')) return false;
+  // URL has already validated and canonicalized the literal. Permit global
+  // unicast only; this rejects all link-local, multicast, compatible/mapped
+  // IPv4 and translation ranges, including forms with compressed zero groups.
+  const first = Number.parseInt(normalized.split(':')[0] || '0', 16);
+  return (first & 0xe000) !== 0x2000;
 };

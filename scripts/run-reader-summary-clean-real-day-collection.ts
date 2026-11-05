@@ -8,7 +8,7 @@ import type {
 import { Pool, type QueryResultRow } from "pg";
 import {
   acquirePrismaPgRuntimeConnection,
-  defaultPostgresRuntimePoolConfig,
+  resolvePostgresRuntimePoolConfig,
   runWithTenantDatabaseAccess,
   type PostgresRuntimePoolConfig,
   type PrismaPgRuntimeClientConstructor,
@@ -45,6 +45,7 @@ import {
 import {
   collectionArtifactPassesBlockingValidation,
   readExactDayCollectionArtifact,
+  refreshCollectionArtifactTargetWindow,
   writeCollectionArtifactAtomically,
 } from "./lib/reader-summary-clean-real-day-collection-artifact";
 import {
@@ -60,6 +61,7 @@ import {
 } from "./lib/clean-real-day-provider-acquisition";
 import { requireScanPolicyTargets } from "./lib/clean-real-day-scan-policy-targets";
 import {
+  configuredProviderCollectionTargetItemCount,
   providerCollectionFreshnessReferenceAt,
   withProviderCollectionWindowProof,
 } from "./lib/provider-collection-observability";
@@ -67,6 +69,7 @@ import {
   explicitGitHubUnavailableIsTransparentPartialDailyInput,
   providerMeetsProductionBlockingPolicy,
   recalculateProductionBlockingPolicyGates,
+  xTargetWindowAlreadyMeetsProductionPolicy,
 } from "./lib/production-collection-quality-policy";
 import { PrismaGitHubTrendingDurableSnapshotReader } from "./lib/github-trending-durable-snapshot-reuse";
 
@@ -107,6 +110,7 @@ const {
   targetCollectionDate,
   requestedProviderKeys,
   outputPath,
+  exactDateArtifact,
   targetPublishedWindow,
   targetPublishedWindowConfig,
   maintenanceScope,
@@ -151,6 +155,7 @@ async function main(): Promise<void> {
     writeCollectionArtifactAtomically({
       path: outputPath,
       report,
+      requireExactDatePath: exactDateArtifact,
       ...(maintenanceScope === undefined
         ? {}
         : { expectedScope: maintenanceScope }),
@@ -218,16 +223,19 @@ async function tryRunCollection(): Promise<
   | undefined
 > {
   const startedAt = new Date();
+  const runtimeConfig = resolvePostgresRuntimePoolConfig({
+    ...process.env,
+    DATABASE_URL: databaseUrl,
+    POSTGRES_RUNTIME_PROCESS: "daily-runner",
+    POSTGRES_RUNTIME_POOL_MIN: process.env.POSTGRES_RUNTIME_POOL_MIN ?? "0",
+    POSTGRES_RUNTIME_POOL_MAX: process.env.POSTGRES_RUNTIME_POOL_MAX ?? "2",
+  });
   const pool = new Pool({
     connectionString: databaseUrl,
     min: 0,
     max: 1,
-    connectionTimeoutMillis: 2_000,
+    connectionTimeoutMillis: runtimeConfig.connectionTimeoutMillis,
   });
-  const runtimeConfig = defaultPostgresRuntimePoolConfig(
-    databaseUrl,
-    "daily-runner",
-  );
   let targetDiscovery:
     PrismaPgRuntimeConnectionLease<TargetDiscoveryRuntimeClient> | undefined;
   let connection: PrismaIngestionWorkerConnection | undefined;
@@ -264,6 +272,7 @@ async function tryRunCollection(): Promise<
       ? readExactDayCollectionArtifact({
           path: outputPath,
           collectionDate: targetCollectionDate,
+          requireExactDatePath: exactDateArtifact,
           ...(maintenanceScope === undefined
             ? {}
             : { expectedScope: maintenanceScope }),
@@ -289,14 +298,42 @@ async function tryRunCollection(): Promise<
       throw new Error(plan.barrierMessage);
     }
     if (plan.providerKeysToCollect.length === 0) {
-      return { kind: "no_collection" };
+      if (plan.previousReport === null) {
+        throw new Error(
+          `Provider catch-up has no reusable report for ${targetCollectionDate}`,
+        );
+      }
+      return {
+        kind: "collected",
+        plan,
+        report: refreshCollectionArtifactTargetWindow({
+          report: plan.previousReport,
+          targetWindow: databaseWindow,
+        }),
+      };
     }
     const providerKeys = plan.providerKeysToCollect;
     const targets = allTargets.filter((target) =>
       providerKeys.includes(target.providerKey),
     );
+    const xTarget = targets.find(
+      (target) => target.providerKey === "x-twitter",
+    );
+    const xTargetWindowAlreadyReady =
+      xTarget !== undefined &&
+      xTargetWindowAlreadyMeetsProductionPolicy({
+        visibleItemCount: databaseWindow.providerCounts["x-twitter"] ?? 0,
+        targetItemCount: configuredProviderCollectionTargetItemCount(
+          xTarget.config,
+        ),
+        newestPublishedAt:
+          databaseWindow.newestItemAtByProvider["x-twitter"],
+        targetWindowEndedAt: new Date(targetPublishedWindow.endExclusive),
+      });
     const spendXReadinessBudget =
-      waitForXReadiness && catchUpCanSpendXReadinessBudget(plan);
+      waitForXReadiness &&
+      !xTargetWindowAlreadyReady &&
+      catchUpCanSpendXReadinessBudget(plan);
     const scanResults = await executeCleanRealDayProviderAcquisition({
       targets,
       connection,
@@ -871,14 +908,17 @@ function validateExistingReport(): void {
   }
 
   const report =
-    maintenanceScope === undefined
+    maintenanceScope === undefined && !exactDateArtifact
       ? (JSON.parse(
           readFileSync(outputPath, "utf8"),
         ) as CleanRealDayCollectionReport)
       : readExactDayCollectionArtifact({
           path: outputPath,
           collectionDate: targetCollectionDate,
-          expectedScope: maintenanceScope,
+          requireExactDatePath: exactDateArtifact,
+          ...(maintenanceScope === undefined
+            ? {}
+            : { expectedScope: maintenanceScope }),
         });
   if (report === null)
     throw new Error(

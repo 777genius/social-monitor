@@ -1,5 +1,7 @@
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
+import '../../domain/value_objects/telegram_public_channel.dart';
+
 final class SourceBindingFormDraft {
   String providerKey = 'reddit';
   String mode = 'search';
@@ -9,7 +11,13 @@ final class SourceBindingFormDraft {
   String feedUrl = '';
 
   void updateProvider(String value) {
+    final wasTelegram = providerKey == 'telegram';
     providerKey = value;
+    if (value == 'telegram') {
+      mode = 'account_feed';
+    } else if (wasTelegram) {
+      mode = 'search';
+    }
     if (value == 'rss' || value == 'github') {
       mode = 'search';
     }
@@ -20,6 +28,16 @@ final class SourceBindingFormDraft {
   }
 
   ValidationFailure? validate() {
+    if (providerKey == 'telegram') {
+      if (normalizeTelegramPublicChannel(query) == null) {
+        return const ValidationFailure(
+          message:
+              'Enter a public channel username or https://t.me/channel URL',
+          code: 'source_bindings.telegram_public_channel_required',
+        );
+      }
+      return null;
+    }
     if (providerKey == 'rss') {
       final uri = Uri.tryParse(feedUrl.trim());
       if (uri == null ||
@@ -51,6 +69,12 @@ final class SourceBindingFormDraft {
   }
 
   Map<String, Object?> config() {
+    if (providerKey == 'telegram') {
+      return {
+        'mode': 'account_feed',
+        'channel': normalizeTelegramPublicChannel(query),
+      };
+    }
     if (providerKey == 'rss') {
       return {'feedUrl': feedUrl.trim()};
     }

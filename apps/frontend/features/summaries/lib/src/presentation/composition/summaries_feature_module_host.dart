@@ -1,7 +1,9 @@
 import 'package:flutter/widgets.dart';
 
 import '../pages/summaries_feature_page.dart';
+import '../stores/reader_posts_browse_store.dart';
 import '../stores/summaries_review_store.dart';
+import '../stores/top_posts_sort_store.dart';
 import 'summaries_feature_module.dart';
 
 class SummariesFeatureModuleHost extends StatefulWidget {
@@ -17,19 +19,29 @@ class SummariesFeatureModuleHost extends StatefulWidget {
 class _SummariesFeatureModuleHostState
     extends State<SummariesFeatureModuleHost> {
   late final SummariesReviewStore _store;
+  late final TopPostsSortStore _topPostsSortStore;
+  late final ReaderPostsBrowseStore? _browseStore;
 
   @override
   void initState() {
     super.initState();
     _store = widget.module.createStore();
+    _topPostsSortStore = widget.module.createTopPostsSortStore();
+    _browseStore = widget.module.createReaderPostsBrowseStore();
   }
 
   @override
   void dispose() {
     _store.dispose();
+    _topPostsSortStore.dispose();
+    _browseStore?.dispose();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) => SummariesFeaturePage(store: _store);
+  Widget build(BuildContext context) => SummariesFeaturePage(
+    store: _store,
+    topPostsSortStore: _topPostsSortStore,
+    readerPostsBrowseStore: _browseStore,
+  );
 }

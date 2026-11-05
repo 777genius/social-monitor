@@ -1,18 +1,45 @@
+import { assertMimoSchemaRoot } from "./mimo-schema-root-policy";
+import { mimoSchemaMarkers } from "./reader-summary-mimo-schema-markers";
 import type { AgentRuntimeExecutionRequest } from "./agent-runtime-executor.port";
+import {
+  readerPromotionV2CanaryOutputIsValid,
+  readerPromotionV2CanaryOutputSchema,
+  readerPromotionV2CanaryPurpose,
+  readerPromotionV2CanarySchemaEquals,
+  readerPromotionV2CanarySchemaName,
+  readerPromotionV2CanarySchemaVersion,
+} from "./reader-promotion-v2-canary-contract";
 
 export const productionAgentRuntimeModel = "gpt-5.6-sol";
 export const productionAgentRuntimeReasoningEffort = "xhigh";
+export const activeReaderSummaryReasoningEffort = "high";
+export const mimoSummaryModel = "mimo-v2.6-pro";
+export const mimoSummaryBackend = "xiaomi-mimo-token-plan";
 
 export type SubscriptionRuntimeOutputKind =
   | "structured_output"
   | "output_text";
+export type SubscriptionRuntimeRetryMode = "standard" | "never";
 
 export type SubscriptionRuntimePurposeProfile = {
   readonly provider: "codex";
-  readonly model: "gpt-5.6-sol";
-  readonly reasoningEffort: "xhigh";
+  readonly model: "gpt-5.6-sol" | typeof mimoSummaryModel;
+  readonly modelBackend?: typeof mimoSummaryBackend;
+  readonly reasoningEffort: "none" | "low" | "high" | "xhigh";
   readonly outputKind: SubscriptionRuntimeOutputKind;
   readonly responseFormat: "json" | "text";
+  readonly retryMode?: SubscriptionRuntimeRetryMode;
+};
+
+export const readerPromotionV2CanaryActivationCapability = Symbol(
+  "reader-promotion-v2-canary-activation-capability",
+);
+
+export {
+  readerPromotionV2CanaryOutputSchema,
+  readerPromotionV2CanaryPurpose,
+  readerPromotionV2CanarySchemaName,
+  readerPromotionV2CanarySchemaVersion,
 };
 
 export type AdmittedSubscriptionRuntimeRequest = {
@@ -20,7 +47,7 @@ export type AdmittedSubscriptionRuntimeRequest = {
   readonly canonicalRequest: Record<string, unknown>;
 };
 
-const dailyStructuredProfile = Object.freeze({
+const genericSummaryStructuredProfile = Object.freeze({
   provider: "codex",
   model: productionAgentRuntimeModel,
   reasoningEffort: productionAgentRuntimeReasoningEffort,
@@ -28,27 +55,91 @@ const dailyStructuredProfile = Object.freeze({
   responseFormat: "json",
 } as const satisfies SubscriptionRuntimePurposeProfile);
 
-const weeklyTextProfile = Object.freeze({
+const activeReaderSummaryStructuredProfile = Object.freeze({
   provider: "codex",
-  model: "gpt-5.6-sol",
-  reasoningEffort: productionAgentRuntimeReasoningEffort,
+  model: productionAgentRuntimeModel,
+  reasoningEffort: activeReaderSummaryReasoningEffort,
+  outputKind: "structured_output",
+  responseFormat: "json",
+} as const satisfies SubscriptionRuntimePurposeProfile);
+
+const mimoReaderSummaryStructuredProfile = Object.freeze({
+  provider: "codex",
+  model: mimoSummaryModel,
+  modelBackend: mimoSummaryBackend,
+  reasoningEffort: activeReaderSummaryReasoningEffort,
+  outputKind: "structured_output",
+  responseFormat: "json",
+  retryMode: "never",
+} as const satisfies SubscriptionRuntimePurposeProfile);
+
+const mimoPresentationStructuredProfile = Object.freeze({
+  ...mimoReaderSummaryStructuredProfile, reasoningEffort: "none",
+} as const satisfies SubscriptionRuntimePurposeProfile);
+
+const profileForRequest = (
+  purpose: string,
+  modelBackend: unknown,
+  activationCapability?: symbol,
+): SubscriptionRuntimePurposeProfile | undefined => {
+  if (modelBackend === mimoSummaryBackend && Object.hasOwn(mimoSchemaMarkers, purpose)) {
+    return purpose === "social_monitor.reader_summary.promotion_presentation.v3"
+      ? mimoPresentationStructuredProfile : mimoReaderSummaryStructuredProfile;
+  }
+  return profilesByPurpose[purpose] ??
+    (activationCapability === readerPromotionV2CanaryActivationCapability
+      ? capabilityProfilesByPurpose[purpose]
+      : undefined);
+};
+const activeReaderSummaryTextProfile = Object.freeze({
+  provider: "codex",
+  model: productionAgentRuntimeModel,
+  reasoningEffort: activeReaderSummaryReasoningEffort,
   outputKind: "output_text",
   responseFormat: "text",
+} as const satisfies SubscriptionRuntimePurposeProfile);
+
+const sourceContentAssessmentStructuredProfile = Object.freeze({
+  ...activeReaderSummaryStructuredProfile,
+  reasoningEffort: "low",
+  retryMode: "never",
+} as const satisfies SubscriptionRuntimePurposeProfile);
+
+const readerPromotionV2CanaryProfile = Object.freeze({
+  provider: "codex",
+  model: productionAgentRuntimeModel,
+  reasoningEffort: activeReaderSummaryReasoningEffort,
+  outputKind: "structured_output",
+  responseFormat: "json",
+  retryMode: "never",
 } as const satisfies SubscriptionRuntimePurposeProfile);
 
 const profilesByPurpose: Readonly<
   Record<string, SubscriptionRuntimePurposeProfile>
 > = Object.freeze({
-  "social_monitor.summary.generate": dailyStructuredProfile,
-  "social_monitor.reader_summary.generate": dailyStructuredProfile,
-  "social_monitor.reader_summary.repair": dailyStructuredProfile,
-  "social_monitor.reader_summary.topic_map.label": dailyStructuredProfile,
-  "social_monitor.reader_summary.topic_map.verify_relations":
-    dailyStructuredProfile,
-  "social_monitor.reader_summary.verify_story_relations":
-    dailyStructuredProfile,
-  "social_monitor.reader_summary.weekly.review": dailyStructuredProfile,
-  "social_monitor.reader_summary.weekly.generate": weeklyTextProfile,
+  "social_monitor.relevance.assess_source_content.v1":
+    sourceContentAssessmentStructuredProfile,
+  "social_monitor.summary.generate": genericSummaryStructuredProfile,
+  "social_monitor.reader_summary.generate.v2": activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.daily_editorial.plan.v1": activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.repair.v2": activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.topic_map.label.v2": activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.topic_map.verify_relations.v2":
+    activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.verify_story_relations.v2":
+    activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.verify_related_topic_relations.v2": activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.promotion_presentation.v3": activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.daily.canonical_recovery.v2":
+    activeReaderSummaryTextProfile,
+  "social_monitor.reader_summary.weekly.review.v2": activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.weekly.generate.v2": activeReaderSummaryTextProfile,
+});
+
+const capabilityProfilesByPurpose: Readonly<
+  Record<string, SubscriptionRuntimePurposeProfile>
+> = Object.freeze({
+  [readerPromotionV2CanaryPurpose]: readerPromotionV2CanaryProfile,
 });
 
 export const subscriptionRuntimePurposeProfiles = (): Readonly<
@@ -57,8 +148,17 @@ export const subscriptionRuntimePurposeProfiles = (): Readonly<
 
 export const admitSubscriptionRuntimeRequest = (
   request: AgentRuntimeExecutionRequest,
+  activationCapability?: symbol,
 ): AdmittedSubscriptionRuntimeRequest => {
-  const profile = profilesByPurpose[request.purpose];
+  const controls = parseSubscriptionRuntimeJsonObject(
+    request.controlsJson,
+    "controls_json",
+  );
+  const profile = profileForRequest(
+    request.purpose,
+    controls.modelBackend,
+    activationCapability,
+  );
   if (profile === undefined) {
     throw new Error("Agent runtime purpose is not admitted");
   }
@@ -66,30 +166,29 @@ export const admitSubscriptionRuntimeRequest = (
     throw new Error("Agent runtime provider conflicts with purpose policy");
   }
 
-  const controls = parseSubscriptionRuntimeJsonObject(
-    request.controlsJson,
-    "controls_json",
-  );
   const outputSchema = parseSubscriptionRuntimeJsonObject(
     request.outputSchemaJson,
     "output_schema_json",
   );
   assertOptionalExactString(controls.model, profile.model, "model");
-  assertOptionalExactString(
-    request.metadata.model,
-    profile.model,
-    "metadata.model",
-  );
-  assertOptionalExactString(
-    controls.reasoningEffort,
-    profile.reasoningEffort,
-    "reasoningEffort",
-  );
-  assertOptionalExactString(
-    request.metadata.reasoningEffort,
-    profile.reasoningEffort,
-    "metadata.reasoningEffort",
-  );
+  assertOptionalExactString(controls.modelBackend, profile.modelBackend ?? "openai-chatgpt", "modelBackend");
+  assertOptionalExactString(request.metadata.modelBackend, profile.modelBackend ?? "openai-chatgpt", "metadata.modelBackend");
+  assertOptionalExactString(request.metadata.model, profile.model, "metadata.model");
+  assertOptionalExactString(controls.reasoningEffort, profile.reasoningEffort, "reasoningEffort");
+  assertOptionalExactString(request.metadata.reasoningEffort, profile.reasoningEffort, "metadata.reasoningEffort");
+  assertDedicatedRelatedTopicMarkers(request, controls);
+  if (profile.modelBackend === mimoSummaryBackend) {
+    const markers = mimoSchemaMarkers[request.purpose];
+    if (markers === undefined) throw new Error("MiMo purpose is not admitted");
+    assertOptionalExactString(controls.toolPolicy, "none", "toolPolicy");
+    if (controls.toolsEnabled !== undefined && controls.toolsEnabled !== false) throw new Error("toolsEnabled conflicts with purpose policy");
+    if (!(["social_monitor.reader_summary.generate.v2", "social_monitor.reader_summary.repair.v2"].includes(request.purpose) && controls.outputSchemaName === undefined)) {
+      assertRequiredExactString(controls.outputSchemaName, markers[0], "outputSchemaName");
+      assertRequiredExactString(controls.schemaVersion, markers[1], "schemaVersion");
+      assertMimoSchemaRoot(request.purpose, outputSchema);
+    }
+  }
+  assertReaderPromotionV2CanaryMarkers(request, controls, outputSchema);
   assertOutputControls(request, controls, outputSchema, profile);
 
   const canonicalControls = canonicalControlsForProfile(
@@ -138,13 +237,99 @@ export const admitSubscriptionRuntimeRequest = (
   };
 };
 
+
+export const subscriptionRuntimeOutputMatchesProfile = (
+  admission: AdmittedSubscriptionRuntimeRequest,
+  structuredOutput: Readonly<Record<string, unknown>> | undefined,
+): boolean =>
+  admission.profile !== readerPromotionV2CanaryProfile ||
+  readerPromotionV2CanaryOutputIsValid(structuredOutput);
+
+const assertDedicatedRelatedTopicMarkers = (
+  request: AgentRuntimeExecutionRequest,
+  controls: Record<string, unknown>,
+): void => {
+  if (
+    request.purpose !==
+      "social_monitor.reader_summary.verify_related_topic_relations.v2"
+  ) return;
+  assertRequiredExactString(
+    controls.outputSchemaName,
+    "social_monitor_reader_summary_related_topic_relations",
+    "outputSchemaName",
+  );
+  assertRequiredExactString(
+    controls.schemaVersion,
+    "reader_summary.related_topic_relation.v1",
+    "schemaVersion",
+  );
+  assertRequiredExactString(
+    request.metadata.taskRole,
+    "related_topic_relation",
+    "metadata.taskRole",
+  );
+  assertRequiredExactString(
+    request.metadata.verificationLane,
+    "related_topic",
+    "metadata.verificationLane",
+  );
+};
+
+const assertReaderPromotionV2CanaryMarkers = (
+  request: AgentRuntimeExecutionRequest,
+  controls: Record<string, unknown>,
+  outputSchema: Record<string, unknown>,
+): void => {
+  if (request.purpose !== readerPromotionV2CanaryPurpose) return;
+  assertRequiredExactString(
+    controls.outputSchemaName,
+    readerPromotionV2CanarySchemaName,
+    "outputSchemaName",
+  );
+  assertRequiredExactString(
+    controls.schemaVersion,
+    readerPromotionV2CanarySchemaVersion,
+    "schemaVersion",
+  );
+  if (!readerPromotionV2CanarySchemaEquals(outputSchema)) {
+    throw new Error("outputSchema conflicts with purpose policy");
+  }
+  assertNoCanaryContinuationControls(controls);
+};
+
+const assertNoCanaryContinuationControls = (
+  controls: Record<string, unknown>,
+): void => {
+  for (const key of [
+    "continuation",
+    "logicalThread",
+    "previousCheckpoint",
+    "recoveryPacket",
+    "resumeHandle",
+  ]) {
+    if (Object.hasOwn(controls, key)) {
+      throw new Error("Reader promotion V2 canary rejects continuation");
+    }
+  }
+};
+
+const assertRequiredExactString = (
+  value: unknown,
+  expected: string,
+  label: string,
+): void => {
+  if (value !== expected) {
+    throw new Error(`${label} conflicts with purpose policy`);
+  }
+};
+
 export const configuredSubscriptionRuntimeDefaultsAreSafe = (input: {
   readonly model?: string;
   readonly reasoningEffort?: string;
 }): boolean =>
   (input.model ?? productionAgentRuntimeModel) === productionAgentRuntimeModel &&
-  (input.reasoningEffort ?? productionAgentRuntimeReasoningEffort) ===
-    productionAgentRuntimeReasoningEffort;
+  (input.reasoningEffort ?? activeReaderSummaryReasoningEffort) ===
+    activeReaderSummaryReasoningEffort;
 
 const canonicalControlsForProfile = (
   controls: Record<string, unknown>,
@@ -163,6 +348,9 @@ const canonicalControlsForProfile = (
   return {
     ...preserved,
     model: profile.model,
+    ...(profile.modelBackend === undefined
+      ? {}
+      : { modelBackend: profile.modelBackend }),
     reasoningEffort: profile.reasoningEffort,
     responseFormat: profile.responseFormat,
     ...(profile.outputKind === "structured_output"

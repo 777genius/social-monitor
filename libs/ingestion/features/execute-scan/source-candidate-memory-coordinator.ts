@@ -132,7 +132,9 @@ export const screenSourceCandidates = async (params: {
     .map(({ item }) => item);
   const itemsForEngagementRefresh = classifiedItems
     .filter(({ classification }) =>
-      ["engagement_changed", "observation_due"].includes(classification.kind),
+      // A genuine provider fetch is a new observation even when its counters
+      // match. Content/enrichment suppression must not suppress metric age.
+      ["unchanged", "engagement_changed", "observation_due"].includes(classification.kind),
     )
     .map(({ item }) => item);
   const suppressedExternalIds = classifications

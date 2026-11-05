@@ -12,6 +12,7 @@ class _TopPostRow extends StatefulWidget {
     required this.onOpenUrl,
     this.dense = false,
     this.reservePreviewSpace = false,
+    required this.showSignal,
   });
 
   final int index;
@@ -29,6 +30,10 @@ class _TopPostRow extends StatefulWidget {
   final bool dense;
   final bool reservePreviewSpace;
 
+  /// Top posts and Additional stories show the backend Signal alike; only a
+  /// board of posts without a popularity rating opts out.
+  final bool showSignal;
+
   @override
   State<_TopPostRow> createState() => _TopPostRowState();
 }
@@ -43,6 +48,8 @@ class _TopPostRowState extends State<_TopPostRow> {
   bool _ratingInFlight = false;
   bool _ratedInSession = false;
   bool _evidenceExpanded = false;
+  bool _showOriginal = false;
+  bool _originalExpanded = false;
 
   bool get _showRating =>
       widget.onRated != null &&
@@ -59,6 +66,8 @@ class _TopPostRowState extends State<_TopPostRow> {
       _ratingInFlight = false;
       _ratedInSession = widget.rating != null;
       _evidenceExpanded = false;
+      _showOriginal = false;
+      _originalExpanded = false;
     } else if (widget.rating != null) {
       _ratedInSession = true;
     }
@@ -84,18 +93,41 @@ class _TopPostRowState extends State<_TopPostRow> {
       child: Focus(
         focusNode: _focusNode,
         onFocusChange: _setFocused,
-        child: Material(
-          key: ValueKey('reader-summary-top-post-${widget.index}'),
-          color: widget.index.isOdd ? stripeColor : Colors.transparent,
-          child: InkWell(
-            onTap: url == null ? null : () => widget.onOpenUrl(url),
-            hoverColor: colorScheme.primary.withValues(alpha: 0.03),
-            child: Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: AppSpacing.sm,
-                vertical: widget.dense ? AppSpacing.sm + 2 : AppSpacing.md,
+        child: Semantics(
+          container: true,
+          explicitChildNodes: true,
+          link: url != null,
+          label: url != null
+              ? readerSummaryUrlActionSemantics(
+                  'post-card',
+                  readerSummaryTopPostIdentity(widget.item),
+                )
+              : widget.item.cardKind == ReaderSummaryCardKind.relatedTopic
+              ? 'Related topic: ${widget.item.title}'
+              : null,
+          child: Material(
+            key: ValueKey(
+              'reader-summary-top-post-row-'
+              '${readerSummaryTopPostIdentity(widget.item)}',
+            ),
+            color: widget.index.isOdd ? stripeColor : Colors.transparent,
+            child: InkWell(
+              key: readerSummaryUrlActionKey(
+                'post-card',
+                readerSummaryTopPostIdentity(widget.item),
               ),
-              child: _buildRow(context, metrics),
+              onTap: url == null ? null : () => widget.onOpenUrl(url),
+              hoverColor: colorScheme.primary.withValues(alpha: 0.03),
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: AppSpacing.sm,
+                  vertical: widget.dense ? AppSpacing.sm + 2 : AppSpacing.md,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [_buildRow(context, metrics)],
+                ),
+              ),
             ),
           ),
         ),
@@ -131,6 +163,11 @@ class _TopPostRowState extends State<_TopPostRow> {
             rating,
             _TopPostMenu(item: widget.item, onOpenUrl: widget.onOpenUrl),
             supportSignal,
+            showOriginal: _showOriginal,
+            showOriginalControl: true,
+            originalExpanded: _originalExpanded,
+            onOriginalChanged: _setShowOriginal,
+            onOriginalExpandedChanged: _setOriginalExpanded,
           );
         }
 
@@ -142,6 +179,11 @@ class _TopPostRowState extends State<_TopPostRow> {
         final content = _TopPostContentColumn(
           item: widget.item,
           reservePreviewSpace: widget.reservePreviewSpace,
+          showOriginal: _showOriginal,
+          showOriginalControl: _hovered || _focused || _showOriginal || !wide,
+          originalExpanded: _originalExpanded,
+          onOriginalChanged: _setShowOriginal,
+          onOriginalExpandedChanged: _setOriginalExpanded,
         );
         final metricsRow = _TopPostMetricsRow(metrics: metrics);
         final supportSignal = _topPostSupportSignal(
@@ -151,6 +193,7 @@ class _TopPostRowState extends State<_TopPostRow> {
         final relevance = _TopPostRelevanceColumn(
           item: widget.item,
           supportSignal: supportSignal,
+          showSignal: widget.showSignal,
         );
         final menu = _TopPostMenu(
           item: widget.item,
@@ -201,6 +244,17 @@ class _TopPostRowState extends State<_TopPostRow> {
         );
       },
     );
+  }
+
+  void _setShowOriginal(bool value) {
+    setState(() {
+      _showOriginal = value;
+      if (!value) _originalExpanded = false;
+    });
+  }
+
+  void _setOriginalExpanded(bool value) {
+    setState(() => _originalExpanded = value);
   }
 
   Widget _withEvidenceStack({
@@ -275,118 +329,5 @@ class _TopPostRowState extends State<_TopPostRow> {
       setState(() => _ratingInFlight = false);
       return false;
     }
-  }
-}
-
-class _TopPostSourceColumn extends StatelessWidget {
-  const _TopPostSourceColumn({
-    required this.item,
-    required this.rating,
-    this.dateLabel,
-  });
-
-  final TopRead item;
-  final Widget rating;
-  final String? dateLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final colorScheme = Theme.of(context).colorScheme;
-    final handle = topPostSourceHandle(item);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _TopPostProviderTile(providerKey: item.providerKey),
-        const SizedBox(width: AppSpacing.sm + 4),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                readerSummaryProviderLabel(item.providerKey),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0,
-                ),
-              ),
-              if (handle != null) ...[
-                const SizedBox(height: 2),
-                Text(
-                  handle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: textTheme.labelSmall?.copyWith(
-                    color: handle.startsWith('@')
-                        ? colorScheme.primary
-                        : colorScheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0,
-                  ),
-                ),
-              ],
-              if (dateLabel != null) ...[
-                const SizedBox(height: 2),
-                Text(
-                  dateLabel!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: textTheme.labelSmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w500,
-                    letterSpacing: 0,
-                  ),
-                ),
-              ],
-              const SizedBox(height: AppSpacing.xs),
-              rating,
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _TopPostProviderTile extends StatelessWidget {
-  const _TopPostProviderTile({required this.providerKey});
-
-  final String providerKey;
-
-  @override
-  Widget build(BuildContext context) {
-    final normalized = providerKey.trim().toLowerCase();
-    final isDarkTile =
-        normalized == 'x-twitter' ||
-        normalized == 'twitter' ||
-        normalized.startsWith('github');
-    if (!isDarkTile) {
-      return SizedBox.square(
-        dimension: 34,
-        child: Center(
-          child: ReaderSummaryProviderLogo(providerKey: providerKey, size: 30),
-        ),
-      );
-    }
-    final theme = Theme.of(context);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: AppColors.chartInk,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: SizedBox.square(
-        dimension: 34,
-        child: Center(
-          child: Theme(
-            data: theme.copyWith(
-              colorScheme: theme.colorScheme.copyWith(onSurface: Colors.white),
-            ),
-            child: ReaderSummaryProviderLogo(providerKey: providerKey),
-          ),
-        ),
-      ),
-    );
   }
 }

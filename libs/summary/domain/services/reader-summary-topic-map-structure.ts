@@ -5,6 +5,8 @@ import {
   type ReaderSummaryTopicMapGroup,
   type ReaderSummaryTopicMapNode,
 } from "../entities/reader-summary-topic-map";
+import { readerSummaryIndependentProviderFamilyCount } from
+  "../value-objects/reader-summary-provider-identity";
 import {
   isReaderSummaryTopicMapUngrouped,
   supportedReaderSummaryTopicMapGroupAnchors,
@@ -83,7 +85,8 @@ export const readerSummaryTopicMapConfidence = (
   generatedBy: ReaderSummaryTopicMapGenerator | undefined,
 ): ReaderSummaryTopicMap["confidence"] => {
   const crossSourceNodeCount = nodes.filter(
-    (node) => node.providerKeys.length > 1,
+    (node) =>
+      readerSummaryIndependentProviderFamilyCount(node.providerKeys) > 1,
   ).length;
   const groupedNodeCount = nodes.filter(
     (node) => !isReaderSummaryTopicMapUngrouped(node.groupId),
@@ -116,25 +119,22 @@ const topicGroupLabel = (
   proposed: ReaderSummaryTopicGroupLabel | undefined,
 ): string => {
   const fallback = deterministicGroupLabel(groupId);
-  const proposedLabel = compactOptional(proposed?.label);
-  if (
-    proposedLabel === undefined ||
-    isReaderSummaryTopicMapUngrouped(groupId)
-  ) {
+  if (isReaderSummaryTopicMapUngrouped(groupId)) {
     return fallback;
   }
-  const quality = evaluateTopicLabelQuality(proposedLabel, {
-    evidenceTexts: nodes.flatMap((node) => [node.label, ...node.keywords]),
-  });
+  const evidenceTexts = nodes.flatMap((node) => [node.label, ...node.keywords]);
   const [, rawValue = groupId] = groupId.split(":");
   const groupTokens = new Set(
     meaningfulTopicLabelTokens(humanizeSlug(rawValue)),
   );
-  const aligned = quality.meaningfulTokens.some((token) =>
-    groupTokens.has(token),
-  );
-
-  return quality.accepted && aligned ? quality.label : fallback;
+  for (const display of [proposed?.label, proposed?.recoveredDisplayLabel].map(compactOptional)) {
+    if (display === undefined) continue;
+    const quality = evaluateTopicLabelQuality(display, { evidenceTexts });
+    if (quality.accepted && quality.meaningfulTokens.some((token) => groupTokens.has(token))) {
+      return quality.label;
+    }
+  }
+  return fallback;
 };
 
 const deterministicGroupLabel = (groupId: string): string => {

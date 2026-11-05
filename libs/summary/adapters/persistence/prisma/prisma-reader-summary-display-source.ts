@@ -1,0 +1,55 @@
+import type { ReaderSummaryContent } from "../../../domain/entities/reader-summary-artifact";
+import type { TopRead } from "../../../domain/entities/top-read";
+import { isDisplayRoundTripText } from "../../../domain/services/reader-post-display-headline";
+import { validCapturedReaderSource } from "../../../domain/services/reader-post-display-identity";
+
+/** PostgreSQL JSON cannot store NUL/unpaired UTF-16. Rejected captures use a
+ * reversible JSON-string envelope instead of silently losing source evidence. */
+export const encodeDisplaySourceContent = (content: ReaderSummaryContent | undefined): unknown =>
+  content === undefined ? undefined : {
+    ...content,
+    topReads: content.topReads.map(encode),
+    ...(content.selectedPosts === undefined ? {} : { selectedPosts: content.selectedPosts.map(encode) }),
+    ...(content.newsWithoutRatingPosts === undefined ? {} : {
+      newsWithoutRatingPosts: content.newsWithoutRatingPosts.map(encode) }),
+    interestSections: content.interestSections.map((section) => ({
+      ...section, items: section.items.map(encode),
+    })),
+  };
+
+const encode = (card: TopRead): unknown => {
+  const source = card.capturedSource;
+  if (source === undefined || (isDisplayRoundTripText(source.title) &&
+      (source.body === undefined || isDisplayRoundTripText(source.body)) &&
+      isDisplayRoundTripText(card.title))) return card;
+  if (card.displayHeadline?.status !== "unavailable") {
+    throw new Error("Accepted display source cannot require persistence repair");
+  }
+  return { ...card, capturedSource: { encoding: "json_string",
+    value: JSON.stringify({ source, title: card.title }) } };
+};
+
+export const decodeDisplaySource = <T extends TopRead>(card: T): T => {
+  const source: unknown = card.capturedSource;
+  if (source === undefined) return card;
+  if (typeof source === "object" && source !== null && "encoding" in source) {
+    const encoded = source as Record<string, unknown>;
+    if (Object.keys(encoded).length !== 2 || encoded.encoding !== "json_string" ||
+        typeof encoded.value !== "string" || card.displayHeadline?.status !== "unavailable") {
+      throw new Error("Invalid rejected display source encoding");
+    }
+    const decoded: unknown = JSON.parse(encoded.value);
+    if (validCapturedReaderSource(decoded)) {
+      return { ...card, capturedSource: decoded };
+    }
+    if (decoded !== null && typeof decoded === "object" && !Array.isArray(decoded)) {
+      const envelope = decoded as { source?: unknown; title?: unknown };
+      if (validCapturedReaderSource(envelope.source) && typeof envelope.title === "string") {
+        return { ...card, title: envelope.title, capturedSource: envelope.source };
+      }
+    }
+    throw new Error("Invalid captured reader source");
+  }
+  if (!validCapturedReaderSource(source)) throw new Error("Invalid captured reader source");
+  return card;
+};

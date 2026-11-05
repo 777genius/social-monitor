@@ -11,6 +11,7 @@ describe("production history collection", () => {
       const first = productionHistoryCollection({
         directory,
         collectionDate: "2026-08-07",
+        evaluatedAt: new Date("2026-08-27T12:00:00.000Z"),
       })!;
       expect(first.arguments).toContain("--allow-unproven-existing-window");
       mkdirSync(directory, { recursive: true });
@@ -21,11 +22,30 @@ describe("production history collection", () => {
       const retry = productionHistoryCollection({
         directory,
         collectionDate: "2026-08-07",
+        evaluatedAt: new Date("2026-08-27T12:00:00.000Z"),
       })!;
       expect(retry.arguments).not.toContain("--allow-unproven-existing-window");
       expect(retry.arguments).toEqual([
         "--production-history-retry",
         "--artifact-directory",
+        directory,
+      ]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("uses scheduled evidence semantics when maintenance targets UTC yesterday", () => {
+    const directory = mkdtempSync(join(tmpdir(), "production-previous-day-"));
+    try {
+      const collection = productionHistoryCollection({
+        directory,
+        collectionDate: "2026-08-26",
+        evaluatedAt: new Date("2026-08-27T12:00:00.000Z"),
+      })!;
+      expect(collection.arguments).toEqual([
+        "--production-scheduled-scope",
+        "--exact-date-artifact-directory",
         directory,
       ]);
     } finally {
@@ -47,6 +67,7 @@ describe("production history collection", () => {
         productionHistoryCollection({
           directory,
           collectionDate: "2026-08-07",
+          evaluatedAt: new Date("2026-08-27T12:00:00.000Z"),
         }),
       ).toThrow("unreadable; refusing provider recollection");
     } finally {

@@ -1,9 +1,19 @@
 import '../value_objects/preview_media.dart';
 import '../value_objects/provider_metric_label.dart';
+import '../value_objects/reader_captured_source.dart';
+import '../value_objects/reader_post_promotion_attestation.dart';
 import '../value_objects/signal_score.dart';
 
 final class TopRead {
   const TopRead({
+    this.displayHeadline,
+    this.capturedSource,
+    this.summary,
+    this.storyClusterId,
+    this.cardKind = ReaderSummaryCardKind.unsupported,
+    this.relationId,
+    this.targetStoryClusterId,
+    this.promotionAttestation,
     required this.title,
     required this.providerKey,
     required this.reason,
@@ -21,6 +31,14 @@ final class TopRead {
     this.previewMedia,
   });
 
+  final ReaderDisplayHeadline? displayHeadline;
+  final ReaderCapturedSource? capturedSource;
+  final String? summary;
+  final String? storyClusterId;
+  final ReaderSummaryCardKind cardKind;
+  final String? relationId;
+  final String? targetStoryClusterId;
+  final ReaderPostPromotionAttestation? promotionAttestation;
   final String title;
   final String providerKey;
   final String reason;
@@ -36,6 +54,29 @@ final class TopRead {
   final DateTime? publishedAt;
   final String? canonicalUrl;
   final PreviewMedia? previewMedia;
+}
+
+/// Card kind every promoted card of a lane must carry.
+extension ReaderPostPromotionPlacementCardKind on ReaderPostPromotionPlacement {
+  ReaderSummaryCardKind get cardKind => switch (this) {
+    ReaderPostPromotionPlacement.top => ReaderSummaryCardKind.curatedTopRead,
+    ReaderPostPromotionPlacement.additional =>
+      ReaderSummaryCardKind.additionalNotableStory,
+    ReaderPostPromotionPlacement.news =>
+      ReaderSummaryCardKind.newsWithoutRating,
+  };
+}
+
+enum ReaderSummaryCardKind {
+  curatedTopRead,
+  additionalNotableStory,
+
+  /// A post from a source without a popularity rating ("News without
+  /// rating"). It never carries a Signal.
+  newsWithoutRating,
+  relatedTopic,
+  supplementalTrend,
+  unsupported,
 }
 
 final class TopReadConfidence {

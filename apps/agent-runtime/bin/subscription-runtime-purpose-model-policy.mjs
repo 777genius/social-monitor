@@ -1,4 +1,27 @@
-const dailyStructuredProfile = Object.freeze({
+import canaryContract from "./reader-promotion-v2-canary-contract.cjs";
+
+const {
+  readerPromotionV2CanaryOutputIsValid,
+  readerPromotionV2CanaryOutputSchema,
+  readerPromotionV2CanaryPurpose,
+  readerPromotionV2CanarySchemaEquals,
+  readerPromotionV2CanarySchemaName,
+  readerPromotionV2CanarySchemaVersion,
+} = canaryContract;
+
+export {
+  readerPromotionV2CanaryOutputIsValid,
+  readerPromotionV2CanaryOutputSchema,
+  readerPromotionV2CanaryPurpose,
+  readerPromotionV2CanarySchemaName,
+  readerPromotionV2CanarySchemaVersion,
+};
+
+export const readerPromotionV2CanaryActivationCapability = Symbol(
+  "reader-promotion-v2-canary-activation-capability",
+);
+
+const genericSummaryStructuredProfile = Object.freeze({
   provider: "codex",
   model: "gpt-5.6-sol",
   reasoningEffort: "xhigh",
@@ -6,38 +29,130 @@ const dailyStructuredProfile = Object.freeze({
   responseFormat: "json",
 });
 
-const weeklyTextProfile = Object.freeze({
+const activeReaderSummaryStructuredProfile = Object.freeze({
   provider: "codex",
   model: "gpt-5.6-sol",
-  reasoningEffort: "xhigh",
+  reasoningEffort: "high",
+  outputKind: "structured_output",
+  responseFormat: "json",
+});
+
+const mimoReaderSummaryStructuredProfile = Object.freeze({
+  provider: "codex",
+  model: "mimo-v2.6-pro",
+  modelBackend: "xiaomi-mimo-token-plan",
+  reasoningEffort: "high",
+  outputKind: "structured_output",
+  responseFormat: "json",
+  retryMode: "never",
+});
+
+const mimoPresentationStructuredProfile = Object.freeze({
+  ...mimoReaderSummaryStructuredProfile, reasoningEffort: "none",
+});
+
+const mimoSummaryPurposes = new Set([
+  "social_monitor.reader_summary.promotion_presentation.v3",
+  "social_monitor.reader_summary.generate.v2",
+  "social_monitor.reader_summary.daily_editorial.plan.v1",
+  "social_monitor.reader_summary.repair.v2",
+  "social_monitor.reader_summary.topic_map.label.v2",
+  "social_monitor.reader_summary.topic_map.verify_relations.v2",
+  "social_monitor.reader_summary.verify_story_relations.v2",
+  "social_monitor.reader_summary.verify_related_topic_relations.v2",
+]);
+
+const mimoSchemaMarkers = Object.freeze({
+  "social_monitor.reader_summary.promotion_presentation.v3": ["social_monitor_reader_post_presentation_v3", "reader_post_presentation.v3"],
+  "social_monitor.reader_summary.generate.v2": ["social_monitor_reader_summary_artifact", "reader_summary.artifact.v1"],
+  "social_monitor.reader_summary.daily_editorial.plan.v1": ["social_monitor_daily_editorial_plan", "reader_summary.daily_editorial.v1"],
+  "social_monitor.reader_summary.repair.v2": ["social_monitor_reader_summary_artifact", "reader_summary.artifact.v1"],
+  "social_monitor.reader_summary.topic_map.label.v2": ["social_monitor_reader_summary_topic_map_labels", "reader_summary.topic_map.v1"],
+  "social_monitor.reader_summary.topic_map.verify_relations.v2": ["social_monitor_reader_summary_topic_relations", "reader_summary.topic_relation.v1"],
+  "social_monitor.reader_summary.verify_story_relations.v2": ["social_monitor_reader_summary_story_relations", "reader_summary.story_relation.v1"],
+  "social_monitor.reader_summary.verify_related_topic_relations.v2": ["social_monitor_reader_summary_related_topic_relations", "reader_summary.related_topic_relation.v1"],
+});
+const mimoRootProperties = Object.freeze({
+  "social_monitor.reader_summary.promotion_presentation.v3": ["presentations"],
+  "social_monitor.reader_summary.generate.v2": ["headline", "executiveSummary", "narrativeSections", "content", "topStories", "interestHighlights", "repeatedSignals", "risksAndUnknowns", "citationMap", "qualityFlags", "confidence", "noSignalReason"],
+  "social_monitor.reader_summary.daily_editorial.plan.v1": ["topics", "version"],
+  "social_monitor.reader_summary.repair.v2": ["headline", "executiveSummary", "narrativeSections", "content", "topStories", "interestHighlights", "repeatedSignals", "risksAndUnknowns", "citationMap", "qualityFlags", "confidence", "noSignalReason"],
+  "social_monitor.reader_summary.topic_map.label.v2": ["nodeLabels", "groups"],
+  "social_monitor.reader_summary.topic_map.verify_relations.v2": ["decisions"],
+  "social_monitor.reader_summary.verify_story_relations.v2": ["decisions"],
+  "social_monitor.reader_summary.verify_related_topic_relations.v2": ["decisions"],
+});
+
+const activeReaderSummaryTextProfile = Object.freeze({
+  provider: "codex",
+  model: "gpt-5.6-sol",
+  reasoningEffort: "high",
   outputKind: "output_text",
   responseFormat: "text",
 });
 
+const sourceContentAssessmentStructuredProfile = Object.freeze({
+  ...activeReaderSummaryStructuredProfile,
+  reasoningEffort: "low",
+  retryMode: "never",
+});
+
+const readerPromotionV2CanaryProfile = Object.freeze({
+  provider: "codex",
+  model: "gpt-5.6-sol",
+  reasoningEffort: "high",
+  outputKind: "structured_output",
+  responseFormat: "json",
+  retryMode: "never",
+});
+
 const profilesByPurpose = Object.freeze({
-  "social_monitor.summary.generate": dailyStructuredProfile,
-  "social_monitor.reader_summary.generate": dailyStructuredProfile,
-  "social_monitor.reader_summary.repair": dailyStructuredProfile,
-  "social_monitor.reader_summary.topic_map.label": dailyStructuredProfile,
-  "social_monitor.reader_summary.topic_map.verify_relations":
-    dailyStructuredProfile,
-  "social_monitor.reader_summary.verify_story_relations":
-    dailyStructuredProfile,
-  "social_monitor.reader_summary.weekly.review": dailyStructuredProfile,
-  "social_monitor.reader_summary.weekly.generate": weeklyTextProfile,
+  "social_monitor.relevance.assess_source_content.v1":
+    sourceContentAssessmentStructuredProfile,
+  "social_monitor.summary.generate": genericSummaryStructuredProfile,
+  "social_monitor.reader_summary.generate.v2": activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.daily_editorial.plan.v1": activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.repair.v2": activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.topic_map.label.v2": activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.topic_map.verify_relations.v2":
+    activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.verify_story_relations.v2":
+    activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.verify_related_topic_relations.v2":
+    activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.promotion_presentation.v3":
+    activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.daily.canonical_recovery.v2":
+    activeReaderSummaryTextProfile,
+  "social_monitor.reader_summary.weekly.review.v2": activeReaderSummaryStructuredProfile,
+  "social_monitor.reader_summary.weekly.generate.v2": activeReaderSummaryTextProfile,
+});
+
+const capabilityProfilesByPurpose = Object.freeze({
+  [readerPromotionV2CanaryPurpose]: readerPromotionV2CanaryProfile,
 });
 
 export const subscriptionRuntimeWrapperPurposeProfiles = () =>
   profilesByPurpose;
 
-export const admitSubscriptionRuntimeWrapperRequest = (input) => {
+export const admitSubscriptionRuntimeWrapperRequest = (
+  input,
+  activationCapability,
+) => {
   const request = record(input.request, "request");
   const context = record(request.context, "request.context");
   const task = record(request.task, "request.task");
   const controls = optionalRecord(task.controls, "request.task.controls") ?? {};
   const metadata = optionalRecord(task.metadata, "request.task.metadata") ?? {};
   const purpose = nonEmptyString(context.purpose, "request.context.purpose");
-  const profile = profilesByPurpose[purpose];
+  const profile = controls.modelBackend === "xiaomi-mimo-token-plan" &&
+    mimoSummaryPurposes.has(purpose)
+    ? (purpose === "social_monitor.reader_summary.promotion_presentation.v3"
+      ? mimoPresentationStructuredProfile : mimoReaderSummaryStructuredProfile)
+    : profilesByPurpose[purpose] ??
+      (activationCapability === readerPromotionV2CanaryActivationCapability
+        ? capabilityProfilesByPurpose[purpose]
+        : undefined);
   if (profile === undefined) {
     throw new Error("Agent runtime purpose is not admitted");
   }
@@ -47,6 +162,16 @@ export const admitSubscriptionRuntimeWrapperRequest = (input) => {
 
   assertOptionalExactString(input.model, profile.model, "CLI model");
   assertOptionalExactString(controls.model, profile.model, "model");
+  assertOptionalExactString(
+    controls.modelBackend,
+    profile.modelBackend ?? "openai-chatgpt",
+    "modelBackend",
+  );
+  assertOptionalExactString(
+    metadata.modelBackend,
+    profile.modelBackend ?? "openai-chatgpt",
+    "metadata.modelBackend",
+  );
   assertOptionalExactString(metadata.model, profile.model, "metadata.model");
   assertOptionalExactString(
     input.reasoningEffort,
@@ -63,6 +188,19 @@ export const admitSubscriptionRuntimeWrapperRequest = (input) => {
     profile.reasoningEffort,
     "metadata.reasoningEffort",
   );
+  assertDedicatedRelatedTopicMarkers(purpose, controls, metadata);
+  if (profile.modelBackend === "xiaomi-mimo-token-plan") {
+    const markers = mimoSchemaMarkers[purpose];
+    if (markers === undefined) throw new Error("MiMo purpose is not admitted");
+    assertRequiredExactString(task.outputSchemaName, markers[0], "task.outputSchemaName");
+    assertRequiredExactString(controls.outputSchemaName, markers[0], "outputSchemaName");
+    assertRequiredExactString(controls.schemaVersion, markers[1], "schemaVersion");
+    assertOptionalExactString(controls.toolPolicy, "none", "toolPolicy");
+    if (controls.toolsEnabled !== undefined && controls.toolsEnabled !== false) {
+      throw new Error("toolsEnabled conflicts with purpose policy");
+    }
+  }
+  assertReaderPromotionV2CanaryMarkers(purpose, task, controls);
   assertOptionalExactString(
     controls.responseFormat,
     profile.responseFormat,
@@ -81,6 +219,9 @@ export const admitSubscriptionRuntimeWrapperRequest = (input) => {
   const outputSchema = controls.outputSchema;
   if (profile.outputKind === "structured_output") {
     record(outputSchema, "request.task.controls.outputSchema");
+    if (profile.modelBackend === "xiaomi-mimo-token-plan") {
+      assertMimoSchemaRoot(purpose, outputSchema);
+    }
   } else if (
     outputSchema !== undefined ||
     controls.outputSchemaJson !== undefined
@@ -107,6 +248,9 @@ export const admitSubscriptionRuntimeWrapperRequest = (input) => {
         controls: {
           ...preservedControls,
           model: profile.model,
+          ...(profile.modelBackend === undefined
+            ? {}
+            : { modelBackend: profile.modelBackend }),
           reasoningEffort: profile.reasoningEffort,
           responseFormat: profile.responseFormat,
         },
@@ -119,6 +263,100 @@ export const admitSubscriptionRuntimeWrapperRequest = (input) => {
       },
     },
   };
+};
+
+const assertMimoSchemaRoot = (purpose, schema) => {
+  const markers = mimoRootProperties[purpose];
+  const properties = schema.properties;
+  const required = schema.required;
+  const versioned = purpose === "social_monitor.reader_summary.promotion_presentation.v3" &&
+    properties !== null && typeof properties === "object" && Object.hasOwn(properties, "contractVersion");
+  const expected = versioned ? ["presentations", "contractVersion"] : markers;
+  const version = properties?.contractVersion;
+  if (versioned && (Object.keys(properties).length !== 2 || !version || typeof version !== "object" || Array.isArray(version)
+    || Object.keys(version).length !== 2 || version.type !== "string" || version.const !== "mimo_qualified_headline.v1")) {
+    throw new Error("outputSchema conflicts with MiMo purpose policy");
+  }
+  if (expected === undefined || schema.type !== "object" ||
+      schema.additionalProperties !== false ||
+      properties === null || typeof properties !== "object" || Array.isArray(properties) ||
+      !Array.isArray(required) || required.length !== expected.length ||
+      expected.some((key) => !required.includes(key) || !Object.hasOwn(properties, key))) {
+    throw new Error("outputSchema conflicts with MiMo purpose policy");
+  }
+  const firstProperty = properties[expected[0]];
+  const expectedType = expected[0] === "headline" ? "string" : "array";
+  if (firstProperty === null || typeof firstProperty !== "object" ||
+      Array.isArray(firstProperty) || firstProperty.type !== expectedType) {
+    throw new Error("outputSchema conflicts with MiMo purpose policy");
+  }
+};
+
+const assertReaderPromotionV2CanaryMarkers = (purpose, task, controls) => {
+  if (purpose !== readerPromotionV2CanaryPurpose) return;
+  assertRequiredExactString(
+    task.outputSchemaName,
+    readerPromotionV2CanarySchemaName,
+    "task.outputSchemaName",
+  );
+  assertRequiredExactString(
+    controls.outputSchemaName,
+    readerPromotionV2CanarySchemaName,
+    "outputSchemaName",
+  );
+  assertRequiredExactString(
+    controls.schemaVersion,
+    readerPromotionV2CanarySchemaVersion,
+    "schemaVersion",
+  );
+  if (!readerPromotionV2CanarySchemaEquals(controls.outputSchema)) {
+    throw new Error("outputSchema conflicts with purpose policy");
+  }
+  for (const container of [task, controls]) {
+    for (const key of [
+      "continuation",
+      "logicalThread",
+      "previousCheckpoint",
+      "recoveryPacket",
+      "resumeHandle",
+    ]) {
+      if (Object.hasOwn(container, key)) {
+        throw new Error("Reader promotion V2 canary rejects continuation");
+      }
+    }
+  }
+};
+
+const assertDedicatedRelatedTopicMarkers = (purpose, controls, metadata) => {
+  if (
+    purpose !== "social_monitor.reader_summary.verify_related_topic_relations.v2"
+  ) return;
+  assertRequiredExactString(
+    controls.outputSchemaName,
+    "social_monitor_reader_summary_related_topic_relations",
+    "outputSchemaName",
+  );
+  assertRequiredExactString(
+    controls.schemaVersion,
+    "reader_summary.related_topic_relation.v1",
+    "schemaVersion",
+  );
+  assertRequiredExactString(
+    metadata.taskRole,
+    "related_topic_relation",
+    "metadata.taskRole",
+  );
+  assertRequiredExactString(
+    metadata.verificationLane,
+    "related_topic",
+    "metadata.verificationLane",
+  );
+};
+
+const assertRequiredExactString = (value, expected, label) => {
+  if (value !== expected) {
+    throw new Error(`${label} conflicts with purpose policy`);
+  }
 };
 
 const codexSubprocessEnvironmentKeys = new Set([

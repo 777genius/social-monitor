@@ -11,6 +11,7 @@ import type {
   ListReaderSummaryArtifactsResult,
   ListReaderSummaryPeriodSummariesResult,
   ReaderSummaryArtifactRepositoryPort,
+  ReaderSummaryCollectedFeedItemCoverage,
   ReaderSummaryCoverageCounterPort,
   ReaderSummaryFreshness,
   ReaderSummaryFreshnessProbePort,
@@ -43,11 +44,7 @@ describe("GetReaderSummaryUseCase", () => {
         readerSummaryId: "reader-summary-1",
         headline: "Workspace AI tooling reader summary",
         content: expect.objectContaining({
-          selectedPosts: [
-            expect.objectContaining({
-              matchedRules: ["ai-tooling"],
-            }),
-          ],
+          selectedPosts: [],
           topReads: [
             expect.objectContaining({
               matchedRules: ["ai-tooling"],
@@ -66,7 +63,7 @@ describe("GetReaderSummaryUseCase", () => {
           lowRelevanceFeedItemCount: 0,
           mutedFeedItemCount: 0,
           userRatedFeedItemCount: 0,
-          selectedFeedItemCount: 1,
+          selectedFeedItemCount: 0,
           storyClusterCount: 1,
           topReadCount: 1,
           citationCount: 1,
@@ -115,6 +112,65 @@ describe("GetReaderSummaryUseCase", () => {
     });
   });
 
+  it("starts independent summary projections concurrently", async () => {
+    const freshnessResult = deferred<ReaderSummaryFreshness>();
+    const previewResult = deferred<ReaderSummaryContent>();
+    const coverageResult = deferred<
+      ReaderSummaryCollectedFeedItemCoverage | undefined
+    >();
+    const started: string[] = [];
+    let previewContent: ReaderSummaryContent | undefined;
+    const useCase = new GetReaderSummaryUseCase(
+      new FakeReaderSummaryArtifactRepository([
+        readerSummaryArtifact("reader-summary-1"),
+      ]),
+      {
+        evaluate() {
+          started.push("freshness");
+          return freshnessResult.promise;
+        },
+      },
+      {
+        enrich(command) {
+          started.push("preview");
+          previewContent = command.content;
+          return previewResult.promise;
+        },
+      },
+      {
+        async countCollectedFeedItems() {
+          return undefined;
+        },
+        countCollectedFeedItemCoverage() {
+          started.push("coverage");
+          return coverageResult.promise;
+        },
+      },
+    );
+
+    const execution = useCase.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      readerSummaryId: "reader-summary-1",
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    const startedBeforeAnyProjectionCompleted = [...started];
+    freshnessResult.resolve({
+      status: "fresh",
+      checkedAt: new Date("2026-06-23T08:40:00.000Z"),
+    });
+    previewResult.resolve(previewContent!);
+    coverageResult.resolve(undefined);
+
+    expect((await execution).ok).toBe(true);
+    expect(startedBeforeAnyProjectionCompleted).toEqual([
+      "freshness",
+      "preview",
+      "coverage",
+    ]);
+  });
+
   it("returns not found for missing reader summary artifacts", async () => {
     const useCase = new GetReaderSummaryUseCase(
       new FakeReaderSummaryArtifactRepository([]),
@@ -160,7 +216,7 @@ describe("GetReaderSummaryUseCase", () => {
     });
   });
 
-  it("does not present collected coverage below selected evidence count", async () => {
+  it("does not count unpromoted evidence as selected coverage", async () => {
     const useCase = new GetReaderSummaryUseCase(
       new FakeReaderSummaryArtifactRepository([
         readerSummaryArtifact("reader-summary-1"),
@@ -181,7 +237,7 @@ describe("GetReaderSummaryUseCase", () => {
       return;
     }
 
-    expect(result.value.coverage.collectedFeedItemCount).toBe(1);
+    expect(result.value.coverage.collectedFeedItemCount).toBe(0);
     expect(
       result.value.coverage.providerBreakdown.find(
         (provider) => provider.providerKey === "reddit",
@@ -436,7 +492,9 @@ const readerSummaryArtifact = (
     },
   });
 
-class FakeReaderSummaryArtifactRepository implements ReaderSummaryArtifactRepositoryPort {
+class FakeReaderSummaryArtifactRepository
+  implements ReaderSummaryArtifactRepositoryPort
+{
   constructor(private readonly artifacts: readonly ReaderSummaryArtifact[]) {}
 
   async save(artifact: ReaderSummaryArtifact): Promise<void> {
@@ -475,7 +533,9 @@ class FakeReaderSummaryArtifactRepository implements ReaderSummaryArtifactReposi
   }
 }
 
-class FakeReaderSummaryFreshnessProbe implements ReaderSummaryFreshnessProbePort {
+class FakeReaderSummaryFreshnessProbe
+  implements ReaderSummaryFreshnessProbePort
+{
   readonly queries: Parameters<
     ReaderSummaryFreshnessProbePort["evaluate"]
   >[0][] = [];
@@ -491,7 +551,9 @@ class FakeReaderSummaryFreshnessProbe implements ReaderSummaryFreshnessProbePort
   }
 }
 
-class FakeReaderSummaryPreviewMediaEnricher implements ReaderSummaryPreviewMediaEnricherPort {
+class FakeReaderSummaryPreviewMediaEnricher
+  implements ReaderSummaryPreviewMediaEnricherPort
+{
   async enrich(
     command: EnrichReaderSummaryPreviewMediaCommand,
   ): Promise<ReaderSummaryContent> {
@@ -510,7 +572,9 @@ class FakeReaderSummaryPreviewMediaEnricher implements ReaderSummaryPreviewMedia
   }
 }
 
-class FakeReaderSummaryCoverageCounter implements ReaderSummaryCoverageCounterPort {
+class FakeReaderSummaryCoverageCounter
+  implements ReaderSummaryCoverageCounterPort
+{
   readonly queries: Parameters<
     ReaderSummaryCoverageCounterPort["countCollectedFeedItemCoverage"]
   >[0][] = [];
@@ -545,4 +609,15 @@ class FakeReaderSummaryCoverageCounter implements ReaderSummaryCoverageCounterPo
       queryBreakdown: [],
     };
   }
+}
+
+function deferred<T>(): {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
 }

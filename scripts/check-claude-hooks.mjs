@@ -28,6 +28,48 @@ const guardCases = [
     expectedStatus: 2,
   },
   {
+    // Repository paths are not flow invocations: the app directory name and the
+    // vendored package name must not read as prohibited commands.
+    name: 'allows reading an ordinary file in the agent-runtime app',
+    input: {
+      hook_event_name: 'PreToolUse',
+      tool_name: 'Read',
+      cwd: realProjectCwd,
+      tool_input: { file_path: `${realProjectCwd}/apps/agent-runtime/bin/usage-path-contract.test.mjs` },
+    },
+    expectedStatus: 0,
+  },
+  {
+    name: 'allows repository paths that sit under a workspace directory naming the runtime',
+    input: {
+      hook_event_name: 'PreToolUse',
+      tool_name: 'Read',
+      cwd: realProjectCwd,
+      tool_input: { file_path: '/var/data/jobs/subscription-runtime-main41/workspace/AGENTS.md' },
+    },
+    expectedStatus: 0,
+  },
+  {
+    name: 'allows verifying the vendored subscription runtime artifact',
+    input: {
+      hook_event_name: 'PreToolUse',
+      tool_name: 'Bash',
+      cwd: realProjectCwd,
+      tool_input: { command: 'node scripts/verify-vioxen-subscription-runtime-main41.mjs' },
+    },
+    expectedStatus: 0,
+  },
+  {
+    name: 'blocks a launch flow hidden under the agent-runtime app path',
+    input: {
+      hook_event_name: 'PreToolUse',
+      tool_name: 'Bash',
+      cwd: realProjectCwd,
+      tool_input: { command: 'node apps/agent-runtime/scripts/launch-smoke.mjs' },
+    },
+    expectedStatus: 2,
+  },
+  {
     name: 'blocks direct Agent tool on real project',
     input: {
       hook_event_name: 'PreToolUse',

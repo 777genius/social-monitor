@@ -1,3 +1,9 @@
+import { sourceContentAssessmentReviewerProvider } from "./source-content-assessment-provider-tokens";
+import { MonitoringRestModule } from '@social-monitor/monitoring/interfaces/rest/monitoring-rest.module';
+import { MONITORING_INTEREST_REPOSITORY } from '@social-monitor/monitoring/interfaces/rest/monitoring-provider-tokens';
+import type { InterestRepositoryPort } from '@social-monitor/monitoring/ports';
+import { MonitoringConfiguredInterestReader } from '../../adapters/monitoring/monitoring-configured-interest.reader';
+import { CONFIGURED_INTEREST_READER, type ConfiguredInterestReaderPort } from '../../ports';
 import { Module } from '@nestjs/common';
 import { resolvePostgresRuntimePoolConfig } from '@social-monitor/platform-persistence';
 import { FeedRestModule } from '@social-monitor/feed/interfaces/rest/feed-rest.module';
@@ -13,7 +19,6 @@ import {
   MemoStackRelevanceMemoryProjector,
   resolveMemoStackRelevanceMemoryProjectorOptions,
 } from '../../adapters/memory/memo-stack-relevance-memory.projector';
-import { OpenAiSourceContentQualityReviewerAdapter } from '../../adapters/model/openai-source-content-quality-reviewer.adapter';
 import { InMemoryRelevanceFeedbackLearningStore } from '../../adapters/persistence/in-memory-relevance-feedback-learning.store';
 import { InMemoryRelevanceFeedbackRepository } from '../../adapters/persistence/in-memory-relevance-feedback.repository';
 import { InMemoryRelevanceMemoryProjectionRepository } from '../../adapters/persistence/in-memory-relevance-memory-projection.repository';
@@ -45,7 +50,6 @@ import type {
 import {
   NOOP_RELEVANCE_MEMORY_GUIDANCE_READER,
   NOOP_RELEVANCE_MEMORY_PROJECTOR,
-  NOOP_SOURCE_CONTENT_QUALITY_REVIEWER,
   POST_RATING_PROJECTION,
   POST_RATING_REPOSITORY,
   RELEVANCE_FEEDBACK_LEARNING_STORE,
@@ -60,26 +64,25 @@ import { RelevanceController } from './relevance.controller';
 import {
   RELEVANCE_PERSISTENCE_MODE,
   RELEVANCE_MEMORY_PROJECTION_MODE,
-  RELEVANCE_CONTENT_QUALITY_OPENAI_OPTIONS,
-  RELEVANCE_CONTENT_QUALITY_REVIEWER_MODE,
   RELEVANCE_PRISMA_CLIENT,
-  relevanceContentQualityOpenAiOptionsProvider,
-  relevanceContentQualityReviewerModeProvider,
   relevanceMemoryProjectionModeProvider,
   relevancePersistenceModeProvider,
-  type RelevanceContentQualityReviewerMode,
   type RelevanceMemoryProjectionMode,
   type RelevancePersistenceMode,
 } from './relevance-provider-tokens';
 
 @Module({
-  imports: [FeedRestModule, IdentityRestModule],
+  imports: [FeedRestModule, IdentityRestModule, MonitoringRestModule],
   controllers: [RelevanceController],
   providers: [
+    {
+      provide: CONFIGURED_INTEREST_READER,
+      useFactory: (interests: InterestRepositoryPort): ConfiguredInterestReaderPort =>
+        new MonitoringConfiguredInterestReader(interests),
+      inject: [MONITORING_INTEREST_REPOSITORY],
+    },
     relevancePersistenceModeProvider,
     relevanceMemoryProjectionModeProvider,
-    relevanceContentQualityReviewerModeProvider,
-    relevanceContentQualityOpenAiOptionsProvider,
     {
       provide: RELEVANCE_PRISMA_CLIENT,
       useFactory: async (
@@ -145,17 +148,7 @@ import {
           : NOOP_RELEVANCE_MEMORY_GUIDANCE_READER,
       inject: [RELEVANCE_MEMORY_PROJECTION_MODE],
     },
-    {
-      provide: SOURCE_CONTENT_QUALITY_REVIEWER,
-      useFactory: (
-        mode: RelevanceContentQualityReviewerMode,
-        options: ConstructorParameters<typeof OpenAiSourceContentQualityReviewerAdapter>[0],
-      ): SourceContentQualityReviewerPort =>
-        mode === 'openai-responses'
-          ? new OpenAiSourceContentQualityReviewerAdapter(options)
-          : NOOP_SOURCE_CONTENT_QUALITY_REVIEWER,
-      inject: [RELEVANCE_CONTENT_QUALITY_REVIEWER_MODE, RELEVANCE_CONTENT_QUALITY_OPENAI_OPTIONS],
-    },
+    sourceContentAssessmentReviewerProvider,
     {
       provide: USER_RELEVANCE_PROFILE_REPOSITORY,
       useFactory: (
@@ -205,6 +198,7 @@ import {
         profiles: UserRelevanceProfileRepositoryPort,
         memoryGuidance: RelevanceMemoryGuidanceReaderPort,
         qualityReviewer: SourceContentQualityReviewerPort,
+        configuredInterests: ConfiguredInterestReaderPort,
       ) =>
         new RankFeedItemsUseCase(
           feedItems,
@@ -214,12 +208,15 @@ import {
           memoryGuidance,
           undefined,
           qualityReviewer,
+          undefined,
+          configuredInterests,
         ),
       inject: [
         FEED_ITEM_READ_REPOSITORY,
         USER_RELEVANCE_PROFILE_REPOSITORY,
         RELEVANCE_MEMORY_GUIDANCE_READER,
         SOURCE_CONTENT_QUALITY_REVIEWER,
+        CONFIGURED_INTEREST_READER,
       ],
     },
     {
@@ -270,6 +267,7 @@ import {
     RELEVANCE_MEMORY_PROJECTOR,
     RELEVANCE_MEMORY_GUIDANCE_READER,
     SOURCE_CONTENT_QUALITY_REVIEWER,
+    CONFIGURED_INTEREST_READER,
     InMemoryUserRelevanceProfileRepository,
     InMemoryRelevanceFeedbackRepository,
     InMemoryRelevanceMemoryProjectionRepository,

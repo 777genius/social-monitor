@@ -35,7 +35,8 @@ import {
   normalizeOpenAiReaderSummaryNarrative,
   readerSummaryNarrativeMarkdown,
 } from "./openai-responses-reader-summary-narrative";
-import { buildReaderSummaryEvidenceCitationMap } from "./reader-summary-evidence-citation-map";
+import { buildReaderSummaryEvidenceCitationMap,
+  readerSummaryCitableEvidence } from "./reader-summary-evidence-citation-map";
 
 const qualityFlags = new Set<ReaderSummaryQualityFlag>(
   openAiReaderSummaryQualityFlags,
@@ -55,15 +56,19 @@ export const normalizeOpenAiReaderSummaryDraft = (
   evalDatasetVersion: string,
 ): GeneratedReaderSummaryDraft => {
   const citationMap = buildReaderSummaryEvidenceCitationMap(
-    input.evidence.selectedEvidence,
+    readerSummaryCitableEvidence(input.evidence),
   );
   const headline = readerSummaryHeadline(
     requiredString(raw.headline, "reader summary headline"),
   );
-  const legacyExecutiveSummary = requiredString(
-    raw.executiveSummary,
-    "reader summary executive summary",
-  );
+  const legacyExecutiveSummary =
+    typeof raw.executiveSummary === "string" &&
+      raw.executiveSummary.trim().length === 0
+      ? ""
+      : requiredString(
+          raw.executiveSummary,
+          "reader summary executive summary",
+        );
   const topStories = normalizeRecordArray(raw.topStories);
   const normalizedTopStories = normalizeTopStories(
     topStories,
@@ -92,9 +97,17 @@ export const normalizeOpenAiReaderSummaryDraft = (
       ),
     ),
   });
+  const noSignalReason =
+    normalizedTopStories.length === 0
+      ? (optionalString(raw.noSignalReason) ??
+        "OpenAI reader summary returned no domain-safe cited stories.")
+      : undefined;
   const executiveSummary =
     narrativeSections.length === 0
-      ? legacyExecutiveSummary
+      ? (optionalString(legacyExecutiveSummary) ??
+        optionalString(normalizedTopStories[0]?.summary) ??
+        noSignalReason ??
+        "")
       : readerSummaryNarrativeMarkdown(narrativeSections);
   const interestHighlights = input.policy.includeInterestHighlights
     ? normalizeInterestHighlights(
@@ -125,11 +138,6 @@ export const normalizeOpenAiReaderSummaryDraft = (
           "limited_sources",
         ]) as readonly ReaderSummaryQualityFlag[])
       : rawQualityFlags.filter((flag) => flag !== "no_signal");
-  const noSignalReason =
-    normalizedTopStories.length === 0
-      ? (optionalString(raw.noSignalReason) ??
-        "OpenAI reader summary returned no domain-safe cited stories.")
-      : undefined;
   const confidence = normalizeConfidence(
     asRecord(raw.confidence) ?? {},
     normalizedTopStories.length,
@@ -146,6 +154,10 @@ export const normalizeOpenAiReaderSummaryDraft = (
     storyClusters: input.evidence.clusters,
     sourceWindow: input.evidence.sourceWindow,
     selectedEvidence: input.evidence.selectedEvidence,
+    editorialSlate: input.evidence.editorialSlate,
+    promotionV3: input.evidence.promotionV3,
+    dailyGenerationInput: input.evidence.dailyGenerationInput,
+    dailyGenerationEvidence: input.evidence.dailyGenerationEvidence,
     qualityFlags: normalizedQualityFlags,
     noSignalReason,
   });

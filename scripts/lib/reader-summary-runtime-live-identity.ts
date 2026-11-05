@@ -1,7 +1,8 @@
 import {
+  type AgentRuntimeEngine,
+  isAgentRuntimeEngine,
   isConcreteRuntimePackageVersion,
   isSha256Hex,
-  subscriptionRuntimeEngine,
 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import type { AgentRuntimeClientPort } from "@social-monitor/summary/ports";
 
@@ -13,7 +14,7 @@ export type ProductionRuntimeLiveIdentity = {
   readonly format: typeof productionRuntimeLiveIdentityFormat;
   readonly checkedAt: string;
   readonly status: "serving";
-  readonly runtimeEngine: typeof subscriptionRuntimeEngine;
+  readonly runtimeEngine: AgentRuntimeEngine;
   readonly runtimePackageVersion: string;
   readonly launcherSha256: string;
 };
@@ -30,9 +31,10 @@ export const probeProductionRuntimeLiveIdentity = async (params: {
   const health = await params.client.checkHealth(
     "reader-summary-production-day-proof-out",
   );
+  const runtimeEngine = health.runtimeEngine;
   if (
     health.status !== "serving" ||
-    health.runtimeEngine !== subscriptionRuntimeEngine ||
+    !isAgentRuntimeEngine(runtimeEngine) ||
     !isConcreteRuntimePackageVersion(health.runtimeVersion) ||
     !isSha256Hex(health.launcherSha256) ||
     !isExactIsoTimestamp(params.checkedAt)
@@ -47,7 +49,7 @@ export const probeProductionRuntimeLiveIdentity = async (params: {
     format: productionRuntimeLiveIdentityFormat,
     checkedAt: params.checkedAt,
     status: "serving",
-    runtimeEngine: subscriptionRuntimeEngine,
+    runtimeEngine,
     runtimePackageVersion: health.runtimeVersion,
     launcherSha256: health.launcherSha256,
   };

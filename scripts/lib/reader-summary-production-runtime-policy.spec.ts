@@ -13,6 +13,9 @@ describe("reader summary production runtime policy", () => {
       READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.summaryModelMaximumAttempts,
     ).toBe(2);
     expect(
+      READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.runtimeHealthTimeoutMs,
+    ).toBeGreaterThanOrEqual(30_000);
+    expect(
       READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.topicMapMaximumAttempts,
     ).toBe(2);
     expect(
@@ -25,6 +28,17 @@ describe("reader summary production runtime policy", () => {
       READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.orchestrationTimeoutMs,
     ).toBeGreaterThanOrEqual(
       readerSummaryProductionMinimumOrchestrationTimeoutMs(),
+    );
+    expect(
+      READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.lockedOperationTimeoutMs,
+    ).toBe(11_760_000);
+    expect(
+      READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.historicalRecoveryTimeoutMs,
+    ).toBe(READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.lockedOperationTimeoutMs);
+    expect(
+      READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.captureTimeoutMs,
+    ).toBeLessThan(
+      READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.historicalRecoveryTimeoutMs,
     );
   });
 

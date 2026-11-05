@@ -3,6 +3,7 @@ import {
   AgentRuntimeProvider,
   AgentRuntimeSelectedOutputKind,
   AgentRuntimeTaskStatus,
+  AgentRuntimeTaskRequest,
   type AgentRuntimeServiceClient,
   type AgentRuntimeTaskResponse,
 } from "@social-monitor/contracts/generated/grpc/agent_runtime/v1/agent_runtime";
@@ -16,6 +17,40 @@ import {
 } from "./grpc-agent-runtime-client";
 
 describe("gRPC agent runtime client", () => {
+  it("sends the configured host cwd only when a command omits cwd", async () => {
+    const requests: AgentRuntimeTaskRequest[] = [];
+    const transport = {
+      runAgentTask(request: AgentRuntimeTaskRequest, _metadata: unknown, _options: unknown,
+        callback: (error: ServiceError | null, response: AgentRuntimeTaskResponse) => void): ClientUnaryCall {
+        requests.push(AgentRuntimeTaskRequest.decode(AgentRuntimeTaskRequest.encode(request).finish()));
+        callback(null, response());
+        return {} as ClientUnaryCall;
+      },
+    } as unknown as AgentRuntimeServiceClient;
+    const makeClient = (defaultCwd?: string) => new GrpcAgentRuntimeClient(
+      transport, { now: () => new Date("2026-07-17T00:00:00.000Z") },
+      { timeoutMs: 1_000, defaultCwd },
+    );
+
+    await makeClient("/srv/host/project").runTask(command());
+    await makeClient("/srv/host/project").runTask({ ...command(), cwd: "/explicit/project" });
+    await makeClient("/srv/host/project").runTask({ ...command(), cwd: "" });
+    await makeClient().runTask(command());
+    expect(requests.map((request) => request.cwd)).toEqual([
+      "/srv/host/project", "/explicit/project", "", "",
+    ]);
+  });
+
+  it.each(["", "relative", " /srv/project", "/srv/../project", "/srv/./project", "/srv//project", "/srv/project/"])(
+    "rejects malformed configured default cwd %j before transport", (defaultCwd) => {
+      expect(() => new GrpcAgentRuntimeClient(
+        {} as AgentRuntimeServiceClient,
+        { now: () => new Date("2026-07-17T00:00:00.000Z") },
+        { timeoutMs: 1_000, defaultCwd },
+      )).toThrow(/cwd/u);
+    },
+  );
+
   it("keeps transport open long enough to receive a typed task timeout", () => {
     expect(agentRuntimeTaskDeadlineTimeoutMs(600_000)).toBe(605_000);
   });
@@ -28,6 +63,22 @@ describe("gRPC agent runtime client", () => {
       selectedOutputKind: "structured_output",
       runtimePackageVersion: "0.1.0-main.2",
     });
+    expect(result.usage).toEqual({
+      inputTokens: 12,
+      outputTokens: 5,
+      totalTokens: 17,
+      estimatedCostUsd: 0,
+    });
+    expect(result.durationMs).toBe(25);
+  });
+
+  it("rejects inconsistent provider usage totals", async () => {
+    const value = response();
+    value.usage!.totalTokens = 99;
+
+    await expect(clientFor(value).runTask(command())).rejects.toThrow(
+      /usage is malformed/u,
+    );
   });
 
   it.each([
@@ -54,6 +105,31 @@ describe("gRPC agent runtime client", () => {
       /attestation/u,
     );
   });
+
+  it("cancels the underlying unary call when the caller aborts", async () => {
+    const controller = new AbortController();
+    let cancelled = false;
+    const grpcClient = {
+      runAgentTask(): ClientUnaryCall {
+        return {
+          cancel: () => {
+            cancelled = true;
+          },
+        } as ClientUnaryCall;
+      },
+    } as unknown as AgentRuntimeServiceClient;
+    const client = new GrpcAgentRuntimeClient(
+      grpcClient,
+      { now: () => new Date("2026-07-17T00:00:00.000Z") },
+      { timeoutMs: 1_000 },
+    );
+
+    const pending = client.runTask(command(), { signal: controller.signal });
+    controller.abort();
+
+    await expect(pending).rejects.toThrow(/cancelled/u);
+    expect(cancelled).toBe(true);
+  });
 });
 
 const command = (): AgentRuntimeTaskCommand => ({
@@ -78,8 +154,14 @@ const response = (): AgentRuntimeTaskResponse => {
     outputText: "",
     structuredOutputJson: JSON.stringify(structuredOutput),
     warnings: [],
-    usage: undefined,
+    usage: {
+      inputTokens: 12,
+      outputTokens: 5,
+      totalTokens: 17,
+      estimatedCostUsd: 0,
+    },
     failure: undefined,
+    durationMs: 25,
     executionAttestation: {
       schemaVersion: 1,
       requestId: "request-1",

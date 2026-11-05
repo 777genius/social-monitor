@@ -91,7 +91,7 @@ describe("background tenant database access", () => {
     });
     await scanPolicies.findDue({ now: new Date(0), limit: 1 });
     await relevanceProjections.findDue({ now: new Date(0), limit: 1 });
-    await scanRetries.drainRetries({ limit: 1 });
+    await scanRetries.claimRetries({ limit: 1, now: new Date(0), visibilityTimeoutSeconds: 300 });
     await outbox.pending(1);
     await inbox.hasProcessed({
       consumerName: "tenant-scope-test",

@@ -34,7 +34,6 @@ class _ReaderSummaryNarrative extends StatelessWidget {
           (section) =>
               section.kind == ReaderSummaryNarrativeSectionKind.secondarySignal,
         )
-        .take(3)
         .toList(growable: false);
 
     return Column(
@@ -67,10 +66,7 @@ class _ReaderSummaryNarrative extends StatelessWidget {
     final lines = isGitHubTrending
         ? formatGitHubTrendingWatchLines(section.text)
         : const <GitHubTrendingWatchLine>[];
-    if (lines.isEmpty) {
-      return _sectionBlock(section);
-    }
-
+    if (lines.isEmpty) return _sectionBlock(section);
     return Padding(
       key: ValueKey('reader-summary-narrative-${section.id}'),
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),

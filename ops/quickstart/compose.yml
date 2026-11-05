@@ -1,0 +1,191 @@
+# Standalone localhost-only installation. Existing development/production Compose
+# files retain their own contracts; no host database or API ports are published.
+x-backend: &backend
+  image: ${SELFHOST_BACKEND_IMAGE:-ghcr.io/777genius/social-monitor-backend:selfhost-preview-20261018}
+  env_file:
+    - path: ${SELFHOST_STATE_DIR:?Run start.sh}/backend.env
+      format: raw
+  restart: unless-stopped
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
+    rabbitmq:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+x-pool: &pool
+  POSTGRES_RUNTIME_POOL_MIN: "0"
+  POSTGRES_RUNTIME_POOL_MAX: "2"
+
+services:
+  postgres:
+    image: postgres:18.4-alpine
+    environment:
+      POSTGRES_USER: social_monitor
+      POSTGRES_PASSWORD: ${SELFHOST_DATABASE_PASSWORD:?Run start.sh}
+      POSTGRES_DB: social_monitor
+    volumes:
+      - database:/var/lib/postgresql
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U social_monitor -d social_monitor]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    command: [redis-server, --appendonly, "yes"]
+    volumes:
+      - cache:/data
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:4.3-management
+    environment:
+      RABBITMQ_DEFAULT_USER: social_monitor
+      RABBITMQ_DEFAULT_PASS: ${SELFHOST_BROKER_PASSWORD:?Run start.sh}
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "+S 2:2 +A 4"
+      RABBITMQ_CTL_ERL_ARGS: "+S 1:1 +A 1"
+    volumes:
+      - broker:/var/lib/rabbitmq
+    healthcheck:
+      test: [CMD, rabbitmq-diagnostics, -q, ping]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+    restart: unless-stopped
+
+  migrate:
+    image: ${SELFHOST_BACKEND_IMAGE:-ghcr.io/777genius/social-monitor-backend:selfhost-preview-20261018}
+    env_file:
+      - path: ${SELFHOST_STATE_DIR}/migration.env
+        format: raw
+    command: [sh, -ec, "node dist/scripts/quickstart/migrate.js && npm run seed"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  seed-workspace:
+    <<: *backend
+    env_file:
+      - path: ${SELFHOST_STATE_DIR}/migration.env
+        format: raw
+    command: [node, dist/scripts/quickstart/seed-workspace.js]
+    restart: "no"
+
+  api:
+    <<: *backend
+    environment:
+      <<: *pool
+      SERVICE: api
+      POSTGRES_RUNTIME_PROCESS: api-gateway
+    depends_on:
+      seed-workspace:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 4s
+      retries: 60
+      start_period: 20s
+
+  ingestion:
+    <<: *backend
+    env_file:
+      - path: ${SELFHOST_STATE_DIR}/backend.env
+        format: raw
+      - path: ${SELFHOST_STATE_DIR}/system.env
+        format: raw
+    environment:
+      <<: *pool
+      SERVICE: ingestion
+      POSTGRES_RUNTIME_PROCESS: ingestion-worker
+
+  intelligence:
+    <<: *backend
+    profiles: [ai]
+    env_file:
+      - path: ${SELFHOST_STATE_DIR}/backend.env
+        format: raw
+      - path: ${SELFHOST_STATE_DIR}/system.env
+        format: raw
+      - path: ${SELFHOST_STATE_DIR}/scoring.env
+        format: raw
+    environment:
+      <<: *pool
+      SERVICE: intelligence
+      POSTGRES_RUNTIME_PROCESS: intelligence-worker
+
+  event-relay:
+    <<: *backend
+    env_file:
+      - path: ${SELFHOST_STATE_DIR}/backend.env
+        format: raw
+      - path: ${SELFHOST_STATE_DIR}/system.env
+        format: raw
+    environment:
+      <<: *pool
+      POSTGRES_RUNTIME_POOL_MAX: "1"
+      SERVICE: event-relay
+      POSTGRES_RUNTIME_PROCESS: event-relay
+
+  agent-runtime:
+    <<: *backend
+    profiles: [codex]
+    user: "${SELFHOST_UID:?Run start.sh}:${SELFHOST_GID:?Run start.sh}"
+    environment:
+      SERVICE: agent-runtime
+    volumes:
+      - ${SELFHOST_STATE_DIR}/agent-runtime:/var/lib/subscription-runtime
+      - ${SELFHOST_STATE_DIR}/codex-pool:/run/selfhost-auth:ro
+      - ${SELFHOST_CODEX_AUTH_FILE:-/dev/null}:/run/selfhost-auth/account/auth.json:ro
+    healthcheck:
+      test: [CMD, node, -e, "const s=require('node:net').connect(50052,'127.0.0.1',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+
+  web:
+    image: ${SELFHOST_FRONTEND_IMAGE:-ghcr.io/777genius/social-monitor-web:selfhost-preview-20261018}
+    env_file:
+      - path: ${SELFHOST_STATE_DIR}/owner.env
+        format: raw
+    ports:
+      - "127.0.0.1:${SELFHOST_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  bootstrap:
+    <<: *backend
+    profiles: [tools]
+    user: "${SELFHOST_UID:?Run start.sh}:${SELFHOST_GID:?Run start.sh}"
+    volumes:
+      - ${SELFHOST_STATE_DIR}:/state
+    env_file:
+      - path: ${SELFHOST_STATE_DIR}/backend.env
+        format: raw
+      - path: ${SELFHOST_STATE_DIR}/owner.env
+        format: raw
+    command: [node, dist/scripts/quickstart/bootstrap.js]
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  database:
+  broker:
+  cache:

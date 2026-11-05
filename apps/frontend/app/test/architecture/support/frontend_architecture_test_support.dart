@@ -57,6 +57,13 @@ Map<String, Set<String>> _collectImportsByFile(String directoryPath) {
     if (entity is! File || !entity.path.endsWith('.dart')) {
       continue;
     }
+    // Same exclusions as _collectDartFiles: tool output such as a package
+    // local .dart_tool/flutter_build/dart_plugin_registrant.dart is not
+    // product source.
+    final path = _normalizePath(entity.path);
+    if (path.contains('/.dart_tool/') || path.contains('/build/')) {
+      continue;
+    }
 
     final imports = <String>{};
     for (final line in entity.readAsLinesSync()) {

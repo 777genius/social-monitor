@@ -56,8 +56,9 @@ class _TopPostEvidenceSourceRow extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text(
+                  ReaderSummarySourceText(
                     item.title,
+                    key: ObjectKey(item),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: textTheme.bodySmall?.copyWith(
@@ -69,7 +70,7 @@ class _TopPostEvidenceSourceRow extends StatelessWidget {
                   ),
                   if (item.snippet.isNotEmpty) ...[
                     const SizedBox(height: AppSpacing.xs),
-                    Text(
+                    ReaderSummarySourceText(
                       item.snippet,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -101,15 +102,20 @@ class _TopPostEvidenceSourceRow extends StatelessWidget {
       return row;
     }
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        key: ValueKey(
-          'reader-summary-top-post-evidence-source-${item.citationId}',
+    return Semantics(
+      link: true,
+      label: readerSummaryUrlActionSemantics(
+        'evidence-source',
+        item.citationId,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          key: readerSummaryUrlActionKey('evidence-source', item.citationId),
+          onTap: () => onOpenUrl(url),
+          borderRadius: BorderRadius.circular(8),
+          child: row,
         ),
-        onTap: () => onOpenUrl(url),
-        borderRadius: BorderRadius.circular(8),
-        child: row,
       ),
     );
   }

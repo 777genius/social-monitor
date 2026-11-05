@@ -1,0 +1,7 @@
+version=social-monitor-production-transition-review-anchor-v1
+anchor-path=ops/deploy/production-transition-review.anchor
+allowed-signers-path=ops/deploy/production-transition-review.allowed_signers
+principal=production-transition-review
+namespace=git
+key-type=ssh-ed25519
+fingerprint=SHA256:RQ/JZlrtmTgY4lNHhyzQnxI4IjQZ47Xt/Pu00ppuUaA

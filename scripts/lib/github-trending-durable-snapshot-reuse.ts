@@ -2,11 +2,16 @@ import { createHash } from "node:crypto";
 
 import type { Pool } from "pg";
 
-export const githubTrendingDurableSnapshotRowLimit = 200;
+import {
+  githubTrendingDurableSnapshotCandidatesFitBudget,
+  githubTrendingDurableSnapshotRowLimit,
+  type GitHubTrendingDurableSnapshotCandidate,
+} from "./github-trending-durable-snapshot-candidate-budget";
+
+export { githubTrendingDurableSnapshotRowLimit } from "./github-trending-durable-snapshot-candidate-budget";
 const proofVersion = "github-trending-durable-snapshot-proof-v1" as const;
 const providerKey = "github-trending-page" as const;
 const expectedRepositoryCount = 10;
-const maxCandidateBytes = 262_144;
 const maxIdentityBytes = 256;
 const maxTitleBytes = 512;
 const maxBodyPreviewBytes = 4_096;
@@ -21,52 +26,7 @@ export const githubTrendingDurableSnapshotBindingFingerprint = (
   return hash.toString(16).padStart(8, "0");
 };
 
-export type GitHubTrendingDurableSnapshotCandidate = {
-  readonly tenantId: string;
-  readonly workspaceId: string;
-  readonly sourceTenantId: string;
-  readonly sourceWorkspaceId: string;
-  readonly feedItemId: string;
-  readonly sourceItemId: string;
-  readonly feedSourceBindingId: string;
-  readonly sourceSourceBindingId: string;
-  readonly feedProviderKey: string;
-  readonly sourceProviderKey: string;
-  readonly feedStatus: string;
-  readonly providerItemId: string;
-  readonly canonicalUrl: string;
-  readonly metadataKind: string;
-  readonly repositoryFullName: string;
-  readonly repositoryUrl: string;
-  readonly rank: number;
-  readonly starsGained: number;
-  readonly totalStars: number;
-  readonly window: string;
-  readonly scanJobId: string;
-  readonly feedScanJobId: string;
-  readonly fetchStartedAt: string;
-  readonly feedFetchStartedAt: string;
-  readonly checkedAt: string;
-  readonly feedCheckedAt: string;
-  readonly publishedAt: string;
-  readonly sourcePublishedAt: string;
-  readonly feedObservedAt: string;
-  readonly sourceObservedAt: string;
-  readonly scanJobStatus: string;
-  readonly scanJobTenantId: string;
-  readonly scanJobWorkspaceId: string;
-  readonly scanJobSourceBindingId: string;
-  readonly sourceContentHash: string;
-  readonly sourceProviderContentHash: string;
-  readonly sourceTitle: string;
-  readonly feedTitle: string;
-  readonly bodyPreview: string;
-  readonly sourceTitleBytes: number;
-  readonly feedTitleBytes: number;
-  readonly bodyPreviewBytes: number;
-  readonly feedSnapshotSourceBindingId: string;
-  readonly feedSnapshotProviderKey: string;
-};
+export type { GitHubTrendingDurableSnapshotCandidate } from "./github-trending-durable-snapshot-candidate-budget";
 
 export type GitHubTrendingDurableSnapshotProofRow = {
   readonly rank: number;
@@ -188,8 +148,7 @@ export const reuseGitHubTrendingDurableSnapshot = async (params: {
   const candidates = await params.reader.readCandidates(params);
   if (
     candidates.length === 0 ||
-    candidates.length > githubTrendingDurableSnapshotRowLimit ||
-    Buffer.byteLength(JSON.stringify(candidates), "utf8") > maxCandidateBytes
+    !githubTrendingDurableSnapshotCandidatesFitBudget(candidates)
   ) {
     throw invalidSnapshot(
       candidates.length === 0 ? "snapshot_missing" : "candidate_bound_exceeded",
@@ -724,9 +683,9 @@ const prismaCandidateQuery = `
     si.id::text as "sourceItemId",
     fi.source_binding_id::text as "feedSourceBindingId",
     si.source_binding_id::text as "sourceSourceBindingId",
-    fi.provider_key as "feedProviderKey",
-    si.provider_key as "sourceProviderKey",
-    fi.status::text as "feedStatus",
+    left(fi.provider_key, 64) as "feedProviderKey",
+    left(si.provider_key, 64) as "sourceProviderKey",
+    left(fi.status::text, 32) as "feedStatus",
     left(si.provider_item_id, 256) as "providerItemId",
     left(fi.canonical_url, 256) as "canonicalUrl",
     left(si.metadata->>'kind', 128) as "metadataKind",
@@ -746,7 +705,7 @@ const prismaCandidateQuery = `
     si.published_at as "sourcePublishedAt",
     fi.observed_at as "feedObservedAt",
     si.observed_at as "sourceObservedAt",
-    coalesce(sj.status::text, '') as "scanJobStatus",
+    left(coalesce(sj.status::text, ''), 32) as "scanJobStatus",
     coalesce(sj.tenant_id::text, '') as "scanJobTenantId",
     coalesce(sj.workspace_id::text, '') as "scanJobWorkspaceId",
     coalesce(sj.source_binding_id::text, '') as "scanJobSourceBindingId",

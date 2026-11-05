@@ -50,8 +50,20 @@ export const normalizeArticleText = (value: string, maxCharacters: number): stri
     .join('\n')
     .trim();
 
-  return text.length > maxCharacters ? text.slice(0, maxCharacters).trim() : text;
+  return truncateArticleText(text, maxCharacters);
 };
+
+export const truncateArticleText = (text: string, maxCharacters: number): string => {
+  if (text.length <= maxCharacters) {
+    return text;
+  }
+  const last = text.charCodeAt(maxCharacters - 1);
+  const end = last >= 0xd800 && last <= 0xdbff ? maxCharacters - 1 : maxCharacters;
+  return text.slice(0, end).trimEnd();
+};
+
+export const exactArticleTextHash = (text: string): string =>
+  createHash('sha256').update(text).digest('hex');
 
 export const articleContentHash = (text: string): string =>
   createHash('sha256').update(normalizeForHashing(text)).digest('hex');

@@ -12,8 +12,9 @@ const betaLaunchSupportSnapshot = {
     'hacker-news',
     'reddit',
     'rss',
+    'telegram',
   ],
-  deferredSources: ['telegram', 'x-twitter'],
+  deferredSources: ['x-twitter'],
   knownLimitations: [
     {
       limitationId: 'fake-source-fixture-only',
@@ -53,15 +54,15 @@ const betaLaunchSupportSnapshot = {
     },
     {
       limitationId: 'telegram-manual-only',
-      severity: 'blocked',
-      title: 'Telegram automation is manual-only',
+      severity: 'notice',
+      title: 'Telegram public preview has limited coverage',
       userImpact:
-        'Telegram channels cannot be monitored automatically until scoped authorization is implemented.',
+        'Public channels can be collected without an account. Private channels, full media, comments and complete archives are unavailable.',
       supportAction:
-        'Capture channel demand, authorization model and admin ownership in source-request notes.',
+        'Inspect incomplete-collection warnings and pending backfill; pause bindings whose public preview is unavailable.',
       owner: 'source-owner',
       revisitTrigger:
-        'Bot/channel API scope and credential lifecycle are approved.',
+        'A separately approved Bot API or client integration is required for private-channel access.',
     },
     {
       limitationId: 'durable-runtime-required-before-external-beta',
@@ -104,9 +105,9 @@ const betaLaunchSupportSnapshot = {
     {
       itemId: 'telegram-source-adapter',
       classification: 'deferred_idea',
-      title: 'Add Telegram with explicit channel authorization',
+      title: 'Extend Telegram beyond anonymous public previews',
       evidence:
-        'Readiness profile exists, but automation scope and credential lifecycle are not approved.',
+        'Anonymous public previews are implemented; account-based and private-channel access need a separate acquisition contract.',
       owner: 'source-owner',
       architectureGuardrail:
         'Tenant-owned credentials and channel authorization are required before scanning.',

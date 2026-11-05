@@ -302,7 +302,7 @@ export const assertReaderSummaryResponse = (
   );
   assert(
     typeof topRead.whyNow === 'string' &&
-      topRead.whyNow.includes('fresh Reddit discussion'),
+      topRead.whyNow.includes('admitted provider'),
     'reader-summaries REST top reads must explain why the item matters now',
   );
   assert(

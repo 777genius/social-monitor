@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "sourceRepository": "https://github.com/vioxen/subscription-runtime.git",
+  "baseCommit": "42ea16961987f8a626a5219b030a5029f28bcdfd",
+  "sourceCommit": "22db9bbca1c2315e93211887a7738a6b40f21167",
+  "sourceCommitIsLocallyReviewed": true,
+  "upstreamPublicationClaimed": false,
+  "upstreamPackageVersion": "0.1.0-main.40",
+  "packageVersion": "0.1.0-main.42",
+  "packageVersionIsLocal": true,
+  "packagingProfile": "thin-bundle-agent-account-observability-v1",
+  "sha256": "338499bc01bc08958d53bcad6fdf0da9ab4dbc542705b947eed8eb59afdc49ae",
+  "launcherSha256": "50ea49b618cb3273421fe8f39b571194cb3250270477efb20298eea927e6c533",
+  "approvedArchiveSha256": "d67569a97ee0b91d8ce7d989532c44ec58673190101cc5f481730e2f1af4aac3",
+  "nonManifestFiles": 3723,
+  "nonManifestInventorySha256": "f02f6330d88add549ea8c8fe8b0c56333c11792c0dfeb6612286f90a7b5a13e7",
+  "inventoryFormat": "Sorted archive file path + NUL + lowercase SHA256 + LF, excluding package/package.json",
+  "repackChange": "Preserve main.41 thin-bundle profile: omit external dependency payloads and retain bundledDependencies=[@vioxen/agent-account-observability]. Only manifest version changes relative to main.41. All retained non-manifest bytes match approved archive. No compiled runtime or bundled observability bytes changed.",
+  "baseSource": {
+    "path": "vendor/vioxen-subscription-runtime-0.1.0-main.42.base-source.tgz",
+    "sha256": "5b7f2077596443d0a3a55c9e0e06a14c50607b81dff7a6cd7d6f251c365f25f8"
+  },
+  "reviewedSourcePatch": {
+    "path": "vendor/patches/vioxen-subscription-runtime-0.1.0-main.42.patch",
+    "sha256": "21871af36cf17a78eb8eb398d79124accafdb0e8f363c7b86cf27566fddf1e0b"
+  },
+  "review": {
+    "path": "../sm-native-identity-review-r1-20260909/.cache/handoff/native-identity-corrected-review.md",
+    "sha256": "e761d02adb2d954b602d830038197493ba592d36c910bdcfdb212b5711ed403a",
+    "verdict": "APPROVE source/package; live quota and executable compatibility unproven"
+  },
+  "reviewedSourceFiles": 1462,
+  "reviewedSourceInventorySha256": "aeae4a92a86aa5e87e656a4066071eabded7827a07ee09f0da7ca9b1bf89d189"
+}

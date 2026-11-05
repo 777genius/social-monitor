@@ -2,6 +2,8 @@ import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import {
   buildReaderSummaryCoveragePlan,
+  buildReaderPostPromotionProjection,
+  primaryReaderSummaryEvidence,
   ReaderSummaryArtifact,
   ReaderSummaryPublicationPolicy,
 } from "../../domain";
@@ -10,6 +12,11 @@ import type {
   ReaderSummaryModelInput,
 } from "../../ports";
 import { DeterministicReaderSummaryModelAdapter } from "./deterministic-reader-summary-model.adapter";
+import { acceptedDeterministicFixtureHeadline } from "./deterministic-reader-summary-model.spec-support";
+import {
+  composeReaderSummaryEditorialSlate,
+  materializeReaderSummaryEditorialSlate,
+} from "../evidence/reader-summary-editorial-slate";
 
 describe("DeterministicReaderSummaryModelAdapter", () => {
   it("keeps a provider-diverse first page while preserving ranked order", async () => {
@@ -34,23 +41,44 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
       (citation) => citation.providerKey,
     );
 
-    expect(citationProviders).toContain("github-issues");
+    expect(citationProviders).toContain("github-repo-radar");
     expect(
       attempt.draft.topStories.some((story) =>
-        story.providerKeys.includes("github-issues"),
+        story.providerKeys.includes("github-repo-radar"),
       ),
     ).toBe(true);
     expect(attempt.draft.content).toBeDefined();
     expect(attempt.draft.headline).toBe(
-      "4 monitored stories emerge across Hacker News, Reddit, RSS + 1 more",
+      "4 monitored stories emerge across Hacker News, X Twitter, GitHub Repo Radar + 1 more",
     );
     expect(attempt.draft.headline).not.toMatch(/^(?:Hacker News|Reddit|X)\b/u);
     expect(attempt.draft.headline).not.toContain(";");
     expect(attempt.draft.content?.headline).toBe(attempt.draft.headline);
     expect(attempt.draft.headline).not.toContain("disposable Linux VM");
+    expect(input.evidence.editorialSlate?.additional).toEqual([]);
+    expect(input.evidence.editorialSlate?.top.map((entry) => entry.candidateId))
+      .toContain("feed-2");
+    expect(input.evidence.selectedEvidence.map((item) => item.feedItemId))
+      .toContain("feed-2");
+    expect(input.evidence.editorialSlate?.excluded).toContainEqual(
+      expect.objectContaining({
+        candidateId: "feed-5",
+        reasonCodes: expect.arrayContaining(["provider_floor_not_met"]),
+      }),
+    );
+    expect(input.evidence.selectedEvidence.map((item) => item.feedItemId))
+      .not.toContain("feed-5");
     expect(
       attempt.draft.content?.topReads.map((item) => item.providerKey),
-    ).toContain("github-issues");
+    ).toEqual([
+      "hacker-news",
+      "x-twitter",
+      "github-repo-radar",
+      "reddit",
+    ]);
+    expect(
+      attempt.draft.content?.selectedPosts?.map((item) => item.providerKey),
+    ).toEqual([]);
     expect(
       attempt.draft.content?.topReads.map((item) => item.providerKey),
     ).not.toContain("github-trending-page");
@@ -80,9 +108,32 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
     expectPublished(input, attempt);
   });
 
-  it("creates a cluster-bound lead for single-story coverage", async () => {
+  it.each([
+    {
+      sourceTitle: "Developers compare runtime isolation tradeoffs",
+      headline: "Reports discuss Developers compare runtime isolation tradeoffs",
+    },
+    {
+      sourceTitle: "hacker-news story 10",
+      headline: "Reports discuss hacker-news story 10",
+    },
+    {
+      sourceTitle: "Developers compare runtime isolation tradeoffs.\n\nPreview deployments remain limited to test workspaces.",
+      headline: "Discussion from monitored sources",
+    },
+    ...[
+      "Post explores runtime isolation tradeoffs",
+      "Discussion of runtime isolation tradeoffs",
+      "Thread compares runtime isolation tradeoffs",
+      "Reports explore runtime isolation tradeoffs",
+    ].map((sourceTitle) => ({
+      sourceTitle, headline: `Reports discuss ${sourceTitle}`,
+    })),
+  ])("publishes cluster-bound single-story coverage: $sourceTitle", async ({
+    sourceTitle, headline,
+  }) => {
     const adapter = new DeterministicReaderSummaryModelAdapter();
-    const dailyInput = readerSummaryInput();
+    const dailyInput = readerSummaryInput(sourceTitle);
     const plannedLead = dailyInput.coveragePlan.lead;
     expect(plannedLead).toBeDefined();
     if (plannedLead === undefined) {
@@ -126,7 +177,29 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
     expect(citedClusterIds(input, attempt, lead?.citationIds ?? [])).toEqual(
       new Set([plannedLead.clusterId]),
     );
-    expect(attempt.draft.headline).toMatch(/^Reports discuss /u);
+    expect(attempt.draft.content?.topReads[0]).toMatchObject({
+      title: sourceTitle.replace(/\n\n/gu, " "),
+      promotionCandidateId: "feed-10",
+      displayHeadline: { status: "accepted" },
+      capturedSource: {
+        title: sourceTitle,
+        body: "Useful source evidence for a workspace summary.",
+        captureAvailability: "available",
+      },
+    });
+    expect(input.evidence.selectedEvidence).toContainEqual(
+      expect.objectContaining({
+        feedItemId: "feed-10",
+        sourceItemId: "source-10",
+        providerKey: "hacker-news",
+        canonicalUrl: "https://example.test/hacker-news/10",
+        title: sourceTitle,
+        bodyPreview: "Useful source evidence for a workspace summary.",
+      }),
+    );
+    expect(attempt.draft.headline).toBe(headline);
+    expect(attempt.draft.content?.headline).toBe(attempt.draft.headline);
+    expect(attempt.draft.headline).not.toBe(sourceTitle);
     expectPublished(input, attempt);
   });
 });
@@ -135,9 +208,37 @@ const expectPublished = (
   input: ReaderSummaryModelInput,
   attempt: ProviderReaderSummaryAttempt,
 ): void => {
+  const decision = publicationDecision(input, attempt);
+  if (decision.status === "rejected") {
+    throw new Error(decision.reasons.join("; "));
+  }
+  expect(decision).toMatchObject({
+    status: "published",
+    qualityPassed: true,
+  });
+};
+
+const publicationDecision = (
+  input: ReaderSummaryModelInput,
+  attempt: ProviderReaderSummaryAttempt,
+) => {
+  const readerSummaryId = "reader-summary-deterministic-test";
+  const promotion = buildReaderPostPromotionProjection({
+    evidence: input.evidence.selectedEvidence,
+    clusters: input.evidence.clusters,
+    citations: attempt.draft.citationMap,
+    sourceWindow: input.evidence.sourceWindow,
+    approvedSameStoryRelations: input.evidence.approvedSameStoryRelations,
+    relatedTopicRelations: input.evidence.relatedTopicRelations,
+    editorialSlate: input.evidence.editorialSlate,
+    attestationBinding: {
+      artifactId: readerSummaryId,
+      sourceWindow: input.evidence.sourceWindow,
+    },
+  });
   const artifact = ReaderSummaryArtifact.create({
     schemaVersion: "reader_summary.artifact.v1",
-    readerSummaryId: "reader-summary-deterministic-test",
+    readerSummaryId,
     tenantId: input.tenantId,
     workspaceId: input.workspaceId,
     scope: input.scope,
@@ -146,19 +247,12 @@ const expectPublished = (
     storyClusters: input.evidence.clusters,
     contextArtifacts: input.contextArtifacts,
     ...attempt.draft,
+    promotionAttestations: promotion.attestations,
+    promotionEvidenceFacts: promotion.attestedEvidenceFacts,
   });
-  const decision = new ReaderSummaryPublicationPolicy().evaluate({
+  return new ReaderSummaryPublicationPolicy().evaluate({
     artifact,
     evidence: input.evidence,
-  });
-
-  if (decision.status === "rejected") {
-    throw new Error(decision.reasons.join("; "));
-  }
-
-  expect(decision).toMatchObject({
-    status: "published",
-    qualityPassed: true,
   });
 };
 
@@ -190,7 +284,7 @@ const citedClusterIds = (
   );
 };
 
-const readerSummaryInput = (): ReaderSummaryModelInput => {
+const readerSummaryInput = (sourceTitle: string): ReaderSummaryModelInput => {
   const selectedEvidence = [
     evidenceItem("rss", 1, 1.5),
     evidenceItem("rss", 2, 1.5),
@@ -201,7 +295,7 @@ const readerSummaryInput = (): ReaderSummaryModelInput => {
     evidenceItem("rss", 7, 1.495),
     evidenceItem("hacker-news", 8, 1.488),
     evidenceItem("reddit", 9, 1.437),
-    evidenceItem("hacker-news", 10, 1.238),
+    { ...evidenceItem("hacker-news", 10, 1.238), title: sourceTitle },
     evidenceItem("reddit", 11, 1),
     evidenceItem("github-issues", 12, 1),
   ];
@@ -225,18 +319,30 @@ const dailySynthesisReaderSummaryInput = (): ReaderSummaryModelInput => {
         "Teams compare model access, token budgets and predictable pricing.",
     },
     {
-      ...evidenceItem("rss", 3, 2.6),
+      ...evidenceItem("x-twitter", 3, 2.6),
       title: "Local inference orchestration reaches more workstations",
       bodyPreview:
         "A release routes local inference across independently managed devices.",
     },
     {
-      ...evidenceItem("github-issues", 4, 2.4),
+      ...evidenceItem("github-repo-radar", 4, 2.4),
       title: "Agent tool maintainers document safer defaults",
       bodyPreview:
         "Maintainers discuss permission boundaries and safer execution defaults.",
     },
-  ];
+    {
+      ...evidenceItem("reddit", 5, 2.2),
+      title: "Below-floor discussion must not enter the reader slate",
+      promotionFacts: {
+        ...promotionFacts("reddit", 5),
+        metrics: {
+          provider: "reddit",
+          score: 24,
+          upvoteRatio: 0.99,
+        },
+      },
+    },
+  ] satisfies ReaderSummaryModelInput["evidence"]["selectedEvidence"];
   const evidence = readerSummaryEvidence(selectedEvidence);
 
   return readerSummaryInputForEvidence(evidence);
@@ -260,7 +366,7 @@ const readerSummaryEvidence = (
     whyImportant: item.whyImportant,
   }));
 
-  return {
+  const selection: ReaderSummaryModelInput["evidence"] = {
     rankingPolicyVersion: "story_ranking_v1",
     sourceWindow: {
       windowId: "workspace:deterministic-reader-summary",
@@ -269,12 +375,20 @@ const readerSummaryEvidence = (
       endedAt:
         selectedEvidence.at(-1)?.observedAt ??
         new Date("2026-06-23T08:30:00.000Z"),
+      periodStartedAt: new Date("2026-06-23T00:00:00.000Z"),
+      periodEndedAt: new Date("2026-06-24T00:00:00.000Z"),
+      ingestionCutoff: new Date("2026-06-23T08:30:00.000Z"),
       selectedFeedItemIds: selectedEvidence.map((item) => item.feedItemId),
       storyClusterIds: clusters.map((cluster) => cluster.id),
     },
     clusters,
-    selectedEvidence,
+    selectedEvidence: selectedEvidence.map(acceptedDeterministicFixtureHeadline),
   };
+  const editorialSlate = composeReaderSummaryEditorialSlate({ selection });
+  return materializeReaderSummaryEditorialSlate({
+    selection,
+    slate: editorialSlate,
+  });
 };
 
 const readerSummaryInputForEvidence = (
@@ -291,7 +405,9 @@ const readerSummaryInputForEvidence = (
     periodKey: "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
   },
   evidence,
-  coveragePlan: buildReaderSummaryCoveragePlan(evidence),
+  coveragePlan: buildReaderSummaryCoveragePlan(
+    primaryReaderSummaryEvidence(evidence),
+  ),
   contextArtifacts: [],
   policy: {
     language: "auto",
@@ -328,4 +444,88 @@ const evidenceItem = (
   ),
   score: score + 1,
   whyImportant: ["Fresh item in the current monitoring window"],
+  contentQuality: eligiblePromotionQuality(),
+  promotionFacts: promotionFacts(providerKey, index),
+});
+
+const eligiblePromotionQuality = () => ({
+  qualityScore: 0.9,
+  interestRelevanceScore: 0.9,
+  engagementIntegrityScore: 0.9,
+  eligibleForSummary: true,
+  eligibleForTopRead: true,
+  needsLlmReview: false,
+  decision: "eligible",
+  flags: [],
+  reason: "Promotion fixture",
+});
+
+const promotionFacts = (providerKey: string, index: number) => {
+  const canonicalIdentity = `url:https://example.test/${providerKey}/${index}`;
+  const common = {
+    canonicalIdentity,
+    safetyValid: true,
+    freshnessValid: true,
+    freshnessProvenance: {
+      status: "observed" as const,
+      publishedAt: new Date(
+        `2026-06-23T08:${String(index).padStart(2, "0")}:00.000Z`,
+      ),
+      observedAt: new Date(
+        `2026-06-23T08:${String(index).padStart(2, "0")}:30.000Z`,
+      ),
+      ingestionCutoff: new Date("2026-06-23T08:30:00.000Z"),
+    },
+    metricsState: "observed" as const,
+  };
+  if (providerKey === "hacker-news") return {
+    ...common,
+    contentKind: "story" as const,
+    engagementAuthority: durableEngagementAuthority(),
+    metrics: { provider: "hacker_news" as const, points: 60 },
+  };
+  if (providerKey === "x-twitter") return {
+    ...common,
+    contentKind: "original_post" as const,
+    engagementAuthority: durableEngagementAuthority(),
+    metrics: {
+      provider: "x" as const,
+      likes: 60,
+      reposts: 10,
+      weightedScore: 80,
+    },
+  };
+  if (providerKey === "github-repo-radar") {
+    const checkedAt = new Date(
+      `2026-06-23T08:${String(index).padStart(2, "0")}:30.000Z`,
+    );
+    return {
+      ...common,
+      contentKind: "repository" as const,
+      checkedAt,
+      metrics: {
+        provider: "github_radar" as const,
+        snapshotKind: "repository_growth" as const,
+        windowStartedAt: new Date(checkedAt.getTime() - 86_400_000),
+        windowEndedAt: checkedAt,
+        starsDelta: 50,
+        forksDelta: 3,
+      },
+    };
+  }
+  return {
+    ...common,
+    contentKind: "original_post" as const,
+    engagementAuthority: durableEngagementAuthority(),
+    metrics: {
+      provider: "reddit" as const,
+      score: 25,
+      upvoteRatio: 0.55,
+    },
+  };
+};
+
+const durableEngagementAuthority = () => ({
+  observedAt: new Date("2026-06-23T08:30:00.000Z"),
+  regressionState: "stable" as const,
 });

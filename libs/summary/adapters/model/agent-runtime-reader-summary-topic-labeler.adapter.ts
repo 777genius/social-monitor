@@ -1,3 +1,4 @@
+import { fromJSONSchema } from "zod";
 import {
   READER_SUMMARY_TOPIC_MAP_MAX_NODES,
   readerSummaryScopeKey,
@@ -5,7 +6,6 @@ import {
 } from "../../domain";
 import type {
   AgentRuntimeClientPort,
-  AgentRuntimeProvider,
   ReaderSummaryTopicLabelerInput,
   ReaderSummaryTopicLabelerPort,
   ReaderSummaryTopicMapAttemptContext,
@@ -31,12 +31,30 @@ import {
   verifyAndRecordReaderSummaryExecution,
   type VerifiedReaderSummaryExecutionAttestationSink,
 } from "./reader-summary-execution-attestation";
+import {
+  activeReaderSummaryModel,
+  activeReaderSummaryProvider,
+  activeReaderSummaryPurposes,
+  activeReaderSummaryReasoningEffort,
+  assertActiveReaderSummaryProvider,
+  assertReaderSummaryBackendModel,
+  mimoReaderSummaryBackend,
+  readerSummaryRouteControls,
+  resolveReaderSummaryBackendEffort,
+  resolveReaderSummaryDailyTaskIdentityFromEnv,
+  resolveReaderSummaryReasoningEffortFromEnv,
+  type ReaderSummaryGenerationBackend,
+  verifyAndRecordMimoDailyExecution,
+} from "./active-reader-summary-generation-profile";
 
 export type AgentRuntimeReaderSummaryTopicLabelerOptions = {
   readonly client: AgentRuntimeClientPort;
-  readonly agentProvider?: AgentRuntimeProvider;
+  readonly agentProvider?: typeof activeReaderSummaryProvider;
   readonly providerInstanceId?: string;
   readonly model?: string;
+  readonly modelBackend?: ReaderSummaryGenerationBackend;
+  /** high for Codex and MiMo, the route effort for a gateway backend. */
+  readonly reasoningEffort?: string;
   readonly promptVersion?: string;
   readonly timeoutMs?: number;
   readonly maxOutputTokens?: number;
@@ -44,18 +62,21 @@ export type AgentRuntimeReaderSummaryTopicLabelerOptions = {
   readonly verifiedAttestationSink?: VerifiedReaderSummaryExecutionAttestationSink;
 };
 
-const defaultAgentProvider: AgentRuntimeProvider = "codex";
-const defaultModel = "agent-runtime-reader-summary-topic-labeler";
+const defaultAgentProvider = activeReaderSummaryProvider;
+const defaultModel = activeReaderSummaryModel;
 const defaultPromptVersion = "reader_summary.topic_map.agent_runtime.v21";
-const defaultTimeoutMs = 600_000;
+export const defaultTimeoutMs = 600_000;
 const defaultMaxOutputTokens = 6_000;
 const defaultMaxCandidates = 30;
+let mimoTopicLabelSchema: ReturnType<typeof fromJSONSchema> | undefined;
 
 export class AgentRuntimeReaderSummaryTopicLabeler implements ReaderSummaryTopicLabelerPort {
   private readonly client: AgentRuntimeClientPort;
-  private readonly agentProvider: AgentRuntimeProvider;
+  private readonly agentProvider: typeof activeReaderSummaryProvider;
   private readonly providerInstanceId?: string;
   private readonly model: string;
+  private readonly modelBackend: ReaderSummaryGenerationBackend;
+  private readonly reasoningEffort: string;
   private readonly promptVersion: string;
   private readonly timeoutMs: number;
   private readonly maxOutputTokens: number;
@@ -66,7 +87,11 @@ export class AgentRuntimeReaderSummaryTopicLabeler implements ReaderSummaryTopic
     this.client = options.client;
     this.agentProvider = options.agentProvider ?? defaultAgentProvider;
     this.providerInstanceId = options.providerInstanceId;
-    this.model = nonEmptyOrFallback(options.model, defaultModel);
+    this.model = options.model ?? defaultModel;
+    this.modelBackend = options.modelBackend ?? "openai-chatgpt";
+    assertReaderSummaryBackendModel(this.modelBackend, this.model);
+    this.reasoningEffort = resolveReaderSummaryBackendEffort(
+      this.modelBackend, options.reasoningEffort, activeReaderSummaryReasoningEffort, this.model);
     this.promptVersion = nonEmptyOrFallback(
       options.promptVersion,
       defaultPromptVersion,
@@ -113,7 +138,7 @@ export class AgentRuntimeReaderSummaryTopicLabeler implements ReaderSummaryTopic
       ),
       provider: this.agentProvider,
       providerInstanceId: this.providerInstanceId,
-      purpose: "social_monitor.reader_summary.topic_map.label",
+      purpose: activeReaderSummaryPurposes.topicLabel,
       systemPrompt: agentRuntimeReaderSummaryTopicLabelerInstructions,
       prompt: buildAgentRuntimeReaderSummaryTopicLabelPrompt(
         input,
@@ -125,7 +150,11 @@ export class AgentRuntimeReaderSummaryTopicLabeler implements ReaderSummaryTopic
         interactive: false,
         outputSchemaName: "social_monitor_reader_summary_topic_map_labels",
         schemaVersion: "reader_summary.topic_map.v1",
-        ...runtimeModelControl(this.model, defaultModel),
+        model: this.model,
+        ...(this.modelBackend === mimoReaderSummaryBackend
+          ? { modelBackend: this.modelBackend, toolsEnabled: false, toolPolicy: "none" }
+          : {}),
+        ...readerSummaryRouteControls(this.modelBackend, this.reasoningEffort),
         maxOutputTokens: this.maxOutputTokens,
       },
       timeoutMs: this.timeoutMs,
@@ -142,12 +171,23 @@ export class AgentRuntimeReaderSummaryTopicLabeler implements ReaderSummaryTopic
       parseAgentRuntimeReaderSummaryTopicLabelerJsonObject,
       "Reader summary topic map",
     );
+    if (this.modelBackend === mimoReaderSummaryBackend) {
+      mimoTopicLabelSchema ??= fromJSONSchema(
+        agentRuntimeReaderSummaryTopicLabelerJsonSchema as Record<string, unknown>,
+      );
+      if (!mimoTopicLabelSchema.safeParse(raw).success) {
+        throw new Error("MiMo topic label output conflicts with purpose schema");
+      }
+      assertMimoTopicLabelOwnKeys(raw);
+    }
 
     const plan = normalizeAgentRuntimeReaderSummaryTopicLabelPlan(
       raw,
       candidates,
     );
-    await verifyAndRecordReaderSummaryExecution({
+    await (this.modelBackend === mimoReaderSummaryBackend
+      ? verifyAndRecordMimoDailyExecution
+      : verifyAndRecordReaderSummaryExecution)({
       command,
       result,
       taskRole: "topic_label",
@@ -164,14 +204,38 @@ const defaultAttemptContext: ReaderSummaryTopicMapAttemptContext = {
   totalAttempts: 1,
 };
 
+const assertMimoTopicLabelOwnKeys = (raw: Record<string, unknown>): void => {
+  const schema = agentRuntimeReaderSummaryTopicLabelerJsonSchema;
+  const hasOnlyKeys = (value: Record<string, unknown>, allowed: readonly string[]) =>
+    Object.keys(value).every((key) => allowed.includes(key));
+  if (!hasOnlyKeys(raw, Object.keys(schema.properties))) {
+    throw new Error("MiMo topic label output conflicts with purpose schema");
+  }
+  for (const [values, itemSchema] of [
+    [raw.nodeLabels, schema.properties.nodeLabels.items],
+    [raw.groups, schema.properties.groups.items],
+  ] as const) {
+    if (!Array.isArray(values) || values.some((value) =>
+      value === null || typeof value !== "object" || Array.isArray(value) ||
+      !hasOnlyKeys(value as Record<string, unknown>, Object.keys(itemSchema.properties)))) {
+      throw new Error("MiMo topic label output conflicts with purpose schema");
+    }
+  }
+};
+
 export const resolveAgentRuntimeReaderSummaryTopicLabelerOptions = (
   env: NodeJS.ProcessEnv,
   client: AgentRuntimeClientPort,
 ): AgentRuntimeReaderSummaryTopicLabelerOptions => ({
   client,
-  agentProvider: parseAgentRuntimeProvider(env.AGENT_RUNTIME_PROVIDER),
+    agentProvider: assertActiveReaderSummaryProvider(
+      env.AGENT_RUNTIME_PROVIDER,
+    ),
   providerInstanceId: env.AGENT_RUNTIME_PROVIDER_INSTANCE_ID,
-  model: env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MODEL,
+    ...resolveReaderSummaryDailyTaskIdentityFromEnv(
+      env, env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MODEL,
+    ),
+    reasoningEffort: resolveReaderSummaryReasoningEffortFromEnv(env),
   promptVersion: env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_PROMPT_VERSION,
   timeoutMs: parsePositiveInteger(
     env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_TIMEOUT_MS ??
@@ -184,22 +248,3 @@ export const resolveAgentRuntimeReaderSummaryTopicLabelerOptions = (
     env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MAX_CANDIDATES,
   ),
 });
-
-const parseAgentRuntimeProvider = (
-  value: string | undefined,
-): AgentRuntimeProvider | undefined => {
-  if (value === undefined || value.trim().length === 0) {
-    return undefined;
-  }
-  if (value === "codex" || value === "claude") {
-    return value;
-  }
-
-  throw new Error('AGENT_RUNTIME_PROVIDER must be "codex" or "claude"');
-};
-
-const runtimeModelControl = (
-  model: string,
-  defaultModelAlias: string,
-): { readonly model?: string } =>
-  model === defaultModelAlias ? {} : { model };

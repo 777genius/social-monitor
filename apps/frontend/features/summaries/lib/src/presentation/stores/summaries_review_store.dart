@@ -31,6 +31,7 @@ import '../workflows/summaries_review_store_dependencies.dart';
 import '../workflows/summary_period_navigation.dart';
 
 part 'summaries_review_store_workspace_summary_workflow.dart';
+part 'summaries_review_store_workspace_summary_history.dart';
 part 'summaries_review_store_post_rating_workflow.dart';
 part 'summaries_review_store_reader_action_workflow.dart';
 part 'summaries_review_store_topic_recommendation_workflow.dart';
@@ -97,7 +98,6 @@ final class SummariesReviewStore extends ChangeNotifier {
   final OperationGenerationGuard _postRatingGenerationGuard;
   final OperationGenerationGuard _topicRecommendationGenerationGuard;
   final Duration _workspaceSummaryLoadTimeout;
-
   WorkspaceScope _scope;
   final String _userId;
   SummaryId? _selectedSummaryId;
@@ -134,7 +134,6 @@ final class SummariesReviewStore extends ChangeNotifier {
       const InitialViewState<ReaderSummaryTopicRecommendationQueue>();
 
   WorkspaceScope get scope => _scope;
-
   SummaryPeriod get selectedSummaryPeriod {
     if (_selectedSummaryPeriodEndedAt == null) {
       final latest = switch (workspaceSummaryState) {
@@ -143,7 +142,9 @@ final class SummariesReviewStore extends ChangeNotifier {
           previousValue?.current,
         _ => null,
       };
-      if (latest != null) {
+      if (latest != null &&
+          summaryPeriodPresetFor(latest.period) ==
+              selectedSummaryPeriodPreset) {
         return latest.period;
       }
     }
@@ -350,7 +351,6 @@ final class SummariesReviewStore extends ChangeNotifier {
       await activeLoad;
       return;
     }
-
     final load = _loadPrimaryReaderSummary();
     _activeStoreLoad = load;
     _activeStoreLoadKey = loadKey;

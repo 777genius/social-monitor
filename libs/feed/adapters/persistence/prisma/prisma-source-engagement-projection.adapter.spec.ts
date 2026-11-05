@@ -6,8 +6,45 @@ import type {
   PrismaSourceEngagementTransactionClient,
 } from "./prisma-source-engagement-client";
 import { PrismaSourceEngagementProjectionAdapter } from "./prisma-source-engagement-projection.adapter";
+import { prepareSourceEngagementSamples } from
+  "@social-monitor/ingestion/features/execute-scan/source-engagement-sample-coordinator";
 
 describe("PrismaSourceEngagementProjectionAdapter", () => {
+  it("keeps shared metric mirrors consistent when an unchanged binding supersedes another", async () => {
+    const prisma = new FakeEngagementPrisma();
+    const adapter = new PrismaSourceEngagementProjectionAdapter(prisma,
+      { generate: () => `id-${prisma.nextId++}` });
+    const first = command("2026-07-10T12:00:00Z", 10, true);
+    await adapter.project(first);
+    await adapter.project({ ...command("2026-07-10T13:00:00Z", 20, true),
+      sourceBindingId: "00000000-0000-4000-8000-000000000006" });
+    const refreshed = prepareSourceEngagementSamples({
+      providerKey: "x-twitter", persistedItems: [], savedItems: [],
+      candidateScreening: {
+        memoryScope: { tenantId: first.tenantId, workspaceId: first.workspaceId,
+          interestId: "interest", sourceBindingId: first.sourceBindingId,
+          providerKey: "x-twitter", scopeFingerprint: "scope", policyVersion: "v1" },
+        candidates: [], classifications: [{ externalId: "x-twitter:1",
+          kind: "unchanged", legacyFallback: false }],
+        previousExpiresAtByExternalId: new Map(), itemsToEnrich: [], itemsToProcess: [],
+        itemsForEngagementRefresh: [{ externalId: "x-twitter:1",
+          canonicalUrl: "https://x.com/example/status/1", title: "Release", body: "Details",
+          publishedAt: new Date("2026-07-10T11:00:00Z"), metadata: { kind: "x_post", likes: 10 } }],
+        suppressedExternalIds: ["x-twitter:1"], legacyFallbackExternalIds: [],
+        classificationReliable: true,
+      },
+    });
+
+    await adapter.project({ ...first, observedAt: new Date("2026-07-10T14:00:00Z"),
+      samples: refreshed.engagementSamples });
+
+    expect(prisma.snapshot).toMatchObject({ likes: 10n,
+      lastObservedAt: new Date("2026-07-10T14:00:00Z") });
+    expect(prisma.feedItemRecord.providerMetadata).toMatchObject({ likes: 10 });
+    expect(prisma.sourceItemRecord.metadata).toMatchObject({ likes: 10 });
+    expect(prisma.baselineObservedAt).toEqual(new Date("2026-07-10T14:00:00Z"));
+  });
+
   it("updates current metrics cheaply and appends only cadence observations", async () => {
     const prisma = new FakeEngagementPrisma();
     const adapter = new PrismaSourceEngagementProjectionAdapter(prisma, {
@@ -48,6 +85,116 @@ describe("PrismaSourceEngagementProjectionAdapter", () => {
       "2026-07-10T13:00:00.000Z",
     );
     expect(prisma.retentionDeleteCalls).toBe(2);
+  });
+
+  it("fails closed for older and equal-time conflicting observations", async () => {
+    const prisma = new FakeEngagementPrisma();
+    const adapter = new PrismaSourceEngagementProjectionAdapter(prisma, {
+      generate: () => `id-${prisma.nextId++}`,
+    });
+
+    await adapter.project(command("2026-07-10T12:00:00Z", 10, true));
+    await adapter.project(command("2026-07-10T13:00:00Z", 20, true));
+    const observationCount = prisma.observations.length;
+
+    const equalConflict = await adapter.project(
+      command("2026-07-10T13:00:00Z", 5, true),
+    );
+    const older = await adapter.project(
+      command("2026-07-10T12:30:00Z", 4, true),
+    );
+
+    expect(equalConflict).toMatchObject({
+      currentSnapshotsUpdated: 0,
+      observationsAppended: 0,
+      metricChanges: 0,
+    });
+    expect(older).toMatchObject({
+      currentSnapshotsUpdated: 0,
+      observationsAppended: 0,
+      metricChanges: 0,
+    });
+    expect(prisma.snapshot).toMatchObject({
+      likes: 20n,
+      lastObservedAt: new Date("2026-07-10T13:00:00Z"),
+    });
+    expect(prisma.feedItemRecord.providerMetadata).toMatchObject({ likes: 20 });
+    expect(prisma.baselineObservedAt).toEqual(
+      new Date("2026-07-10T13:00:00Z"),
+    );
+    expect(prisma.observations).toHaveLength(observationCount);
+  });
+
+  it("allows repair composition to skip tenant-wide retention while preserving projection", async () => {
+    const prisma = new FakeEngagementPrisma();
+    const guard = jest.fn(async () => undefined);
+    const adapter = new PrismaSourceEngagementProjectionAdapter(prisma,
+      { generate: () => `id-${prisma.nextId++}` }, { retention: "skip", sampleGuard: guard });
+    await adapter.project(command("2026-07-10T12:00:00Z", 10, true));
+    await adapter.project(command("2026-07-10T13:00:00Z", 10, true));
+    expect(prisma.snapshot?.lastObservedAt).toEqual(new Date("2026-07-10T13:00:00Z"));
+    expect(prisma.observations).toHaveLength(2);
+    expect(prisma.retentionDeleteCalls).toBe(0);
+    expect(guard).toHaveBeenCalledTimes(2);
+  });
+
+  it("runs a repair guard before any source mutation", async () => {
+    const prisma = new FakeEngagementPrisma();
+    const adapter = new PrismaSourceEngagementProjectionAdapter(prisma,
+      { generate: () => `id-${prisma.nextId++}` }, { retention: "skip",
+        sampleGuard: async () => { throw new Error("binding drift"); } });
+    await expect(adapter.project(command("2026-07-10T12:00:00Z", 10, true))).rejects.toThrow("binding drift");
+    expect(prisma.snapshot).toBeNull();
+    expect(prisma.observations).toHaveLength(0);
+    expect(prisma.retentionDeleteCalls).toBe(0);
+  });
+
+  it("persists a Reddit providerScore-only sample as durable score authority", async () => {
+    const prisma = new FakeEngagementPrisma();
+    prisma.sourceItemRecord = {
+      ...prisma.sourceItemRecord,
+      providerKey: "reddit",
+      providerItemId: "reddit:1",
+      metadata: { kind: "reddit_post", providerScore: 42 },
+    };
+    prisma.feedItemRecord = {
+      ...prisma.feedItemRecord,
+      providerKey: "reddit",
+      dedupeKey: "reddit:1",
+      providerMetadata: { kind: "reddit_post", providerScore: 42 },
+    };
+    const adapter = new PrismaSourceEngagementProjectionAdapter(prisma, {
+      generate: () => `id-${prisma.nextId++}`,
+    });
+
+    const result = await adapter.project({
+      tenantId: "tenant" as never,
+      workspaceId: "workspace" as never,
+      sourceBindingId: "00000000-0000-4000-8000-000000000004",
+      scanJobId: "00000000-0000-4000-8000-000000000005",
+      providerKey: "reddit",
+      observedAt: new Date("2026-07-10T12:00:00Z"),
+      samples: [{
+        externalId: "reddit:1",
+        sourceItemId: "source-1",
+        publishedAt: new Date("2026-07-10T11:00:00Z"),
+        metrics: { score: 42 },
+        metricsFingerprint: "reddit-score:42",
+        providerMetadataPatch: { providerScore: 42 },
+        refreshReadModels: true,
+      }],
+    });
+
+    expect(result).toMatchObject({
+      currentSnapshotsUpdated: 1,
+      observationsAppended: 1,
+      metricChanges: 1,
+    });
+    expect(prisma.snapshot?.score).toBe(42n);
+    expect(prisma.feedItemRecord.providerMetadata).toMatchObject({
+      kind: "reddit_post",
+      providerScore: 42,
+    });
   });
 });
 
@@ -176,6 +323,11 @@ class FakeEngagementPrisma implements PrismaSourceEngagementClient {
   readonly sourceItemEngagementSnapshot: PrismaSourceEngagementClient["sourceItemEngagementSnapshot"] = {
     findUnique: async () => this.snapshot,
     upsert: async (args) => {
+      // PostgreSQL checks the INSERT candidate before ON CONFLICT updates it.
+      const candidate = args.create;
+      expect(candidate.firstObservedAt.getTime()).toBeLessThanOrEqual(
+        candidate.lastObservationAt.getTime(),
+      );
       this.snapshot = this.snapshot === null
         ? { ...args.create }
         : { ...this.snapshot, ...args.update };

@@ -11,10 +11,32 @@ import { MonitoringRestModule } from '@social-monitor/monitoring/interfaces/rest
 import { MetricsRuntimeModule } from '@social-monitor/platform-metrics/nest/metrics-runtime.module';
 import { probePostgresRuntimePoolConnectivity } from '@social-monitor/platform-persistence';
 import { RelevanceRestModule } from '@social-monitor/relevance/interfaces/rest/relevance-rest.module';
-import { SystemClock } from '@social-monitor/shared-kernel';
+import { SystemClock, type Clock } from '@social-monitor/shared-kernel';
 import { SummaryRestModule } from '@social-monitor/summary/interfaces/rest/summary-rest.module';
 import { SubscriptionsRestModule } from '@social-monitor/subscriptions/interfaces/rest/subscriptions-rest.module';
 
+import { AppBootstrapController } from './app-bootstrap.controller';
+import {
+  APP_BOOTSTRAP_REFRESH_SCHEDULER,
+  AppBootstrapCacheRefresher,
+  nodeAppBootstrapRefreshScheduler,
+} from './app-bootstrap-cache-refresher';
+import {
+  APP_BOOTSTRAP_PUBLIC_PRIME_CLIENT,
+  APP_BOOTSTRAP_PUBLIC_PRIME_ENABLED,
+  APP_BOOTSTRAP_PUBLIC_PRIME_SCHEDULER,
+  AppBootstrapPublicPrimer,
+  nodeAppBootstrapPublicPrimeClient,
+  nodeAppBootstrapPublicPrimeScheduler,
+} from './app-bootstrap-public-primer';
+import {
+  APP_BOOTSTRAP_READER_SUMMARY_CACHE_CLOCK,
+  APP_BOOTSTRAP_READER_SUMMARY_CACHE_MAX_ENTRIES,
+  APP_BOOTSTRAP_READER_SUMMARY_CACHE_STALE_MS,
+  APP_BOOTSTRAP_READER_SUMMARY_CACHE_TTL_MS,
+  AppBootstrapReaderSummaryCache,
+} from './app-bootstrap-reader-summary-cache';
+import { AppBootstrapReaderSummaryQuery } from './app-bootstrap-reader-summary-query';
 import { DomainErrorFilter } from './domain-error.filter';
 import { HealthController } from './health.controller';
 import {
@@ -44,9 +66,43 @@ import { SocialResearchApiModule } from './social-research-api.module';
     IdentityRestModule,
     SocialResearchApiModule,
   ],
-  controllers: [HealthController],
+  controllers: [AppBootstrapController, HealthController],
   providers: [
     ApiGatewayHealthReporter,
+    AppBootstrapReaderSummaryQuery,
+    AppBootstrapCacheRefresher,
+    AppBootstrapPublicPrimer,
+    {
+      provide: APP_BOOTSTRAP_PUBLIC_PRIME_ENABLED,
+      useFactory: () => process.env.NODE_ENV === 'production',
+    },
+    {
+      provide: APP_BOOTSTRAP_PUBLIC_PRIME_CLIENT,
+      useValue: nodeAppBootstrapPublicPrimeClient,
+    },
+    {
+      provide: APP_BOOTSTRAP_PUBLIC_PRIME_SCHEDULER,
+      useValue: nodeAppBootstrapPublicPrimeScheduler,
+    },
+    {
+      provide: APP_BOOTSTRAP_REFRESH_SCHEDULER,
+      useValue: nodeAppBootstrapRefreshScheduler,
+    },
+    {
+      provide: APP_BOOTSTRAP_READER_SUMMARY_CACHE_CLOCK,
+      useFactory: () => new SystemClock(),
+    },
+    {
+      provide: AppBootstrapReaderSummaryCache,
+      inject: [APP_BOOTSTRAP_READER_SUMMARY_CACHE_CLOCK],
+      useFactory: (clock: Clock) =>
+        new AppBootstrapReaderSummaryCache(
+          clock,
+          APP_BOOTSTRAP_READER_SUMMARY_CACHE_TTL_MS,
+          APP_BOOTSTRAP_READER_SUMMARY_CACHE_STALE_MS,
+          APP_BOOTSTRAP_READER_SUMMARY_CACHE_MAX_ENTRIES,
+        ),
+    },
     {
       provide: API_GATEWAY_HEALTH_ENV,
       useFactory: (): NodeJS.ProcessEnv => process.env,

@@ -9,9 +9,10 @@ export const assertReaderSummaryContentShape = (
     content.qualityState.flags.includes("no_signal");
 
   if (isNoSignal) {
-    if (content.topReads.length > 0) {
+    if (content.topReads.length > 0 ||
+        (content.newsWithoutRatingPosts?.length ?? 0) > 0) {
       throw new Error(
-        "No-signal reader summary content must not include top reads",
+        "No-signal reader summary content must not include top reads or news",
       );
     }
     if (
@@ -42,9 +43,10 @@ export const assertReaderSummaryContentShape = (
     return;
   }
 
-  if (content.topReads.length === 0) {
+  if (content.topReads.length === 0 &&
+      (content.newsWithoutRatingPosts?.length ?? 0) === 0) {
     throw new Error(
-      "Reader summary content with signal must include top reads",
+      "Reader summary content with signal must include top reads or news",
     );
   }
   if (content.sourceMix.length === 0) {

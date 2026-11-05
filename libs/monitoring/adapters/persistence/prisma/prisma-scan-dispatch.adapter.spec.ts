@@ -1,4 +1,3 @@
-import type { PrismaMonitoringClient } from './prisma-monitoring-client';
 import { PrismaScanDispatchAdapter } from './prisma-scan-dispatch.adapter';
 import { ScanJob } from '../../../domain';
 import {
@@ -9,10 +8,7 @@ import {
   workspaceId,
 } from '@social-monitor/shared-kernel';
 
-type Client = Pick<
-  PrismaMonitoringClient,
-  '$transaction' | 'scanJob' | 'outboxEvent'
->;
+type Client = ConstructorParameters<typeof PrismaScanDispatchAdapter>[0];
 
 const tenant = tenantId('00000000-0000-7000-8000-000000000010');
 const workspace = workspaceId('00000000-0000-7000-8000-000000000011');

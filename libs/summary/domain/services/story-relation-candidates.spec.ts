@@ -8,9 +8,9 @@ import type {
 import { StoryClusteringService } from "./story-clustering.service";
 import { verifiedStoryRelationPairKey } from "./story-cluster-membership";
 import {
-  approvedStoryRelationPairs,
   buildStoryRelationCandidates,
 } from "./story-relation-candidates";
+import { approvedStoryRelationPairs } from "./story-relation-decision-trace";
 
 const clock = { now: () => new Date("2026-07-11T12:00:00.000Z") };
 
@@ -42,6 +42,36 @@ describe("story relation candidate verification", () => {
     expect(candidates[0]?.sharedTopicTokens).toEqual(
       expect.arrayContaining(["compiler", "rewrite", "typescript"]),
     );
+  });
+
+  it("keeps candidate orientation and output stable across input permutations", () => {
+    const alpha = evidence({
+      id: "alpha-rss",
+      providerKey: "rss",
+      title: "TypeScript compiler rewrite moves to Go",
+      bodyPreview: "Microsoft details the native compiler migration plan.",
+    });
+    const zulu = evidence({
+      id: "zulu-hn",
+      providerKey: "hacker-news",
+      title: "Go rewrite of the TypeScript compiler reaches developers",
+      bodyPreview: "Microsoft explains the native compiler migration plan.",
+    });
+
+    const forward = buildStoryRelationCandidates({
+      selection: splitSelection(alpha, zulu),
+      evidence: [alpha, zulu],
+    });
+    const reversed = buildStoryRelationCandidates({
+      selection: splitSelection(zulu, alpha),
+      evidence: [zulu, alpha],
+    });
+
+    expect(reversed).toEqual(forward);
+    expect(forward[0]).toMatchObject({
+      leftFeedItemId: "alpha-rss",
+      rightFeedItemId: "zulu-hn",
+    });
   });
 
   it("does not shortlist a release and a subjective user reaction", () => {
@@ -198,7 +228,7 @@ describe("story relation candidate verification", () => {
     ).toEqual([]);
   });
 
-  it("shortlists a nearby same-author series for semantic verification", () => {
+  it("keeps a nearby same-provider same-author series out of promotion support", () => {
     const first = evidence({
       id: "j-space-audit",
       providerKey: "x-twitter",
@@ -222,7 +252,7 @@ describe("story relation candidate verification", () => {
         selection: splitSelection(first, second),
         evidence: [first, second],
       }),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
   });
 
   it("does not shortlist a same-author series outside the bounded window", () => {
@@ -325,9 +355,9 @@ describe("story relation candidate verification", () => {
         ],
       }),
     ).toEqual(new Set([verifiedStoryRelationPairKey("left", "right")]));
-    expect(() =>
-      approvedStoryRelationPairs({ candidates, decisions: [] }),
-    ).toThrow("decide each shortlisted pair exactly once");
+    expect(
+      approvedStoryRelationPairs({ candidates, decisions: [] }).size,
+    ).toBe(0);
   });
 
   it("does not allow transitive merging without every pair approval", () => {
@@ -426,7 +456,7 @@ describe("story relation candidate verification", () => {
     expect(selection.clusters[0]?.providerKeys).toEqual(["rss", "x-twitter"]);
   });
 
-  it("merges a same-author series only when every pair is approved", () => {
+  it("keeps a same-provider series separate even when every pair is approved", () => {
     const items = ["audit", "sabotage", "awareness"].map((id, index) =>
       evidence({
         id,
@@ -455,8 +485,9 @@ describe("story relation candidate verification", () => {
       verifiedStoryRelationPairs,
     });
 
-    expect(selection.clusters).toHaveLength(1);
-    expect(selection.clusters[0]?.duplicateFeedItemIds).toHaveLength(2);
+    expect(selection.clusters).toHaveLength(3);
+    expect(selection.clusters.every((cluster) =>
+      cluster.duplicateFeedItemIds.length === 0)).toBe(true);
   });
 });
 

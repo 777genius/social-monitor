@@ -81,12 +81,15 @@ describe("ExecuteScanUseCase candidate replay memory", () => {
     expect(fixture.enrichment.itemCounts).toEqual([1]);
     expect(fixture.sourceItems.itemCounts).toEqual([1, 1, 1]);
     expect(fixture.projection.itemCounts).toEqual([1, 1, 1]);
-    expect(fixture.engagementProjection.sampleCounts).toEqual([1, 0, 1]);
+    expect(fixture.engagementProjection.sampleCounts).toEqual([1, 1, 1]);
+    expect(
+      fixture.engagementProjection.commands[1]?.samples[0]?.refreshReadModels,
+    ).toBe(true);
     expect(
       fixture.engagementProjection.commands[2]?.samples[0]?.refreshReadModels,
     ).toBe(true);
     expect(fixture.memory.all()).toEqual([
-      expect.objectContaining({ seenCount: 2, decision: "processed" }),
+      expect.objectContaining({ seenCount: 3, decision: "processed" }),
     ]);
     expect(fixture.reporter.succeeded[1]).toEqual(
       expect.objectContaining({
@@ -95,6 +98,28 @@ describe("ExecuteScanUseCase candidate replay memory", () => {
         }),
       }),
     );
+  });
+
+  it("records a genuine unchanged fetch across metric maturity without repeating enrichment", async () => {
+    const fixture = candidateMemoryFixture(undefined, new Date("2026-07-10T17:50:00Z"));
+    await fixture.execute.execute(scanCommand("scan-before-maturity"));
+    fixture.clockDate.setTime(Date.parse("2026-07-10T18:05:00Z"));
+
+    const result = await fixture.execute.execute(scanCommand("scan-after-maturity"));
+
+    expect(result.ok).toBe(true);
+    expect(fixture.enrichment.itemCounts).toEqual([1]);
+    expect(fixture.engagementProjection.sampleCounts).toEqual([1, 1]);
+    expect(fixture.engagementProjection.commands[1]).toMatchObject({
+      observedAt: new Date("2026-07-10T18:05:00Z"),
+      samples: [{
+        externalId: "x-twitter:123",
+        publishedAt: new Date("2026-07-10T12:00:00Z"),
+        metrics: { likes: 4, reposts: 2 },
+        refreshReadModels: true,
+      }],
+    });
+    expect(fixture.memory.all()[0]?.seenCount).toBe(2);
   });
 
   it.each(["read", "write"] as const)(
@@ -130,6 +155,7 @@ describe("ExecuteScanUseCase candidate replay memory", () => {
 
 const candidateMemoryFixture = (
   candidateMemory?: SourceCandidateMemoryPort,
+  clockDate = new Date("2026-07-11T03:00:00.000Z"),
 ) => {
   const replayMemory = new TestCandidateMemory();
   const resolvedCandidateMemory = candidateMemory ?? replayMemory;
@@ -141,6 +167,7 @@ const candidateMemoryFixture = (
   const engagementProjection = new CountingEngagementProjection();
 
   return {
+    clockDate,
     fetcher,
     sourceItems,
     projection,
@@ -158,7 +185,7 @@ const candidateMemoryFixture = (
       new NoopScanFailureQueue(),
       new PermissiveScanLease(),
       new SequenceIdGenerator(),
-      new FixedClock(new Date("2026-07-11T03:00:00.000Z")),
+      new FixedClock(clockDate),
       undefined,
       enrichment,
       undefined,

@@ -1,4 +1,7 @@
+import { ReaderPostsController } from "./reader-posts.controller";
+import { readerPostsProviders } from "./reader-posts.providers";
 import { Module } from "@nestjs/common";
+import { runWithTenantDatabaseAccess } from "@social-monitor/platform-persistence";
 import { FeedRestModule } from "@social-monitor/feed/interfaces/rest/feed-rest.module";
 import { IdentityRestModule } from "@social-monitor/identity/interfaces/rest/identity-rest.module";
 import { ApplyAcceptedTopicRecommendationUseCase } from "@social-monitor/monitoring/features/apply-accepted-topic-recommendation/apply-accepted-topic-recommendation.use-case";
@@ -20,6 +23,8 @@ import { GetReaderSummaryJobStatusUseCase } from "../../features/get-reader-summ
 import { GetSummaryPolicyUseCase } from "../../features/get-summary-policy/get-summary-policy.use-case";
 import { GetSummaryJobStatusUseCase } from "../../features/get-summary-job-status/get-summary-job-status.use-case";
 import { GetSummaryUseCase } from "../../features/get-summary/get-summary.use-case";
+import { ListReaderSummariesUseCase } from "../../features/list-reader-summaries/list-reader-summaries.use-case";
+import { ListReaderSummaryPeriodsUseCase } from "../../features/list-reader-summary-periods/list-reader-summary-periods.use-case";
 import { ListReaderSummaryTopicRecommendationsUseCase } from "../../features/list-reader-summary-topic-recommendations/list-reader-summary-topic-recommendations.use-case";
 import { ListSummaryFeedbackUseCase } from "../../features/list-summary-feedback/list-summary-feedback.use-case";
 import { ListSummariesUseCase } from "../../features/list-summaries/list-summaries.use-case";
@@ -39,6 +44,7 @@ import {
   READER_SUMMARY_ACCEPTED_TOPIC_APPLIER,
   type ReaderSummaryAcceptedTopicApplierPort,
   type ReaderSummaryPolicyRepositoryPort,
+  type ReaderSummaryJobRepositoryPort,
   READER_SUMMARY_TOPIC_COLLECTION_METRICS_READER,
   READER_SUMMARY_TOPIC_RECOMMENDATION_DECISION_REPOSITORY,
   type ReaderSummaryTopicCollectionMetricsReaderPort,
@@ -82,6 +88,7 @@ import {
   SUMMARY_USER_SUMMARY_PREFERENCE_READER,
   readerSummaryOpenAiResponsesModelOptionsProvider,
   readerSummaryModelProviderModeProvider,
+  readerSummarySelectionStrategyProvider,
   summaryJobQueueModeProvider,
   summaryMemoryModeProvider,
   summaryModelProviderModeProvider,
@@ -94,8 +101,10 @@ import {
   summaryAgentRuntimeReaderSummaryModelOptionsProvider,
   summaryAgentRuntimeReaderSummaryStoryRelationVerifierOptionsProvider,
   summaryAgentRuntimeReaderSummaryTopicLabelerOptionsProvider,
+  summaryAgentRuntimeReaderSummaryPresentationOptionsProvider,
   summaryAgentRuntimeReaderSummaryTopicRelationVerifierOptionsProvider,
   summaryAgentRuntimeSummaryModelOptionsProvider,
+  summaryReaderSummaryAgentRuntimeClientProvider,
 } from "./summary-agent-runtime-provider-tokens";
 import { summaryAgentRuntimeProviders } from "./summary-agent-runtime.providers";
 import {
@@ -115,6 +124,7 @@ import { SummaryController } from "./summary.controller";
     RelevanceRestModule,
   ],
   controllers: [
+    ReaderPostsController,
     ReaderSummaryWeeklyProjectionController,
     ReaderSummaryController,
     ReaderSummaryJobController,
@@ -127,17 +137,21 @@ import { SummaryController } from "./summary.controller";
     SummaryRequestController,
   ],
   providers: [
+    ...readerPostsProviders,
     summaryPersistenceModeProvider,
     summaryJobQueueModeProvider,
     summaryModelProviderModeProvider,
     readerSummaryModelProviderModeProvider,
+    readerSummarySelectionStrategyProvider,
     readerSummaryTopicLabelerModeProvider,
     readerSummaryOpenAiResponsesModelOptionsProvider,
     summaryAgentRuntimeClientOptionsProvider,
+    summaryReaderSummaryAgentRuntimeClientProvider,
     summaryAgentRuntimeSummaryModelOptionsProvider,
     summaryAgentRuntimeReaderSummaryModelOptionsProvider,
     summaryAgentRuntimeReaderSummaryStoryRelationVerifierOptionsProvider,
     summaryAgentRuntimeReaderSummaryTopicLabelerOptionsProvider,
+    summaryAgentRuntimeReaderSummaryPresentationOptionsProvider,
     summaryAgentRuntimeReaderSummaryTopicRelationVerifierOptionsProvider,
     summaryMemoryModeProvider,
     summaryYoutubeVideoSummaryProviderModeProvider,
@@ -181,12 +195,23 @@ import { SummaryController } from "./summary.controller";
       useFactory: (
         readerSummaryPolicies: ReaderSummaryPolicyRepositoryPort,
         requestReaderSummary: RequestReaderSummaryUseCase,
+        jobs: ReaderSummaryJobRepositoryPort,
       ) =>
         new SchedulePeriodicReaderSummariesUseCase(
           readerSummaryPolicies,
-          requestReaderSummary,
+          {
+            execute: (command) =>
+              runWithTenantDatabaseAccess(
+                { tenantId: command.tenantId, workspaceId: command.workspaceId },
+                () => requestReaderSummary.execute(command),
+              ),
+          },
+          { findByIdempotencyKey: query => runWithTenantDatabaseAccess(
+            { tenantId: query.tenantId, workspaceId: query.workspaceId },
+            () => jobs.findByIdempotencyKey(query),
+          ) },
         ),
-      inject: [READER_SUMMARY_POLICY_REPOSITORY, RequestReaderSummaryUseCase],
+      inject: [READER_SUMMARY_POLICY_REPOSITORY, RequestReaderSummaryUseCase, READER_SUMMARY_JOB_REPOSITORY],
     },
     {
       provide: ExecuteSummaryJobUseCase,
@@ -378,6 +403,8 @@ import { SummaryController } from "./summary.controller";
     GetSummaryJobStatusUseCase,
     DecideReaderSummaryTopicRecommendationUseCase,
     ListReaderSummaryTopicRecommendationsUseCase,
+    ListReaderSummariesUseCase,
+    ListReaderSummaryPeriodsUseCase,
     ListSummaryFeedbackUseCase,
     ...summaryRestInfrastructureExports,
     READER_SUMMARY_ARTIFACT_REPOSITORY,

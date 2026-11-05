@@ -4,10 +4,12 @@ import type {
   ListDeliveryAttemptsQuery,
   ListDeliveryAttemptsResult,
 } from '../../ports';
+import { InMemoryDeliveryWorkflowStore } from './in-memory-delivery-workflow.store';
 
 export class InMemoryDeliveryAttemptRepository implements DeliveryAttemptRepositoryPort {
   private readonly attemptsById = new Map<string, DeliveryAttempt>();
   private readonly attemptsByIdempotencyKey = new Map<string, DeliveryAttempt>();
+  readonly workflow = new InMemoryDeliveryWorkflowStore(this.attemptsById, this.attemptsByIdempotencyKey);
 
   async save(attempt: DeliveryAttempt): Promise<void> {
     const snapshot = attempt.toSnapshot();
@@ -35,7 +37,8 @@ export class InMemoryDeliveryAttemptRepository implements DeliveryAttemptReposit
         const snapshot = attempt.toSnapshot();
 
         return (
-          isDispatchableState(snapshot.state) &&
+          (isDispatchableState(snapshot.state) || (params.recovery !== undefined &&
+            this.workflow.isRecoveryDue(attempt, params.recovery.now, params.recovery.recoverBefore))) &&
           (params.tenantId === undefined || snapshot.tenantId === params.tenantId) &&
           (params.workspaceId === undefined || snapshot.workspaceId === params.workspaceId)
         );

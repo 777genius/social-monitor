@@ -5,7 +5,7 @@ Requires=social-monitor-prod.service
 
 [Service]
 Type=oneshot
-ExecStart=/var/data/social-monitor/control/daily-run.sh --yesterday
+ExecStart=/var/data/social-monitor/control/postgres-runtime-current/reader-summary-one-shot.sh daily
 TimeoutStartSec=19800
 Restart=no
 Nice=10

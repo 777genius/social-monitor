@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "datasetId": "real-story-grouping-r2",
+  "sourceRevision": "e83b577f85d3f287055dc0a6154bef6a35b50bd2",
+  "captureSha256": "243e05001a6e58d588fed9aa8697843006406eb9c00a1d6c4b02a9a8b21443ff",
+  "inputHashes": {
+    "corpus-replay.json": {
+      "sha256": "bd474b697cc50490ad0a4da3218f21260f300431a1c3e8902dd41f18924d5027",
+      "bytes": 14376488
+    },
+    "corpus-blind.json": {
+      "sha256": "258fdf5f0af36294abbd3d874f804f19f65257498f96875f00b3af5845fadaf0",
+      "bytes": 9282446
+    }
+  },
+  "frozenAt": "2026-09-06T00:10:10.145554+00:00",
+  "labeler": "delegated analyst; full available blind source texts personally reviewed; not a live verifier",
+  "outcomesComputedBeforeSeal": false,
+  "files": {
+    "posts.jsonl": "f40f9a83a8995c79037149d9d16239dd34a5dbdcd493fb5ee27e4364cf87d880",
+    "cases.json": "468f6e2b36ea26b8cbd58669cf406e075cde93931f60755e70cc7dd59fbc2a00",
+    "blocks.json": "1c9ee35dd7f010be6f2f0ccf082c9d91d071d59c09d60ee2c34889eec6ea6450"
+  }
+}

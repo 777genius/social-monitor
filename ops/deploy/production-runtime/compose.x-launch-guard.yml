@@ -1,0 +1,8 @@
+services:
+  x-collector:
+    restart: "no"
+    entrypoint: ["python", "/run/social-monitor-x-launch-guard.py", "container-exec"]
+    command: ["python", "-m", "x_collector"]
+    volumes:
+      - /var/data/social-monitor/control/deploy-state:/run/social-monitor-x-launch-state:ro
+      - /var/data/social-monitor/control/postgres-runtime-current/x-launch-guard.py:/run/social-monitor-x-launch-guard.py:ro

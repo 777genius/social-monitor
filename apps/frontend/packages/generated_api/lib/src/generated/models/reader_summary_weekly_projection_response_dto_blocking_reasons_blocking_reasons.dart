@@ -34,5 +34,6 @@ enum ReaderSummaryWeeklyProjectionResponseDtoBlockingReasonsBlockingReasons {
   /// Returns all defined enum values excluding the $unknown value.
   static List<
     ReaderSummaryWeeklyProjectionResponseDtoBlockingReasonsBlockingReasons
-  > get $valuesDefined => values.where((value) => value != $unknown).toList();
+  >
+  get $valuesDefined => values.where((value) => value != $unknown).toList();
 }

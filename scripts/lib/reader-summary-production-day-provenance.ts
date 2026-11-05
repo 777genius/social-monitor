@@ -1,17 +1,31 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 
-import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
+import {
+  type AgentRuntimeEngine,
+  canonicalJsonSha256,
+  isAgentRuntimeEngine,
+} from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
+import {
+  approvedMimoRuntimePackageVersion,
+  approvedSubscriptionRuntimeLauncherSha256,
+  approvedSubscriptionRuntimePackageVersion,
+} from "../../apps/agent-runtime/src/subscription-runtime-installation";
 
 import {
   isProductionSubscriptionRuntimeProvenance,
+  isCurrentProductionSubscriptionRuntimeProvenance,
   runtimeProvenanceEqual,
   runtimeProvenanceFromExecutorAttestations,
   validateFrontendRuntimeConsistency,
   type ProductionDayRuntimeProvenance,
 } from "./reader-summary-production-day-attestation";
 
-export { isProductionSubscriptionRuntimeProvenance, runtimeProvenanceEqual };
+export {
+  isCurrentProductionSubscriptionRuntimeProvenance,
+  isProductionSubscriptionRuntimeProvenance,
+  runtimeProvenanceEqual,
+};
 export type { ProductionDayRuntimeProvenance };
 
 export const productionDayReportArtifactFormat =
@@ -39,7 +53,7 @@ export type ProductionDayCaptureExecution = {
 
 export type ProductionDayRuntimeHealth = {
   readonly status: string;
-  readonly runtimeEngine: string;
+  readonly runtimeEngine: AgentRuntimeEngine;
   readonly runtimeVersion: string;
   readonly launcherSha256: string;
   readonly checkedAt: string;
@@ -165,6 +179,7 @@ export function attachCaptureExecutionEvidence(params: {
   const runtimeProvenance = runtimeProvenanceFromExecutorAttestations(
     evidenceWithReadback,
     violations,
+    isDailyEditorialFrontend(params.frontendArtifact),
   );
   if (runtimeProvenance !== null && isRecord(params.frontendArtifact)) {
     validateFrontendRuntimeConsistency(
@@ -283,7 +298,8 @@ export function inspectDurableEvidenceArtifact(params: {
   const runtimeProvenance =
     capture === null
       ? null
-      : runtimeProvenanceFromExecutorAttestations(evidence, violations);
+      : runtimeProvenanceFromExecutorAttestations(
+          evidence, violations, isDailyEditorialFrontend(frontend));
   if (
     capture !== null &&
     runtimeProvenance !== null &&
@@ -297,8 +313,15 @@ export function inspectDurableEvidenceArtifact(params: {
     capture !== null &&
     runtimeProvenance?.execution === "attested" &&
     (capture.runtimeHealth.runtimeEngine !== runtimeProvenance.runtime ||
-      capture.runtimeHealth.runtimeVersion !==
-        runtimeProvenance.runtimeVersion ||
+      (runtimeProvenance.physicalModel === "mimo-v2.6-pro"
+        ? capture.runtimeHealth.runtimeVersion !==
+            approvedSubscriptionRuntimePackageVersion ||
+          runtimeProvenance.runtimeVersion !==
+            approvedMimoRuntimePackageVersion ||
+          capture.runtimeHealth.launcherSha256 !==
+            approvedSubscriptionRuntimeLauncherSha256
+        : capture.runtimeHealth.runtimeVersion !==
+          runtimeProvenance.runtimeVersion) ||
       capture.runtimeHealth.launcherSha256 !== runtimeProvenance.launcherSha256)
   ) {
     violations.push(
@@ -589,11 +612,11 @@ function validateCaptureExecution(params: {
     "evidence.captureExecution.runtimeHealth.status",
     params.violations,
   );
-  requireNonEmptyString(
-    runtimeHealth.runtimeEngine,
-    "evidence.captureExecution.runtimeHealth.runtimeEngine",
-    params.violations,
-  );
+  if (!isAgentRuntimeEngine(runtimeHealth.runtimeEngine)) {
+    params.violations.push(
+      "evidence.captureExecution.runtimeHealth.runtimeEngine must be an attested runtime engine",
+    );
+  }
   requireNonEmptyString(
     runtimeHealth.runtimeVersion,
     "evidence.captureExecution.runtimeHealth.runtimeVersion",
@@ -638,7 +661,7 @@ function validateCaptureExecution(params: {
     execution,
     runtimeHealth: {
       status: runtimeHealth.status as string,
-      runtimeEngine: runtimeHealth.runtimeEngine as string,
+      runtimeEngine: runtimeHealth.runtimeEngine as AgentRuntimeEngine,
       runtimeVersion: runtimeHealth.runtimeVersion as string,
       launcherSha256: runtimeHealth.launcherSha256 as string,
       checkedAt: runtimeHealth.checkedAt as string,
@@ -943,3 +966,11 @@ function assertCollectionDate(value: string): void {
     throw new Error(`Collection date is invalid: ${value}`);
   }
 }
+
+/** Require editor attestation only for the newly versioned daily writer. */
+const isDailyEditorialFrontend = (frontend: unknown): boolean => {
+  if (!isRecord(frontend) || !isRecord(frontend.readerSummaryArtifact)) return false;
+  const lineage = frontend.readerSummaryArtifact.lineage;
+  return isRecord(lineage) &&
+    lineage.promptVersion === "reader_summary.prompt.2026-11-03.daily_editorial_v1";
+};

@@ -1,30 +1,41 @@
-import { spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
+import { admitModelBackend, isMimoOnly, type AllowedModelBackend } from "./backend-admission-policy";
 
+import {
+  NestStructuredLogger,
+  type StructuredLogger,
+} from "@social-monitor/platform-logging";
 import type {
-  AgentRuntimeExecutionFailure,
   AgentRuntimeExecutionRequest,
   AgentRuntimeExecutionResult,
-  AgentRuntimeExecutionUsage,
-  AgentRuntimeExecutionWarning,
   AgentRuntimeExecutorHealth,
   AgentRuntimeExecutorPort,
 } from "./agent-runtime-executor.port";
 import {
   attachExecutorOwnedExecutionAttestation,
   invalidAttestationResult,
-  parseSubscriptionRuntimeJsonObject,
 } from "./subscription-runtime-execution-attestation";
+import {
+  cliExecutionResult,
+  isUsageProbeOutput,
+  runCli,
+  shouldRetryWithEphemeral,
+} from "./subscription-runtime-cli-support";
 import {
   FileSubscriptionRuntimeInstallationInspector,
   type SubscriptionRuntimeInstallationInspector,
   type SubscriptionRuntimeInstallationIdentity,
 } from "./subscription-runtime-installation";
+import { admitStrictCwd } from "./strict-grpc-admission";
+import { readRuntimeOutputFailureDiagnostics } from "./runtime-output-failure-diagnostics";
 import {
   admitSubscriptionRuntimeRequest,
+  type activeReaderSummaryReasoningEffort,
   configuredSubscriptionRuntimeDefaultsAreSafe,
+  readerPromotionV2CanaryActivationCapability,
+  subscriptionRuntimeOutputMatchesProfile,
   type AdmittedSubscriptionRuntimeRequest,
   type SubscriptionRuntimePurposeProfile,
 } from "./subscription-runtime-purpose-model-policy";
@@ -35,44 +46,100 @@ export type SubscriptionRuntimeCliExecutorOptions = {
   readonly ephemeral: boolean;
   readonly localEncryptionKey?: string;
   readonly codexAuthJsonPath?: string;
+  readonly mimoApiKeyFile?: string;
+  readonly allowedModelBackends?: readonly AllowedModelBackend[];
+  readonly workspaceRoot?: string;
   readonly claudeTokenEnv?: string;
   readonly model?: string;
-  readonly reasoningEffort?: "xhigh";
+  readonly reasoningEffort?: typeof activeReaderSummaryReasoningEffort;
   readonly installationInspector?: SubscriptionRuntimeInstallationInspector;
+  readonly logger?: StructuredLogger;
+  readonly readerPromotionV2CanaryActivationCapability?:
+    typeof readerPromotionV2CanaryActivationCapability;
 };
 
 export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort {
   private readonly installationInspector: SubscriptionRuntimeInstallationInspector;
+  private readonly logger: StructuredLogger;
 
   constructor(private readonly options: SubscriptionRuntimeCliExecutorOptions) {
     this.installationInspector =
       options.installationInspector ??
-      new FileSubscriptionRuntimeInstallationInspector();
+      new FileSubscriptionRuntimeInstallationInspector(options.workspaceRoot);
+    this.logger =
+      options.logger ??
+      new NestStructuredLogger(SubscriptionRuntimeCliExecutor.name);
   }
 
   async execute(
     request: AgentRuntimeExecutionRequest,
   ): Promise<AgentRuntimeExecutionResult> {
+    const startedAt = Date.now();
+    this.logger.info("agent runtime task started", taskFields(request));
     let admission: AdmittedSubscriptionRuntimeRequest;
+    let executionCwd: string | undefined;
     try {
       if (!configuredSubscriptionRuntimeDefaultsAreSafe(this.options)) {
+        this.logger.error("agent runtime task rejected unsafe defaults", {
+          ...taskFields(request),
+          stage: "defaults",
+        });
         return invalidAttestationResult();
       }
-      admission = admitSubscriptionRuntimeRequest(request);
-    } catch {
+      admission = admitSubscriptionRuntimeRequest(
+        request,
+        this.options.readerPromotionV2CanaryActivationCapability,
+      );
+      if (this.options.allowedModelBackends !== undefined) {
+        admitModelBackend(admission.profile.modelBackend, this.options.allowedModelBackends);
+      }
+      if (admission.profile.modelBackend === "xiaomi-mimo-token-plan" &&
+        this.options.mimoApiKeyFile === undefined) {
+        this.logger.error("agent runtime MiMo key file is not configured", {
+          ...taskFields(request), stage: "credential_configuration",
+        });
+        return {
+          status: "failed",
+          warnings: [],
+          failure: {
+            code: "agent_runtime.mimo_key_unavailable",
+            safeMessage: "MiMo Token Plan credential is unavailable",
+            retryable: false,
+            reconnectRequired: false,
+            causeCategory: "credential_configuration",
+            details: {},
+          },
+        };
+      }
+      if (this.options.workspaceRoot !== undefined) {
+        executionCwd = admitStrictCwd(request.cwd, {
+          workspaceRoot: this.options.workspaceRoot,
+          allowedModelBackends: this.options.allowedModelBackends ?? [],
+        });
+      } else if (request.cwd !== undefined && isAbsolute(request.cwd)) {
+        executionCwd = request.cwd;
+      }
+    } catch (error) {
+      this.logFailure(request, "admission", error);
       return invalidAttestationResult();
     }
     let admittedInstallation: SubscriptionRuntimeInstallationIdentity;
     try {
       admittedInstallation = await this.installationInspector.inspect(
         this.options.command,
+        admission.profile.modelBackend,
       );
-    } catch {
+    } catch (error) {
+      this.logFailure(request, "installation", error);
       return invalidAttestationResult();
     }
-    const tempDir = await mkdtemp(
-      join(tmpdir(), "social-monitor-agent-runtime-"),
-    );
+    let tempDir: string;
+    try {
+      tempDir = await mkdtemp(join(tmpdir(), "social-monitor-agent-runtime-"));
+    } catch (error) {
+      this.logFailure(request, "workspace", error);
+      return invalidAttestationResult();
+    }
     const inputPath = join(tempDir, "request.json");
     try {
       await writeFile(
@@ -80,39 +147,71 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
         JSON.stringify(admission.canonicalRequest),
         "utf8",
       );
-      const startedAt = Date.now();
       const initialResult = cliExecutionResult(
         await runCli({
           command: admittedInstallation.executablePath,
+          cwd: executionCwd,
           args: this.buildArgs(request, inputPath, admission.profile),
           env: this.executionEnvPatch(
             this.options.ephemeral,
             admission.profile,
           ),
+          modelBackend: admission.profile.modelBackend,
           timeoutMs: request.timeoutMs,
+          ...(request.purpose === "social_monitor.relevance.assess_source_content.v1" ? {
+            assessment: { onProgress: (fields) => this.logger.info("agent runtime assessment progress", {
+              ...fields, ...taskFields(request),
+            }) },
+          } : {}),
         }),
       );
+      if (admission.profile.retryMode === "never") {
+        const result = await this.attestCompletedResult(
+          request,
+          admission,
+          request.purpose === "social_monitor.relevance.assess_source_content.v1" && initialResult.failure
+            ? { ...initialResult, failure: { ...initialResult.failure, retryable: false } }
+            : initialResult,
+          admittedInstallation,
+        );
+        this.logResult(request, result, startedAt);
+        return result;
+      }
       if (!shouldRetryWithEphemeral(initialResult, this.options)) {
-        return this.attestCompletedResult(
+        const result = await this.attestCompletedResult(
           request,
           admission,
           initialResult,
           admittedInstallation,
         );
+        this.logResult(request, result, startedAt);
+        return result;
       }
+      this.logger.warn(
+        "agent runtime durable session unavailable; retrying ephemeral",
+        {
+          ...taskFields(request),
+          stage: "retry",
+          failureCode: initialResult.failure?.code,
+          durationMs: Date.now() - startedAt,
+        },
+      );
       const remainingTimeoutMs = request.timeoutMs - (Date.now() - startedAt);
       if (remainingTimeoutMs <= 0) {
+        this.logResult(request, initialResult, startedAt);
         return initialResult;
       }
       const recovered = cliExecutionResult(
         await runCli({
           command: admittedInstallation.executablePath,
+          cwd: executionCwd,
           args: this.buildArgs(request, inputPath, admission.profile, true),
           env: this.executionEnvPatch(true, admission.profile),
+          modelBackend: admission.profile.modelBackend,
           timeoutMs: remainingTimeoutMs,
         }),
       );
-      return this.attestCompletedResult(
+      const result = await this.attestCompletedResult(
         request,
         admission,
         {
@@ -128,13 +227,37 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
         },
         admittedInstallation,
       );
+      this.logResult(request, result, startedAt);
+      return result;
+    } catch (error) {
+      this.logger.error("agent runtime task execution threw", {
+        ...taskFields(request),
+        stage: "execution",
+        durationMs: Date.now() - startedAt,
+        error: safeErrorMessage(error),
+      });
+      if (request.purpose === "social_monitor.relevance.assess_source_content.v1") {
+        return { status: "failed", warnings: [], failure: {
+          code: "agent_runtime.cli_error", safeMessage: "Assessment runtime execution failed",
+          retryable: false, reconnectRequired: false,
+          causeCategory: "subscription_runtime_cli", details: {},
+        } };
+      }
+      throw error;
     } finally {
-      await rm(tempDir, { recursive: true, force: true });
+      try {
+        await rm(tempDir, { recursive: true, force: true });
+      } catch (error) {
+        this.logFailure(request, "cleanup", error);
+      }
     }
   }
 
   async checkHealth(): Promise<AgentRuntimeExecutorHealth> {
     if (this.options.command.trim().length === 0) {
+      this.logger.error("agent runtime health check rejected empty command", {
+        stage: "health",
+      });
       return {
         healthy: false,
         runtimeEngine: "subscription-runtime-cli",
@@ -148,9 +271,21 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
       };
     }
     try {
+      const mimoOnly = this.options.allowedModelBackends !== undefined &&
+        isMimoOnly(this.options.allowedModelBackends);
       const installation = await this.installationInspector.inspect(
         this.options.command,
+        mimoOnly ? "xiaomi-mimo-token-plan" : undefined,
       );
+      if (mimoOnly) {
+        return {
+          healthy: true,
+          runtimeEngine: "subscription-runtime-cli",
+          runtimeVersion: installation.mimoRuntimePackageVersion ?? installation.runtimePackageVersion,
+          launcherSha256: installation.launcherSha256,
+          warnings: [],
+        };
+      }
       const probe = await runCli({
         command: installation.executablePath,
         args: ["--provider", "codex"],
@@ -160,6 +295,13 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
         !probe.timedOut &&
         (probe.exitCode === 0 ||
           isUsageProbeOutput(probe.stdout, probe.stderr));
+      if (!healthy) {
+        this.logger.warn("agent runtime health probe failed", {
+          stage: "health",
+          timedOut: probe.timedOut,
+          exitCode: probe.exitCode ?? "null",
+        });
+      }
       return {
         healthy,
         runtimeEngine: "subscription-runtime-cli",
@@ -174,7 +316,11 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
               },
             ],
       };
-    } catch {
+    } catch (error) {
+      this.logger.error("agent runtime health check threw", {
+        stage: "health",
+        error: safeErrorMessage(error),
+      });
       return {
         healthy: false,
         runtimeEngine: "subscription-runtime-cli",
@@ -195,6 +341,17 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
     result: AgentRuntimeExecutionResult,
     admittedInstallation: SubscriptionRuntimeInstallationIdentity,
   ): Promise<AgentRuntimeExecutionResult> {
+    if (
+      admission.profile.retryMode === "never" &&
+      (result.status === "waiting_for_input" ||
+        (result.status === "completed" &&
+          !subscriptionRuntimeOutputMatchesProfile(
+            admission,
+            result.structuredOutput,
+          )))
+    ) {
+      return Promise.resolve(invalidAttestationResult());
+    }
     return attachExecutorOwnedExecutionAttestation({
       command: admittedInstallation.executablePath,
       request,
@@ -203,6 +360,47 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
       profile: admission.profile,
       installationInspector: this.installationInspector,
       admittedInstallation,
+      activationCapability:
+        this.options.readerPromotionV2CanaryActivationCapability,
+    });
+  }
+
+  private logResult(
+    request: AgentRuntimeExecutionRequest,
+    result: AgentRuntimeExecutionResult,
+    startedAt: number,
+  ): void {
+    const fields = {
+      ...taskFields(request),
+      status: result.status,
+      durationMs: Date.now() - startedAt,
+      warningCount: result.warnings.length,
+      failureCode: result.failure?.code,
+      retryable: result.failure?.retryable,
+      reconnectRequired: result.failure?.reconnectRequired,
+      causeCategory: result.failure?.causeCategory,
+      // Retain the existing programmatic logger contract; scalar fields survive terminal formatting.
+      failureDetails: result.failure?.details
+        ? JSON.stringify(result.failure.details)
+        : undefined,
+      ...readRuntimeOutputFailureDiagnostics(result.failure?.details),
+    };
+    if (result.status === "completed") {
+      this.logger.info("agent runtime task completed", fields);
+    } else {
+      this.logger.error("agent runtime task did not complete", fields);
+    }
+  }
+
+  private logFailure(
+    request: AgentRuntimeExecutionRequest,
+    stage: string,
+    error: unknown,
+  ): void {
+    this.logger.error("agent runtime task rejected", {
+      ...taskFields(request),
+      stage,
+      error: safeErrorMessage(error),
     });
   }
 
@@ -229,7 +427,15 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
       args.push("--ephemeral");
     }
     if (
+      profile.retryMode === "never" &&
+      this.options.readerPromotionV2CanaryActivationCapability ===
+        readerPromotionV2CanaryActivationCapability
+    ) {
+      args.push("--activate-reader-promotion-v2-canary");
+    }
+    if (
       request.provider === "codex" &&
+      profile.modelBackend === undefined &&
       this.options.codexAuthJsonPath !== undefined
     ) {
       args.push("--codex-auth-json", this.options.codexAuthJsonPath);
@@ -254,309 +460,25 @@ export class SubscriptionRuntimeCliExecutor implements AgentRuntimeExecutorPort 
         this.options.localEncryptionKey;
     }
     patch.AGENT_RUNTIME_REASONING_EFFORT = profile.reasoningEffort;
+    if (profile.modelBackend === "xiaomi-mimo-token-plan" &&
+      this.options.mimoApiKeyFile !== undefined) {
+      patch.AGENT_RUNTIME_MIMO_API_KEY_FILE = this.options.mimoApiKeyFile;
+    }
     return patch;
   }
 }
 
-const shouldRetryWithEphemeral = (
-  result: AgentRuntimeExecutionResult,
-  options: SubscriptionRuntimeCliExecutorOptions,
-): boolean =>
-  !options.ephemeral &&
-  result.status === "failed" &&
-  (result.failure?.code === "provider_session_invalid" ||
-    result.failure?.code === "needs_reconnect") &&
-  result.failure.reconnectRequired;
-
-const parseCliResult = (stdout: string): AgentRuntimeExecutionResult => {
-  const parsed = parseSubscriptionRuntimeJsonObject(
-    stdout,
-    "subscription-runtime result",
-  );
-  const status = parseStatus(parsed.status);
-
-  return {
-    status,
-    outputText: optionalOutputText(parsed.outputText),
-    structuredOutput: readOptionalRecord(parsed.structuredOutput),
-    warnings: readWarnings(parsed.warnings),
-    usage: readUsage(parsed.usage),
-    failure: readFailure(parsed.failure),
-  };
-};
-
-const tryParseCliResult = (
-  stdout: string,
-): AgentRuntimeExecutionResult | undefined => {
-  try {
-    return parseCliResult(stdout);
-  } catch {
-    return undefined;
-  }
-};
-
-type CliExecution = Awaited<ReturnType<typeof runCli>>;
-
-const cliExecutionResult = (
-  result: CliExecution,
-): AgentRuntimeExecutionResult => {
-  const parsedResult = tryParseCliResult(result.stdout);
-  if (parsedResult !== undefined && !result.timedOut) {
-    return parsedResult;
-  }
-  if (result.timedOut || result.exitCode !== 0) {
-    return {
-      status: "failed",
-      warnings: [],
-      failure: {
-        code: result.timedOut
-          ? "agent_runtime.cli_timeout"
-          : "agent_runtime.cli_exit",
-        safeMessage: result.timedOut
-          ? "Agent runtime task timed out"
-          : "Agent runtime CLI task failed",
-        retryable: true,
-        reconnectRequired: false,
-        causeCategory: "subscription_runtime_cli",
-        details: {
-          exitCode: result.exitCode === null ? "null" : String(result.exitCode),
-          signal: result.signal ?? "",
-          stderrBytes: String(Buffer.byteLength(result.stderr)),
-        },
-      },
-    };
-  }
-
-  return invalidCliResult(result.stdout);
-};
-
-const invalidCliResult = (stdout: string): AgentRuntimeExecutionResult => ({
-  status: "failed",
-  warnings: [],
-  failure: {
-    code: "agent_runtime.invalid_cli_result",
-    safeMessage: "Agent runtime CLI returned invalid result JSON",
-    retryable: false,
-    reconnectRequired: false,
-    causeCategory: "schema",
-    details: {
-      stdoutBytes: String(Buffer.byteLength(stdout)),
-    },
-  },
+const taskFields = (
+  request: AgentRuntimeExecutionRequest,
+): Readonly<Record<string, string | number | boolean | undefined>> => ({
+  requestId: request.requestId,
+  correlationId: request.correlationId,
+  provider: request.provider,
+  purpose: request.purpose,
+  timeoutMs: request.timeoutMs,
 });
 
-const runCli = async (params: {
-  readonly command: string;
-  readonly args: readonly string[];
-  readonly env?: Readonly<Record<string, string>>;
-  readonly timeoutMs: number;
-}): Promise<{
-  readonly exitCode: number | null;
-  readonly signal: NodeJS.Signals | null;
-  readonly stdout: string;
-  readonly stderr: string;
-  readonly timedOut: boolean;
-}> =>
-  new Promise((resolve, reject) => {
-    const child = spawn(params.command, params.args, {
-      env: { ...subscriptionRuntimeChildBaseEnv(process.env), ...params.env },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    const stdout: Buffer[] = [];
-    const stderr: Buffer[] = [];
-    let timedOut = false;
-    const timeout = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGTERM");
-    }, params.timeoutMs);
-    child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
-    child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
-    child.on("error", (error) => {
-      clearTimeout(timeout);
-      reject(error);
-    });
-    child.on("close", (exitCode, signal) => {
-      clearTimeout(timeout);
-      resolve({
-        exitCode,
-        signal,
-        stdout: Buffer.concat(stdout).toString("utf8"),
-        stderr: Buffer.concat(stderr).toString("utf8"),
-        timedOut,
-      });
-    });
-  });
-
-const subscriptionRuntimeChildBaseEnv = (
-  env: NodeJS.ProcessEnv,
-): Readonly<Record<string, string>> =>
-  Object.fromEntries(
-    Object.entries(env).filter(
-      ([key, value]) =>
-        value !== undefined &&
-        !runtimeSessionScopedEnvKeys.has(key) &&
-        !isApiKeyCredentialEnvKey(key),
-    ),
-  ) as Readonly<Record<string, string>>;
-
-const runtimeSessionScopedEnvKeys = new Set([
-  "CODEX_THREAD_ID",
-  "CODEX_GOAL_ID",
-  "CODEX_TURN_ID",
-  "CODEX_SESSION_ID",
-]);
-
-const isApiKeyCredentialEnvKey = (key: string): boolean =>
-  key.endsWith("_API_KEY") || key.endsWith("_API_KEY_FILE");
-
-const isUsageProbeOutput = (stdout: string, stderr: string): boolean => {
-  const output = `${stdout}\n${stderr}`;
-  return (
-    output.includes("subscription-runtime-run-agent-task") ||
-    output.includes("--input is required")
-  );
-};
-
-const parseStatus = (value: unknown): AgentRuntimeExecutionResult["status"] => {
-  if (
-    value === "completed" ||
-    value === "failed" ||
-    value === "waiting_for_input"
-  ) {
-    return value;
-  }
-
-  return "failed";
-};
-
-const optionalString = (value: unknown): string | undefined =>
-  typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : undefined;
-
-const optionalOutputText = (value: unknown): string | undefined =>
-  typeof value === "string" && value.trim().length > 0 ? value : undefined;
-
-const readOptionalRecord = (
-  value: unknown,
-): Record<string, unknown> | undefined =>
-  value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
-
-const readWarnings = (
-  value: unknown,
-): readonly AgentRuntimeExecutionWarning[] =>
-  Array.isArray(value)
-    ? value.flatMap((item): readonly AgentRuntimeExecutionWarning[] => {
-        const record = readOptionalRecord(item);
-        const code = optionalString(record?.code);
-        const message = optionalString(record?.message);
-
-        return code === undefined || message === undefined
-          ? []
-          : [{ code, message }];
-      })
-    : [];
-
-const readUsage = (value: unknown): AgentRuntimeExecutionUsage | undefined => {
-  const record = readOptionalRecord(value);
-  if (record === undefined) {
-    return undefined;
-  }
-
-  return {
-    inputTokens: nonNegativeInteger(record.inputTokens),
-    outputTokens: nonNegativeInteger(record.outputTokens),
-    totalTokens: nonNegativeInteger(record.totalTokens),
-    estimatedCostUsd: nonNegativeNumber(record.estimatedCostUsd),
-  };
-};
-
-const readFailure = (
-  value: unknown,
-): AgentRuntimeExecutionFailure | undefined => {
-  const record = readOptionalRecord(value);
-  if (record === undefined) {
-    return undefined;
-  }
-
-  const details = readSafeRuntimeFailureDetails(record.details);
-  const code = promotedRuntimeFailureCode(record.code, details.reason);
-
-  return {
-    code,
-    safeMessage:
-      optionalString(record.safeMessage) ??
-      optionalString(record.message) ??
-      "Agent runtime task failed",
-    retryable: record.retryable === true || retryableRuntimeCodes.has(code),
-    reconnectRequired:
-      record.reconnectRequired === true || code === "needs_reconnect",
-    causeCategory: optionalString(record.causeCategory) ?? "agent_runtime",
-    details,
-  };
-};
-
-const safeRuntimeFailureDetailKeys = new Set([
-  "availability",
-  "cooldownUntil",
-  "reason",
-  "subscriptionWorkerCode",
-]);
-
-const readSafeRuntimeFailureDetails = (
-  value: unknown,
-): Readonly<Record<string, string>> => {
-  const record = readOptionalRecord(value);
-  if (record === undefined) {
-    return {};
-  }
-
-  return Object.fromEntries(
-    Object.entries(record).flatMap(([key, detail]) => {
-      const safeValue = optionalString(detail);
-      return safeRuntimeFailureDetailKeys.has(key) && safeValue !== undefined
-        ? [[key, safeValue]]
-        : [];
-    }),
-  );
-};
-
-const promotedRuntimeFailureCode = (
-  value: unknown,
-  reason: string | undefined,
-): string => {
-  const code = optionalString(value) ?? "agent_runtime.failed";
-  if (code !== "unknown_runtime_failure") {
-    return code;
-  }
-
-  return runtimeFailureCodeBySafeReason[reason ?? ""] ?? code;
-};
-
-const runtimeFailureCodeBySafeReason: Readonly<Record<string, string>> = {
-  account_unavailable: "provider_session_invalid",
-  capacity_unavailable: "backend_unavailable",
-  provider_output_invalid: "provider_output_invalid",
-  quota_limited: "quota_limited",
-  reconnect_required: "needs_reconnect",
-  task_timeout: "task_timeout",
-  user_abort: "task_cancelled",
-};
-
-const retryableRuntimeCodes = new Set([
-  "backend_unavailable",
-  "needs_reconnect",
-  "provider_session_invalid",
-  "quota_limited",
-  "task_timeout",
-]);
-
-const nonNegativeInteger = (value: unknown): number =>
-  typeof value === "number" && Number.isInteger(value) && value >= 0
-    ? value
-    : 0;
-
-const nonNegativeNumber = (value: unknown): number =>
-  typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+const safeErrorMessage = (error: unknown): string =>
+  (error instanceof Error ? error.message : String(error))
+    .replaceAll(/\s+/g, " ")
+    .slice(0, 256);

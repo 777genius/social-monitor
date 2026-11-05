@@ -15,6 +15,7 @@ import {
   collectionQualityCountForTimestampPolicy,
   collectionQualityRegenerationFreshnessArgs,
   collectionQualityRowsForTimestampPolicy,
+  historicalRegenerationXLaneTopologySatisfied,
   resolveCollectionQualityRegenerationFreshness,
 } from "./yesterday-social-collection-quality-regeneration";
 
@@ -145,6 +146,19 @@ describe("historical regeneration collection-quality freshness", () => {
         allowHistorical: false,
       }),
     ).toThrow("scope, period or freshness is invalid");
+  });
+
+  it("does not require live X lane topology for a hash-bound historical snapshot", () => {
+    const freshness = resolve(writeManifest());
+
+    expect(historicalRegenerationXLaneTopologySatisfied({
+      liveTopologyObserved: false,
+      freshness,
+    })).toBe(true);
+    expect(historicalRegenerationXLaneTopologySatisfied({
+      liveTopologyObserved: false,
+      freshness: null,
+    })).toBe(false);
   });
 
   function resolve(fixture: {

@@ -1,3 +1,5 @@
+import type { JsonObject } from '@social-monitor/shared-kernel';
+
 import type { ScanJobStatus } from '../../domain';
 import type { ScanExecutionAttemptStatus } from '../../ports';
 
@@ -22,5 +24,7 @@ export type GetScanStatusResult = {
   readonly enqueuedAt?: Date;
   readonly completedAt?: Date;
   readonly failureReason?: string;
+  readonly failureMetadata?: JsonObject;
+  readonly executionMetadata?: JsonObject;
   readonly latestAttempt?: ScanExecutionAttemptView;
 };

@@ -17,11 +17,13 @@ class FeedFeaturePage extends StatefulWidget {
     required this.store,
     this.autoload = true,
     this.interestTitle,
+    this.onOpenSource,
   });
 
   final FeedItemsStore store;
   final bool autoload;
   final String? interestTitle;
+  final Future<bool> Function(Uri)? onOpenSource;
 
   @override
   State<FeedFeaturePage> createState() => _FeedFeaturePageState();
@@ -141,6 +143,7 @@ class _FeedFeaturePageState extends State<FeedFeaturePage> {
                   child: _FeedBody(
                     store: widget.store,
                     interestLabel: interestLabel,
+                    onOpenSource: widget.onOpenSource,
                   ),
                 ),
               ),
@@ -153,10 +156,15 @@ class _FeedFeaturePageState extends State<FeedFeaturePage> {
 }
 
 class _FeedBody extends StatelessWidget {
-  const _FeedBody({required this.store, required this.interestLabel});
+  const _FeedBody({
+    required this.store,
+    required this.interestLabel,
+    this.onOpenSource,
+  });
 
   final FeedItemsStore store;
   final String? interestLabel;
+  final Future<bool> Function(Uri)? onOpenSource;
 
   @override
   Widget build(BuildContext context) {
@@ -245,6 +253,7 @@ class _FeedBody extends StatelessWidget {
               item: detailItem,
               isLoading: detailState is LoadingViewState<FeedItem>,
               failure: detailFailure,
+              onOpenSource: onOpenSource,
             );
           },
         );

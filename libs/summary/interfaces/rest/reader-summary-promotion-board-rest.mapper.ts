@@ -1,0 +1,495 @@
+import { validReaderDisplayRestBinding } from "./reader-summary-display-rest-binding";
+import { readerPostPromotionCardFields } from "../../domain/entities/top-read";
+import { READER_PROMOTION_LIMITS } from
+  "../../domain/policies/reader-promotion-ranking";
+import { supportedReaderPromotionPolicy } from
+  "../../domain/policies/reader-promotion-policy-version";
+import { canonicalPromotionPayload } from
+  "../../domain/services/reader-post-promotion-attestation";
+import { readerSummaryIndependentProviderFamily } from
+  "../../domain/value-objects/reader-summary-provider-identity";
+import type { ReaderSummaryArtifactView } from
+  "../../features/shared/reader-summary-artifact-presenter";
+import {
+  READER_POST_PROMOTION_ATTESTATION_SCHEMA_VERSION,
+  READER_POST_PROMOTION_DIGEST_VERSION,
+  type ReaderSummaryPromotionAttestationDto,
+} from "./reader-summary-promotion-attestation.dto";
+import type { ReaderSummaryReaderItemDto } from "./reader-summary-reader.dto";
+import {
+  readerPostPromotionDigest,
+  sameOrderedStrings,
+} from "./reader-summary-rest-attestation";
+import type { ReaderSummaryCitationView } from "./reader-summary-rest.view";
+import { isGitHubReaderItem } from
+  "../../domain/policies/reader-summary-github-projection-audit";
+
+export type ReaderSummaryPromotionBoardRestView = Readonly<{
+  topReads: readonly ReaderSummaryReaderItemDto[];
+  selectedPosts: readonly ReaderSummaryReaderItemDto[];
+  newsWithoutRatingPosts: readonly ReaderSummaryReaderItemDto[];
+}>;
+
+type Placement = "top" | "additional" | "news";
+
+const emptyBoard: ReaderSummaryPromotionBoardRestView = Object.freeze({
+  topReads: [], selectedPosts: [], newsWithoutRatingPosts: [],
+});
+
+export const readerSummaryPromotionBoardRestView = (
+  view: ReaderSummaryArtifactView,
+): ReaderSummaryPromotionBoardRestView => {
+  // Pre-promotion boards and boards ranked under an older promotion stamp
+  // are withheld: no card is served without a current attestation.
+  const hasWithheldBoardState = view.promotionBoardState !== undefined;
+  const withheldBoardUnavailable = isWithheldPromotionBoardUnavailable(view);
+  if (hasWithheldBoardState && !withheldBoardUnavailable) {
+    throw new ReaderSummaryPromotionBoardMappingError();
+  }
+  if (withheldBoardUnavailable) return emptyBoard;
+  const additionalCards = promotionAdditionalCards(view);
+  const newsCards = view.content.newsWithoutRatingPosts;
+  if (view.content.topReads.length === 0 && additionalCards.length === 0 &&
+      newsCards.length === 0 && view.promotionAttestations.length === 0) {
+    if (isReadableNoSignalBoard(view)) return emptyBoard;
+    throw new ReaderSummaryPromotionBoardMappingError();
+  }
+  const authority = buildReaderCardRestAuthority(view, additionalCards);
+  if (authority === undefined) {
+    throw new ReaderSummaryPromotionBoardMappingError();
+  }
+  return {
+    topReads: readerSummaryReaderItemsView(view.content.topReads, authority, "top"),
+    selectedPosts: readerSummaryReaderItemsView(additionalCards, authority, "additional"),
+    newsWithoutRatingPosts: readerSummaryReaderItemsView(newsCards, authority, "news"),
+  };
+};
+
+const isReadableNoSignalBoard = (
+  view: ReaderSummaryArtifactView,
+): boolean => view.qualityFlags.includes("no_signal") &&
+  view.topStories.length === 0 &&
+  view.citations.length === 0;
+
+const promotionAdditionalCards = (
+  view: ReaderSummaryArtifactView,
+): readonly ReaderSummaryArtifactView["content"]["topReads"][number][] => {
+  const additional = [];
+  for (const item of view.content.selectedPosts ?? []) {
+    if (item.cardKind === "additional_notable_story") {
+      additional.push(item);
+      continue;
+    }
+    if (isGitHubReaderItem(item)) {
+      continue;
+    }
+    throw new ReaderSummaryPromotionBoardMappingError();
+  }
+  return additional;
+};
+
+const isWithheldPromotionBoardUnavailable = (
+  view: ReaderSummaryArtifactView,
+): boolean => {
+  if (
+    view.promotionBoardState === undefined ||
+    view.promotionAttestations.length > 0
+  ) {
+    return false;
+  }
+  const cards = [
+    ...view.content.topReads,
+    ...(view.content.selectedPosts ?? []),
+    ...view.content.newsWithoutRatingPosts,
+    ...view.content.interestSections.flatMap((section) => section.items),
+  ];
+  return cards.every((card) => readerPostPromotionCardFields.every(
+    (field) => !Object.prototype.hasOwnProperty.call(card, field),
+  ));
+};
+
+export class ReaderSummaryPromotionBoardMappingError extends Error {
+  constructor() {
+    super("Reader summary promotion board is invalid");
+    this.name = "ReaderSummaryPromotionBoardMappingError";
+  }
+}
+
+const readerSummaryReaderItemsView = (
+  items: readonly ReaderSummaryArtifactView["content"]["topReads"][number][],
+  authority: ReaderCardRestAuthority,
+  placement: Placement,
+): readonly ReaderSummaryReaderItemDto[] => {
+  const mapped = items.map((item, slot) =>
+    readerSummaryReaderItemView(item, authority, placement, slot));
+  if (mapped.some((item) => item === undefined)) {
+    throw new ReaderSummaryPromotionBoardMappingError();
+  }
+  return mapped as readonly ReaderSummaryReaderItemDto[];
+};
+
+const readerSummaryReaderItemView = (
+  item: ReaderSummaryArtifactView["content"]["topReads"][number],
+  authority: ReaderCardRestAuthority,
+  placement: Placement,
+  slot: number,
+): ReaderSummaryReaderItemDto | undefined => {
+  const storyClusterId = item.storyClusterId?.trim();
+  const explicitCardKind =
+    item.cardKind === "curated_top_read" ||
+    item.cardKind === "additional_notable_story" ||
+    item.cardKind === "news_without_rating"
+      ? item.cardKind
+      : undefined;
+  const expectedCardKind = placementCardKind[placement];
+  const clusterCardIsAuthorized =
+    explicitCardKind === expectedCardKind &&
+    isAuthorizedClusterRestItem(item, authority);
+  const promotionAttestation = promotionAttestationView(
+    item,
+    authority,
+    placement,
+    slot,
+  );
+  if (!clusterCardIsAuthorized || promotionAttestation === undefined ||
+      item.relationId !== undefined ||
+      item.targetStoryClusterId !== undefined) {
+    return undefined;
+  }
+  const {
+    storyClusterId: ignoredClusterId,
+    cardKind: ignoredCardKind,
+    relationId: ignoredRelationId,
+    targetStoryClusterId: ignoredTargetClusterId,
+    promotionMarker: ignoredPromotionMarker,
+    promotionPolicyVersion: ignoredPromotionPolicyVersion,
+    promotionTier: ignoredPromotionTier,
+    promotionCandidateId: ignoredPromotionCandidateId,
+    promotionCanonicalIdentity: ignoredPromotionCanonicalIdentity,
+    ...rest
+  } = item;
+  void ignoredClusterId;
+  void ignoredCardKind;
+  void ignoredRelationId;
+  void ignoredTargetClusterId;
+  void ignoredPromotionMarker;
+  void ignoredPromotionPolicyVersion;
+  void ignoredPromotionTier;
+  void ignoredPromotionCandidateId;
+  void ignoredPromotionCanonicalIdentity;
+  return {
+    ...rest,
+    promotionAttestation,
+    matchedRules: [
+      ...rest.matchedRules.filter((rule) => !isReservedReaderMarker(rule)),
+      `reader-card-kind:${explicitCardKind}`,
+      ...(storyClusterId === undefined
+        ? []
+        : [`reader-story-cluster:${storyClusterId}`]),
+    ],
+  };
+};
+
+type ReaderCardRestAuthority = Readonly<{
+  artifactId: string;
+  sourceWindowId: string;
+  ingestionCutoff?: string;
+  exactIngestionCutoff?: string;
+  citations: ReadonlyMap<string, ReaderSummaryCitationView>;
+  clusters: ReadonlyMap<
+    string,
+    ReaderSummaryArtifactView["storyClusters"][number]
+  >;
+  promotionAttestations: ReadonlyMap<
+    string,
+    ReaderSummaryArtifactView["promotionAttestations"][number]
+  >;
+}>;
+
+type ReaderPostPromotionAttestationV2View = Extract<
+  ReaderSummaryArtifactView["promotionAttestations"][number],
+  { readonly schemaVersion: "reader_post_promotion_attestation.v2" }
+>;
+
+const buildReaderCardRestAuthority = (
+  view: ReaderSummaryArtifactView,
+  additionalCards: readonly ReaderSummaryArtifactView["content"]["topReads"][number][],
+): ReaderCardRestAuthority | undefined => {
+  try {
+    const clusterById = new Map(view.storyClusters.map((cluster) => [cluster.id, cluster]));
+    for (const cluster of view.storyClusters) {
+      for (const feedItemId of [
+        cluster.representativeFeedItemId,
+        ...cluster.duplicateFeedItemIds,
+      ]) {
+        if ([...clusterById.values()].filter((candidate) =>
+          candidate.representativeFeedItemId === feedItemId ||
+          candidate.duplicateFeedItemIds.includes(feedItemId)
+        ).length !== 1) return undefined;
+      }
+    }
+    const citations = new Map(
+      view.citations.map((citation) => [citation.citationId, citation]),
+    );
+    if (citations.size !== view.citations.length) return undefined;
+    const promotionAttestations = new Map(view.promotionAttestations.map(
+      (attestation) => [attestation.candidateId, attestation] as const,
+    ));
+    const topCards = view.content.topReads;
+    const newsCards = view.content.newsWithoutRatingPosts;
+    if (topCards.length > READER_PROMOTION_LIMITS.top ||
+        topCards.length + additionalCards.length > READER_PROMOTION_LIMITS.rankedTotal ||
+        newsCards.length > READER_PROMOTION_LIMITS.news) return undefined;
+    const promotionCards = [...topCards, ...additionalCards, ...newsCards];
+    const promotionCandidateIds = promotionCards.map((item) =>
+      item.promotionCandidateId?.trim() ?? "",
+    );
+    const promotionCanonicalIdentities = promotionCards.map((item) =>
+      item.promotionCanonicalIdentity?.trim() ?? "",
+    );
+    if (promotionAttestations.size !== view.promotionAttestations.length ||
+        promotionAttestations.size !== promotionCards.length ||
+        new Set(promotionCandidateIds).size !== promotionCards.length ||
+        new Set(promotionCanonicalIdentities).size !== promotionCards.length ||
+        promotionCanonicalIdentities.some((identity) => identity.length === 0) ||
+        promotionCandidateIds.some((candidateId) =>
+          candidateId.length === 0 || !promotionAttestations.has(candidateId))) {
+      return undefined;
+    }
+    const lanes = [
+      ...topCards.map((item, slot) => ({ item, slot, placement: "top" as const })),
+      ...additionalCards.map((item, slot) => ({
+        item,
+        slot,
+        placement: "additional" as const,
+      })),
+      ...newsCards.map((item, slot) => ({ item, slot, placement: "news" as const })),
+    ];
+    if (lanes.some(({ item, slot, placement }) => {
+      const candidateId = item.promotionCandidateId?.trim() ?? "";
+      const canonicalIdentity = item.promotionCanonicalIdentity?.trim() ?? "";
+      const attestation = promotionAttestations.get(candidateId);
+      return attestation === undefined ||
+        attestation.candidateId !== candidateId ||
+        attestation.canonicalIdentity !== canonicalIdentity ||
+        attestation.placement !== placement ||
+        !validReaderDisplayRestBinding(item, attestation, view) ||
+        attestation.slot !== restPromotionSlot(attestation, slot);
+    })) return undefined;
+    return {
+      artifactId: view.readerSummaryId,
+      sourceWindowId: view.sourceWindow.windowId,
+      ingestionCutoff: view.sourceWindow.ingestionCutoff,
+      exactIngestionCutoff: view.sourceWindow.exactIngestionCutoff,
+      citations,
+      clusters: clusterById,
+      promotionAttestations,
+    };
+  } catch {
+    return undefined;
+  }
+};
+
+const promotionAttestationView = (
+  item: ReaderSummaryArtifactView["content"]["topReads"][number],
+  authority: ReaderCardRestAuthority,
+  placement: Placement,
+  slot: number,
+): ReaderSummaryPromotionAttestationDto | undefined => {
+  const decision = placementDecision[placement];
+  const candidateId = item.promotionCandidateId?.trim();
+  const canonicalIdentity = item.promotionCanonicalIdentity?.trim();
+  if (decision === undefined ||
+      item.promotionMarker !== "reader_post_promotion" ||
+      item.promotionTier !== placement || candidateId === undefined ||
+      candidateId.length === 0 || canonicalIdentity === undefined ||
+      canonicalIdentity.length === 0) return undefined;
+  const attestation = authority.promotionAttestations.get(candidateId);
+  const isV3 = attestation?.schemaVersion ===
+    "reader_post_promotion_attestation.v3";
+  if (attestation === undefined || (placement === "news" && !isV3) ||
+      item.promotionPolicyVersion !== attestation.policyVersion ||
+      attestation.candidateId !== candidateId ||
+      attestation.canonicalIdentity !== canonicalIdentity ||
+      attestation.artifactId !== authority.artifactId ||
+      attestation.sourceWindowId !== authority.sourceWindowId ||
+      (isV3 && (attestation.ingestionCutoff !== authority.ingestionCutoff ||
+        attestation.exactIngestionCutoff !== authority.exactIngestionCutoff)) ||
+      attestation.placement !== placement ||
+      attestation.slot !== restPromotionSlot(attestation, slot) ||
+      !sameOrderedStrings(attestation.citationIds, item.citationIds) ||
+      (!isV3 && (attestation.tier !== placement ||
+        attestation.canonicalDedupeOutcome !== "retained" ||
+        attestation.capOutcome !== "selected")) ||
+      attestation.decision !== decision ||
+      !validRestPromotionVersion(attestation) ||
+      readerPostPromotionDigest(attestation.canonicalPayload) !==
+        attestation.digest) return undefined;
+  const v2 = attestation.schemaVersion ===
+    READER_POST_PROMOTION_ATTESTATION_SCHEMA_VERSION
+    ? attestation
+    : undefined;
+  if (v2 !== undefined && (placement === "news" ||
+      !validV2RestCardBinding(v2, item, placement, slot))) {
+    return undefined;
+  }
+  if (isV3 && (attestation.storyId !== item.storyClusterId ||
+      attestation.presentation.displayHeadline.headline.status !== "accepted" ||
+      canonicalPromotionPayload(attestation.presentation.displayHeadline.headline) !==
+        canonicalPromotionPayload(item.displayHeadline))) return undefined;
+  return {
+    schemaVersion: attestation.schemaVersion,
+    policyVersion: attestation.policyVersion,
+    digestVersion: attestation.digestVersion,
+    digest: attestation.digest,
+    canonicalPayload: attestation.canonicalPayload,
+    artifactId: attestation.artifactId,
+    sourceWindowId: attestation.sourceWindowId,
+    slot: attestation.slot,
+    candidateId,
+    canonicalIdentity,
+    placement,
+    decision,
+    citationIds: [...attestation.citationIds],
+    ...(isV3 ? {
+      provider: attestation.provider,
+      storyId: attestation.storyId,
+      publishedAt: attestation.publishedAt,
+      periodStartedAt: attestation.periodStartedAt,
+      periodEndedAt: attestation.periodEndedAt,
+      ingestionCutoff: attestation.ingestionCutoff,
+      exactIngestionCutoff: attestation.exactIngestionCutoff,
+      assessment: attestation.assessment,
+      comparator: attestation.comparator,
+      presentation: attestation.presentation,
+    } : {}),
+    ...(v2 === undefined ? {} : {
+      ...(v2.displayHeadline === undefined ? {} : { displayHeadline: v2.displayHeadline }),
+      ...(v2.displaySummary === undefined ? {} : { displaySummary: v2.displaySummary }),
+      storyClusterId: v2.storyClusterId,
+      scoreComponents: { ...v2.scoreComponents },
+      reasonCodes: [...v2.reasonCodes],
+      candidateDigestInput: v2.candidateDigestInput,
+      slateEntryDigestInput: v2.slateEntryDigestInput,
+      slateDigestInput: v2.slateDigestInput,
+      slateDigest: v2.slateDigest,
+      evidenceLineage: {
+        ...v2.evidenceLineage,
+        supportCandidateIds: [...v2.evidenceLineage.supportCandidateIds],
+        supportCitationIds: [...v2.evidenceLineage.supportCitationIds],
+        citationIds: [...v2.evidenceLineage.citationIds],
+      },
+    }),
+  };
+};
+
+const validRestPromotionVersion = (
+  attestation: ReaderSummaryArtifactView["promotionAttestations"][number],
+): boolean => attestation.schemaVersion ===
+    "reader_post_promotion_attestation.v1"
+  ? attestation.policyVersion === "reader_post_promotion.v1" &&
+    attestation.digestVersion === "reader_post_promotion_digest.sha256.v1"
+  : attestation.schemaVersion === "reader_post_promotion_attestation.v3"
+    ? supportedReaderPromotionPolicy(attestation.policyVersion) &&
+      attestation.digestVersion === "reader_post_promotion_digest.sha256.v3"
+    : attestation.schemaVersion ===
+      READER_POST_PROMOTION_ATTESTATION_SCHEMA_VERSION &&
+    attestation.policyVersion === "reader_post_promotion.v2" &&
+    attestation.digestVersion === READER_POST_PROMOTION_DIGEST_VERSION;
+
+const restPromotionSlot = (
+  attestation: ReaderSummaryArtifactView["promotionAttestations"][number],
+  zeroBasedIndex: number,
+): number => attestation.schemaVersion ===
+    READER_POST_PROMOTION_ATTESTATION_SCHEMA_VERSION ||
+    attestation.schemaVersion === "reader_post_promotion_attestation.v3"
+  ? zeroBasedIndex + 1
+  : zeroBasedIndex;
+
+const validV2RestCardBinding = (
+  attestation: ReaderPostPromotionAttestationV2View,
+  item: ReaderSummaryArtifactView["content"]["topReads"][number],
+  placement: "top" | "additional",
+  zeroBasedIndex: number,
+): boolean => item.storyClusterId === attestation.storyClusterId &&
+  item.summary === attestation.displaySummary &&
+  item.promotionPolicyVersion === attestation.policyVersion &&
+  item.editorialPolicyVersion === "reader_promotion_policy.v2" &&
+  item.editorialPlacement === placement &&
+  item.editorialSlot === zeroBasedIndex + 1 &&
+  canonicalPromotionPayload(item.editorialScoreComponents) ===
+    canonicalPromotionPayload(attestation.scoreComponents) &&
+  sameOrderedStrings(
+    item.editorialReasonCodes ?? [],
+    attestation.reasonCodes,
+  ) &&
+  item.editorialCandidateDigestInput === attestation.candidateDigestInput &&
+  item.editorialDigestInput === attestation.slateEntryDigestInput;
+
+const isAuthorizedClusterRestItem = (
+  item: ReaderSummaryArtifactView["content"]["topReads"][number],
+  authority: ReaderCardRestAuthority,
+): boolean => {
+  const cluster = item.storyClusterId === undefined
+    ? undefined
+    : authority.clusters.get(item.storyClusterId);
+  if (cluster === undefined || new Set(item.citationIds).size !== item.citationIds.length) {
+    return false;
+  }
+  const feedItemIds = new Set([
+    cluster.representativeFeedItemId,
+    ...cluster.duplicateFeedItemIds,
+  ]);
+  const clusterProviders = new Set(cluster.providerKeys.map(normalizedProvider));
+  const citations = item.citationIds.map((citationId) =>
+    authority.citations.get(citationId),
+  );
+  if (citations.some((citation) =>
+    citation === undefined ||
+    !feedItemIds.has(citation.feedItemId) ||
+    !clusterProviders.has(normalizedProvider(citation.providerKey)))) {
+    return false;
+  }
+  const citationProviders = new Set(
+    citations.flatMap((citation) =>
+      citation === undefined ? [] : [normalizedProvider(citation.providerKey)],
+    ),
+  );
+  const confirmedProviders = new Set(
+    item.confirmedProviderKeys.map(normalizedProvider),
+  );
+  const primaryProvider = normalizedProvider(item.providerKey);
+  return citationProviders.has(primaryProvider) &&
+    confirmedProviders.size === item.confirmedProviderKeys.length &&
+    confirmedProviders.size === citationProviders.size &&
+    [...confirmedProviders].every((provider) => citationProviders.has(provider)) &&
+    (item.canonicalUrl === undefined || citations.some((citation) =>
+      citation !== undefined &&
+      normalizedProvider(citation.providerKey) === primaryProvider &&
+      citation.canonicalUrl === item.canonicalUrl));
+};
+
+const normalizedProvider = (value: string): string =>
+  readerSummaryIndependentProviderFamily({ providerKey: value });
+
+const isReservedReaderMarker = (rule: string): boolean => {
+  const normalized = rule.trim().toLowerCase();
+  return [
+    "reader-card-kind:",
+    "reader-story-cluster:",
+    "reader-related-topic-relation:",
+    "reader-related-topic-target:",
+  ].some((prefix) => normalized.startsWith(prefix));
+};
+
+const placementCardKind = Object.freeze({
+  top: "curated_top_read",
+  additional: "additional_notable_story",
+  news: "news_without_rating",
+} as const satisfies Record<Placement, string>);
+
+const placementDecision = Object.freeze({
+  top: "promote_top",
+  additional: "promote_additional",
+  news: "promote_news",
+} as const satisfies Record<Placement, string>);

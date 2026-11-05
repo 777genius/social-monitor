@@ -7,6 +7,20 @@ language.
 
 ## Core Terms
 
+- GitHub Trending: a separate repository-list appendix. It never appears in
+  either Selected Posts or All Posts, and never affects their counts or ranking.
+- Selected Posts Filter: enabled by default. It shows the authorized editorial
+  board. When disabled, All Posts browses unique visible collected source posts
+  for the same period using saved assessments, without granting promotion or
+  headline authority. The server orders the entire set before paging by twelve.
+- Unassessed Browse Post: a collected source post without an assessment matching
+  its current content and interest. It is labelled Not assessed and follows
+  assessed posts in model order; it can still lead in engagement order.
+- Quote Authored Text: the quote author's captured canonical text. It can be
+  assessed on its own while the original quoted post remains unavailable.
+  `quotedContext: not_captured` discloses that limitation; it never supplies
+  invented quoted text or grants promotion without the normal assessment gate.
+
 - Summary: user-facing generated explanation of monitored activity.
 - Workspace Summary: the primary summary for the current workspace. It can
   aggregate all relevant posts, source mix, top reads, citations and next
@@ -16,17 +30,68 @@ language.
   quality state and `ReaderAction`.
 - Top Read: a user-readable item selected for review. It has a normalized
   `signalScore` plus provider-native `providerMetrics`.
-- More Selected Post: additional evidence selected for the Summary but not
-  promoted into the curated Top Reads. The UI keeps it in a separate section
-  and orders it by normalized Signal, independent source confirmation,
-  confidence and matched-interest breadth. Provider-native metrics are not
-  compared across platforms.
+- Promotion Attestation: the backend-signed-by-contract authorization carried
+  by every Promotion Policy V1 Top or Additional card. The frontend accepts
+  only the known schema, policy and digest versions, verifies the SHA-256
+  digest, and requires placement and decision to agree with the card lane.
+  Missing, malformed, unknown or contradictory attestations fail closed.
+- Additional Notable Story: an existing story cluster outside the curated Top
+  Reads that the backend explicitly authorizes after applying provider-native
+  notability policy. It appears at most once, carries its story-cluster id,
+  aggregates the cluster's citations and providers, and may be absent. The UI
+  preserves server order and neither guesses eligibility nor sorts by
+  normalized Signal. Unmarked legacy `selectedPosts`, including GitHub items,
+  are unsupported and fail closed. Only legacy `topReads` may use list-context
+  fallback for backward-compatible classification.
+- Ranked Board: "Top posts" (the first 12 ranked posts) and "Show more" (the
+  same sequence continued, up to 48 ranked posts in total). It holds posts of
+  ranked source families only (X, Reddit, Hacker News, GitHub), has no
+  per-network cap, and Show more exists only behind a full Top.
+- Hybrid Promotion Score: the order key of the Ranked Board,
+  `0.4 * model + 0.6 * popularity` with model important 1.0 and useful 0.5.
+  The frontend rebuilds it exactly as a `BigInt` fraction from the signed
+  comparator and never compares doubles; ties break by newest publishedAt,
+  then candidate id bytes.
+- Popularity Percentile: mid-rank `(below + equal / 2) / cohortSize` of a post
+  inside its own source family, among admitted posts with a metric eligible under the signed policy. Networks
+  are never compared by raw numbers. A family with fewer than 5 such posts
+  (minimum popularity cohort) has no popularity at all: popularity 0 in the
+  score and Signal 0, uniformly for the whole family.
+- Metric Eligibility: V2 counts genuine observations from publication through
+  the frozen cutoff, without an age coefficient. Missing, malformed, pre-publication
+  or future observations stay unknown. Historical V1 requires six hours after publication.
+- Source Engagement: the single native popularity number the backend signs
+  into a V3 comparator: X likes + 2 x reposts, Reddit score, Hacker News
+  points, GitHub max(stars, forks / 2) in the trending window. `null` means
+  unknown (legacy V1/V2 card, missing snapshot, unranked source).
+- Top Posts Sort Order: the reader's display order of the complete ranked pool before revealing pages of twelve,
+  "By model" (default, the authorized server order) or "By likes" (Source
+  Engagement descending, ties and unknown metrics in model order, unknown
+  last). It is a remembered reader preference, not a ranking decision: lane
+  membership, attested slots, Signal and News without rating never change.
+- News without rating: the separate block for sources without a popularity
+  rating (RSS), up to 16 posts, ordered by usefulness and then recency. Its
+  cards never show a Signal. A Google News publisher appears at most once.
+- Ranking Policy Stamp: current `reader_promotion.2026-11-02` and supported
+  historical `reader_promotion.2026-11-01` define the comparator meaning. Each
+  is verified with its own metric rule; historical artifacts are not rewritten.
+  Unsupported stamps require a rebuild.
+- Related Topic: a non-transitive, non-credit card for one selected subject
+  story that the backend explicitly relates to a distinct official-authority
+  target story. It keeps the subject cluster id, stable relation id and target
+  cluster id, and displays only the subject source's title, URL, citation,
+  provider metrics and score. Noncanonical kinds or relation identity versions,
+  missing markers, raw or normalized duplicate identities, self-referencing
+  targets and dangling targets fail closed; presentation never infers or
+  traverses a relation.
 - Top Read Feedback Target: the concrete feed/source item identity used when a
   user rates a Top Read with 1-5 stars. It is recorded for review learning
   only and must not directly reorder results until a capped ranking policy
   explicitly consumes it.
 - Signal Score: normalized ranking score owned by Feed/Relevance/Summary
   selection logic. It is not a Reddit score, HN points, GitHub stars or X likes.
+  On a promoted V3 card it is the popularity percentile times 10 for an eligible
+  ranked metric and 0 otherwise; it is display only, never an order input.
 - Provider Metric: readable native provider metric such as Reddit score, HN
   points, GitHub stars, X likes, comments or upvote ratio.
 - Source Mix: provider coverage summary for the workspace summary.
@@ -68,7 +133,20 @@ language.
 - Do not put normalized ranking labels like `Story signal`, `Base signal`,
   `Cross-source support`, `Confirmed by` or `Evidence items` into
   `ProviderMetric[]`.
-- Do not let Reddit/HN/GitHub/X scoring rules leak into the Summary context.
+- Provider-native Additional Notable Story floors belong to the backend Summary
+  policy. Flutter must consume the authorized card kind and must never infer
+  Additional authority from metrics, source copy or provider identity. Only
+  exact `topReads` list context may provide backward-compatible fallback for
+  unmarked legacy items; `selectedPosts` never receive that fallback,
+  regardless of provider identity.
+- Related Topic authority and direction belong to the backend domain. Flutter
+  must never infer a relation from titles, providers, metrics or a negative
+  same-story decision.
+- Promotion Policy V1 thresholds, ranking and refill decisions belong to the
+  backend. Flutter preserves authorized server order, applies only the eight
+  item lane caps and canonical deduplication with Top winning, and accepts
+  short or empty lanes. The only reorder is the reader-chosen Top Posts Sort
+  Order inside one visible lane.
 
 ## Rename Backlog
 

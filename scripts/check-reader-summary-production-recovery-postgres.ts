@@ -14,10 +14,12 @@ import { assertReaderSummaryDailyCanonicalRecoveryV4HistoricalUnavailableMigrati
 import { assertReaderSummaryDailyCanonicalRecoveryV4InvalidRuntimeMigrationContract, assertReaderSummaryDailyCanonicalRecoveryV4InvalidRuntimePostgresContract } from "./lib/reader-summary-daily-canonical-recovery-v4-invalid-runtime-postgres-contract";
 import { assertReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryMigrationContract, prepareReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryFixture } from "./lib/reader-summary-daily-canonical-recovery-v4-ambiguity-retry-postgres-contract";
 import { assertReaderSummaryDailyCanonicalRecoveryV4EvidenceRecorderPostgresContract } from "./lib/reader-summary-daily-canonical-recovery-v4-evidence-recorder-postgres-contract";
+import { assertReaderSummaryActiveModelRoutePostgresContract } from "./lib/reader-summary-active-model-route-postgres-contract";
 import { assertReaderSummaryDailyCanonicalRecoveryV4InvalidProductRetrySetMigrationContract, assertReaderSummaryDailyCanonicalRecoveryV4InvalidProductRetrySetPostgresContract } from "./lib/reader-summary-daily-canonical-recovery-v4-invalid-product-retry-set-postgres-contract";
 import { type CanonicalRecoveryAuthority, type CanonicalRecoveryFinalizer, type CanonicalRecoveryPublication, type CanonicalRecoveryWork, PostgresCanonicalRecoveryAmbiguityRetryAuthorizer, PostgresCanonicalRecoveryAuthority, canonicalJsonBytes, canonicalRecoveryDates, sha256 } from "./lib/reader-summary-daily-canonical-recovery-v4";
 import { ReaderSummaryDailyCanonicalRecoveryV4Executor } from "./lib/reader-summary-daily-canonical-recovery-v4-executor";
 import { createReaderSummaryDailyTerminalRuntimeConnection } from "./lib/reader-summary-daily-terminal-runtime-connection";
+import { applyReaderSummaryProductionRecoveryRelease } from "./lib/reader-summary-production-recovery-release";
 import { createReaderSummaryDailyCanonicalRecoveryV4Finalizer } from "./run-reader-summary-daily-canonical-recovery";
 import { fixtureReaderSummaryServingAuthority } from "./lib/reader-summary-serving-authority-fixture";
 type RecoveryPoolClient = RecoveryPostgresClient &
@@ -59,6 +61,7 @@ type PublicationPrivilegesModule = Readonly<{
     readonly runtimeRole: string;
     readonly serverAdminDatabaseUrl: string;
   }): Promise<void>;
+  provisionPublicationFixtureFirstPublicationRole(pool: RecoveryPool): Promise<Readonly<{ oid: number }>>;
   provisionPublicationFixtureDailyTerminalRole(params: {
     readonly dailyTerminalPassword: string;
     readonly migrationAdminRole: string;
@@ -94,10 +97,9 @@ type PublicationPrivilegesModule = Readonly<{
     readonly fixtureDatabaseCreated: boolean;
     readonly fixtureMigrationAdminRoleCreated: boolean;
     readonly fixtureRuntimeRoleCreated: boolean;
-    readonly fixtureDailyTerminalRoleCreated?: boolean;
+    readonly fixtureDailyTerminalRoleCreated?: boolean; readonly fixtureFirstPublicationRoleOwnership?: Readonly<{ oid: number }>;
   }): Promise<void>;
 }>;
-
 const runtimeRequire = createRequire(join(process.cwd(), "package.json"));
 const { Pool } = runtimeRequire("pg") as PostgresRuntimeModule;
 (
@@ -121,7 +123,7 @@ const {
   makePublicationFixtureRuntimeDatabaseOwner,
   publicationDatabaseUrl,
   publicationProtectedRolePresence,
-  provisionPublicationFixtureDailyTerminalRole,
+  provisionPublicationFixtureDailyTerminalRole, provisionPublicationFixtureFirstPublicationRole,
   publicationRuntimeDatabaseUrl,
   quotePostgresIdentifier,
   quotePostgresLiteral,
@@ -177,7 +179,11 @@ const invalidRuntimeTerminalMigration = "20260805180000_reader_summary_daily_v4_
 const invalidProductRetrySetMigration = "20260806010000_reader_summary_daily_v4_invalid_product_retry_set";
 const canonicalOutputReceiptMigration = "20260806010100_reader_summary_daily_v4_canonical_output_receipt_v3";
 const dailyDeliveryC1Migration = "20260811170000_reader_summary_daily_delivery_c1_retry_evidence";
-const postDailyDeliveryMigrations = readerSummaryMigrationNames().filter((migration) => migration > dailyDeliveryC1Migration);
+const telemetryMigration = "20260824120000_reader_summary_daily_model_job_telemetry";
+const defaultAclMigration = "20260824121000_reader_summary_daily_function_global_default_acl";
+const postDailyDeliveryMigrations = readerSummaryMigrationNames().filter(
+  (migration) => migration > dailyDeliveryC1Migration,
+);
 const ambiguityRetryMigrations = [
   "20260804130000_reader_summary_daily_v4_ambiguity_retry_schema",
   "20260804130100_reader_summary_daily_v4_ambiguity_retry_transitions",
@@ -204,8 +210,7 @@ let dailyActivationDefinerRolePreexisting = false;
 let fixtureDatabaseCreated = false;
 let fixtureMigrationAdminRoleCreated = false;
 let fixtureRuntimeRoleCreated = false;
-let fixtureDailyTerminalRoleCreated = false;
-
+let fixtureDailyTerminalRoleCreated = false; let fixtureFirstPublicationRoleOwnership: Readonly<{ oid: number }> | undefined;
 class DeterministicDailyRecoveryRuntime {
   readonly runtimeEngine = "subscription-runtime-cli" as const;
   private readonly canonicalResponseBytes = canonicalJsonBytes({
@@ -291,14 +296,14 @@ class DeterministicDailyRecoveryRuntime {
       executionAttestation: {
         schemaVersion: 1,
         requestId: `daily-recovery-pg18-${input.requestedUtcDate}`,
-        purpose: "social_monitor.reader_summary.weekly.generate",
+        purpose: "social_monitor.reader_summary.daily.canonical_recovery.v2",
         canonicalRequestSha256: sha256(Buffer.from(
           `daily-recovery-pg18-request:${input.requestedUtcDate}`,
           "utf8",
         )),
         provider: "codex",
         model: "gpt-5.6-sol",
-        reasoningEffort: "xhigh",
+        reasoningEffort: "high",
         runtimeEngine: "subscription-runtime-cli",
         runtimePackageVersion: "1.0.0",
         launcherSha256: sha256(Buffer.from(
@@ -518,6 +523,7 @@ const main = async (): Promise<void> => {
       serverAdminDatabaseUrl,
     });
     fixtureRuntimeRoleCreated = true;
+    fixtureFirstPublicationRoleOwnership = await provisionPublicationFixtureFirstPublicationRole(serverAdmin);
     fixtureDailyTerminalRoleCreated =
       await provisionPublicationFixtureDailyTerminalRole({
         dailyTerminalPassword,
@@ -627,27 +633,22 @@ const main = async (): Promise<void> => {
             auditor,
             "0",
           );
-        for (const migration of [
-          originalCutoffForwardMigration,
-          ...ambiguityRetryMigrations,
-          dailyDeliveryC1Migration,
-          ...postDailyDeliveryMigrations,
-        ]) {
-          cpSync(
-            join(process.cwd(), "prisma", "migrations", migration),
-            join(migrationWorkspace.directory, "migrations", migration),
-            { recursive: true },
-          );
-        }
-        applyOrderedReaderSummaryMigrations(
+        await applyReaderSummaryProductionRecoveryRelease({
           adminDatabaseUrl,
+          client: auditor,
+          defaultAclMigration,
+          migrationAdminRole,
+          migrations: [
+            originalCutoffForwardMigration,
+            ...ambiguityRetryMigrations,
+            dailyDeliveryC1Migration,
+            ...postDailyDeliveryMigrations,
+          ],
           migrationWorkspace,
-        );
-        await runReaderSummaryPublicationBootstrapSql(
-          "post",
-          adminDatabaseUrl,
+          runBootstrap: runReaderSummaryPublicationBootstrapSql,
           runtimeRole,
-        );
+          telemetryMigration,
+        });
         assertReaderSummaryMigrationDatabaseMatchesSchema(targetDatabaseUrl);
         const legacyRecoveryAfterForward =
           await assertReaderSummaryDailyCanonicalRecoveryV4GenericFixture(
@@ -686,7 +687,6 @@ const main = async (): Promise<void> => {
         const immutablePublication = (
           publication: CanonicalRecoveryPublication,
         ): CanonicalRecoveryPublication => Object.freeze({ ...publication });
-
         // Checker-only batching defers immediate reads; terminal authority is verified twice.
         const wrappedFinalizer: CanonicalRecoveryFinalizer = {
           finalize: async (input) => {
@@ -771,6 +771,7 @@ const main = async (): Promise<void> => {
         await Promise.all([auditor, first, firstTerminal].map(configureLateAssertionSession));
         markLateStage("migrations_fixture_ready");
         try {
+          await assertReaderSummaryActiveModelRoutePostgresContract(auditor);
           await assertReaderSummaryDailyCanonicalRecoveryV4InvalidRuntimePostgresContract({
             auditor,
             tenantId: readerSummaryProductionRecoveryFixtureScope.tenantId,
@@ -974,7 +975,7 @@ const main = async (): Promise<void> => {
         fixtureDatabaseCreated,
         fixtureMigrationAdminRoleCreated,
         fixtureRuntimeRoleCreated,
-        fixtureDailyTerminalRoleCreated,
+        fixtureDailyTerminalRoleCreated, fixtureFirstPublicationRoleOwnership,
       });
     } finally {
       await serverAdmin.end();

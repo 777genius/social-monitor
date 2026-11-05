@@ -5,4 +5,6 @@ export type ExecuteReaderSummaryJobCommand = {
   readonly workspaceId: WorkspaceId;
   readonly readerSummaryJobId: string;
   readonly maxEvidenceItems?: number;
+  /** Internal live capture boundary; never grants refresh or frozen-manifest authority. */
+  readonly observedThrough?: Date;
 };

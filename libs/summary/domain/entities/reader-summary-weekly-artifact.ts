@@ -353,7 +353,9 @@ const exactStoryStatus = (value: unknown): ReaderSummaryWeeklyStoryStatus => {
       value as ReaderSummaryWeeklyStoryStatus,
     )
   ) {
-    throw new Error("Reader summary weekly story status is invalid");
+    throw new Error(
+      `Reader summary weekly story status is invalid: ${JSON.stringify(value)}`,
+    );
   }
   return value as ReaderSummaryWeeklyStoryStatus;
 };
@@ -364,7 +366,9 @@ const exactSectionKind = (value: unknown): ReaderSummaryWeeklySectionKind => {
       value as ReaderSummaryWeeklySectionKind,
     )
   ) {
-    throw new Error("Reader summary weekly section kind is invalid");
+    throw new Error(
+      `Reader summary weekly section kind is invalid: ${JSON.stringify(value)}`,
+    );
   }
   return value as ReaderSummaryWeeklySectionKind;
 };

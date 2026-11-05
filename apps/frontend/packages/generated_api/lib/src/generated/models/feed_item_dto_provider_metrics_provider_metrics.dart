@@ -335,11 +335,11 @@ class FeedItemDtoProviderMetricsProviderMetricsXPost
   final XPostProviderMetricsDtoContentTypeContentType contentType;
   final num impressions;
   final XPostProviderMetricsDtoKindKind kind;
-  final num likes;
+  final num? likes;
   final XPostProviderMetricsDtoProviderKeyProviderKey providerKey;
   final num quotes;
   final num replies;
-  final num reposts;
+  final num? reposts;
   final String sourceKey;
 
   const FeedItemDtoProviderMetricsProviderMetricsXPost({

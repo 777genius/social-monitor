@@ -1,10 +1,13 @@
 import 'package:social_monitor_generated_api/social_monitor_generated_api.dart'
     as generated;
 
+import '../../domain/value_objects/reader_summary_provider_family.dart';
 import '../api/summary_api_dto.dart';
+import 'reader_summary_artifact_binding.dart';
 import 'reader_summary_content_rest_mapper.dart';
 
 part 'generated_summary_rest_mapper_coverage.dart';
+part 'generated_summary_rest_mapper_reader_authority.dart';
 
 final class GeneratedSummaryRestMapper {
   const GeneratedSummaryRestMapper();
@@ -30,18 +33,37 @@ final class GeneratedSummaryRestMapper {
         noSignalReason: dto.noSignalReason,
       ),
       userId: dto.userId,
-      content: _readerSummaryContentMapper.map(dto.readerBrief),
-      topStories: dto.topStories
-          .map(
-            (story) => SummaryStoryApiDto(
-              title: story.title,
-              summary: story.summary,
-              topicCount: story.interestIds.length,
-              providerCount: story.providerKeys.length,
-              citationIds: story.citationIds,
-            ),
-          )
-          .toList(growable: false),
+      content: _readerSummaryContentMapper.map(
+        dto.readerBrief,
+        binding: ReaderSummaryArtifactBinding(
+          tenantId: dto.tenantId,
+          workspaceId: dto.workspaceId,
+          feedItemIdsByCitation: {
+            for (final citation in dto.citations)
+              citation.citationId: citation.feedItemId,
+          },
+          sourceItemIdsByCitation: {
+            for (final citation in dto.citations)
+              citation.citationId: citation.sourceItemId,
+          },
+          providerKeysByCitation: {
+            for (final citation in dto.citations)
+              citation.citationId: citation.providerKey,
+          },
+          artifactId: dto.readerSummaryId,
+          sourceWindowId: dto.sourceWindow.windowId,
+          periodStart: dto.period.startedAt,
+          periodEnd: dto.period.endedAt,
+          ingestionCutoff: dto.sourceWindow.ingestionCutoff,
+          exactIngestionCutoff:
+              dto.sourceWindow.toJson()['exactIngestionCutoff'] as String?,
+        ),
+      ),
+      topStories: _readerSummaryTopStories(dto.topStories),
+      storyClusterIds: _readerSummaryStoryClusterIds(dto.storyClusters),
+      storyClusterAuthorities: _readerSummaryStoryClusterAuthorities(
+        dto.storyClusters,
+      ),
       repeatedSignals: dto.repeatedSignals
           .map(
             (signal) => RepeatedSignalApiDto(
@@ -57,11 +79,14 @@ final class GeneratedSummaryRestMapper {
       period: readerSummaryPeriod(dto.period),
       generatedAt: dto.generatedAt,
       sourceWindow: SummaryWindowApiDto(
+        id: dto.sourceWindow.windowId,
         label: 'Evidence window',
         startedAt: dto.sourceWindow.startedAt,
         endedAt: dto.sourceWindow.endedAt,
+        ingestionCutoff: dto.sourceWindow.ingestionCutoff,
       ),
       freshnessLabel: _readerSummaryFreshnessLabel(dto.freshness),
+      freshnessReason: dto.freshness.reason?.json,
       isDegraded: dto.qualityFlags.any(_isDegradedReaderSummaryFlag),
       coverage: _readerSummaryCoverage(coverage),
     );
@@ -348,21 +373,6 @@ final class GeneratedSummaryRestMapper {
       generated.ReaderSummaryJobStatusResponseDtoStatusStatus.$unknown =>
         'unknown',
     };
-  }
-
-  String _readerSummaryBodyText({
-    required String executiveSummary,
-    required String? noSignalReason,
-  }) {
-    final parts = <String>[
-      executiveSummary,
-      ...?noSignalReason == null ? null : <String>[noSignalReason],
-    ];
-    final normalized = parts
-        .map((part) => part.trim())
-        .where((part) => part.isNotEmpty)
-        .join(' ');
-    return normalized.isEmpty ? 'No summary available' : normalized;
   }
 
   String _bodyText({

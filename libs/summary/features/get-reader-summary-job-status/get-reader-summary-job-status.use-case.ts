@@ -48,6 +48,8 @@ export class GetReaderSummaryJobStatusUseCase {
     }
 
     const snapshot = job.toSnapshot();
+    const publicFailureReason = snapshot.failureReason?.startsWith("v3_")
+      ? undefined : snapshot.failureReason;
 
     return ok({
       readerSummaryJobId: snapshot.id,
@@ -65,15 +67,16 @@ export class GetReaderSummaryJobStatusUseCase {
       completedAt: snapshot.completedAt?.toISOString(),
       failedAt: snapshot.failedAt?.toISOString(),
       readerSummaryId: snapshot.readerSummaryId,
-      failureReason: snapshot.failureReason,
+      failureReason: publicFailureReason,
       failureClass: failureClassFor(snapshot.status),
-      timeline: buildTimeline(snapshot),
+      timeline: buildTimeline(snapshot, publicFailureReason),
     });
   }
 }
 
 const buildTimeline = (
   snapshot: ReaderSummaryJobProps,
+  publicFailureReason?: string,
 ): readonly ReaderSummaryJobTimelineEvent[] => {
   const events: ReaderSummaryJobTimelineEvent[] = [
     {
@@ -83,12 +86,8 @@ const buildTimeline = (
     },
   ];
 
-  pushIfPresent(
-    events,
-    "running",
-    snapshot.startedAt,
-    "Reader summary generation started",
-  );
+  pushIfPresent(events, "running", snapshot.startedAt,
+    "Reader summary generation started");
   pushIfPresent(
     events,
     snapshot.status,
@@ -99,7 +98,7 @@ const buildTimeline = (
     events,
     snapshot.status === "quality_rejected" ? "quality_rejected" : "failed",
     snapshot.failedAt,
-    messageForFailedStatus(snapshot),
+    messageForFailedStatus(snapshot, publicFailureReason),
   );
 
   return events;
@@ -125,10 +124,11 @@ const messageForCompletedStatus = (status: ReaderSummaryJobStatus): string =>
     ? "Reader summary completed with no reliable signal"
     : "Reader summary completed";
 
-const messageForFailedStatus = (snapshot: ReaderSummaryJobProps): string =>
+const messageForFailedStatus = (snapshot: ReaderSummaryJobProps,
+  publicFailureReason?: string): string =>
   snapshot.status === "quality_rejected"
     ? "Reader summary rejected by pre-publish quality gate"
-    : (snapshot.failureReason ?? "Reader summary generation failed");
+    : (publicFailureReason ?? "Reader summary generation failed");
 
 const failureClassFor = (
   status: ReaderSummaryJobStatus,

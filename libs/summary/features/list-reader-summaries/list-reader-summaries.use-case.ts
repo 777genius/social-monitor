@@ -65,9 +65,7 @@ export class ListReaderSummariesUseCase {
     readonly nextCursor?: string;
   }> {
     const result = await this.readerSummaries.list(query);
-    const items = await Promise.all(
-      result.items.map((readerSummary) => this.present(readerSummary)),
-    );
+    const items = await this.presentInOrder(result.items);
 
     return {
       items,
@@ -103,9 +101,7 @@ export class ListReaderSummariesUseCase {
         break;
       }
 
-      const presentedItems = await Promise.all(
-        result.items.map((readerSummary) => this.present(readerSummary)),
-      );
+      const presentedItems = await this.presentInOrder(result.items);
       for (const item of presentedItems) {
         if (matchesListReaderSummaryFilters(item, filters)) {
           items.push(item);
@@ -123,6 +119,16 @@ export class ListReaderSummariesUseCase {
       items,
       nextCursor,
     };
+  }
+
+  private async presentInOrder(
+    readerSummaries: readonly ReaderSummaryArtifact[],
+  ): Promise<readonly ReaderSummaryArtifactView[]> {
+    const items: ReaderSummaryArtifactView[] = [];
+    for (const readerSummary of readerSummaries) {
+      items.push(await this.present(readerSummary));
+    }
+    return items;
   }
 
   private async present(

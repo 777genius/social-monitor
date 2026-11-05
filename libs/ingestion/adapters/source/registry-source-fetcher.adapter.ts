@@ -157,9 +157,9 @@ export class RegistrySourceFetcherAdapter implements SourceFetcherPort {
       return {
         result: resultWithWarning,
         targetItemCount: initialPlan.maxItems,
-        pageCount: 1,
-        paginationDuplicateItemCount: 0,
-        paginationStopReason: "single_page",
+        pageCount: result.pagination?.pageCount ?? 1,
+        paginationDuplicateItemCount: result.pagination?.duplicateItemCount ?? 0,
+        paginationStopReason: result.pagination?.stopReason ?? "single_page",
       };
     }
 
@@ -365,6 +365,13 @@ const buildSourceFetchTelemetry = (params: {
   );
 
   return {
+    ...(params.scanned.result.collection === undefined ? {} : {
+      collectionComplete: params.scanned.result.collection.complete,
+      backfillPending: params.scanned.result.collection.backfillPending,
+      ...(params.scanned.result.collection.contentComplete === undefined ? {} : {
+        contentComplete: params.scanned.result.collection.contentComplete,
+      }),
+    }),
     targetItemCount: params.scanned.targetItemCount,
     collectedItemCount: params.scanned.result.items.length,
     acceptedItemCount: params.filteredResult.items.length,
@@ -395,7 +402,7 @@ const countRateLimitWarnings = (warnings: readonly string[]): number =>
 
     return (
       normalized.includes("partial_rate_limit") ||
-      normalized.includes("partial:rate_limited")
+      normalized.includes("rate_limited")
     );
   }).length;
 
@@ -408,24 +415,32 @@ const filterByTargetPublishedWindow = (
     return result;
   }
 
-  const items = result.items.filter(
-    (item) =>
-      item.publishedAt.getTime() >= window.start.getTime() &&
-      item.publishedAt.getTime() < window.end.getTime(),
+  const inWindow = (publishedAt: Date): boolean =>
+    publishedAt.getTime() >= window.start.getTime() &&
+    publishedAt.getTime() < window.end.getTime();
+  const inWindowUnits = result.conversationUnits?.filter((unit) =>
+    inWindow(unit.publishedAt),
   );
-  if (items.length === result.items.length) {
+  const supportingRootExternalIds = new Set(
+    inWindowUnits?.map((unit) => unit.rootExternalId) ?? [],
+  );
+  const items = result.items.filter(
+    (item) => inWindow(item.publishedAt) || supportingRootExternalIds.has(item.externalId),
+  );
+  const retainedRootExternalIds = new Set(items.map((item) => item.externalId));
+  const conversationUnits = inWindowUnits?.filter((unit) =>
+    retainedRootExternalIds.has(unit.rootExternalId),
+  );
+  if (items.length === result.items.length &&
+      conversationUnits?.length === result.conversationUnits?.length) {
     return result;
   }
-
-  const retainedRootExternalIds = new Set(items.map((item) => item.externalId));
 
   return {
     ...result,
     items,
-    conversationUnits: result.conversationUnits?.filter((unit) =>
-      retainedRootExternalIds.has(unit.rootExternalId),
-    ),
-    warnings: compactUnique([
+    conversationUnits,
+    warnings: items.length === result.items.length ? result.warnings : compactUnique([
       ...result.warnings,
       [
         "target_published_window.filtered",

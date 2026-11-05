@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { access, readFile, realpath, stat } from "node:fs/promises";
+import { access, lstat, readFile, readdir, realpath, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import {
@@ -7,30 +7,94 @@ import {
   dirname,
   isAbsolute,
   join,
+  relative,
   resolve,
   sep,
 } from "node:path";
 
 export const approvedSubscriptionRuntimePackageVersion =
-  "0.1.0-main.2-sm.1";
+  "0.1.0-main.42-sm.3";
+export const approvedMimoRuntimePackageVersion =
+  "0.1.0-main.40-sm-mimo.12";
+const approvedMimoManifestSha256 =
+  "9a94a11af6027b3de65086860a56f562845042107bb2c22f5aa91b03d75a4045";
+const approvedMimoWorkerEntrypointSha256 =
+  "bc60f8ac04f188ddab18e16e17990a9e7406790d0a019a658727e43682f2acae";
+// SHA256 of sorted "relative path\0file SHA256\n" records for all regular
+// distribution files. The base archive needs npm's locked dependency completion
+// before it can load; only that complete installed distribution is admitted.
+const approvedBaseRuntimeCodeSha256 = Object.freeze([
+  "0b1ae195815bd45ce2aab77cb4345e4ea07e2af70410527959bf810792669512",
+]);
+const approvedMimoRuntimeCodeSha256 =
+  "6ce908bd18595de2d5bf780f4ab8fbb227e7e5909eb16b4dff2c11be3f6d0f51";
+// Package code resolved from the installed node_modules ancestor while the
+// wrapper imports the two runtime distributions, before it reads the key.
+const approvedHoistedRuntimeCodeSha256 = Object.freeze({
+  "@anthropic-ai/claude-agent-sdk": "68eeb7ef642c42e16cb13c3c0d00e2bc72960906e816f8e9bcb91ca7f3bbf3ae",
+  "@modelcontextprotocol/sdk": "78cc5f2b2247e8618f779251e3eabcaa5461f5e95395e90e4ee9497bddc7780d",
+  "ajv-formats": "444dbf1804b17fc0d114a28ee8fd89963c7084c08b5ebbd16c408b5e089727b4",
+  "zod": "4d7f8ca54064f57c6d93f09d2ce3b028f8d8884193147495f5f283a0916e124c",
+  "zod-to-json-schema": "e6f0b7c6dc6c820f1cdd16b9ef9a7f415190e3ee0bf190e9605f620344f0090a",
+  // fast-uri 3.1.9: complete regular-file inventory of the official tarball,
+  // independently verified against package-lock.json's SHA512 integrity.
+  "fast-uri": "0a7bd1192436a9755603dbfde3315911f7d287c4a639c6cc673f940d4a2f5e05",
+  "fast-deep-equal": "da223f84496561579e85d5f6c0181f84a08db50f250912578c54e145e7b8b00e",
+  "json-schema-traverse": "e027afb34851b07a5cc5186b3a6d76b3273214474a35b13dacce9a15b0d309db",
+});
 export const approvedSubscriptionRuntimeLauncherSha256 =
-  "76e58a137bfd4732979b3b78fc9d4624403d968c37cc36d6c6dec1f81e153c12";
+  "c2a9d76458f776b851c7f15d31f13c96d44d2271d47a7eeae60cd3438b34b0d6";
+
+// Repository wrapper approval, separate from the vendored package provenance.
+// Pin the local import closure too: launcher bytes alone do not bind helpers.
+// Changes to any member require a coordinated, reviewed admission update.
+const approvedSubscriptionRuntimeDependencies = Object.freeze({
+  "assessment-cli-progress.mjs":
+    "76e82b76acd1f8664e78980d7cc75d8485e73316fef183bb4ee97e2466bef002",
+  "assessment-cli-lifecycle.mjs":
+    "094a5c323b838b22d6869696e923540e5627d1d261bc3040f2298d06877a82f8",
+  "mimo-app-server-custody.mjs":
+    "ca82aadb185205bec1faec471c3cd0b71104d0be0dc881140470cdf5645a7456",
+  "installed-runtime-modules.mjs":
+    "b4b95cc23ee0680c8c03559fc17872434593f6d00ed04f2482fe229f9eefe7bc",
+  "pinned-codex-native-binary.mjs":
+    "77a32f1ed6f6429b11428c0501d0d5f1712cc8bd913c74027f4ad0204facfb21",
+  "subscription-runtime-failure-details.mjs":
+    "5c7e12660c4500a533cda147be44723019c8b223353f1e2d25c3483ff5a1484a",
+  "mimo-key-file.mjs":
+    "221d4029b436720331cc2f782ceb8a28234812320db922909953b5c21d559a44",
+  "codex-worker-cli-usage.mjs":
+    "9a0c7d5f4f38d99eb9c91063c6773edda226884f98f9e611837015ddb2d325f9",
+  "codex-auth-pool-manifest.mjs":
+    "6e856a532a55e893d009e68c08cb7f0e2731bd21ab8f6029bbfc88d5cbbbeb25",
+  "codex-auth-pool-routing.mjs":
+    "5b76a13787a92852282488d5beec8ebb3bfd27f9dfbc059daa8bb521b5524c49",
+  "subscription-runtime-purpose-model-policy.mjs":
+    "d151086466d96ed207c03f4a7c196aa2690dc0029498bfd1609b56f3072ef32f",
+  "reader-promotion-v2-canary-contract.cjs":
+    "13432d41d7999d15f22880017e73cbd943c209db62161b2a6a2bec6b0766775c",
+});
 
 export type SubscriptionRuntimeInstallationIdentity = {
   /** Exact real path that was admitted and must be passed to spawn. */
   readonly executablePath: string;
   readonly packageRootRealpath: string;
   readonly runtimePackageVersion: string;
+  readonly mimoRuntimePackageVersion?: string;
   readonly launcherSha256: string;
 };
 
 export interface SubscriptionRuntimeInstallationInspector {
-  inspect(command: string): Promise<SubscriptionRuntimeInstallationIdentity>;
+  inspect(command: string, modelBackend?: "xiaomi-mimo-token-plan"):
+    Promise<SubscriptionRuntimeInstallationIdentity>;
 }
 
 export class FileSubscriptionRuntimeInstallationInspector implements SubscriptionRuntimeInstallationInspector {
+  constructor(private readonly workspaceRoot?: string) {}
+
   async inspect(
     command: string,
+    modelBackend?: "xiaomi-mimo-token-plan",
   ): Promise<SubscriptionRuntimeInstallationIdentity> {
     const executablePath = await resolveSubscriptionRuntimeExecutable(command);
     const launcherBytes = await readFile(executablePath);
@@ -41,6 +105,21 @@ export class FileSubscriptionRuntimeInstallationInspector implements Subscriptio
       throw new Error("Agent runtime launcher bytes are not approved");
     }
 
+    for (const [name, approvedSha256] of Object.entries(
+      approvedSubscriptionRuntimeDependencies,
+    )) {
+      const dependencyPath = join(dirname(executablePath), name);
+      // Node resolves helper symlinks before loading their adjacent imports.
+      // Require local regular files so the pinned closure is the loaded closure.
+      if (!(await lstat(dependencyPath)).isFile()) {
+        throw new Error(`Agent runtime launcher dependency is not a regular file: ${name}`);
+      }
+      const dependencyBytes = await readFile(dependencyPath);
+      if (createHash("sha256").update(dependencyBytes).digest("hex") !== approvedSha256) {
+        throw new Error(`Agent runtime launcher dependency bytes are not approved: ${name}`);
+      }
+    }
+
     const manifest = await readInstalledManifest(executablePath);
     if (
       manifest.name !== "@vioxen/subscription-runtime" ||
@@ -48,10 +127,25 @@ export class FileSubscriptionRuntimeInstallationInspector implements Subscriptio
     ) {
       throw new Error("Installed subscription runtime version is not approved");
     }
+    const mimoManifest = modelBackend === "xiaomi-mimo-token-plan"
+      ? await readInstalledManifest(executablePath, "@vioxen/subscription-runtime-mimo/package.json")
+      : undefined;
+    if (mimoManifest !== undefined &&
+        (mimoManifest.name !== "@vioxen/subscription-runtime" ||
+          mimoManifest.version !== approvedMimoRuntimePackageVersion)) {
+      throw new Error("Installed MiMo subscription runtime version is not approved");
+    }
+    if (mimoManifest !== undefined) {
+      await inspectMimoRuntimeArtifacts(mimoManifest, this.workspaceRoot);
+      await inspectPackageCode(manifest, this.workspaceRoot, approvedBaseRuntimeCodeSha256);
+      await inspectPackageCode(mimoManifest, this.workspaceRoot, [approvedMimoRuntimeCodeSha256]);
+      await inspectHoistedRuntimeCode(manifest, mimoManifest, this.workspaceRoot);
+    }
     return {
       executablePath,
       packageRootRealpath: manifest.packageRootRealpath,
       runtimePackageVersion: manifest.version,
+      ...(mimoManifest === undefined ? {} : { mimoRuntimePackageVersion: mimoManifest.version }),
       launcherSha256,
     };
   }
@@ -92,15 +186,21 @@ export const resolveSubscriptionRuntimeExecutable = async (
 
 const readInstalledManifest = async (
   executablePath: string,
+  packageSpecifier = "@vioxen/subscription-runtime/package.json",
 ): Promise<{
   readonly name: string;
   readonly version: string;
   readonly packageRootRealpath: string;
+  readonly manifestPath: string;
+  readonly manifestRealpath: string;
 }> => {
   const runtimeRequire = createRequire(executablePath);
-  const manifestPath = await realpath(
-    runtimeRequire.resolve("@vioxen/subscription-runtime/package.json"),
-  );
+  const manifestPath = runtimeRequire.resolve(packageSpecifier);
+  const manifestRealpath = await realpath(manifestPath);
+  if (packageSpecifier === "@vioxen/subscription-runtime-mimo/package.json" &&
+      (!(await lstat(manifestPath)).isFile() || !(await lstat(dirname(manifestPath))).isDirectory())) {
+    throw new Error("Installed MiMo subscription runtime package and manifest must be regular installation entries");
+  }
   const parsed: unknown = JSON.parse(await readFile(manifestPath, "utf8"));
   if (!isRecord(parsed) || typeof parsed.name !== "string") {
     throw new Error("Installed subscription runtime manifest is malformed");
@@ -115,7 +215,118 @@ const readInstalledManifest = async (
     name: parsed.name,
     version: parsed.version,
     packageRootRealpath: await realpath(dirname(manifestPath)),
+    manifestPath,
+    manifestRealpath,
   };
+};
+
+const within = (root: string, candidate: string): boolean => {
+  const child = relative(root, candidate);
+  return child === "" || (child !== ".." && !child.startsWith(`..${sep}`) && !isAbsolute(child));
+};
+
+const inspectMimoRuntimeArtifacts = async (
+  manifest: { readonly packageRootRealpath: string; readonly manifestPath: string; readonly manifestRealpath: string },
+  workspaceRoot?: string,
+): Promise<void> => {
+  const packageRoot = manifest.packageRootRealpath;
+  if (workspaceRoot !== undefined &&
+      (within(workspaceRoot, packageRoot) || within(workspaceRoot, manifest.manifestRealpath))) {
+    throw new Error("Installed MiMo subscription runtime must be outside the admitted workspace");
+  }
+  if (dirname(manifest.manifestRealpath) !== packageRoot) {
+    throw new Error("Installed MiMo subscription runtime manifest escapes the selected package");
+  }
+  if (createHash("sha256").update(await readFile(manifest.manifestPath)).digest("hex") !==
+      approvedMimoManifestSha256) {
+    throw new Error("Installed MiMo subscription runtime manifest bytes are not approved");
+  }
+  const workerPath = join(packageRoot, "dist", "worker-codex", "index.js");
+  for (const path of [join(packageRoot, "dist"), join(packageRoot, "dist", "worker-codex"), workerPath]) {
+    const metadata = await lstat(path);
+    if (path === workerPath ? !metadata.isFile() : !metadata.isDirectory()) {
+      throw new Error("Installed MiMo subscription runtime worker entrypoint is not a regular installation artifact");
+    }
+  }
+  if (createHash("sha256").update(await readFile(workerPath)).digest("hex") !==
+      approvedMimoWorkerEntrypointSha256) {
+    throw new Error("Installed MiMo subscription runtime worker entrypoint bytes are not approved");
+  }
+};
+
+const inspectPackageCode = async (
+  manifest: { readonly packageRootRealpath: string; readonly manifestPath: string; readonly manifestRealpath: string },
+  workspaceRoot: string | undefined,
+  approvedHashes: readonly string[],
+): Promise<void> => {
+  const packageRoot = manifest.packageRootRealpath;
+  if (workspaceRoot !== undefined &&
+      (within(workspaceRoot, packageRoot) || within(workspaceRoot, manifest.manifestRealpath))) {
+    throw new Error("Installed subscription runtime code must be outside the admitted workspace");
+  }
+  if (!(await lstat(dirname(manifest.manifestPath))).isDirectory() ||
+      !(await lstat(manifest.manifestPath)).isFile() ||
+      dirname(manifest.manifestRealpath) !== packageRoot) {
+    throw new Error("Installed subscription runtime package must contain a regular manifest");
+  }
+  const digest = await codeInventoryHash(packageRoot, ["."]);
+  if (!approvedHashes.includes(digest)) {
+    throw new Error("Installed subscription runtime code bytes are not approved");
+  }
+};
+
+const codeInventoryHash = async (root: string, selected: readonly string[]): Promise<string> => {
+  const entries: string[] = [];
+  const visit = async (path: string, prefix: string): Promise<void> => {
+    if (!(await lstat(path)).isDirectory()) {
+      throw new Error(`Installed subscription runtime code directory is not regular: ${prefix}`);
+    }
+    for (const entry of await readdir(path, { withFileTypes: true })) {
+      // npm's .bin links are command aliases, not imported package code.
+      if (entry.name === ".bin" && (prefix === "node_modules" || prefix.endsWith("/node_modules"))) continue;
+      const name = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+      const child = join(path, entry.name);
+      if (entry.isDirectory()) {
+        await visit(child, name);
+      } else if (entry.isFile()) {
+        entries.push(`${name}\0${createHash("sha256").update(await readFile(child)).digest("hex")}\n`);
+      } else {
+        throw new Error(`Installed subscription runtime code contains a non-regular entry: ${name}`);
+      }
+    }
+  };
+  for (const name of selected) {
+    const path = name === "." ? root : join(root, name);
+    const metadata = await lstat(path);
+    if (metadata.isDirectory()) {
+      await visit(path, name === "." ? "" : name);
+    } else if (metadata.isFile() && name === "package.json") {
+      entries.push(`${name}\0${createHash("sha256").update(await readFile(path)).digest("hex")}\n`);
+    } else {
+      throw new Error(`Installed subscription runtime code entry is not regular: ${name}`);
+    }
+  }
+  return createHash("sha256").update(entries.sort().join("")).digest("hex");
+};
+
+const inspectHoistedRuntimeCode = async (
+  base: { readonly packageRootRealpath: string },
+  mimo: { readonly packageRootRealpath: string },
+  workspaceRoot: string | undefined,
+): Promise<void> => {
+  const moduleRoots = new Set([base.packageRootRealpath, mimo.packageRootRealpath]
+    .map((packageRoot) => dirname(dirname(packageRoot))));
+  for (const modulesRoot of moduleRoots) {
+    for (const [name, approvedHash] of Object.entries(approvedHoistedRuntimeCodeSha256)) {
+      const externalPath = await realpath(join(modulesRoot, name));
+      if (workspaceRoot !== undefined && within(workspaceRoot, externalPath)) {
+        throw new Error(`Installed runtime import is inside the admitted workspace: ${name}`);
+      }
+      if (await codeInventoryHash(externalPath, ["."]) !== approvedHash) {
+        throw new Error(`Installed runtime import bytes are not approved: ${name}`);
+      }
+    }
+  }
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

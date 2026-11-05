@@ -1,17 +1,36 @@
 import {
+  type AgentRuntimeEngine,
   canonicalJsonSha256,
+  isAgentRuntimeEngine,
+  isAttestedRuntimeIdentity,
   isConcreteRuntimePackageVersion,
   isSha256Hex,
+  subscriptionRuntimeEngine,
 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
+import {
+  approvedMimoRuntimePackageVersion,
+  approvedSubscriptionRuntimePackageVersion,
+} from "../../apps/agent-runtime/src/subscription-runtime-installation";
+import {
+  isGatewayReaderSummaryExecution,
+  isGatewayReaderSummaryModel,
+} from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
+
+/**
+ * Physical models: the Codex and MiMo CLI models, or one gateway-only model
+ * whose effort is the gateway route's ("default" when none is sent).
+ */
+type PhysicalModel = string;
+type ReasoningEffort = string;
 
 export type ProductionDayExecutedRuntimeProvenance = {
   readonly execution: "attested";
   readonly summaryModel: "agent-runtime";
-  readonly physicalModel: "gpt-5.6-sol";
+  readonly physicalModel: PhysicalModel;
   readonly provider: "codex";
-  readonly runtime: "subscription-runtime-cli";
+  readonly runtime: AgentRuntimeEngine;
   readonly runtimeVersion: string;
-  readonly reasoningEffort: "xhigh";
+  readonly reasoningEffort: ReasoningEffort;
   readonly launcherSha256: string;
   readonly summaryContentSha256: string;
   readonly topicMapSha256: string;
@@ -19,11 +38,11 @@ export type ProductionDayExecutedRuntimeProvenance = {
   readonly completedTaskCount: number;
   readonly topicLabeler: {
     readonly mode: "agent-runtime";
-    readonly physicalModel: "gpt-5.6-sol";
+    readonly physicalModel: PhysicalModel;
     readonly provider: "codex";
-    readonly runtime: "subscription-runtime-cli";
+    readonly runtime: AgentRuntimeEngine;
     readonly runtimeVersion: string;
-    readonly reasoningEffort: "xhigh";
+    readonly reasoningEffort: ReasoningEffort;
     readonly launcherSha256: string;
   };
 };
@@ -38,7 +57,12 @@ export type ProductionDayRuntimeProvenance =
 
 type ValidAttestationRecord = {
   readonly taskRole:
-    "summary" | "topic_label" | "topic_relation" | "story_relation";
+    | "summary"
+    | "daily_editor"
+    | "topic_label"
+    | "topic_relation"
+    | "story_relation"
+    | "related_topic_relation";
   readonly attempt: string;
   readonly normalizedOutputSha256: string;
   readonly attestation: {
@@ -47,9 +71,10 @@ type ValidAttestationRecord = {
     readonly purpose: string;
     readonly canonicalRequestSha256: string;
     readonly provider: "codex";
-    readonly model: "gpt-5.6-sol";
-    readonly reasoningEffort: "xhigh";
-    readonly runtimeEngine: "subscription-runtime-cli";
+    readonly model: PhysicalModel;
+    readonly reasoningEffort: ReasoningEffort;
+    readonly runtimeEngine: AgentRuntimeEngine;
+    readonly gateway?: unknown;
     readonly runtimePackageVersion: string;
     readonly launcherSha256: string;
     readonly selectedOutputKind: "structured_output";
@@ -60,6 +85,7 @@ type ValidAttestationRecord = {
 export const runtimeProvenanceFromExecutorAttestations = (
   evidence: Record<string, unknown>,
   violations: string[],
+  requireDailyEditor = false,
 ): ProductionDayRuntimeProvenance | null => {
   const result = record(evidence.result);
   const selected = result?.selectedFeedItemCount;
@@ -107,6 +133,24 @@ export const runtimeProvenanceFromExecutorAttestations = (
   const topicLabels = records.filter(
     (value) => value.taskRole === "topic_label",
   );
+  const editors = records.filter(value => value.taskRole === "daily_editor");
+  if (editors.length !== (requireDailyEditor ? 1 : 0) ||
+      (editors.length === 1 && summaries.length === 1 &&
+        [editors[0]!.attestation.provider, editors[0]!.attestation.model,
+          editors[0]!.attestation.reasoningEffort, editors[0]!.attestation.runtimeEngine,
+          editors[0]!.attestation.runtimePackageVersion,
+          editors[0]!.attestation.launcherSha256].join("\u0000") !==
+        [summaries[0]!.attestation.provider, summaries[0]!.attestation.model,
+          summaries[0]!.attestation.reasoningEffort, summaries[0]!.attestation.runtimeEngine,
+          summaries[0]!.attestation.runtimePackageVersion,
+          summaries[0]!.attestation.launcherSha256].join("\u0000"))) {
+    violations.push("daily editor must share the summary runtime identity");
+  }
+  if (requireDailyEditor
+    ? evidence.dailyEditorOutputSha256 !== editors[0]?.normalizedOutputSha256
+    : evidence.dailyEditorOutputSha256 !== undefined) {
+    violations.push("attested daily editor output differs from persisted plan");
+  }
   if (summaries.length !== 1) {
     violations.push("evidence requires exactly one final summary attestation");
   }
@@ -135,8 +179,9 @@ export const runtimeProvenanceFromExecutorAttestations = (
   if (new Set(taskAttempts).size !== taskAttempts.length) {
     violations.push("execution attestations contain duplicate task attempts");
   }
+  const topicRecords = records.filter((value) => value.taskRole !== "summary" && value.taskRole !== "daily_editor");
   const identities = new Set(
-    records.map((value) =>
+    topicRecords.map((value) =>
       [
         value.attestation.provider,
         value.attestation.model,
@@ -147,7 +192,25 @@ export const runtimeProvenanceFromExecutorAttestations = (
       ].join("\u0000"),
     ),
   );
-  if (identities.size !== 1) {
+  const summaryIdentity = summaries[0]?.attestation;
+  const topicIdentity = topicLabels[0]?.attestation;
+  if (identities.size !== 1 ||
+    (summaryIdentity?.model === "mimo-v2.6-pro" &&
+      topicRecords.some((value) =>
+        value.attestation.reasoningEffort !== "high")) ||
+    (summaryIdentity && topicIdentity &&
+    (summaryIdentity.launcherSha256 !== topicIdentity.launcherSha256 ||
+      (summaryIdentity.model === "mimo-v2.6-pro" &&
+        (topicIdentity.model === "mimo-v2.6-pro"
+          ? topicIdentity.runtimePackageVersion !== approvedMimoRuntimePackageVersion
+          : topicIdentity.model !== "gpt-5.6-sol" ||
+            topicIdentity.runtimePackageVersion !== approvedSubscriptionRuntimePackageVersion)) ||
+      // Codex and gateway days run one identity for every task.
+      (summaryIdentity.model !== "mimo-v2.6-pro" &&
+        [summaryIdentity.provider, summaryIdentity.model, summaryIdentity.reasoningEffort,
+          summaryIdentity.runtimeEngine, summaryIdentity.runtimePackageVersion].join("\u0000") !==
+        [topicIdentity.provider, topicIdentity.model, topicIdentity.reasoningEffort,
+          topicIdentity.runtimeEngine, topicIdentity.runtimePackageVersion].join("\u0000"))))) {
     violations.push(
       "all observed summary, topic and relation tasks must agree",
     );
@@ -156,7 +219,8 @@ export const runtimeProvenanceFromExecutorAttestations = (
     return null;
   }
 
-  const identity = records[0]!.attestation;
+  const identity = summaryIdentity!;
+  const labelIdentity = topicIdentity!;
   const durableReadback = record(evidence.durableReadback);
   const attestationSetSha256 = canonicalJsonSha256(records);
   if (
@@ -173,11 +237,11 @@ export const runtimeProvenanceFromExecutorAttestations = (
   return {
     execution: "attested",
     summaryModel: "agent-runtime",
-    physicalModel: "gpt-5.6-sol",
+    physicalModel: identity.model,
     provider: "codex",
-    runtime: "subscription-runtime-cli",
+    runtime: identity.runtimeEngine,
     runtimeVersion: identity.runtimePackageVersion,
-    reasoningEffort: "xhigh",
+    reasoningEffort: identity.reasoningEffort,
     launcherSha256: identity.launcherSha256,
     summaryContentSha256: durableReadback.summaryContentSha256,
     topicMapSha256: durableReadback.topicMapSha256,
@@ -185,12 +249,12 @@ export const runtimeProvenanceFromExecutorAttestations = (
     completedTaskCount: records.length,
     topicLabeler: {
       mode: "agent-runtime",
-      physicalModel: "gpt-5.6-sol",
+      physicalModel: labelIdentity.model,
       provider: "codex",
-      runtime: "subscription-runtime-cli",
-      runtimeVersion: identity.runtimePackageVersion,
-      reasoningEffort: "xhigh",
-      launcherSha256: identity.launcherSha256,
+      runtime: labelIdentity.runtimeEngine,
+      runtimeVersion: labelIdentity.runtimePackageVersion,
+      reasoningEffort: labelIdentity.reasoningEffort,
+      launcherSha256: labelIdentity.launcherSha256,
     },
   };
 };
@@ -237,11 +301,16 @@ export const isProductionSubscriptionRuntimeProvenance = (
   return (
     value.execution === "attested" &&
     value.summaryModel === "agent-runtime" &&
-    value.physicalModel === "gpt-5.6-sol" &&
+    (value.physicalModel === "gpt-5.6-sol" || value.physicalModel === "mimo-v2.6-pro" ||
+      isGatewayProvenance(value)) &&
     value.provider === "codex" &&
-    value.runtime === "subscription-runtime-cli" &&
+    isAgentRuntimeEngine(value.runtime) &&
+    (value.physicalModel !== "mimo-v2.6-pro" || value.runtime === subscriptionRuntimeEngine) &&
     isConcreteRuntimePackageVersion(value.runtimeVersion) &&
-    value.reasoningEffort === "xhigh" &&
+    (value.physicalModel !== "mimo-v2.6-pro" ||
+      (value.runtimeVersion === approvedMimoRuntimePackageVersion && value.reasoningEffort === "high")) &&
+    (value.reasoningEffort === "high" || value.reasoningEffort === "xhigh" ||
+      isGatewayProvenance(value)) &&
     isSha256Hex(value.launcherSha256) &&
     isSha256Hex(value.summaryContentSha256) &&
     isSha256Hex(value.topicMapSha256) &&
@@ -252,6 +321,13 @@ export const isProductionSubscriptionRuntimeProvenance = (
     validTopicIdentity(value.topicLabeler, value)
   );
 };
+
+export const isCurrentProductionSubscriptionRuntimeProvenance = (
+  value: unknown,
+): value is ProductionDayRuntimeProvenance =>
+  isProductionSubscriptionRuntimeProvenance(value) &&
+  (value.execution === "not_executed" || isGatewayProvenance(value) ||
+    (value.reasoningEffort === "high" && value.topicLabeler.reasoningEffort === "high"));
 
 export const runtimeProvenanceEqual = (
   value: unknown,
@@ -283,20 +359,28 @@ const validateRecord = (
     violations.push(`${label} route is malformed`);
     return [];
   }
+  const expectedEffort = executionEffortForPurpose(taskRole, attempt, attestation.purpose);
   if (
     attestation.schemaVersion !== 1 ||
     !nonEmpty(attestation.requestId) ||
     !nonEmpty(attestation.purpose) ||
     !isSha256Hex(attestation.canonicalRequestSha256) ||
     attestation.provider !== "codex" ||
-    attestation.model !== "gpt-5.6-sol" ||
-    attestation.reasoningEffort !== "xhigh" ||
-    attestation.runtimeEngine !== "subscription-runtime-cli" ||
-    !isConcreteRuntimePackageVersion(attestation.runtimePackageVersion) ||
-    !isSha256Hex(attestation.launcherSha256) ||
+    (attestation.model === "mimo-v2.6-pro"
+      ? expectedEffort !== "high" ||
+        attestation.runtimePackageVersion !== approvedMimoRuntimePackageVersion
+      : isGatewayReaderSummaryModel(attestation.model)
+        // Gateway-only models serve current purposes with the route effort.
+        ? expectedEffort !== "high" || !isGatewayReaderSummaryExecution(attestation)
+        : attestation.model !== "gpt-5.6-sol") ||
+    (!isGatewayReaderSummaryModel(attestation.model) &&
+      attestation.reasoningEffort !== expectedEffort) ||
+    // MiMo runs only through the CLI runtime; Codex may use either engine.
+    (attestation.model === "mimo-v2.6-pro" && attestation.runtimeEngine !== subscriptionRuntimeEngine) ||
+    !isAttestedRuntimeIdentity(attestation) ||
     attestation.selectedOutputKind !== "structured_output" ||
     !isSha256Hex(attestation.selectedOutputSha256) ||
-    !purposeMatches(taskRole, attempt, attestation.purpose)
+    expectedEffort === null
   ) {
     violations.push(`${label} is malformed or mismatched`);
     return [];
@@ -311,48 +395,83 @@ const validateRecord = (
   ];
 };
 
-const purposeMatches = (
+const executionEffortForPurpose = (
   role: ValidAttestationRecord["taskRole"],
   attempt: string,
   purpose: unknown,
-): boolean => {
+): "high" | "xhigh" | null => {
+  if (role === "daily_editor" && attempt !== "primary") return null;
   if (role === "summary") {
-    return (
-      (attempt === "primary" &&
-        purpose === "social_monitor.reader_summary.generate") ||
-      (attempt === "repair" &&
-        purpose === "social_monitor.reader_summary.repair")
-    );
+    if (attempt === "primary") {
+      if (purpose === "social_monitor.reader_summary.generate.v2") return "high";
+      if (purpose === "social_monitor.reader_summary.generate") return "xhigh";
+    }
+    if (attempt === "repair") {
+      if (purpose === "social_monitor.reader_summary.repair.v2") return "high";
+      if (purpose === "social_monitor.reader_summary.repair") return "xhigh";
+    }
+    return null;
   }
-  return purpose === purposeByRole[role];
+  if (purpose === activePurposeByRole[role]) return "high";
+  if (purpose === legacyPurposeByRole[role]) return "xhigh";
+  return null;
 };
 
-const purposeByRole = {
+const legacyPurposeByRole = {
+  daily_editor: undefined,
   topic_label: "social_monitor.reader_summary.topic_map.label",
   topic_relation: "social_monitor.reader_summary.topic_map.verify_relations",
   story_relation: "social_monitor.reader_summary.verify_story_relations",
+  related_topic_relation:
+    "social_monitor.reader_summary.verify_related_topic_relations",
 } as const;
+
+const activePurposeByRole = {
+  daily_editor: "social_monitor.reader_summary.daily_editorial.plan.v1",
+  topic_label: "social_monitor.reader_summary.topic_map.label.v2",
+  topic_relation: "social_monitor.reader_summary.topic_map.verify_relations.v2",
+  story_relation: "social_monitor.reader_summary.verify_story_relations.v2",
+  related_topic_relation:
+    "social_monitor.reader_summary.verify_related_topic_relations.v2",
+} as const;
+
+const isGatewayProvenance = (value: Record<string, unknown>): boolean =>
+  isGatewayReaderSummaryExecution({ runtimeEngine: value.runtime,
+    model: value.physicalModel, reasoningEffort: value.reasoningEffort });
 
 const validTopicIdentity = (
   value: unknown,
   parent: Record<string, unknown>,
-): boolean =>
-  isRecord(value) &&
+): boolean => isGatewayProvenance(parent)
+  ? isRecord(value) && value.mode === "agent-runtime" &&
+    (["physicalModel", "provider", "runtime", "runtimeVersion", "reasoningEffort",
+      "launcherSha256"] as const).every((key) => value[key] === parent[key])
+  : isRecord(value) &&
   value.mode === "agent-runtime" &&
-  value.physicalModel === parent.physicalModel &&
+  (value.physicalModel === "gpt-5.6-sol" || value.physicalModel === "mimo-v2.6-pro") &&
   value.provider === parent.provider &&
   value.runtime === parent.runtime &&
-  value.runtimeVersion === parent.runtimeVersion &&
-  value.reasoningEffort === parent.reasoningEffort &&
+  isConcreteRuntimePackageVersion(value.runtimeVersion) &&
+  (parent.physicalModel === "mimo-v2.6-pro"
+    ? (value.physicalModel === "mimo-v2.6-pro"
+      ? value.runtimeVersion === approvedMimoRuntimePackageVersion
+      : value.runtimeVersion === approvedSubscriptionRuntimePackageVersion)
+    : value.physicalModel === "gpt-5.6-sol" && value.runtimeVersion === parent.runtimeVersion) &&
+  (value.reasoningEffort === "high" ||
+    (parent.physicalModel !== "mimo-v2.6-pro" &&
+      value.reasoningEffort === "xhigh")) &&
+  (parent.physicalModel === "mimo-v2.6-pro" || value.reasoningEffort === parent.reasoningEffort) &&
   value.launcherSha256 === parent.launcherSha256;
 
 const isTaskRole = (
   value: unknown,
 ): value is ValidAttestationRecord["taskRole"] =>
   value === "summary" ||
+  value === "daily_editor" ||
   value === "topic_label" ||
   value === "topic_relation" ||
-  value === "story_relation";
+  value === "story_relation" ||
+  value === "related_topic_relation";
 
 const nonEmpty = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0;

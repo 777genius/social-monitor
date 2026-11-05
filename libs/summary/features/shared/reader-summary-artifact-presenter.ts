@@ -7,17 +7,24 @@ import type {
   ReaderSummaryPeriod,
   ReaderInterestSection,
   ReaderSummaryTopicMap,
+  ReaderPostPromotionAttestation,
+  ReaderPostPromotionAttestationAny,
+  ReaderPostPromotionInput,
   StoryCluster,
   TopRead,
 } from "../../domain";
-import { buildReaderSummary, emptyReaderSummaryTopicMap } from "../../domain";
-import type { ReaderSummaryFreshness } from "../../ports";
-import type { ReaderSummaryCollectedFeedItemCoverage } from "../../ports";
 import {
-  buildReaderSummaryCoverageView,
-  type ReaderSummaryCoverageView,
-} from "./reader-summary-coverage-presenter";
-
+  presentReaderSummaryFreshness,
+  type ReaderSummaryFreshnessView,
+} from "./reader-summary-freshness-presenter";
+export type { ReaderSummaryFreshnessView } from "./reader-summary-freshness-presenter";
+import { presentPromotionAttestationV3,
+  type ReaderPostPromotionAttestationV3View } from
+  "./reader-summary-v3-artifact-presenter";
+import { buildReaderSummary, emptyReaderSummaryTopicMap } from "../../domain";
+import type { ReaderSummaryCollectedFeedItemCoverage,
+  ReaderSummaryFreshness } from "../../ports";
+import { buildReaderSummaryCoverageView, type ReaderSummaryCoverageView } from "./reader-summary-coverage-presenter";
 export type {
   ReaderSummaryCoverageView,
   ReaderSummaryProviderCollectionHealthView,
@@ -46,7 +53,7 @@ export type ReaderSummaryStoryClusterView = Omit<
   };
 };
 
-export type ReaderSummaryTopReadView = Omit<TopRead, "publishedAt"> & {
+export type ReaderSummaryTopReadView = Omit<TopRead, "publishedAt" | "exactPublishedAt"> & {
   readonly publishedAt?: string;
 };
 
@@ -59,13 +66,14 @@ export type ReaderSummaryInterestSectionView = Omit<
 
 export type ReaderSummaryContentView = Omit<
   ReaderSummaryContent,
-  "interestSections" | "topReads" | "selectedPosts"
+  "interestSections" | "topReads" | "selectedPosts" | "newsWithoutRatingPosts"
 > & {
   readonly mainTopics: readonly string[];
   readonly topicMap: ReaderSummaryTopicMap;
   readonly interestSections: readonly ReaderSummaryInterestSectionView[];
   readonly topReads: readonly ReaderSummaryTopReadView[];
   readonly selectedPosts: readonly ReaderSummaryTopReadView[];
+  readonly newsWithoutRatingPosts: readonly ReaderSummaryTopReadView[];
 };
 
 export type ReaderSummaryContextArtifactView = Omit<
@@ -76,21 +84,101 @@ export type ReaderSummaryContextArtifactView = Omit<
   readonly generatedAt: string;
 };
 
+type PromotionAttestationView<
+  T extends ReaderPostPromotionAttestation,
+> = Omit<
+  T,
+  | "publishedAt"
+  | "observedAt"
+  | "checkedAt"
+  | "periodStartedAt"
+  | "periodEndedAt"
+  | "ingestionCutoff"
+  | "metrics"
+  | "supportFacts"
+> & {
+  readonly publishedAt: string;
+  readonly observedAt: string;
+  readonly checkedAt?: string;
+  readonly periodStartedAt: string;
+  readonly periodEndedAt: string;
+  readonly ingestionCutoff: string;
+  readonly supportFacts: readonly ReaderPostPromotionInputView[];
+  readonly metrics?: T["metrics"] extends infer Metric
+    ? Metric extends { readonly provider: "github_radar" }
+      ? Omit<Metric, "windowStartedAt" | "windowEndedAt"> & {
+          readonly windowStartedAt: string;
+          readonly windowEndedAt: string;
+        }
+      : Metric
+    : never;
+};
+
+export type ReaderPostPromotionAttestationView =
+  ReaderPostPromotionAttestation extends infer T
+    ? T extends ReaderPostPromotionAttestation
+      ? PromotionAttestationView<T>
+      : never
+    : never;
+
+type ReaderPostPromotionInputView = Omit<
+  ReaderPostPromotionInput,
+  | "publishedAt"
+  | "observedAt"
+  | "checkedAt"
+  | "periodStart"
+  | "periodEnd"
+  | "ingestionCutoff"
+  | "metrics"
+> & {
+  readonly publishedAt: string;
+  readonly observedAt: string;
+  readonly checkedAt?: string;
+  readonly periodStart: string;
+  readonly periodEnd: string;
+  readonly ingestionCutoff: string;
+  readonly metrics?: ReaderPostPromotionAttestationView["metrics"];
+};
+
 export type ReaderSummaryArtifactView = Omit<
   ReaderSummaryArtifactProps,
-  "period" | "sourceWindow" | "storyClusters" | "contextArtifacts" | "content"
+  | "period"
+  | "sourceWindow"
+  | "storyClusters"
+  | "contextArtifacts"
+  | "promotionAttestations"
+  | "promotionEvidenceFacts"
+  | "promotionDiagnostics"
+  | "dailyGenerationInput"
+  | "dailyEditorialPlan"
+  | "content"
+  | "topStories"
 > & {
+  readonly topStories: readonly Omit<
+    ReaderSummaryArtifactProps["topStories"][number],
+    "readerReasonProvenance"
+  >[];
   readonly period: ReaderSummaryPeriodView;
   readonly content: ReaderSummaryContentView;
   readonly sourceWindow: Omit<
     ReaderSummaryArtifactProps["sourceWindow"],
-    "startedAt" | "endedAt"
+    | "startedAt"
+    | "endedAt"
+    | "periodStartedAt"
+    | "periodEndedAt"
+    | "ingestionCutoff"
   > & {
     readonly startedAt: string;
     readonly endedAt: string;
+    readonly periodStartedAt?: string;
+    readonly periodEndedAt?: string;
+    readonly ingestionCutoff?: string;
   };
   readonly storyClusters: readonly ReaderSummaryStoryClusterView[];
   readonly contextArtifacts: readonly ReaderSummaryContextArtifactView[];
+  readonly promotionAttestations: readonly (
+    ReaderPostPromotionAttestationView | ReaderPostPromotionAttestationV3View
+  )[];
   readonly citations: readonly ReaderSummaryCitationView[];
   readonly coverage: ReaderSummaryCoverageView;
   readonly freshness: ReaderSummaryFreshnessView;
@@ -103,24 +191,6 @@ export type ReaderSummaryPeriodView = {
   readonly timezone: string;
   readonly periodKey: string;
 };
-
-export type ReaderSummaryFreshnessView =
-  | {
-      readonly status: "fresh";
-      readonly checkedAt: string;
-    }
-  | {
-      readonly status: "stale";
-      readonly checkedAt: string;
-      readonly staleMarkedAt: string;
-      readonly reason:
-        | "new_evidence_after_window"
-        | "interest_bindings_changed"
-        | "reader_summary_policy_changed"
-        | "ranking_policy_changed";
-      readonly newestFeedItemId?: string;
-      readonly newestObservedAt?: string;
-    };
 
 export const presentReaderSummaryArtifact = (
   artifact: ReaderSummaryArtifact,
@@ -135,16 +205,49 @@ export const presentReaderSummaryArtifact = (
     options.content ?? readerSummaryDomainContentForArtifactSnapshot(snapshot),
     snapshot.confidence,
   );
-  const freshnessView = presentFreshness(freshness);
-
+  const freshnessView = presentReaderSummaryFreshness(freshness,
+    snapshot.promotionBoardState);
+  const {
+    promotionEvidenceFacts: _promotionEvidenceFacts,
+    promotionDiagnostics: _promotionDiagnostics,
+    dailyGenerationInput: _dailyGenerationInput,
+    dailyEditorialPlan: _dailyEditorialPlan,
+    ...publicSnapshot
+  } = snapshot;
+  void _promotionEvidenceFacts;
+  void _promotionDiagnostics;
+  void _dailyGenerationInput;
+  void _dailyEditorialPlan;
+  const {
+    periodStartedAt: _periodStartedAt,
+    periodEndedAt: _periodEndedAt,
+    ingestionCutoff: _ingestionCutoff,
+    ...sourceWindow
+  } = snapshot.sourceWindow;
+  void _periodStartedAt;
+  void _periodEndedAt;
+  void _ingestionCutoff;
   return {
-    ...snapshot,
+    ...publicSnapshot,
+    topStories: snapshot.topStories.map(({ readerReasonProvenance, ...story }) => {
+      void readerReasonProvenance;
+      return story;
+    }),
     period: presentReaderSummaryPeriod(snapshot.period),
     content,
     sourceWindow: {
-      ...snapshot.sourceWindow,
+      ...sourceWindow,
       startedAt: snapshot.sourceWindow.startedAt.toISOString(),
       endedAt: snapshot.sourceWindow.endedAt.toISOString(),
+      ...(snapshot.sourceWindow.periodStartedAt === undefined
+        ? {}
+        : { periodStartedAt: snapshot.sourceWindow.periodStartedAt.toISOString() }),
+      ...(snapshot.sourceWindow.periodEndedAt === undefined ? {}
+        : { periodEndedAt: snapshot.sourceWindow.periodEndedAt.toISOString() }),
+      ...(snapshot.sourceWindow.ingestionCutoff === undefined ? {}
+        : { ingestionCutoff: snapshot.sourceWindow.ingestionCutoff.toISOString(),
+          ...(snapshot.sourceWindow.exactIngestionCutoff === undefined ? {} :
+            { exactIngestionCutoff: snapshot.sourceWindow.exactIngestionCutoff }) }),
     },
     storyClusters: snapshot.storyClusters.map((cluster) => ({
       ...cluster,
@@ -158,6 +261,9 @@ export const presentReaderSummaryArtifact = (
       period: presentReaderSummaryPeriod(contextArtifact.period),
       generatedAt: contextArtifact.generatedAt.toISOString(),
     })),
+    promotionAttestations: (snapshot.promotionAttestations ?? []).map(
+      presentPromotionAttestation,
+    ),
     citations: snapshot.citationMap.map((citation, index) => ({
       citationId: citation.citationId,
       label: `[${index + 1}]`,
@@ -174,6 +280,81 @@ export const presentReaderSummaryArtifact = (
       options.collectedCoverage,
     ),
     freshness: freshnessView,
+  };
+};
+
+export const presentPromotionAttestation = (
+  attestation: ReaderPostPromotionAttestationAny,
+): ReaderPostPromotionAttestationView | ReaderPostPromotionAttestationV3View => {
+  if (attestation.schemaVersion === "reader_post_promotion_attestation.v3") {
+    return presentPromotionAttestationV3(attestation);
+  }
+  const {
+    metrics,
+    publishedAt,
+    observedAt,
+    checkedAt,
+    periodStartedAt,
+    periodEndedAt,
+    ingestionCutoff,
+    supportFacts,
+    ...rest
+  } = attestation;
+  return {
+    ...rest,
+    publishedAt: publishedAt.toISOString(),
+    observedAt: observedAt.toISOString(),
+    periodStartedAt: periodStartedAt.toISOString(),
+    periodEndedAt: periodEndedAt.toISOString(),
+    ingestionCutoff: ingestionCutoff.toISOString(),
+    ...(checkedAt === undefined
+      ? {}
+      : { checkedAt: checkedAt.toISOString() }),
+    supportFacts: supportFacts.map(presentPromotionInput),
+    ...(metrics === undefined
+      ? {}
+      : metrics.provider === "github_radar"
+        ? {
+            metrics: {
+              ...metrics,
+              windowStartedAt: metrics.windowStartedAt.toISOString(),
+              windowEndedAt: metrics.windowEndedAt.toISOString(),
+            },
+          }
+        : { metrics }),
+  };
+};
+
+const presentPromotionInput = (
+  input: ReaderPostPromotionInput,
+): ReaderPostPromotionInputView => {
+  const {
+    publishedAt,
+    observedAt,
+    checkedAt,
+    periodStart,
+    periodEnd,
+    ingestionCutoff,
+    metrics,
+    ...rest
+  } = input;
+  return {
+  ...rest,
+  publishedAt: publishedAt.toISOString(),
+  observedAt: observedAt.toISOString(),
+  periodStart: periodStart.toISOString(),
+  periodEnd: periodEnd.toISOString(),
+  ingestionCutoff: ingestionCutoff.toISOString(),
+  ...(checkedAt === undefined
+    ? {}
+    : { checkedAt: checkedAt.toISOString() }),
+  ...(metrics === undefined ? {} : metrics.provider === "github_radar"
+    ? { metrics: {
+        ...metrics,
+        windowStartedAt: metrics.windowStartedAt.toISOString(),
+        windowEndedAt: metrics.windowEndedAt.toISOString(),
+      } }
+    : { metrics }),
   };
 };
 
@@ -205,7 +386,6 @@ const withReaderSummaryContentDefaults = (
   confidence: ReaderSummaryConfidence,
 ): ReaderSummaryContentView => {
   const topReads = content.topReads.map(sanitizeTopReadForPresentation);
-  const selectedPostSource = content.selectedPosts ?? content.topReads;
   const openQuestions = readerSummaryOpenQuestionsForPresentation(
     content,
     confidence,
@@ -217,7 +397,12 @@ const withReaderSummaryContentDefaults = (
     topicMap: content.topicMap ?? emptyReaderSummaryTopicMap(),
     openQuestions,
     topReads,
-    selectedPosts: selectedPostSource.map(sanitizeTopReadForPresentation),
+    selectedPosts: (content.selectedPosts ?? []).map(
+      sanitizeTopReadForPresentation,
+    ),
+    newsWithoutRatingPosts: (content.newsWithoutRatingPosts ?? []).map(
+      sanitizeTopReadForPresentation,
+    ),
     interestSections: content.interestSections.map((section) => ({
       ...section,
       items: section.items.map(sanitizeTopReadForPresentation),
@@ -242,13 +427,13 @@ const readerSummaryOpenQuestionsForPresentation = (
   return ["Which claims need more confirmation before acting on this summary?"];
 };
 
-const sanitizeTopReadForPresentation = (
-  item: TopRead,
-): ReaderSummaryTopReadView => ({
-  ...item,
-  publishedAt: presentTopReadPublishedAt(item.publishedAt),
-  matchedRules: publicReaderSummaryMatchedRules(item.matchedRules),
-});
+const sanitizeTopReadForPresentation = (item: TopRead): ReaderSummaryTopReadView => {
+  const { exactPublishedAt, ...publicItem } = item;
+  return { ...publicItem,
+    publishedAt: exactPublishedAt ?? presentTopReadPublishedAt(item.publishedAt),
+    matchedRules: publicReaderSummaryMatchedRules(item.matchedRules),
+  };
+};
 
 const presentTopReadPublishedAt = (
   value: TopRead["publishedAt"] | string | undefined,
@@ -293,23 +478,3 @@ const presentReaderSummaryPeriod = (
   timezone: period.timezone,
   periodKey: period.periodKey,
 });
-
-const presentFreshness = (
-  freshness: ReaderSummaryFreshness,
-): ReaderSummaryFreshnessView => {
-  if (freshness.status === "fresh") {
-    return {
-      status: "fresh",
-      checkedAt: freshness.checkedAt.toISOString(),
-    };
-  }
-
-  return {
-    status: "stale",
-    checkedAt: freshness.checkedAt.toISOString(),
-    staleMarkedAt: freshness.staleMarkedAt.toISOString(),
-    reason: freshness.reason,
-    newestFeedItemId: freshness.newestFeedItemId,
-    newestObservedAt: freshness.newestObservedAt?.toISOString(),
-  };
-};

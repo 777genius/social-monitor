@@ -17,6 +17,7 @@ bridge_sources=(
   postgres-runtime-activation-boundary-lib.sh
   reader-summary-recovery-maintenance-lib.sh
   backend-image-rescue-lib.sh
+  backend-image-rescue-pin-cleanup-lib.sh
   x-collector-image-deploy-lib.sh
 )
 for source_name in "${bridge_sources[@]}"; do
@@ -24,6 +25,10 @@ for source_name in "${bridge_sources[@]}"; do
 done
 
 git -C "$REPO" init -q
+# Commits may start automatic maintenance. Keep its writers in the foreground
+# so the EXIT trap cannot remove .git while detached GC is still updating it.
+git -C "$REPO" config gc.autoDetach false
+git -C "$REPO" config maintenance.autoDetach false
 git -C "$REPO" config user.email deploy-control-bridge-test@example.invalid
 git -C "$REPO" config user.name deploy-control-bridge-test
 git -C "$REPO" add ops/deploy
@@ -68,16 +73,18 @@ initialize_deploy_control_bridge
 [[ -n $DEPLOY_CONTROL_BRIDGE_POSTGRES_DAILY_C1_HELPER_DIGEST ]]
 [[ -n $DEPLOY_CONTROL_BRIDGE_POSTGRES_ACTIVATION_BOUNDARY_HELPER_DIGEST ]]
 [[ -n $DEPLOY_CONTROL_BRIDGE_RECOVERY_MAINTENANCE_LIBRARY_DIGEST ]]
+[[ -n $DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_DIGEST ]]
 verify_deploy_control_bridge_compatibility
 verify_deploy_control_bridge_target_compatibility "$reviewed_sha"
 
-sealed_dependencies=(
+required_sealed_dependencies=(
   ops/deploy/postgres-runtime-weekly-timer-state-lib.sh
   ops/deploy/postgres-runtime-daily-c1-readiness-lib.sh
   ops/deploy/postgres-runtime-activation-boundary-lib.sh
   ops/deploy/reader-summary-recovery-maintenance-lib.sh
 )
-for dependency in "${sealed_dependencies[@]}"; do
+optional_sealed_dependency=ops/deploy/backend-image-rescue-pin-cleanup-lib.sh
+for dependency in "${required_sealed_dependencies[@]}"; do
   rm "$REPO/$dependency"
   assert_fails_with 'missing deploy control bridge sources' \
     initialize_deploy_control_bridge
@@ -100,6 +107,43 @@ for dependency in "${sealed_dependencies[@]}"; do
   restore_helper "$dependency"
 done
 
+# The pin-cleanup source is optional at initialization, but its observed state
+# is sealed just as strictly as a present required source.
+rm "$REPO/$optional_sealed_dependency"
+initialize_deploy_control_bridge
+[[ $DEPLOY_CONTROL_BRIDGE_IMAGE_RESCUE_PIN_CLEANUP_LIBRARY_DIGEST == \
+   "$DEPLOY_CONTROL_BRIDGE_OPTIONAL_SOURCE_ABSENT" ]]
+verify_deploy_control_bridge_compatibility
+
+restore_helper "$optional_sealed_dependency"
+assert_fails_with 'deploy the bridge release first' \
+  verify_deploy_control_bridge_compatibility
+rm "$REPO/$optional_sealed_dependency"
+
+ln -s "$SCRIPT_DIR/${optional_sealed_dependency##*/}" \
+  "$REPO/$optional_sealed_dependency"
+assert_fails_with 'optional backend image rescue pin cleanup bridge source is unsafe' \
+  initialize_deploy_control_bridge
+rm "$REPO/$optional_sealed_dependency"
+mkdir "$REPO/$optional_sealed_dependency"
+assert_fails_with 'optional backend image rescue pin cleanup bridge source is unsafe' \
+  initialize_deploy_control_bridge
+rmdir "$REPO/$optional_sealed_dependency"
+
+restore_helper "$optional_sealed_dependency"
+initialize_deploy_control_bridge
+rm "$REPO/$optional_sealed_dependency"
+assert_fails_with 'deploy the bridge release first' \
+  verify_deploy_control_bridge_compatibility
+restore_helper "$optional_sealed_dependency"
+initialize_deploy_control_bridge
+printf '# unreviewed optional dependency mutation\n' >> \
+  "$REPO/$optional_sealed_dependency"
+assert_fails_with 'deploy the bridge release first' \
+  verify_deploy_control_bridge_compatibility
+restore_helper "$optional_sealed_dependency"
+initialize_deploy_control_bridge
+
 # Existing bridge dependencies stay sealed alongside the new helpers.
 printf '# unreviewed PostgreSQL controller mutation\n' >> \
   "$REPO/$DEPLOY_CONTROL_BRIDGE_POSTGRES_LIBRARY_PATH"
@@ -110,12 +154,16 @@ cp "$SCRIPT_DIR/postgres-runtime-deploy-lib.sh" \
 
 commit_target_state() {
   local message=$1
-  git -C "$REPO" add -A
-  git -C "$REPO" commit -qm "$message"
+  git -C "$REPO" add -A || return $?
+  git -C "$REPO" commit -qm "$message" || return $?
   git -C "$REPO" rev-parse HEAD
 }
 
-for dependency in "${sealed_dependencies[@]}"; do
+target_sealed_dependencies=(
+  "${required_sealed_dependencies[@]}"
+  "$optional_sealed_dependency"
+)
+for dependency in "${target_sealed_dependencies[@]}"; do
   rm "$REPO/$dependency"
   missing_sha=$(commit_target_state 'test: remove sealed runtime helper')
   assert_fails_with 'is not a regular blob at reviewed target' \

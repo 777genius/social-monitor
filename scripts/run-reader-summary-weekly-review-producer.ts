@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { GrpcAgentRuntimeClient } from "@social-monitor/summary/adapters/model/grpc-agent-runtime-client";
 import { SystemClock } from "@social-monitor/shared-kernel";
 import {
@@ -20,6 +21,14 @@ import {
 import {
   runReaderSummaryWeeklyReviewProducer,
 } from "./lib/reader-summary-weekly-review-producer";
+import {
+  createSummaryAgentRuntimeClient,
+  resolveSummaryAgentRuntimeTransport,
+} from "../libs/summary/adapters/composition/reader-summary-agent-runtime-transport";
+import {
+  resolveReaderSummaryWeeklyExecutionProfile,
+} from "./lib/reader-summary-weekly-execution-profile";
+import { weeklyAgentRuntimeDefaultCwd } from "./lib/weekly-agent-runtime-default-cwd";
 
 loadDotenvIfPresent(".env");
 
@@ -64,6 +73,7 @@ async function main(): Promise<void> {
         },
         manifestStore,
         agentRuntime: lazyAgentRuntime(),
+        executionProfile: resolveReaderSummaryWeeklyExecutionProfile(process.env),
       }),
     );
     console.log(
@@ -76,15 +86,22 @@ async function main(): Promise<void> {
 }
 
 const lazyAgentRuntime = (): AgentRuntimeClientPort => {
-  let client: GrpcAgentRuntimeClient | undefined;
-  const resolve = (): GrpcAgentRuntimeClient => {
-    client ??= GrpcAgentRuntimeClient.connect({
+  let client: AgentRuntimeClientPort | undefined;
+  const resolve = (): AgentRuntimeClientPort => {
+    client ??= createSummaryAgentRuntimeClient({
+      transport: resolveSummaryAgentRuntimeTransport(process.env),
+      env: process.env,
+      clock: new SystemClock(),
+      runId: randomUUID(),
+      agentRuntime: () => GrpcAgentRuntimeClient.connect({
       address: requiredEnv("AGENT_RUNTIME_GRPC_ADDRESS"),
       clock: new SystemClock(),
       options: {
         timeoutMs: 600_000,
         serviceToken: process.env.AGENT_RUNTIME_SERVICE_TOKEN,
+        defaultCwd: weeklyAgentRuntimeDefaultCwd(process.env.AGENT_RUNTIME_TASK_CWD),
       },
+      }),
     });
     return client;
   };

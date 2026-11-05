@@ -235,7 +235,9 @@ model Interest {
   updatedAt   DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt   DateTime?      @map("deleted_at") @db.Timestamptz(6)
   workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  readerValueAssessments ReaderValueAssessment[]
 
+  @@unique([tenantId, workspaceId, id], map: "interests_tenant_workspace_id_key")
   @@unique([tenantId, workspaceId, name], map: "interests_tenant_id_workspace_id_name_key")
   @@index([tenantId, workspaceId, status, createdAt], map: "interests_tenant_id_workspace_id_status_created_at_idx")
   @@map("interests")
@@ -433,11 +435,64 @@ model SourceItem {
   engagementSnapshot     SourceItemEngagementSnapshot?
   engagementObservations SourceItemEngagementObservation[]
   engagementDailyRollups SourceItemEngagementDailyRollup[]
+  readerValueAssessments ReaderValueAssessment[]
 
   @@unique([tenantId, workspaceId, providerKey, providerItemId], map: "source_items_tenant_workspace_provider_item_key")
   @@unique([tenantId, workspaceId, id], map: "source_items_tenant_workspace_id_key")
+  @@unique([tenantId, workspaceId, id, providerKey], map: "source_items_scope_id_provider_key")
   @@index([tenantId, workspaceId, sourceBindingId, observedAt])
   @@map("source_items")
+}
+
+model ReaderValueAssessment {
+  id                   String @id @db.Uuid
+  tenantId             String @map("tenant_id") @db.Uuid
+  workspaceId          String @map("workspace_id") @db.Uuid
+  interestId           String @map("interest_id") @db.Uuid
+  sourceItemId         String @map("source_item_id") @db.Uuid
+  sourceRevisionKey    String @map("source_revision_key")
+  sourceSnapshotSha256 String @map("source_snapshot_sha256") @db.Char(64)
+  interestSha256       String @map("interest_sha256") @db.Char(64)
+  rubricVersion        String @map("rubric_version")
+  rubricSha256         String @map("rubric_sha256") @db.Char(64)
+  inputBuilderVersion  String @map("input_builder_version")
+  modelConfigVersion   String @map("model_config_version")
+  inputSha256          String @map("input_sha256") @db.Char(64)
+  requestSha256        String @map("request_sha256") @db.Char(64)
+  inputSnapshot        Json @map("input_snapshot")
+  requestBody          String @map("request_body")
+  state                String @default("pending")
+  attempts             Int @default(0)
+  attemptHistory       Json @default("[]") @map("attempt_history")
+  nextAttemptAt        DateTime @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  leaseUntil           DateTime? @map("lease_until") @db.Timestamptz(6)
+  leaseToken           String? @map("lease_token") @db.Uuid
+  errorCode            String? @map("error_code")
+  usefulness           String?
+  relevance            String?
+  contextSufficiency   String? @map("context_sufficiency")
+  evidenceBasis        String? @map("evidence_basis")
+  result               Json?
+  requestedModel       String @map("requested_model")
+  resolvedModel        String? @map("resolved_model")
+  provider             String?
+  requestId            String? @map("request_id")
+  assessedAt           DateTime? @map("assessed_at") @db.Timestamptz(6)
+  latencyMs            Int? @map("latency_ms")
+  inputTokens          Int? @map("input_tokens")
+  outputTokens         Int? @map("output_tokens")
+  costUsd              Decimal? @map("cost_usd") @db.Decimal(20, 10)
+  usageUnknown         Boolean @default(false) @map("usage_unknown")
+  pinnedJobIds         String[] @default([]) @map("pinned_job_ids") @db.Uuid
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt            DateTime @map("expires_at") @db.Timestamptz(6)
+  sourceItem           SourceItem @relation(fields: [tenantId, workspaceId, sourceItemId], references: [tenantId, workspaceId, id], onDelete: Cascade, map: "reader_value_assessments_source_fkey")
+  interest             Interest @relation(fields: [tenantId, workspaceId, interestId], references: [tenantId, workspaceId, id], onDelete: Cascade, map: "reader_value_assessments_interest_fkey")
+
+  @@unique([tenantId, workspaceId, interestId, sourceItemId, sourceSnapshotSha256, interestSha256, inputSha256, rubricSha256, modelConfigVersion], map: "reader_value_assessments_exact_key")
+  @@index([tenantId, workspaceId, state, nextAttemptAt, leaseUntil], map: "reader_value_assessments_runnable_idx")
+  @@index([tenantId, workspaceId, expiresAt, id], map: "reader_value_assessments_retention_idx")
+  @@map("reader_value_assessments")
 }
 
 model SourceCandidateMemory {
@@ -498,9 +553,10 @@ model SourceItemEngagementSnapshot {
   schemaVersion        Int        @default(1) @map("schema_version")
   createdAt            DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt            DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
-  sourceItem           SourceItem @relation(fields: [tenantId, workspaceId, sourceItemId], references: [tenantId, workspaceId, id], onDelete: Cascade, map: "source_item_engagement_snapshots_source_item_scope_fkey")
+  sourceItem           SourceItem @relation(fields: [tenantId, workspaceId, sourceItemId, providerKey], references: [tenantId, workspaceId, id, providerKey], onDelete: Cascade, map: "source_item_engagement_snapshots_source_item_scope_fkey")
 
   @@id([tenantId, workspaceId, sourceItemId], map: "source_item_engagement_snapshots_pkey")
+  @@unique([tenantId, workspaceId, sourceItemId, providerKey], map: "source_item_engagement_snapshots_scope_provider_key")
   @@index([tenantId, workspaceId, providerKey, lastObservedAt(sort: Desc)], map: "source_item_engagement_snapshots_provider_observed_idx")
   @@index([tenantId, workspaceId, nextObservationDueAt], map: "source_item_engagement_snapshots_due_idx")
   @@map("source_item_engagement_snapshots")
@@ -537,7 +593,7 @@ model SourceItemEngagementObservation {
   hasRegression   Boolean                     @default(false) @map("has_regression")
   schemaVersion   Int                         @default(1) @map("schema_version")
   createdAt       DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
-  sourceItem      SourceItem                  @relation(fields: [tenantId, workspaceId, sourceItemId], references: [tenantId, workspaceId, id], onDelete: Cascade, map: "source_item_engagement_observations_source_item_scope_fkey")
+  sourceItem      SourceItem                  @relation(fields: [tenantId, workspaceId, sourceItemId, providerKey], references: [tenantId, workspaceId, id, providerKey], onDelete: Cascade, map: "source_item_engagement_observations_source_item_scope_fkey")
 
   @@unique([tenantId, workspaceId, sourceItemId, bucketStartedAt], map: "source_item_engagement_observations_bucket_key")
   @@index([tenantId, workspaceId, sourceItemId, observedAt(sort: Desc)], map: "source_item_engagement_observations_item_observed_idx")
@@ -558,13 +614,14 @@ model SourceItemEngagementDailyRollup {
   firstObservedAt    DateTime   @map("first_observed_at") @db.Timestamptz(6)
   lastObservedAt     DateTime   @map("last_observed_at") @db.Timestamptz(6)
   compactedThroughAt DateTime   @map("compacted_through_at") @db.Timestamptz(6)
+  completeThroughAt  DateTime?  @map("complete_through_at") @db.Timestamptz(6)
   openingMetrics     Json       @map("opening_metrics")
   closingMetrics     Json       @map("closing_metrics")
   peakMetrics        Json       @map("peak_metrics")
   schemaVersion      Int        @default(1) @map("schema_version")
   createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
-  sourceItem         SourceItem @relation(fields: [tenantId, workspaceId, sourceItemId], references: [tenantId, workspaceId, id], onDelete: Cascade, map: "source_item_engagement_daily_rollups_source_item_scope_fkey")
+  sourceItem         SourceItem @relation(fields: [tenantId, workspaceId, sourceItemId, providerKey], references: [tenantId, workspaceId, id, providerKey], onDelete: Cascade, map: "source_item_engagement_daily_rollups_source_item_scope_fkey")
 
   @@id([tenantId, workspaceId, sourceItemId, day], map: "source_item_engagement_daily_rollups_pkey")
   @@index([tenantId, workspaceId, providerKey, day(sort: Desc)], map: "source_item_engagement_daily_rollups_provider_day_idx")
@@ -589,10 +646,13 @@ model ScanFailureQueueEntry {
   nextAttemptNumber Int?                   @map("next_attempt_number")
   failureReason     String                 @map("failure_reason")
   status            ScanFailureQueueStatus @default(RETRY_ENQUEUED)
+  claimToken        String?                @map("claim_token") @db.Uuid
+  claimedUntil      DateTime?              @map("claimed_until") @db.Timestamptz(6)
   createdAt         DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@index([tenantId, workspaceId, status, createdAt])
   @@index([tenantId, scanJobId])
+  @@index([status, claimedUntil, createdAt], map: "scan_retry_claim_expiry_idx")
   @@map("scan_failure_queue_entries")
 }
 
@@ -610,6 +670,7 @@ model ScanAttempt {
   skippedDuplicates Int               @default(0) @map("skipped_duplicates")
   projected         Int               @default(0)
   failureReason     String?           @map("failure_reason")
+  terminalFailure   Boolean           @default(false) @map("terminal_failure")
   updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([tenantId, workspaceId, status, startedAt])
@@ -650,11 +711,16 @@ model FeedItem {
   status           FeedItemStatus @default(VISIBLE)
   createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
-  sourceItem       SourceItem     @relation(fields: [sourceItemId], references: [id], onDelete: Restrict)
+  sourceItem       SourceItem     @relation(fields: [tenantId, workspaceId, sourceItemId, providerKey], references: [tenantId, workspaceId, id, providerKey], onDelete: Restrict, map: "feed_items_source_item_id_fkey")
 
   @@unique([tenantId, interestId, dedupeKey], map: "feed_items_tenant_interest_dedupe_key_key")
   @@index([tenantId, workspaceId, status, createdAt])
   @@index([tenantId, workspaceId, providerKey, observedAt])
+  @@index([tenantId, workspaceId, publishedAt(sort: Desc), id(sort: Desc)], map: "feed_items_workspace_published_keyset_idx")
+  @@index([tenantId, workspaceId, interestId, publishedAt(sort: Desc), id(sort: Desc)], map: "feed_items_interest_published_keyset_idx")
+  @@index([tenantId, workspaceId, observedAt(sort: Desc), id(sort: Desc)], map: "feed_items_workspace_observed_keyset_idx")
+  @@index([tenantId, workspaceId, interestId, observedAt(sort: Desc), id(sort: Desc)], map: "feed_items_interest_observed_keyset_idx")
+  @@index([tenantId, workspaceId, interestId, sourceItemId, status], map: "reader_value_live_source_lookup_idx")
   @@map("feed_items")
 }
 
@@ -925,6 +991,8 @@ model ReaderSummaryArtifact {
   weeklyPublicationEvidence ReaderSummaryWeeklyPublicationEvidence?
   recoveryReceipt ReaderSummaryRecoveryReceipt?
   dailyModelJob ReaderSummaryDailyModelJob? @relation("ReaderSummaryDailyArtifact")
+  promotionV2CanaryReceipts ReaderSummaryPromotionV2CanaryPublicationReceipt[] @relation("PromotionV2CanaryArtifact")
+  promotionV2CanaryPriorReceipts ReaderSummaryPromotionV2CanaryPublicationReceipt[] @relation("PromotionV2CanaryPriorArtifact")
 
   @@index([tenantId, workspaceId, scopeKey, cadence, periodStartedAt], map: "reader_summary_artifacts_period_lookup_idx")
   @@index([tenantId, workspaceId, scopeKey, status, createdAt])
@@ -954,18 +1022,79 @@ model ReaderSummaryJob {
   failedAt                DateTime?                     @map("failed_at") @db.Timestamptz(6)
   readerSummaryArtifactId String?                       @map("reader_summary_artifact_id") @db.Uuid
   failureReason           String?                       @map("failure_reason")
+  terminalFailureCode     String?                       @map("terminal_failure_code")
+  selectionStrategy       String?                       @map("selection_strategy")
+  preparationConfig       Json?                         @map("preparation_config")
+  preparationManifest     Json?                         @map("preparation_manifest")
+  preparationManifestSha256 String?                     @map("preparation_manifest_sha256") @db.Char(64)
+  preparationCutoffAt     DateTime?                     @map("preparation_cutoff_at") @db.Timestamptz(6)
+  preparationDeadlineAt   DateTime?                     @map("preparation_deadline_at") @db.Timestamptz(6)
+  preparationNextCheckAt  DateTime?                     @map("preparation_next_check_at") @db.Timestamptz(6)
+  preparationReadyAt      DateTime?                     @map("preparation_ready_at") @db.Timestamptz(6)
   createdAt               DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt               DateTime                      @updatedAt @map("updated_at") @db.Timestamptz(6)
   publication             ReaderSummaryPublication?
   weeklyPublicationEvidence ReaderSummaryWeeklyPublicationEvidence?
   recoveryReceipt         ReaderSummaryRecoveryReceipt?
   dailyModelJob            ReaderSummaryDailyModelJob? @relation("ReaderSummaryDailyJob")
+  newInputRefreshReconciliations ReaderSummaryNewInputRefreshReconciliation[]
 
   @@unique([tenantId, idempotencyKey])
   @@index([tenantId, workspaceId, scopeKey, cadence, periodStartedAt], map: "reader_summary_jobs_period_lookup_idx")
   @@index([tenantId, workspaceId, scopeKey, status, createdAt])
   @@index([tenantId, workspaceId, userId, scopeKey, createdAt])
+  @@index([status, preparationNextCheckAt, requestedAt, id], map: "reader_summary_jobs_preparation_due_idx")
   @@map("reader_summary_jobs")
+}
+
+/// Append-only accounting for a FAILED new-input-refresh job that already
+/// consumed a paid provider invocation and published nothing. It marks the
+/// original job reconciled, never completed, and never writes to it.
+model ReaderSummaryNewInputRefreshReconciliation {
+  id                      String            @id(map: "rs_nir_reconciliations_pkey") @db.Uuid
+  tenantId                String            @map("tenant_id") @db.Uuid
+  workspaceId             String            @map("workspace_id") @db.Uuid
+  periodStartedAt         DateTime          @map("period_started_at") @db.Timestamptz(6)
+  periodEndedAt           DateTime          @map("period_ended_at") @db.Timestamptz(6)
+  readerSummaryJobId      String            @map("reader_summary_job_id") @db.Uuid
+  operation               String
+  jobStatus               String            @map("job_status")
+  jobSha256               String            @map("job_sha256") @db.Char(64)
+  manifestSha256          String            @map("manifest_sha256") @db.Char(64)
+  evidenceSha256          String            @map("evidence_sha256") @db.Char(64)
+  reason                  String
+  invocation              Json
+  accounting              Json
+  reconciledAt            DateTime          @map("reconciled_at") @db.Timestamptz(6)
+  job                     ReaderSummaryJob  @relation(fields: [readerSummaryJobId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "rs_nir_reconciliations_job_fkey")
+  counters                ReaderSummaryNewInputRefreshReconciliationCounters[]
+
+  @@unique([tenantId, workspaceId, readerSummaryJobId], map: "rs_nir_reconciliations_job_key")
+  @@unique([tenantId, operation], map: "rs_nir_reconciliations_operation_key")
+  @@index([tenantId, workspaceId, periodStartedAt], map: "rs_nir_reconciliations_period_idx")
+  @@map("reader_summary_new_input_refresh_reconciliations")
+}
+
+/// Immutable supplemental provider counters for the already-consumed request
+/// of a reconciled job. Never replaces the reconciliation's own accounting.
+model ReaderSummaryNewInputRefreshReconciliationCounters {
+  id                      String            @id(map: "rs_nir_reconciliation_counters_pkey") @db.Uuid
+  reconciliationId        String            @map("reconciliation_id") @db.Uuid
+  tenantId                String            @map("tenant_id") @db.Uuid
+  workspaceId             String            @map("workspace_id") @db.Uuid
+  requestId               String            @map("request_id")
+  attemptSha256           String            @map("attempt_sha256") @db.Char(64)
+  counters                Json
+  countersSha256          String            @map("counters_sha256") @db.Char(64)
+  evidenceSha256          String            @map("evidence_sha256") @db.Char(64)
+  provenance              String
+  recordedAt              DateTime          @map("recorded_at") @db.Timestamptz(6)
+  reconciliation          ReaderSummaryNewInputRefreshReconciliation @relation(fields: [reconciliationId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "rs_nir_reconciliation_counters_parent_fkey")
+
+  @@unique([tenantId, reconciliationId, requestId], map: "rs_nir_reconciliation_counters_request_key")
+  @@unique([tenantId, reconciliationId, evidenceSha256], map: "rs_nir_reconciliation_counters_evidence_key")
+  @@index([tenantId, workspaceId, reconciliationId], map: "rs_nir_reconciliation_counters_parent_idx")
+  @@map("reader_summary_new_input_refresh_reconciliation_counters")
 }
 
 model ReaderSummaryPublication {
@@ -999,6 +1128,8 @@ model ReaderSummaryPublication {
   weeklyPublicationEvidence ReaderSummaryWeeklyPublicationEvidence?
   recoveryReceipt         ReaderSummaryRecoveryReceipt?
   dailyModelJob            ReaderSummaryDailyModelJob? @relation("ReaderSummaryDailyPublication")
+  promotionV2CanaryReceipts ReaderSummaryPromotionV2CanaryPublicationReceipt[] @relation("PromotionV2CanaryPublication")
+  promotionV2CanaryPriorReceipts ReaderSummaryPromotionV2CanaryPublicationReceipt[] @relation("PromotionV2CanaryPriorPublication")
 
   @@index([tenantId, workspaceId, scopeKey, requestedAt], map: "reader_summary_publications_scope_requested_idx")
   @@map("reader_summary_publications")
@@ -1097,6 +1228,11 @@ model ReaderSummaryDailyModelJob {
   attestationSha256         String?  @map("attestation_sha256") @db.Char(64)
   receiptBytes              Bytes?   @map("receipt_bytes")
   receiptSha256             String?  @map("receipt_sha256") @db.Char(64)
+  inputTokens               BigInt?  @map("input_tokens")
+  outputTokens              BigInt?  @map("output_tokens")
+  totalTokens               BigInt?  @map("total_tokens")
+  usageSource               String   @default("UNAVAILABLE") @map("usage_source")
+  durationMs                BigInt?  @map("duration_ms")
   readerSummaryJobId        String?  @unique(map: "reader_summary_daily_model_jobs_job_key") @map("reader_summary_job_id") @db.Uuid
   readerSummaryArtifactId   String?  @unique(map: "reader_summary_daily_model_jobs_artifact_key") @map("reader_summary_artifact_id") @db.Uuid
   publicationId             String?  @unique(map: "reader_summary_daily_model_jobs_publication_key") @map("publication_id") @db.Uuid
@@ -1303,6 +1439,48 @@ model ReaderSummaryRecoveryReceipt {
   @@map("reader_summary_recovery_receipts")
 }
 
+model ReaderSummaryPromotionV2RollbackReceipt {
+  id                           String   @id @db.Uuid
+  tenantId                     String   @map("tenant_id") @db.Uuid
+  workspaceId                  String   @map("workspace_id") @db.Uuid
+  requestedUtcDate             DateTime @map("requested_utc_date") @db.Date
+  authorityReceiptFormat       String   @map("authority_receipt_format")
+  authorityReceiptSha256       String   @unique(map: "reader_summary_promotion_v2_rollback_authority_receipt_key") @map("authority_receipt_sha256") @db.Char(64)
+  rollbackIdentity             String   @unique(map: "reader_summary_promotion_v2_rollback_identity_key") @map("rollback_identity") @db.Char(64)
+  priorPublicationId           String   @map("prior_publication_id") @db.Uuid
+  priorArtifactId              String   @map("prior_artifact_id") @db.Uuid
+  replacedV2PublicationId      String   @unique(map: "reader_summary_promotion_v2_rollback_replaced_key") @map("replaced_v2_publication_id") @db.Uuid
+  replacedV2ArtifactId         String   @map("replaced_v2_artifact_id") @db.Uuid
+  fenceToken                   String   @map("fence_token")
+  receipt                      Json
+  receiptSha256                String   @map("receipt_sha256") @db.Char(64)
+  rolledBackAt                 DateTime @map("rolled_back_at") @db.Timestamptz(6)
+
+  @@index([tenantId, workspaceId, requestedUtcDate], map: "reader_summary_promotion_v2_rollback_scope_day_idx")
+  @@map("reader_summary_promotion_v2_rollback_receipts")
+}
+
+model ReaderSummaryPromotionV2CanaryPublicationReceipt {
+  v2PublicationId      String              @id @map("v2_publication_id") @db.Uuid
+  tenantId             String              @map("tenant_id") @db.Uuid
+  workspaceId          String              @map("workspace_id") @db.Uuid
+  requestedUtcDate     DateTime            @map("requested_utc_date") @db.Date
+  v2ArtifactId         String              @map("v2_artifact_id") @db.Uuid
+  priorV1PublicationId String              @map("prior_v1_publication_id") @db.Uuid
+  priorV1ArtifactId    String              @map("prior_v1_artifact_id") @db.Uuid
+  receipt              Json
+  receiptSha256        String              @unique(map: "reader_summary_promotion_v2_canary_receipt_hash_key") @map("receipt_sha256") @db.Char(64)
+  recordedAt           DateTime            @map("recorded_at") @db.Timestamptz(6)
+  publication          ReaderSummaryPublication @relation("PromotionV2CanaryPublication", fields: [v2PublicationId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "reader_summary_promotion_v2_canary_publication_fkey")
+  priorPublication     ReaderSummaryPublication @relation("PromotionV2CanaryPriorPublication", fields: [priorV1PublicationId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "reader_summary_promotion_v2_canary_prior_publication_fkey")
+  artifact             ReaderSummaryArtifact @relation("PromotionV2CanaryArtifact", fields: [v2ArtifactId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "reader_summary_promotion_v2_canary_artifact_fkey")
+  priorArtifact        ReaderSummaryArtifact @relation("PromotionV2CanaryPriorArtifact", fields: [priorV1ArtifactId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "reader_summary_promotion_v2_canary_prior_artifact_fkey")
+
+  @@unique([priorV1PublicationId, v2PublicationId], map: "reader_summary_promotion_v2_canary_prior_key")
+  @@index([tenantId, workspaceId, requestedUtcDate], map: "reader_summary_promotion_v2_canary_scope_day_idx")
+  @@map("reader_summary_promotion_v2_canary_publication_receipts")
+}
+
 model ReaderSummaryProductionRecoveryLease {
   id              String                                  @id(map: "reader_summary_production_recovery_leases_pkey") @db.Uuid
   tenantId        String                                  @map("tenant_id") @db.Uuid
@@ -1466,11 +1644,15 @@ model DeliveryAttempt {
   maxRetries        Int            @default(3) @map("max_retries")
   failureReason     String?        @map("failure_reason")
   suppressionReason String?        @map("suppression_reason")
+  dispatchCommandId String?        @map("dispatch_command_id") @db.Uuid
+  executionToken    String?        @map("execution_token") @db.Uuid
+  executionLeaseExpiresAt DateTime? @map("execution_lease_expires_at") @db.Timestamptz(6)
   createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@unique([tenantId, workspaceId, idempotencyKey])
   @@index([tenantId, workspaceId, state, queuedAt])
+  @@index([state, executionLeaseExpiresAt, assemblingAt], map: "delivery_attempts_recovery_idx")
   @@map("delivery_attempts")
 }
 

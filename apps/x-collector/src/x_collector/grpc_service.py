@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
@@ -10,6 +11,7 @@ from x_collector.v1 import x_collector_pb2, x_collector_pb2_grpc
 
 from .domain import (
     DailySearchRequest,
+    PostLookupRequest,
     DailySearchResult,
     SearchProduct,
     XCollectedPost,
@@ -21,12 +23,34 @@ from .domain import (
     XCollectorUnavailableError,
     XCollectorWarning,
     XPostMetrics,
+    XPostContentKind,
+    XEligibilityMetricsState,
 )
 from .health import XCollectorHealthMonitor
 from .ports import DailySearchCollectorPort
+from .post_lookup import validate_post_lookup
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 class XCollectorGrpcService(x_collector_pb2_grpc.XCollectorServiceServicer):
+    def LookupPosts(self, request, context):
+        require_service_token(context, self._service_token)
+        try:
+            if request.schema_version != 1:
+                raise XCollectorInvalidRequestError("Unsupported lookup schema version")
+            lookup = PostLookupRequest(request.request_id, request.tenant_id,
+                request.workspace_id, request.source_binding_id, request.scan_job_id,
+                request.correlation_id, tuple(request.tweet_ids))
+            validate_post_lookup(lookup)
+            return response_to_proto(self._collector.lookup_posts(lookup))
+        except XCollectorError as exc:
+            abort_collector_error(context, exc)
+        except Exception as exc:
+            LOGGER.error("X collector lookup failed error_class=%s", type(exc).__name__)
+            context.abort(grpc.StatusCode.UNAVAILABLE, "X collector lookup unavailable")
+
     def __init__(
         self,
         collector: DailySearchCollectorPort,
@@ -44,19 +68,27 @@ class XCollectorGrpcService(x_collector_pb2_grpc.XCollectorServiceServicer):
     ) -> x_collector_pb2.CollectDailySearchResponse:
         require_service_token(context, self._service_token)
 
+        stage = "request_decode"
         try:
-            result = self._collector.collect_daily_search(request_from_proto(request))
+            daily_request = request_from_proto(request)
+            stage = "collector_call"
+            result = self._collector.collect_daily_search(daily_request)
+            stage = "response_encode"
+            return response_to_proto(
+                result_with_health_warnings(result, self._health_monitor),
+            )
         except XCollectorError as exc:
             abort_collector_error(context, exc)
-        except Exception:
+        except Exception as exc:
+            LOGGER.error(
+                "X collector failure stage=%s error_class=%s",
+                stage,
+                type(exc).__name__,
+            )
             context.abort(
                 grpc.StatusCode.UNAVAILABLE,
                 "X collector unavailable",
             )
-
-        return response_to_proto(
-            result_with_health_warnings(result, self._health_monitor),
-        )
 
     def CheckHealth(
         self,
@@ -180,6 +212,14 @@ def post_to_proto(post: XCollectedPost) -> x_collector_pb2.XCollectedPost:
         media_urls=list(post.media_urls),
         source_product=search_product_to_proto(post.source_product),
         trend_score=post.trend_score,
+        content_kind=content_kind_to_proto(post.content_kind),
+        quoted_post=(x_collector_pb2.XQuotedPost(
+            tweet_id=post.quoted_post.tweet_id,
+            canonical_url=post.quoted_post.canonical_url,
+            text=post.quoted_post.text,
+            author_handle=post.quoted_post.author_handle,
+            published_at=datetime_to_timestamp(post.quoted_post.published_at),
+        ) if post.quoted_post is not None else None),
     )
 
 
@@ -192,7 +232,34 @@ def metrics_to_proto(metrics: XPostMetrics) -> x_collector_pb2.XPostMetrics:
         views=max(metrics.views or 0, 0),
         quotes_observed=metrics.quotes is not None,
         views_observed=metrics.views is not None,
+        likes_observed=metrics.likes_observed,
+        retweets_observed=metrics.retweets_observed,
+        eligibility_state=eligibility_metrics_state_to_proto(metrics.eligibility_state),
     )
+
+
+def content_kind_to_proto(content_kind: XPostContentKind) -> int:
+    match content_kind:
+        case XPostContentKind.ORIGINAL:
+            return x_collector_pb2.X_POST_CONTENT_KIND_ORIGINAL
+        case XPostContentKind.REPLY:
+            return x_collector_pb2.X_POST_CONTENT_KIND_REPLY
+        case XPostContentKind.QUOTE:
+            return x_collector_pb2.X_POST_CONTENT_KIND_QUOTE
+        case XPostContentKind.UNKNOWN:
+            return x_collector_pb2.X_POST_CONTENT_KIND_UNSPECIFIED
+
+
+def eligibility_metrics_state_to_proto(state: XEligibilityMetricsState) -> int:
+    match state:
+        case XEligibilityMetricsState.OBSERVED:
+            return x_collector_pb2.X_ELIGIBILITY_METRICS_STATE_OBSERVED
+        case XEligibilityMetricsState.MISSING:
+            return x_collector_pb2.X_ELIGIBILITY_METRICS_STATE_MISSING
+        case XEligibilityMetricsState.MALFORMED:
+            return x_collector_pb2.X_ELIGIBILITY_METRICS_STATE_MALFORMED
+        case XEligibilityMetricsState.CONFLICT:
+            return x_collector_pb2.X_ELIGIBILITY_METRICS_STATE_CONFLICT
 
 
 def warning_to_proto(
@@ -231,6 +298,8 @@ def search_product_to_proto(product: SearchProduct) -> int:
             return x_collector_pb2.X_SEARCH_PRODUCT_TOP
         case SearchProduct.LATEST:
             return x_collector_pb2.X_SEARCH_PRODUCT_LATEST
+        case SearchProduct.ID_LOOKUP:
+            return x_collector_pb2.X_SEARCH_PRODUCT_ID_LOOKUP
 
 
 def timestamp_to_datetime(value: Timestamp) -> datetime:

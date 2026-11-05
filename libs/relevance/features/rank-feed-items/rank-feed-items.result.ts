@@ -1,4 +1,7 @@
+import type { RetainedPromotionCandidateAuthority } from "@social-monitor/feed/domain/value-objects/retained-promotion-authority";
 import type { JsonObject } from '@social-monitor/shared-kernel';
+import type { FeedPromotionMetricRegressionState } from
+  '@social-monitor/feed/domain';
 
 import type {
   SourceContentQualityView,
@@ -6,6 +9,7 @@ import type {
   UserRelevanceProfileView,
 } from '../shared/relevance-presenter';
 import type { RelevanceMemoryGuidanceStatus } from '../../ports';
+import type { PromotionReaderHeadline } from '../../domain/promotion-reader-headline';
 
 export type RelevanceMemoryGuidanceView = {
   readonly status: RelevanceMemoryGuidanceStatus;
@@ -26,10 +30,19 @@ export type RankedFeedItemView = {
   readonly canonicalUrl: string;
   readonly title: string;
   readonly bodyPreview?: string;
+  readonly sourceText?: string;
+  readonly readerHeadline?: PromotionReaderHeadline;
   readonly providerMetadata?: JsonObject;
   readonly authorHandle?: string;
   readonly publishedAt: string;
   readonly observedAt: string;
+  readonly exactPublishedAt?: string;
+  readonly exactObservedAt?: string;
+  readonly retainedEngagementAuthority?: RetainedPromotionCandidateAuthority;
+  readonly engagementAuthority?: {
+    readonly observedAt: string;
+    readonly regressionState: FeedPromotionMetricRegressionState;
+  };
   readonly score: number;
   readonly rank: number;
   readonly clusterId: string;

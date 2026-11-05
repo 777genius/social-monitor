@@ -7,12 +7,16 @@ import {
 import { loadPrismaRuntimeClient } from '@social-monitor/platform-persistence/prisma-runtime-client';
 
 import type { PrismaIngestionClient } from './prisma-ingestion-client';
+import type { ArticleCaptureTransaction } from './prisma-article-capture-fence';
 
-type PrismaIngestionRuntimeClient = PrismaIngestionClient & {
+type PrismaIngestionRuntimeClient = ArticleCaptureTransaction & {
+  $transaction<T>(operation: (client: PrismaIngestionClient) => Promise<T>,
+    options: { readonly isolationLevel: 'Serializable' }): Promise<T>;
   $disconnect(): Promise<void>;
 };
 
 export class PrismaIngestionConnection implements PrismaIngestionClient {
+  readonly $queryRaw: ArticleCaptureTransaction['$queryRaw'];
   readonly sourceItem: PrismaIngestionClient['sourceItem'];
   readonly cursorCheckpoint: PrismaIngestionClient['cursorCheckpoint'];
   readonly scanFailureQueueEntry: PrismaIngestionClient['scanFailureQueueEntry'];
@@ -43,6 +47,7 @@ export class PrismaIngestionConnection implements PrismaIngestionClient {
   ) {
     this.runtime = runtime;
     this.client = this.runtime.client;
+    this.$queryRaw = this.client.$queryRaw.bind(this.client) as ArticleCaptureTransaction['$queryRaw'];
 
     this.sourceItem = this.client.sourceItem;
     this.cursorCheckpoint = this.client.cursorCheckpoint;
@@ -52,6 +57,11 @@ export class PrismaIngestionConnection implements PrismaIngestionClient {
     this.gitHubRepositoryTrendCandidate = this.client.gitHubRepositoryTrendCandidate;
     this.gitHubRepositoryTrendSnapshot = this.client.gitHubRepositoryTrendSnapshot;
     this.gitHubRepositoryTrendResult = this.client.gitHubRepositoryTrendResult;
+  }
+
+  $transaction<T>(operation: (client: PrismaIngestionClient) => Promise<T>,
+    options: { readonly isolationLevel: 'Serializable' }): Promise<T> {
+    return this.client.$transaction(operation, options);
   }
 
   close(): Promise<void> {

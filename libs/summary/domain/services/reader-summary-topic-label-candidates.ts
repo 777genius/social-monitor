@@ -172,7 +172,7 @@ export const groundReaderSummaryTopicNodeLabel = (params: {
   if (nodeLabel === undefined) {
     return undefined;
   }
-  const topicId = groundedTopicId({
+  const topicId = nodeLabel.relationIdentity !== undefined ? nodeLabel.topicId : groundedTopicId({
     topicId: nodeLabel.topicId,
     selectedLabel: params.selectedLabel,
     evidenceTexts: params.evidenceTexts,
@@ -195,7 +195,7 @@ export const groundReaderSummaryTopicNodeLabel = (params: {
         }).accepted,
     )
     .slice(0, 8);
-  if (topicId === undefined && groupId === undefined && keywords.length === 0) {
+  if (nodeLabel.relationIdentity === undefined && topicId === undefined && groupId === undefined && keywords.length === 0) {
     return undefined;
   }
 

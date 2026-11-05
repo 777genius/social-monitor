@@ -23,6 +23,7 @@ class WorkspaceSummaryPeriodShell extends StatelessWidget {
     required this.onCalendarDateSelected,
     this.onGenerate,
     required this.isGenerating,
+    this.isLoading = false,
     required this.exportSummary,
     required this.child,
     this.showRefreshSchedule = false,
@@ -41,6 +42,7 @@ class WorkspaceSummaryPeriodShell extends StatelessWidget {
   final ValueChanged<DateTime> onCalendarDateSelected;
   final VoidCallback? onGenerate;
   final bool isGenerating;
+  final bool isLoading;
   final ReaderSummary? exportSummary;
   final Widget child;
   final bool showRefreshSchedule;
@@ -87,6 +89,11 @@ class WorkspaceSummaryPeriodShell extends StatelessWidget {
             ],
           ),
         ),
+        if (isLoading)
+          const LinearProgressIndicator(
+            key: ValueKey('workspace-summary-period-loading'),
+            minHeight: 3,
+          ),
         Padding(padding: contentPadding, child: child),
       ],
     );

@@ -34,6 +34,7 @@ export interface DeliveryAttemptRepositoryPort {
     tenantId?: TenantId;
     workspaceId?: WorkspaceId;
     limit: number;
+    readonly recovery?: { readonly now: Date; readonly recoverBefore: Date };
   }): Promise<readonly DeliveryAttempt[]>;
   list(query: ListDeliveryAttemptsQuery): Promise<ListDeliveryAttemptsResult>;
 }

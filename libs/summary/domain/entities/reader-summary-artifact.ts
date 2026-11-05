@@ -1,3 +1,9 @@
+import type { ReaderPromotionDiagnostics } from "../value-objects/reader-promotion-diagnostics";
+import type { ReaderSummaryDailyGenerationInput } from "../value-objects/reader-summary-daily-generation-input";
+import type { DailyEditorialProof } from "../services/reader-summary-daily-editorial-plan";
+import { immutableReaderDisplayContent } from "./reader-summary-display-immutability";
+import { immutableDisplayValue } from "../services/reader-post-display-identity";
+
 import type { TenantId, WorkspaceId } from "@social-monitor/shared-kernel";
 
 import type { ReaderSummaryCitation } from "./citation";
@@ -22,11 +28,17 @@ import type {
 } from "../value-objects/summary-quality";
 import type {
   StoryCluster,
+  RelatedTopicRelation,
   SummaryEvidencePersonalization,
   SummarySourceWindow,
 } from "../value-objects/summary-evidence-item";
 import { assertReaderSummaryArtifactValid } from "./reader-summary-artifact-validation";
 import { assertReaderSummaryCitationsAgainstEvidence } from "./reader-summary-citation-evidence-validation";
+import type {
+  ReaderPostPromotionAttestation,
+  ReaderPostPromotionAttestationAny,
+  ReaderPostPromotionInput,
+} from "../policies/reader-post-promotion-policy";
 
 export { assertReaderSummaryCitationsAgainstEvidence };
 
@@ -63,8 +75,8 @@ export type ReaderSummaryLineage = {
 };
 
 export type ReaderSummaryUsage = {
-  readonly inputTokens: number;
-  readonly outputTokens: number;
+  readonly inputTokens: number | null;
+  readonly outputTokens: number | null;
   readonly estimatedCostUsd: number;
 };
 
@@ -86,6 +98,19 @@ export type ReaderSummaryArtifactProps = {
   readonly generatedAt?: Date;
   readonly sourceWindow: SummarySourceWindow;
   readonly storyClusters: readonly StoryCluster[];
+  readonly relatedTopicRelations?: readonly RelatedTopicRelation[];
+  readonly promotionAttestations?: readonly ReaderPostPromotionAttestationAny[];
+  readonly promotionEvidenceFacts?: readonly ReaderPostPromotionInput[];
+  readonly promotionDiagnostics?: ReaderPromotionDiagnostics;
+  readonly dailyGenerationInput?: ReaderSummaryDailyGenerationInput;
+  readonly dailyEditorialPlan?: DailyEditorialProof;
+  /**
+   * `legacy_unavailable`: persisted before promotion boards existed.
+   * `rebuild_required`: the board was ranked under another
+   * READER_PROMOTION_POLICY_STAMP; its promoted cards are withheld until the
+   * day is rebuilt.
+   */
+  readonly promotionBoardState?: "legacy_unavailable" | "rebuild_required";
   readonly contextArtifacts: readonly ReaderSummaryContextArtifact[];
   readonly personalization?: SummaryEvidencePersonalization;
   readonly headline: string;
@@ -115,6 +140,13 @@ export type GeneratedReaderSummaryDraft = Omit<
   | "subscriptionId"
   | "sourceWindow"
   | "storyClusters"
+  | "relatedTopicRelations"
+  | "promotionAttestations"
+  | "promotionEvidenceFacts"
+  | "promotionDiagnostics"
+  | "dailyGenerationInput"
+  | "dailyEditorialPlan"
+  | "promotionBoardState"
   | "contextArtifacts"
   | "personalization"
 > & {
@@ -128,16 +160,306 @@ export class ReaderSummaryArtifact {
   static create(props: ReaderSummaryArtifactProps): ReaderSummaryArtifact {
     assertReaderSummaryArtifactValid(props);
 
-    return new ReaderSummaryArtifact(props);
+    return new ReaderSummaryArtifact(withImmutablePromotionAttestations(props));
   }
 
   static rehydrate(props: ReaderSummaryArtifactProps): ReaderSummaryArtifact {
     assertReaderSummaryArtifactValid(props);
 
-    return new ReaderSummaryArtifact(props);
+    return new ReaderSummaryArtifact(withImmutablePromotionAttestations(props));
   }
 
   toSnapshot(): ReaderSummaryArtifactProps {
-    return { ...this.props };
+    return {
+      ...this.props,
+      ...(this.props.dailyGenerationInput === undefined ? {} : { dailyGenerationInput: structuredClone(this.props.dailyGenerationInput) }),
+      ...(this.props.dailyEditorialPlan === undefined ? {} : { dailyEditorialPlan: structuredClone(this.props.dailyEditorialPlan) }),
+      ...(this.props.promotionDiagnostics === undefined ? {} : {
+        promotionDiagnostics: structuredClone(this.props.promotionDiagnostics),
+      }),
+      period: cloneReaderSummaryPeriod(this.props.period),
+      sourceWindow: cloneSummarySourceWindow(this.props.sourceWindow),
+      promotionAttestations: clonePromotionAttestations(
+        this.props.promotionAttestations ?? [],
+      ),
+      promotionEvidenceFacts: (this.props.promotionEvidenceFacts ?? []).map(
+        clonePromotionInput,
+      ),
+    };
   }
 }
+
+const withImmutablePromotionAttestations = (
+  props: ReaderSummaryArtifactProps,
+): ReaderSummaryArtifactProps => ({
+  ...props,
+  ...(props.dailyGenerationInput === undefined ? {} : { dailyGenerationInput: immutableDisplayValue(props.dailyGenerationInput) }),
+  ...(props.dailyEditorialPlan === undefined ? {} : { dailyEditorialPlan: immutableDisplayValue(props.dailyEditorialPlan) }),
+  ...(props.promotionDiagnostics === undefined ? {} : {
+    promotionDiagnostics: immutableDisplayValue(props.promotionDiagnostics),
+  }),
+  content: immutableReaderDisplayContent(props.content),
+  period: freezeReaderSummaryPeriod(props.period),
+  sourceWindow: freezeSummarySourceWindow(props.sourceWindow),
+  promotionAttestations: Object.freeze(
+    clonePromotionAttestations(props.promotionAttestations ?? [])
+      .map(freezePromotionAttestation),
+  ),
+  promotionEvidenceFacts: Object.freeze(
+    (props.promotionEvidenceFacts ?? []).map(clonePromotionInput)
+      .map(freezePromotionInput),
+  ),
+});
+
+const freezeDate = (value: Date): Date => Object.freeze(value);
+
+const cloneReaderSummaryPeriod = (
+  period: ReaderSummaryPeriod,
+): ReaderSummaryPeriod => ({
+  ...period,
+  startedAt: new Date(period.startedAt),
+  endedAt: new Date(period.endedAt),
+});
+
+const freezeReaderSummaryPeriod = (
+  period: ReaderSummaryPeriod,
+): ReaderSummaryPeriod => Object.freeze({
+  ...cloneReaderSummaryPeriod(period),
+  startedAt: freezeDate(new Date(period.startedAt)),
+  endedAt: freezeDate(new Date(period.endedAt)),
+});
+
+const cloneSummarySourceWindow = (
+  sourceWindow: SummarySourceWindow,
+): SummarySourceWindow => ({
+  ...sourceWindow,
+  startedAt: new Date(sourceWindow.startedAt),
+  endedAt: new Date(sourceWindow.endedAt),
+  selectedFeedItemIds: [...sourceWindow.selectedFeedItemIds],
+  storyClusterIds: [...sourceWindow.storyClusterIds],
+  ...(sourceWindow.periodStartedAt === undefined ? {} : {
+    periodStartedAt: new Date(sourceWindow.periodStartedAt),
+  }),
+  ...(sourceWindow.periodEndedAt === undefined ? {} : {
+    periodEndedAt: new Date(sourceWindow.periodEndedAt),
+  }),
+  ...(sourceWindow.ingestionCutoff === undefined ? {} : {
+    ingestionCutoff: new Date(sourceWindow.ingestionCutoff),
+  }),
+});
+
+const freezeSummarySourceWindow = (
+  sourceWindow: SummarySourceWindow,
+): SummarySourceWindow => Object.freeze({
+  ...cloneSummarySourceWindow(sourceWindow),
+  startedAt: freezeDate(new Date(sourceWindow.startedAt)),
+  endedAt: freezeDate(new Date(sourceWindow.endedAt)),
+  selectedFeedItemIds: Object.freeze([...sourceWindow.selectedFeedItemIds]),
+  storyClusterIds: Object.freeze([...sourceWindow.storyClusterIds]),
+  ...(sourceWindow.periodStartedAt === undefined ? {} : {
+    periodStartedAt: freezeDate(new Date(sourceWindow.periodStartedAt)),
+  }),
+  ...(sourceWindow.periodEndedAt === undefined ? {} : {
+    periodEndedAt: freezeDate(new Date(sourceWindow.periodEndedAt)),
+  }),
+  ...(sourceWindow.ingestionCutoff === undefined ? {} : {
+    ingestionCutoff: freezeDate(new Date(sourceWindow.ingestionCutoff)),
+  }),
+});
+
+const freezePromotionInput = (
+  fact: ReaderPostPromotionAttestation["supportFacts"][number],
+): ReaderPostPromotionAttestation["supportFacts"][number] => Object.freeze({
+  ...fact,
+  publishedAt: freezeDate(fact.publishedAt),
+  observedAt: freezeDate(fact.observedAt),
+  periodStart: freezeDate(fact.periodStart),
+  periodEnd: freezeDate(fact.periodEnd),
+  ingestionCutoff: freezeDate(fact.ingestionCutoff),
+  ...(fact.checkedAt === undefined ? {} : { checkedAt: freezeDate(fact.checkedAt) }),
+  ...(fact.authorityAttestation === undefined ? {} : {
+    authorityAttestation: Object.freeze(fact.authorityAttestation),
+  }),
+  ...(fact.relation === undefined ? {} : {
+    relation: Object.freeze(fact.relation),
+  }),
+  ...(fact.metrics === undefined ? {} : {
+    metrics: Object.freeze(fact.metrics.provider === "github_radar" ? {
+      ...fact.metrics,
+      windowStartedAt: freezeDate(fact.metrics.windowStartedAt),
+      windowEndedAt: freezeDate(fact.metrics.windowEndedAt),
+    } : fact.metrics),
+  }),
+});
+
+const freezePromotionAttestation = (
+  attestation: ReaderPostPromotionAttestationAny,
+): ReaderPostPromotionAttestationAny => {
+  if (attestation.schemaVersion === "reader_post_promotion_attestation.v3") {
+    return immutableDisplayValue({
+      ...attestation,
+      periodStartedAt: freezeDate(attestation.periodStartedAt),
+      periodEndedAt: freezeDate(attestation.periodEndedAt),
+      ingestionCutoff: freezeDate(attestation.ingestionCutoff),
+    });
+  }
+  return Object.freeze({
+  ...attestation,
+  periodStartedAt: freezeDate(attestation.periodStartedAt),
+  periodEndedAt: freezeDate(attestation.periodEndedAt),
+  ingestionCutoff: freezeDate(attestation.ingestionCutoff),
+  publishedAt: freezeDate(attestation.publishedAt),
+  observedAt: freezeDate(attestation.observedAt),
+  ...(attestation.checkedAt === undefined ? {} : {
+    checkedAt: freezeDate(attestation.checkedAt),
+  }),
+  usefulnessComponents: Object.freeze(attestation.usefulnessComponents),
+  supportFacts: Object.freeze(attestation.supportFacts.map(freezePromotionInput)),
+  citationIds: Object.freeze([...attestation.citationIds]),
+  ...(attestation.authorityAttestation === undefined ? {} : {
+    authorityAttestation: Object.freeze(attestation.authorityAttestation),
+  }),
+  ...(attestation.relationTrace === undefined ? {} : {
+    relationTrace: Object.freeze(attestation.relationTrace),
+  }),
+  ...(attestation.metrics === undefined ? {} : {
+    metrics: Object.freeze(attestation.metrics.provider === "github_radar" ? {
+      ...attestation.metrics,
+      windowStartedAt: freezeDate(attestation.metrics.windowStartedAt),
+      windowEndedAt: freezeDate(attestation.metrics.windowEndedAt),
+    } : attestation.metrics),
+  }),
+  ...(attestation.schemaVersion !== "reader_post_promotion_attestation.v2"
+    ? {}
+    : {
+        ...(attestation.displayHeadline === undefined ? {} : {
+          displayHeadline: immutableDisplayValue(attestation.displayHeadline),
+        }),
+        ...(attestation.displaySummary === undefined ? {} : {
+          displaySummary: attestation.displaySummary,
+        }),
+        scoreComponents: Object.freeze({ ...attestation.scoreComponents }),
+        reasonCodes: Object.freeze([...attestation.reasonCodes]),
+        evidenceLineage: Object.freeze({
+          ...attestation.evidenceLineage,
+          supportCandidateIds: Object.freeze([
+            ...attestation.evidenceLineage.supportCandidateIds,
+          ]),
+          supportCitationIds: Object.freeze([
+            ...attestation.evidenceLineage.supportCitationIds,
+          ]),
+          citationIds: Object.freeze([
+            ...attestation.evidenceLineage.citationIds,
+          ]),
+        }),
+      }),
+  });
+};
+
+const clonePromotionAttestations = (
+  attestations: readonly ReaderPostPromotionAttestationAny[],
+): readonly ReaderPostPromotionAttestationAny[] => attestations.map((attestation) =>
+  attestation.schemaVersion === "reader_post_promotion_attestation.v3"
+    ? immutableDisplayValue({
+        ...attestation,
+        periodStartedAt: new Date(attestation.periodStartedAt),
+        periodEndedAt: new Date(attestation.periodEndedAt),
+        ingestionCutoff: new Date(attestation.ingestionCutoff),
+      })
+    : ({
+  ...attestation,
+  publishedAt: new Date(attestation.publishedAt),
+  observedAt: new Date(attestation.observedAt),
+  periodStartedAt: new Date(attestation.periodStartedAt),
+  periodEndedAt: new Date(attestation.periodEndedAt),
+  ingestionCutoff: new Date(attestation.ingestionCutoff),
+  ...(attestation.checkedAt === undefined
+    ? {}
+    : { checkedAt: new Date(attestation.checkedAt) }),
+  usefulnessComponents: { ...attestation.usefulnessComponents },
+  supportFacts: attestation.supportFacts.map((fact) => ({
+    ...fact,
+    publishedAt: new Date(fact.publishedAt),
+    observedAt: new Date(fact.observedAt),
+    periodStart: new Date(fact.periodStart),
+    periodEnd: new Date(fact.periodEnd),
+    ingestionCutoff: new Date(fact.ingestionCutoff),
+    ...(fact.checkedAt === undefined
+      ? {}
+      : { checkedAt: new Date(fact.checkedAt) }),
+    ...(fact.metrics?.provider === "github_radar"
+      ? { metrics: {
+          ...fact.metrics,
+          windowStartedAt: new Date(fact.metrics.windowStartedAt),
+          windowEndedAt: new Date(fact.metrics.windowEndedAt),
+        } }
+      : fact.metrics === undefined ? {} : { metrics: { ...fact.metrics } }),
+    ...(fact.authorityAttestation === undefined
+      ? {}
+      : { authorityAttestation: { ...fact.authorityAttestation } }),
+    ...(fact.relation === undefined
+      ? {}
+      : { relation: { ...fact.relation } }),
+  })),
+  citationIds: [...attestation.citationIds],
+  ...(attestation.authorityAttestation === undefined
+    ? {}
+    : { authorityAttestation: { ...attestation.authorityAttestation } }),
+  ...(attestation.relationTrace === undefined
+    ? {}
+    : { relationTrace: { ...attestation.relationTrace } }),
+  ...(attestation.metrics === undefined
+    ? {}
+    : attestation.metrics.provider === "github_radar"
+      ? {
+          metrics: {
+            ...attestation.metrics,
+            windowStartedAt: new Date(attestation.metrics.windowStartedAt),
+            windowEndedAt: new Date(attestation.metrics.windowEndedAt),
+          },
+        }
+      : { metrics: { ...attestation.metrics } }),
+  ...(attestation.schemaVersion !== "reader_post_promotion_attestation.v2"
+    ? {}
+    : {
+        ...(attestation.displayHeadline === undefined ? {} : {
+          displayHeadline: immutableDisplayValue(attestation.displayHeadline),
+        }),
+        ...(attestation.displaySummary === undefined ? {} : {
+          displaySummary: attestation.displaySummary,
+        }),
+        scoreComponents: { ...attestation.scoreComponents },
+        reasonCodes: [...attestation.reasonCodes],
+        evidenceLineage: {
+          ...attestation.evidenceLineage,
+          supportCandidateIds: [
+            ...attestation.evidenceLineage.supportCandidateIds,
+          ],
+          supportCitationIds: [
+            ...attestation.evidenceLineage.supportCitationIds,
+          ],
+          citationIds: [...attestation.evidenceLineage.citationIds],
+        },
+      }),
+    }));
+
+const clonePromotionInput = (
+  fact: ReaderPostPromotionInput,
+): ReaderPostPromotionInput => ({
+  ...fact,
+  publishedAt: new Date(fact.publishedAt),
+  observedAt: new Date(fact.observedAt),
+  periodStart: new Date(fact.periodStart),
+  periodEnd: new Date(fact.periodEnd),
+  ingestionCutoff: new Date(fact.ingestionCutoff),
+  ...(fact.checkedAt === undefined ? {} : { checkedAt: new Date(fact.checkedAt) }),
+  ...(fact.metrics?.provider === "github_radar" ? { metrics: {
+    ...fact.metrics,
+    windowStartedAt: new Date(fact.metrics.windowStartedAt),
+    windowEndedAt: new Date(fact.metrics.windowEndedAt),
+  } } : fact.metrics === undefined ? {} : { metrics: { ...fact.metrics } }),
+  ...(fact.authorityAttestation === undefined ? {} : {
+    authorityAttestation: { ...fact.authorityAttestation },
+  }),
+  ...(fact.relation === undefined ? {} : { relation: { ...fact.relation } }),
+});

@@ -1,3 +1,5 @@
+import { completeModelInput, outputFor } from "./reader-summary-weekly-production-test-output";
+import { selectedAgentRuntimeOutput } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import {
   chmodSync,
   existsSync,
@@ -12,7 +14,6 @@ import { join } from "node:path";
 import { canonicalizeReaderSummaryWeeklyJson } from "../../libs/summary/domain/value-objects/reader-summary-weekly-canonical-json";
 import { evaluateReaderSummaryWeeklyEditorialQuality } from "../../libs/summary/domain/policies/reader-summary-weekly-editorial-quality-policy";
 import {
-  readerSummaryWeeklyModelOutputSchemaVersion,
   type ReaderSummaryWeeklyModelInput,
   type ReaderSummaryWeeklyModelOutput,
   type ReaderSummaryWeeklyModelPort,
@@ -38,7 +39,7 @@ import {
 } from "./reader-summary-weekly-production-test-fixture";
 
 describe("agent-runtime reader summary weekly text model", () => {
-  it("accepts exact gpt-5.6-sol xhigh output_text runtime execution", async () => {
+  it("accepts exact gpt-5.6-sol high output_text runtime execution", async () => {
     const input = completeModelInput();
     const outputText = JSON.stringify(outputFor(input));
     const client = new FakeAgentRuntimeClient({
@@ -58,7 +59,7 @@ describe("agent-runtime reader summary weekly text model", () => {
       provider: "codex",
       controls: { model: "gpt-5.6-sol" },
       metadata: {
-        reasoningEffort: "xhigh",
+        reasoningEffort: "high",
         runtimeOutput: "output_text",
       },
     });
@@ -74,13 +75,13 @@ describe("agent-runtime reader summary weekly text model", () => {
 
     await expect(
       new AgentRuntimeReaderSummaryWeeklyTextModel({ client }).generate(input),
-    ).rejects.toThrow(/attestation must prove codex gpt-5\.6-sol xhigh output_text/u);
+    ).rejects.toThrow(/execution attestation/u);
   });
 
   it.each([
     ["provider", { provider: "claude" as const }],
     ["model", { model: "gpt-5.5" }],
-    ["reasoning effort", { reasoningEffort: "high" }],
+    ["reasoning effort", { reasoningEffort: "xhigh" }],
     [
       "selected output kind",
       { selectedOutputKind: "structured_output" as const },
@@ -99,7 +100,7 @@ describe("agent-runtime reader summary weekly text model", () => {
       await expect(
         new AgentRuntimeReaderSummaryWeeklyTextModel({ client }).generate(input),
       ).rejects.toThrow(
-        /attestation must prove codex gpt-5\.6-sol xhigh output_text/u,
+        /execution attestation/u,
       );
     },
   );
@@ -234,7 +235,7 @@ describe("reader summary weekly production runner", () => {
       provider: "agent-runtime",
       agentProvider: "codex",
       model: "gpt-5.6-sol",
-      reasoningEffort: "xhigh",
+      reasoningEffort: "high",
       runtimeOutput: "output_text",
     });
     expect(proof.zeroProviderCalls).toBe(true);
@@ -755,7 +756,13 @@ class FakeAgentRuntimeClient implements AgentRuntimeClientPort {
     command: AgentRuntimeTaskCommand,
   ): Promise<AgentRuntimeTaskResult> {
     this.commands.push(command);
-    return this.result;
+    return this.result.executionAttestation === undefined ? this.result : {
+      ...this.result,
+      executionAttestation: { ...this.result.executionAttestation,
+        requestId: command.requestId,
+        selectedOutputSha256: selectedAgentRuntimeOutput(this.result).sha256,
+      },
+    };
   }
 
   async checkHealth(): Promise<AgentRuntimeHealthResult> {
@@ -769,16 +776,17 @@ class FakeAgentRuntimeClient implements AgentRuntimeClientPort {
 }
 
 function productionExecutionAttestation(
-  overrides: Partial<AgentRuntimeExecutionAttestation> = {},
+  overrides: Partial<Extract<AgentRuntimeExecutionAttestation,
+    { readonly runtimeEngine: "subscription-runtime-cli" }>> = {},
 ): AgentRuntimeExecutionAttestation {
   return {
     schemaVersion: 1,
     requestId: "reader-summary-weekly:test",
-    purpose: "social_monitor.reader_summary.weekly.generate",
+    purpose: "social_monitor.reader_summary.weekly.generate.v2",
     canonicalRequestSha256: sha("canonical-request"),
     provider: "codex",
     model: "gpt-5.6-sol",
-    reasoningEffort: "xhigh",
+    reasoningEffort: "high",
     runtimeEngine: "subscription-runtime-cli",
     runtimePackageVersion: "1.0.0",
     launcherSha256: sha("launcher"),
@@ -788,78 +796,9 @@ function productionExecutionAttestation(
   };
 }
 
-function completeModelInput(): ReaderSummaryWeeklyModelInput {
-  const dbState = completeDbState();
-  const built = buildModelInputFromDbState(dbState, reviewManifestFor(dbState));
-  if (built.status !== "complete") {
-    throw new Error(built.reasons.join("; "));
-  }
-  return built.input;
-}
-
 const fakePublisher = () => ({
   publish: jest.fn(async () => ({ databasePublicationVerified: true as const })),
 });
-
-function outputFor(
-  input: ReaderSummaryWeeklyModelInput,
-): ReaderSummaryWeeklyModelOutput {
-  const citations = input.citations.map((citation) => citation.citationId);
-  const stories = input.stories.map((story) => {
-    const storyCitations = input.citations
-      .filter((citation) => citation.storyId === story.storyId)
-      .map((citation) => citation.citationId);
-    const dates = storyCitations
-      .map((citationId) => input.citations.find((item) => item.citationId === citationId)!)
-      .map((citation) => citation.observedOn)
-      .sort();
-    return {
-      storyId: story.storyId,
-      headline: `Evidence theme ${story.storyId.slice(-8)} holds steady across the week`,
-      summary:
-        "The cited item captures one stable snapshot in the certified week, keeping the reader account grounded in observed facts without adding unsupported movement.",
-      status: "watch" as const,
-      observedFrom: dates[0]!,
-      observedThrough: dates[dates.length - 1]!,
-      citationIds: [...storyCitations],
-    };
-  });
-  const leadCitationIds = citations.slice(0, 12).sort();
-  const leadStory = stories.find((story) => story.citationIds.length >= 2);
-  if (leadStory === undefined) {
-    throw new Error("Positive weekly fixture requires one cross-day story");
-  }
-  return {
-    schemaVersion: readerSummaryWeeklyModelOutputSchemaVersion,
-    sealId: input.sealId,
-    sealSha: input.sealSha,
-    weekStartedOn: input.weekStartedOn,
-    weekEndedOn: input.weekEndedOn,
-    headline: "Certified reader evidence points to steady developer attention",
-    headlineCitationIds: [...leadCitationIds],
-    takeaway:
-      "The certified week shows durable attention across developer records and feed records, with each cited signal staying tied to observed facts from the reviewed window.",
-    takeawayCitationIds: [...leadCitationIds],
-    synthesis:
-      "Across the certified week, cited developer records and feed records show a steady reader-relevant picture. The facts give enough breadth to explain why the account matters to readers while staying tied to observed items. The text treats the week as one editorial unit and keeps every statement within the cited facts.",
-    synthesisCitationIds: [...leadCitationIds],
-    stories,
-    sections: [
-      {
-        sectionId: "section:lead",
-        storyId: leadStory.storyId,
-        kind: "lead" as const,
-        claimType: "snapshot" as const,
-        heading: "Steady certified reader signal",
-        text:
-          "The lead item gives readers a grounded snapshot of the certified week, connecting developer and feed context without adding claims beyond the cited records.",
-        observedFrom: leadStory.observedFrom,
-        observedThrough: leadStory.observedThrough,
-        citationIds: [...leadStory.citationIds],
-      },
-    ],
-  };
-}
 
 function stitchedDailyOutput(
   input: ReaderSummaryWeeklyModelInput,

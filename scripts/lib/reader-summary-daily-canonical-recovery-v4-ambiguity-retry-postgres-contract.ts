@@ -7,6 +7,7 @@ import type {
 } from "./reader-summary-daily-canonical-recovery-v4";
 import { assertPgCatalogOnlySecurityDefinerSearchPaths } from "./reader-summary-daily-canonical-recovery-v4-postgres-contract";
 import type { RecoveryPostgresClient } from "./reader-summary-production-recovery-postgres-contract";
+import { readPublicationBootstrapSql } from "./reader-summary-publication-bootstrap-sql";
 const schema =
   "prisma/migrations/20260804130000_reader_summary_daily_v4_ambiguity_retry_schema/migration.sql";
 const transitions =
@@ -54,7 +55,7 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryMigrationC
   const periodGuardSql = readFileSync(resolve(periodGuard), "utf8");
   const backupContract = readFileSync(resolve(backupRestoreContract), "utf8");
   const tenantGuard = readFileSync(resolve(tenantGuardContract), "utf8");
-  const preBootstrapSql = readFileSync(resolve(preMigrationBootstrap), "utf8");
+  const preBootstrapSql = readPublicationBootstrapSql(preMigrationBootstrap);
   const postBootstrapSql = readFileSync(resolve(postMigrationBootstrap), "utf8");
   const sql = `${schemaSql}\n${transitionSql}\n${consumerSql}\n${evidenceSql}\n${periodGuardSql}`;
   const authorization = exactFunctionBody(
@@ -227,8 +228,8 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryMigrationC
   assert(
     countOccurrences(preBootstrapSql, `'${retryTable}'`) >= 5 &&
       countOccurrences(postBootstrapSql, `'${retryTable}'`) >= 3 &&
-      preBootstrapSql.includes("v_v4_table_count NOT IN (0, 3, 4)") &&
-      postBootstrapSql.includes("v_v4_table_count NOT IN (0, 3, 4)") &&
+      preBootstrapSql.includes("v_v4_table_count NOT IN (0, 3, 4, 5)") &&
+      postBootstrapSql.includes("v_v4_table_count NOT IN (0, 3, 4, 5)") &&
       preBootstrapSql.includes(
         "v_owner_count <> 4 + v_weekly_review_manifest_table_count\n        + v_v4_table_count",
       ) &&
@@ -237,7 +238,7 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4AmbiguityRetryMigrationC
       ) &&
       schemaSql.includes("v_v4_table_count <> 4") &&
       schemaSql.includes("ambiguity retry final protected-table ownership is unsafe"),
-    "bootstraps must accept only 0/3/4 V4 ownership windows before the schema's strict final four-table assertion",
+    "bootstraps must accept only 0/3/4/5 V4 ownership windows after the schema's strict four-table assertion",
   );
   assert(
     claim.includes("attempt_ordinal SMALLINT") &&

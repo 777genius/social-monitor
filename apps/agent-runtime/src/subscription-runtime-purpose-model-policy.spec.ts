@@ -1,25 +1,193 @@
+import { mimoQualifiedHeadlineOutputSchema } from "@social-monitor/summary/domain";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 
 import type { AgentRuntimeExecutionRequest } from "./agent-runtime-executor.port";
 import {
   admitSubscriptionRuntimeRequest,
+  configuredSubscriptionRuntimeDefaultsAreSafe,
   subscriptionRuntimePurposeProfiles,
 } from "./subscription-runtime-purpose-model-policy";
 
 const dailyPurposes = [
-  "social_monitor.summary.generate",
+  "social_monitor.relevance.assess_source_content.v1",
+  "social_monitor.reader_summary.generate.v2",
+  "social_monitor.reader_summary.repair.v2",
+  "social_monitor.reader_summary.topic_map.label.v2",
+  "social_monitor.reader_summary.topic_map.verify_relations.v2",
+  "social_monitor.reader_summary.verify_story_relations.v2",
+  "social_monitor.reader_summary.verify_related_topic_relations.v2",
+  "social_monitor.reader_summary.weekly.review.v2",
+] as const;
+
+const legacyReaderSummaryPurposes = [
   "social_monitor.reader_summary.generate",
   "social_monitor.reader_summary.repair",
   "social_monitor.reader_summary.topic_map.label",
   "social_monitor.reader_summary.topic_map.verify_relations",
   "social_monitor.reader_summary.verify_story_relations",
+  "social_monitor.reader_summary.verify_related_topic_relations",
   "social_monitor.reader_summary.weekly.review",
+  "social_monitor.reader_summary.weekly.generate",
 ] as const;
 
 describe("subscription runtime purpose policy", () => {
+  it("admits MiMo only for seven named daily summary purposes", () => {
+    const markers = [
+      ["social_monitor.reader_summary.promotion_presentation.v3", "social_monitor_reader_post_presentation_v3", "reader_post_presentation.v3"],
+      ["social_monitor.reader_summary.generate.v2", "social_monitor_reader_summary_artifact", "reader_summary.artifact.v1"],
+      ["social_monitor.reader_summary.repair.v2", "social_monitor_reader_summary_artifact", "reader_summary.artifact.v1"],
+      ["social_monitor.reader_summary.topic_map.label.v2", "social_monitor_reader_summary_topic_map_labels", "reader_summary.topic_map.v1"],
+      ["social_monitor.reader_summary.topic_map.verify_relations.v2", "social_monitor_reader_summary_topic_relations", "reader_summary.topic_relation.v1"],
+      ["social_monitor.reader_summary.verify_story_relations.v2", "social_monitor_reader_summary_story_relations", "reader_summary.story_relation.v1"],
+      ["social_monitor.reader_summary.verify_related_topic_relations.v2", "social_monitor_reader_summary_related_topic_relations", "reader_summary.related_topic_relation.v1"],
+    ] as const;
+    for (const [purpose, name, version] of markers) {
+      const required = purpose.endsWith("generate.v2") || purpose.endsWith("repair.v2")
+        ? ["headline", "executiveSummary", "narrativeSections", "content", "topStories", "interestHighlights", "repeatedSignals", "risksAndUnknowns", "citationMap", "qualityFlags", "confidence", "noSignalReason"]
+        : purpose.endsWith("topic_map.label.v2") ? ["nodeLabels", "groups"]
+          : purpose.endsWith("promotion_presentation.v3") ? ["presentations"] : ["decisions"];
+      const outputSchema = { type: "object", additionalProperties: false, required,
+        properties: Object.fromEntries(required.map((key) => [key, {
+          type: key === "headline" ? "string" : "array",
+        }])) };
+      const admitted = admitSubscriptionRuntimeRequest(request({
+        purpose,
+        outputSchemaJson: JSON.stringify(outputSchema),
+        controlsJson: JSON.stringify({ model: "mimo-v2.6-pro", modelBackend: "xiaomi-mimo-token-plan",
+          outputSchemaName: name, schemaVersion: version }),
+        ...(purpose.endsWith("verify_related_topic_relations.v2")
+          ? { metadata: { taskRole: "related_topic_relation", verificationLane: "related_topic" } }
+          : {}),
+      }));
+      expect(admitted.profile).toMatchObject({
+        provider: "codex",
+        model: "mimo-v2.6-pro",
+        modelBackend: "xiaomi-mimo-token-plan",
+        reasoningEffort: purpose.endsWith("promotion_presentation.v3") ? "none" : "high",
+        outputKind: "structured_output",
+      });
+      expect((admitted.canonicalRequest.task as Record<string, unknown>).outputSchemaName).toBe(name);
+      for (const badControls of [
+        { outputSchemaName: "unrelated" },
+        { schemaVersion: "unrelated.v1" },
+        { toolsEnabled: true },
+        { reasoningEffort: purpose.endsWith("promotion_presentation.v3") ? "high" : "none" },
+      ]) {
+        expect(() => admitSubscriptionRuntimeRequest(request({
+          purpose,
+          outputSchemaJson: JSON.stringify(outputSchema),
+          controlsJson: JSON.stringify({ modelBackend: "xiaomi-mimo-token-plan",
+            outputSchemaName: name, schemaVersion: version, ...badControls }),
+          ...(purpose.endsWith("verify_related_topic_relations.v2")
+            ? { metadata: { taskRole: "related_topic_relation", verificationLane: "related_topic" } }
+            : {}),
+        }))).toThrow();
+      }
+    }
+    for (const purpose of [
+      "social_monitor.relevance.assess_source_content.v1",
+      "social_monitor.reader_summary.weekly.review.v2",
+      "social_monitor.summary.generate",
+    ]) {
+      expect(() => admitSubscriptionRuntimeRequest(request({
+        purpose,
+        controlsJson: '{"modelBackend":"xiaomi-mimo-token-plan"}',
+      }))).toThrow("modelBackend conflicts with purpose policy");
+    }
+    expect(() => admitSubscriptionRuntimeRequest(request({
+      outputSchemaJson: JSON.stringify({ type: "object", additionalProperties: false,
+        required: ["headline", "executiveSummary", "narrativeSections", "content", "topStories", "interestHighlights", "repeatedSignals", "risksAndUnknowns", "citationMap", "qualityFlags", "confidence", "noSignalReason"],
+        properties: Object.fromEntries(["headline", "executiveSummary", "narrativeSections", "content", "topStories", "interestHighlights", "repeatedSignals", "risksAndUnknowns", "citationMap", "qualityFlags", "confidence", "noSignalReason"].map((key) => [key, { type: key === "headline" ? "string" : "array" }])) }),
+      controlsJson: '{"model":"gpt-5.6-sol","modelBackend":"xiaomi-mimo-token-plan","outputSchemaName":"social_monitor_reader_summary_artifact","schemaVersion":"reader_summary.artifact.v1"}',
+    }))).toThrow("model conflicts with purpose policy");
+  });
+
+  it('admits only the exact versioned presentation root in both policies', () => {
+    const schema = mimoQualifiedHeadlineOutputSchema([{ candidateId: 'synthetic', title: 'Useful method', sourceText: 'Useful source.' }]);
+    const original = request({ purpose: 'social_monitor.reader_summary.promotion_presentation.v3',
+      outputSchemaJson: JSON.stringify(schema), controlsJson: JSON.stringify({ modelBackend: 'xiaomi-mimo-token-plan',
+        model: 'mimo-v2.6-pro', reasoningEffort: 'none', outputSchemaName: 'social_monitor_reader_post_presentation_v3', schemaVersion: 'reader_post_presentation.v3' }) });
+    const admitted = admitSubscriptionRuntimeRequest(original);
+    expect(admitWithMjsWrapper({ request: admitted.canonicalRequest, ...admitted.profile })).toMatchObject({ ok: true });
+    const malformed = [
+      { ...schema, properties: { ...schema.properties, contractVersion: { type: 'string', const: 'unknown.v1' } } },
+      { ...schema, properties: { ...schema.properties, contractVersion: { type: 'array', const: 'mimo_qualified_headline.v1' } } },
+      { ...schema, properties: { ...schema.properties, contractVersion: { type: 'string' } } },
+      { ...schema, required: ['presentations'] },
+      { ...schema, required: ['contractVersion', 'contractVersion'] },
+      { ...schema, properties: { ...schema.properties, extra: { type: 'string' } } },
+    ];
+    for (const outputSchema of malformed) {
+      expect(() => admitSubscriptionRuntimeRequest({ ...original, outputSchemaJson: JSON.stringify(outputSchema) })).toThrow();
+      const canonical = structuredClone(admitted.canonicalRequest);
+      ((canonical.task as Record<string, unknown>).controls as Record<string, unknown>).outputSchema = outputSchema;
+      expect(admitWithMjsWrapper({ request: canonical, ...admitted.profile })).toMatchObject({ ok: false });
+    }
+    expect(() => admitSubscriptionRuntimeRequest({ ...original, purpose: 'social_monitor.reader_summary.topic_map.label.v2',
+      controlsJson: JSON.stringify({ modelBackend: 'xiaomi-mimo-token-plan', outputSchemaName: 'social_monitor_reader_summary_topic_map_labels', schemaVersion: 'reader_summary.topic_map.v1' }) })).toThrow();
+  });
+
+  it("requires the exact high production service default", () => {
+    expect(configuredSubscriptionRuntimeDefaultsAreSafe({})).toBe(true);
+    expect(configuredSubscriptionRuntimeDefaultsAreSafe({
+      model: "gpt-5.6-sol",
+      reasoningEffort: "high",
+    })).toBe(true);
+    expect(configuredSubscriptionRuntimeDefaultsAreSafe({
+      model: "gpt-5.6-sol",
+      reasoningEffort: "xhigh",
+    })).toBe(false);
+  });
+
+  it("admits only the exact dedicated related-topic relation markers", () => {
+    const exact = request({
+      purpose: "social_monitor.reader_summary.verify_related_topic_relations.v2",
+      controlsJson: JSON.stringify({
+        outputSchemaName: "social_monitor_reader_summary_related_topic_relations",
+        schemaVersion: "reader_summary.related_topic_relation.v1",
+      }),
+      metadata: {
+        taskRole: "related_topic_relation",
+        verificationLane: "related_topic",
+      },
+    });
+    expect(() => admitSubscriptionRuntimeRequest(exact)).not.toThrow();
+
+    for (const malformed of [
+      { ...exact, controlsJson: JSON.stringify({
+        outputSchemaName: "social_monitor_reader_summary_story_relations",
+        schemaVersion: "reader_summary.related_topic_relation.v1",
+      }) },
+      { ...exact, controlsJson: JSON.stringify({
+        outputSchemaName: "social_monitor_reader_summary_related_topic_relations",
+        schemaVersion: "reader_summary.related_topic_relation.v2",
+      }) },
+      { ...exact, metadata: { ...exact.metadata, taskRole: "unknown_relation" } },
+    ]) {
+      expect(() => admitSubscriptionRuntimeRequest(malformed)).toThrow();
+    }
+  });
+
+  it("admits V3 promotion presentation on the active structured default only", () => {
+    const admission = admitSubscriptionRuntimeRequest(request({
+      purpose: "social_monitor.reader_summary.promotion_presentation.v3",
+    }));
+    expect(admission.profile).toEqual({
+      provider: "codex",
+      model: "gpt-5.6-sol",
+      reasoningEffort: "high",
+      outputKind: "structured_output",
+      responseFormat: "json",
+    });
+    expect(() => admitSubscriptionRuntimeRequest(request({
+      purpose: "social_monitor.reader_summary.promotion_presentation.v3",
+      metadata: { reasoningEffort: "xhigh" },
+    }))).toThrow("reasoningEffort conflicts with purpose policy");
+  });
+
   it.each(dailyPurposes)(
-    "keeps %s on the frozen daily structured-output profile",
+    "keeps %s on the active reader-summary structured-output profile",
     (purpose) => {
       const admission = admitSubscriptionRuntimeRequest(request({ purpose }));
       const task = admission.canonicalRequest.task as Record<string, unknown>;
@@ -28,22 +196,26 @@ describe("subscription runtime purpose policy", () => {
       expect(admission.profile).toEqual({
         provider: "codex",
         model: "gpt-5.6-sol",
-        reasoningEffort: "xhigh",
+        reasoningEffort: purpose === "social_monitor.relevance.assess_source_content.v1" ? "low" : "high",
         outputKind: "structured_output",
         responseFormat: "json",
+        ...(purpose === "social_monitor.relevance.assess_source_content.v1" ? { retryMode: "never" } : {}),
       });
       expect(controls).toMatchObject({
         model: "gpt-5.6-sol",
-        reasoningEffort: "xhigh",
+        reasoningEffort: purpose === "social_monitor.relevance.assess_source_content.v1" ? "low" : "high",
         responseFormat: "json",
         outputSchema: { type: "object" },
       });
     },
   );
 
-  it("injects the frozen weekly text profile when exact controls are absent", () => {
+  it.each([
+    "social_monitor.reader_summary.daily.canonical_recovery.v2",
+    "social_monitor.reader_summary.weekly.generate.v2",
+  ])("injects the active %s text profile when exact controls are absent", (purpose) => {
     const admission = admitSubscriptionRuntimeRequest(
-      request({ purpose: "social_monitor.reader_summary.weekly.generate" }),
+      request({ purpose }),
     );
     const task = admission.canonicalRequest.task as Record<string, unknown>;
     const controls = task.controls as Record<string, unknown>;
@@ -51,13 +223,13 @@ describe("subscription runtime purpose policy", () => {
     expect(admission.profile).toEqual({
       provider: "codex",
       model: "gpt-5.6-sol",
-      reasoningEffort: "xhigh",
+      reasoningEffort: "high",
       outputKind: "output_text",
       responseFormat: "text",
     });
     expect(controls).toMatchObject({
       model: "gpt-5.6-sol",
-      reasoningEffort: "xhigh",
+      reasoningEffort: "high",
       responseFormat: "text",
     });
     expect(controls.outputSchema).toBeUndefined();
@@ -74,7 +246,7 @@ describe("subscription runtime purpose policy", () => {
     expect(structuredControls.outputSchema).toEqual({ type: "object" });
 
     const text = admitSubscriptionRuntimeRequest(request({
-      purpose: "social_monitor.reader_summary.weekly.generate",
+      purpose: "social_monitor.reader_summary.weekly.generate.v2",
       controlsJson: '{"outputSchemaName":"weekly-summary"}',
     }));
     const textTask = text.canonicalRequest.task as Record<string, unknown>;
@@ -90,7 +262,7 @@ describe("subscription runtime purpose policy", () => {
     ["unknown purpose", { purpose: "social_monitor.reader_summary.unknown" }],
     ["provider", { provider: "claude" as const }],
     ["model", { controlsJson: '{"model":"gpt-5.5"}' }],
-    ["effort", { metadata: { reasoningEffort: "high" } }],
+    ["effort", { metadata: { reasoningEffort: "xhigh" } }],
     ["output kind", { metadata: { runtimeOutput: "output_text" } }],
     ["output format", { controlsJson: '{"responseFormat":"xml"}' }],
     [
@@ -100,7 +272,7 @@ describe("subscription runtime purpose policy", () => {
     [
       "weekly structured control",
       {
-        purpose: "social_monitor.reader_summary.weekly.generate",
+        purpose: "social_monitor.reader_summary.weekly.generate.v2",
         controlsJson: '{"outputSchema":{"type":"object"}}',
       },
     ],
@@ -109,6 +281,30 @@ describe("subscription runtime purpose policy", () => {
   ])("rejects a conflicting or unsupported %s", (_label, override) => {
     expect(() => admitSubscriptionRuntimeRequest(request(override))).toThrow();
   });
+
+  it("admits only the dedicated high canonical-recovery route", () => {
+    const activeRecovery = request({
+      purpose: "social_monitor.reader_summary.daily.canonical_recovery.v2",
+      metadata: { reasoningEffort: "high" },
+    });
+    expect(() => admitSubscriptionRuntimeRequest(activeRecovery)).not.toThrow();
+    expect(() => admitSubscriptionRuntimeRequest({
+      ...activeRecovery,
+      metadata: { reasoningEffort: "xhigh" },
+    })).toThrow("reasoningEffort conflicts with purpose policy");
+  });
+
+  it.each(legacyReaderSummaryPurposes)(
+    "fails closed for legacy reader-summary purpose %s",
+    (purpose) => {
+      for (const reasoningEffort of ["high", "xhigh"] as const) {
+        expect(() => admitSubscriptionRuntimeRequest(request({
+          purpose,
+          metadata: { reasoningEffort },
+        }))).toThrow("Agent runtime purpose is not admitted");
+      }
+    },
+  );
 
   it("keeps the independent MJS wrapper policy in exact parity", () => {
     const tsProfiles = subscriptionRuntimePurposeProfiles();
@@ -136,7 +332,7 @@ describe("subscription runtime purpose policy", () => {
     ["unknown purpose", { purpose: "social_monitor.unknown" }],
     ["provider", { provider: "claude" }],
     ["model", { model: "gpt-4" }],
-    ["effort", { reasoningEffort: "high" }],
+    ["effort", { reasoningEffort: "xhigh" }],
     ["output format", { responseFormat: "text" }],
     ["output kind", { runtimeOutput: "output_text" }],
   ])("keeps MJS rejection parity for %s", (_label, override) => {
@@ -154,25 +350,43 @@ describe("subscription runtime purpose policy", () => {
 
 const request = (
   override: Partial<AgentRuntimeExecutionRequest> = {},
-): AgentRuntimeExecutionRequest => ({
-  requestId: "request-1",
-  tenantId: "tenant-1",
-  workspaceId: "workspace-1",
-  correlationId: "correlation-1",
-  provider: "codex",
-  purpose: "social_monitor.reader_summary.generate",
-  systemPrompt: "Return the requested result.",
-  prompt: "Summarize.",
-  outputSchemaJson: '{"type":"object"}',
-  controlsJson: "{}",
-  timeoutMs: 1_000,
-  metadata: {},
-  ...override,
-});
+): AgentRuntimeExecutionRequest => {
+  const purpose = override.purpose ?? "social_monitor.reader_summary.generate.v2";
+  const relatedDefaults = purpose ===
+    "social_monitor.reader_summary.verify_related_topic_relations.v2"
+    ? {
+        controlsJson: JSON.stringify({
+          outputSchemaName:
+            "social_monitor_reader_summary_related_topic_relations",
+          schemaVersion: "reader_summary.related_topic_relation.v1",
+        }),
+        metadata: {
+          taskRole: "related_topic_relation",
+          verificationLane: "related_topic",
+        },
+      }
+    : {};
+  return {
+    requestId: "request-1",
+    tenantId: "tenant-1",
+    workspaceId: "workspace-1",
+    correlationId: "correlation-1",
+    provider: "codex",
+    purpose,
+    systemPrompt: "Return the requested result.",
+    prompt: "Summarize.",
+    outputSchemaJson: '{"type":"object"}',
+    controlsJson: "{}",
+    timeoutMs: 1_000,
+    metadata: {},
+    ...relatedDefaults,
+    ...override,
+  };
+};
 
 const policyPath = join(
-  process.cwd(),
-  "apps/agent-runtime/bin/subscription-runtime-purpose-model-policy.mjs",
+  __dirname,
+  "../bin/subscription-runtime-purpose-model-policy.mjs",
 );
 
 const readMjsProfiles = (): Record<string, unknown> =>
@@ -236,6 +450,15 @@ const runMjsPolicy = <T>(expression: string, input: unknown = {}): T => {
   );
   if (result.status !== 0) {
     throw new Error(result.stderr || "MJS purpose policy check failed");
+  }
+  if (result.stdout.length === 0) {
+    throw new Error(JSON.stringify({
+      status: result.status,
+      signal: result.signal,
+      error: result.error?.message,
+      executable: process.execPath,
+      policyPath,
+    }));
   }
   return JSON.parse(result.stdout) as T;
 };

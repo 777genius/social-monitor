@@ -136,7 +136,7 @@ void main() {
 
     expect(find.text('List pane'), findsNothing);
     expect(find.text('Detail pane'), findsOneWidget);
-    expect(find.byTooltip('Close detail'), findsOneWidget);
+    expect(_findTooltip('Close detail'), findsOneWidget);
   });
 
   testWidgets(
@@ -263,3 +263,9 @@ Future<void> _pumpSized(
     ),
   );
 }
+
+Finder _findTooltip(String message) => find.byWidgetPredicate(
+  (widget) =>
+      widget is AppTooltip &&
+      (widget.message ?? widget.richMessage?.toPlainText()) == message,
+);

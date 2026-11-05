@@ -314,6 +314,10 @@ function assertExactProofBinding(
   collectionDate: string,
 ): void {
   const proof = row.exactProof;
+  const publicationRequestedAt = exactTimestamp(
+    row.publicationRequestedAt,
+    "Current publication requestedAt",
+  );
   if (
     !isRecord(proof) ||
     !hasExactKeys(proof, [
@@ -351,16 +355,12 @@ function assertExactProofBinding(
     proof.period.startedAt !== `${collectionDate}T00:00:00.000Z` ||
     proof.period.endedAt !== nextUtcDate(collectionDate) ||
     proof.requestedUtcDate !== row.publicationRequestedUtcDate ||
-    proof.requestedUtcDate !==
-      exactTimestamp(
-        row.publicationRequestedAt,
-        "Current publication requestedAt",
-      ).slice(0, 10) ||
-    proof.requestedAt !==
-      exactTimestamp(
-        row.publicationRequestedAt,
-        "Current publication requestedAt",
-      ) ||
+    !matchesSupportedRequestedUtcDate({
+      requestedUtcDate: proof.requestedUtcDate,
+      requestedAt: publicationRequestedAt,
+      collectionDate,
+    }) ||
+    proof.requestedAt !== publicationRequestedAt ||
     proof.readerSummaryJobId !== row.publicationReaderSummaryJobId ||
     proof.readerSummaryArtifactId !== target.artifactId ||
     proof.reportSha256 !== target.reportSha256 ||
@@ -370,6 +370,20 @@ function assertExactProofBinding(
   ) {
     throw new Error(`Current publication exact proof drifted for ${collectionDate}`);
   }
+}
+
+function matchesSupportedRequestedUtcDate(input: {
+  readonly requestedUtcDate: unknown;
+  readonly requestedAt: string;
+  readonly collectionDate: string;
+}): boolean {
+  if (input.requestedUtcDate === input.requestedAt.slice(0, 10)) {
+    return true;
+  }
+  return (
+    input.requestedUtcDate === input.collectionDate &&
+    input.requestedAt >= nextUtcDate(input.collectionDate)
+  );
 }
 
 function assertPersistedReportHash(

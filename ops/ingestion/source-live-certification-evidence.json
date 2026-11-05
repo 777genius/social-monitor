@@ -13,20 +13,20 @@
       "github-issues",
       "github-repo-radar",
       "github-trending-page",
-      "reddit"
+      "reddit",
+      "telegram"
     ],
     "forbiddenBindingProviders": [
       "fake-source",
-      "telegram",
       "x-twitter"
     ],
     "fixtureOnlyProviders": [
       "fake-source"
     ],
     "matchingRules": [
-      "external beta live provider evidence must only cover Hacker News, RSS, GitHub Issues, GitHub Repo Radar, GitHub Trending Page and Reddit",
-      "fake-source remains fixture-only and cannot be bound in beta runtime",
-      "Telegram and X/Twitter remain deferred and cannot be bound until their provider contracts are approved"
+      "External beta requires live provider evidence for Hacker News, RSS, GitHub Issues, GitHub Repo Radar, GitHub Trending Page, Reddit and Telegram public previews.",
+      "fake-source remains fixture-only and cannot be bound in beta runtime.",
+      "X/Twitter remains deferred; Telegram is limited to anonymous public previews and requires deployment-scoped evidence."
     ]
   },
   "passedArtifactContentSchema": {
@@ -414,15 +414,29 @@
         }
       ],
       "exitCondition": "Attach tenant OAuth, auth failure, rate-limit and credential lifecycle evidence for Reddit before external beta."
+    },
+    {
+      "providerKey": "telegram",
+      "status": "pending_live_evidence",
+      "requiredForExternalBeta": true,
+      "owner": "source-owner",
+      "liveSmokeCommand": "npm run check:live-telegram-preview",
+      "stagingArtifactPath": null,
+      "environmentId": null,
+      "imageDigest": null,
+      "commitSha": null,
+      "sampledAt": null,
+      "signals": [
+        {
+          "signalId": "telegram_public_preview_live",
+          "status": "pending_live_evidence",
+          "requiredSignal": "Anonymous channel preview, stable post identities and older-page traversal with coverage limits reported."
+        }
+      ],
+      "exitCondition": "Attach deployment-scoped live evidence for anonymous public previews, history traversal and explicit incomplete coverage before external beta."
     }
   ],
   "deferredProviders": [
-    {
-      "providerKey": "telegram",
-      "status": "deferred",
-      "requiredForExternalBeta": false,
-      "exitCondition": "Authorized channel scope and credential lifecycle must be approved before enabling Telegram automation."
-    },
     {
       "providerKey": "x-twitter",
       "status": "deferred",

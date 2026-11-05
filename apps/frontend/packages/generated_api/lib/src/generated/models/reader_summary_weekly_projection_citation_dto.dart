@@ -31,7 +31,7 @@ class ReaderSummaryWeeklyProjectionCitationDto {
   final String providerItemId;
   final String providerKey;
   final String publicationId;
-  final String requestedUtcDate;
+  final DateTime requestedUtcDate;
   final String sourceBindingId;
   final String sourceContentHash;
   final String sourceItemId;

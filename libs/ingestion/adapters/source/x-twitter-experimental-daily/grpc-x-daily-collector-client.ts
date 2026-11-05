@@ -1,4 +1,6 @@
 import { credentials, type ChannelCredentials } from '@grpc/grpc-js';
+import { validatedXQuotedPost } from './x-quoted-post';
+import type { XPostLookupRequest } from './x-daily-collector-client.port';
 import {
   createGrpcDeadline,
   createGrpcRequestMetadata,
@@ -8,6 +10,8 @@ import {
   type CollectDailySearchRequest,
   type CollectDailySearchResponse,
   XCollectorServiceClient,
+  XEligibilityMetricsState,
+  XPostContentKind,
   XSearchProduct,
 } from '@social-monitor/contracts/generated/grpc/x_collector/v1/x_collector';
 
@@ -81,6 +85,31 @@ export class GrpcXDailyCollectorClient implements XDailyCollectorClientPort {
       );
     });
   }
+
+  async lookupPosts(request: XPostLookupRequest): Promise<XDailyCollectorResult> {
+    if (request.tweetIds.length < 1 || request.tweetIds.length > 50 ||
+        new Set(request.tweetIds).size !== request.tweetIds.length ||
+        request.tweetIds.some(id => !/^[1-9][0-9]{0,19}$/u.test(id))) {
+      throw new Error('Post lookup requires 1-50 distinct numeric ids');
+    }
+    return new Promise((resolve, reject) => this.client.lookupPosts({
+      schemaVersion, requestId: request.requestId, tenantId: request.tenantId,
+      workspaceId: request.workspaceId, sourceBindingId: request.sourceBindingId,
+      scanJobId: request.scanJobId, correlationId: request.correlationId,
+      tweetIds: [...request.tweetIds],
+    }, createGrpcRequestMetadata({ correlationId: request.correlationId,
+      serviceToken: this.options.serviceToken }),
+    { deadline: createGrpcDeadline(this.clock, this.options.timeoutMs) }, (error, response) => {
+      if (error !== null) { reject(error); return; }
+      const result = fromGrpcResponse(response);
+      if (response.schemaVersion !== schemaVersion || result.posts.length > request.tweetIds.length ||
+          new Set(result.posts.map(post => post.tweetId)).size !== result.posts.length ||
+          result.posts.some(post => !request.tweetIds.includes(post.tweetId))) {
+        reject(new Error('Post lookup returned an unrequested identity')); return;
+      }
+      resolve(result);
+    }));
+  }
 }
 
 const toGrpcRequest = (
@@ -147,22 +176,51 @@ const fromGrpcPost = (
     mediaUrls: post.mediaUrls,
     sourceProduct,
     trendScore: Number.isFinite(post.trendScore) ? post.trendScore : 0,
+    contentKind: fromGrpcContentKind(post.contentKind),
+    ...(fromGrpcContentKind(post.contentKind) !== 'quote' || post.quotedPost === undefined ||
+        post.quotedPost.publishedAt === undefined ? {} : {
+      quotedPost: validatedXQuotedPost({ tweetId: post.quotedPost.tweetId,
+        canonicalUrl: post.quotedPost.canonicalUrl, text: post.quotedPost.text,
+        authorHandle: post.quotedPost.authorHandle, publishedAt: post.quotedPost.publishedAt },
+      post.tweetId, publishedAt),
+    }),
   }];
 };
 
 const fromGrpcMetrics = (
   metrics: NonNullable<CollectDailySearchResponse['posts'][number]['metrics']>,
 ): XDailyPostMetrics => ({
-  likes: readUnsignedInteger(metrics.likes),
-  retweets: readUnsignedInteger(metrics.retweets),
-  replies: readUnsignedInteger(metrics.replies),
+  likes: metrics.likesObserved ? readUnsignedInteger(metrics.likes) : undefined,
+  retweets: metrics.retweetsObserved
+    ? readUnsignedInteger(metrics.retweets)
+    : undefined,
+  replies: readUnsignedInteger(metrics.replies) ?? 0,
   quotes: metrics.quotesObserved
     ? readUnsignedInteger(metrics.quotes)
     : undefined,
   views: metrics.viewsObserved
     ? readUnsignedInteger(metrics.views)
     : undefined,
+  eligibilityState: fromGrpcEligibilityState(metrics.eligibilityState),
 });
+
+const fromGrpcEligibilityState = (
+  value: XEligibilityMetricsState,
+): XDailyPostMetrics["eligibilityState"] => {
+  switch (value) {
+    case XEligibilityMetricsState.X_ELIGIBILITY_METRICS_STATE_OBSERVED:
+      return "observed";
+    case XEligibilityMetricsState.X_ELIGIBILITY_METRICS_STATE_MISSING:
+      return "missing";
+    case XEligibilityMetricsState.X_ELIGIBILITY_METRICS_STATE_MALFORMED:
+      return "malformed";
+    case XEligibilityMetricsState.X_ELIGIBILITY_METRICS_STATE_CONFLICT:
+      return "conflict";
+    case XEligibilityMetricsState.X_ELIGIBILITY_METRICS_STATE_UNSPECIFIED:
+    case XEligibilityMetricsState.UNRECOGNIZED:
+      return undefined;
+  }
+};
 
 const fromGrpcRun = (
   run: NonNullable<CollectDailySearchResponse['run']>,
@@ -190,14 +248,32 @@ const toGrpcSearchProduct = (
 
 const fromGrpcSearchProduct = (
   product: XSearchProduct,
-): XDailySearchProduct | undefined => {
+): XDailyCollectedPost['sourceProduct'] | undefined => {
   switch (product) {
     case XSearchProduct.X_SEARCH_PRODUCT_TOP:
       return 'top';
     case XSearchProduct.X_SEARCH_PRODUCT_LATEST:
       return 'latest';
+    case XSearchProduct.X_SEARCH_PRODUCT_ID_LOOKUP:
+      return 'id_lookup';
     case XSearchProduct.X_SEARCH_PRODUCT_UNSPECIFIED:
     case XSearchProduct.UNRECOGNIZED:
+      return undefined;
+  }
+};
+
+const fromGrpcContentKind = (
+  value: XPostContentKind,
+): XDailyCollectedPost["contentKind"] => {
+  switch (value) {
+    case XPostContentKind.X_POST_CONTENT_KIND_ORIGINAL:
+      return "original_post";
+    case XPostContentKind.X_POST_CONTENT_KIND_REPLY:
+      return "reply";
+    case XPostContentKind.X_POST_CONTENT_KIND_QUOTE:
+      return "quote";
+    case XPostContentKind.X_POST_CONTENT_KIND_UNSPECIFIED:
+    case XPostContentKind.UNRECOGNIZED:
       return undefined;
   }
 };
@@ -207,12 +283,12 @@ const optionalString = (value: string): string | undefined => {
   return trimmed.length === 0 ? undefined : trimmed;
 };
 
-const readUnsignedInteger = (value: string): number => {
+const readUnsignedInteger = (value: string): number | undefined => {
   if (!/^\d+$/u.test(value)) {
-    return 0;
+    return undefined;
   }
 
   const parsed = Number(value);
 
-  return Number.isSafeInteger(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
 };

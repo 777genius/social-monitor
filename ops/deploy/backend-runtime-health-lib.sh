@@ -4,12 +4,30 @@
 # defined. Collector replacement must prove a real successful export because
 # application readiness intentionally permits only a short startup grace.
 
-BACKEND_RUNTIME_HEALTH_SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+if [[ -n ${PRODUCTION_TRANSITION_PRELUDE_COMMIT:-} ]]; then
+  BACKEND_RUNTIME_HEALTH_SCRIPT_DIR=$REPO/ops/deploy
+else
+  BACKEND_RUNTIME_HEALTH_SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+fi
 BACKEND_RABBITMQ_QUORUM_HEALTH_SCRIPT=$BACKEND_RUNTIME_HEALTH_SCRIPT_DIR/rabbitmq-quorum-health.sh
 BACKEND_RABBITMQ_QUORUM_RECOVERY_SCRIPT=$BACKEND_RUNTIME_HEALTH_SCRIPT_DIR/rabbitmq-quorum-recovery.sh
 BACKEND_HEALTH_STARTUP_GRACE_SECONDS=${BACKEND_HEALTH_STARTUP_GRACE_SECONDS:-240}
 OTEL_COLLECTOR_HEALTH_STARTUP_GRACE_SECONDS=${OTEL_COLLECTOR_HEALTH_STARTUP_GRACE_SECONDS:-600}
 BACKEND_HEALTH_RETRY_SLEEP_SECONDS=${BACKEND_HEALTH_RETRY_SLEEP_SECONDS:-3}
+
+# The target loader has verified all three assets before sourcing this inode.
+# Bash exposes the reviewed source helper's local sha/relative_path here; use
+# that explicit target only during this call, never HEAD or the prelude pin.
+# Reload both dependencies even when predecessor versions are already present.
+if [[ ${FUNCNAME[1]:-} == source_reviewed_deploy_library &&
+      ${FUNCNAME[2]:-} == load_target_rabbitmq_quorum_backend_health &&
+      ${relative_path:-} == ops/deploy/backend-runtime-health-lib.sh ]]; then
+  source_reviewed_deploy_library "$sha" \
+    ops/deploy/rabbitmq-quorum-health.sh 'target RabbitMQ quorum health library' || return 1
+  # Recovery must see the reviewed health definitions before its FD is sourced.
+  source_reviewed_deploy_library "$sha" \
+    ops/deploy/rabbitmq-quorum-recovery.sh 'target RabbitMQ quorum recovery library' || return 1
+fi
 
 backend_health_load_rabbitmq_quorum_recovery() {
   local script
@@ -17,6 +35,15 @@ backend_health_load_rabbitmq_quorum_recovery() {
   if declare -F rabbitmq_quorum_recovery_ensure_steady >/dev/null && \
     declare -F rabbitmq_quorum_health_verify_worker_container >/dev/null; then
     return 0
+  fi
+  if [[ -n ${PRODUCTION_TRANSITION_PRELUDE_COMMIT:-} ]]; then
+    declare -F rabbitmq_quorum_health_verify_worker_container >/dev/null || \
+      production_transition_host_source_authorized_prelude \
+        ops/deploy/rabbitmq-quorum-health.sh 'RabbitMQ quorum health library'
+    declare -F rabbitmq_quorum_recovery_ensure_steady >/dev/null || \
+      production_transition_host_source_authorized_prelude \
+        ops/deploy/rabbitmq-quorum-recovery.sh 'RabbitMQ quorum recovery library'
+    return
   fi
   for script in "$BACKEND_RABBITMQ_QUORUM_HEALTH_SCRIPT" \
     "$BACKEND_RABBITMQ_QUORUM_RECOVERY_SCRIPT"; do

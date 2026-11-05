@@ -8,8 +8,11 @@ import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import {
   legacyLiveQualityGateNames,
-  publicationQualityContract,
 } from "./lib/reader-summary-publication-quality-contract.mjs";
+import { dailySourceAuthority } from
+  "./lib/reader-summary-production-day-publication-fixture.mjs";
+import { approvedLauncherSha256, validatePublicationAttestationRecord } from
+  "./lib/reader-summary-publication-runtime-policy.mjs";
 
 const verifierPath = resolve(
   "scripts/verify-reader-summary-production-day-publication.mjs",
@@ -45,10 +48,127 @@ test("accepts a fully live report with all eight real steps", () => {
       provider: "codex",
       runtime: "subscription-runtime-cli",
       runtimeVersion: "0.1.0-main.2",
-      reasoningEffort: "xhigh",
+      reasoningEffort: "high",
       launcherSha256: "b".repeat(64),
     });
   });
+});
+
+test("accepts a full publication proof for a pinned MiMo summary and daily telemetry", () => {
+  withFixture(({ reportPath, proofPath, evidence }) => {
+    for (const [index, record] of evidence.executionAttestations.entries()) {
+      assert.doesNotThrow(() => validatePublicationAttestationRecord(record, false),
+        `attestation ${index} must match the current purpose policy`);
+    }
+    const created = runVerifier(reportPath, proofPath, "--proof-out");
+    assert.equal(created.status, 0, created.stderr);
+    const verified = runVerifier(reportPath, proofPath, "--proof");
+    assert.equal(verified.status, 0, verified.stderr);
+  }, { mimo: true, dailyTelemetry: true });
+});
+
+test("rejects an array-coerced losing topic relation in both proof modes", () => {
+  withFixture(({ directory, reportPath, proofPath, evidence, evidencePath,
+    frontendPath }) => {
+    const baseline = runVerifier(reportPath, proofPath, "--proof-out");
+    assert.equal(baseline.status, 0, baseline.stderr);
+    const oldProof = JSON.parse(readFileSync(proofPath, "utf8"));
+    const losing = evidence.executionAttestations[2];
+    losing.taskRole = ["topic_relation"];
+    losing.attempt = "0";
+    evidence.captureExecution.runtimeResult = deriveRuntimeProvenance(
+      evidence.executionAttestations,
+      JSON.parse(readFileSync(frontendPath, "utf8")),
+    );
+    evidence.durableReadback.executionAttestationSetSha256 =
+      evidence.captureExecution.runtimeResult.attestationSetSha256;
+    const evidenceBytes = `${JSON.stringify(evidence)}\n`;
+    writeFileSync(evidencePath, evidenceBytes);
+    const report = buildReport(
+      evidenceBytes, readFileSync(frontendPath, "utf8"), evidence,
+    );
+    const reportBytes = `${JSON.stringify(report)}\n`;
+    writeFileSync(reportPath, reportBytes);
+    const mutatedProofPath = join(directory, "mutated-proof.json");
+    writeFileSync(mutatedProofPath, `${JSON.stringify({
+      ...oldProof,
+      reportByteLength: Buffer.byteLength(reportBytes),
+      reportSha256: createHash("sha256").update(reportBytes).digest("hex"),
+      reportArtifactId: report.reportIdentity.artifactId,
+      evidenceArtifactSha256: report.summary.evidenceArtifactSha256,
+      evidenceArtifactByteLength: Buffer.byteLength(evidenceBytes),
+      model: evidence.captureExecution.runtimeResult,
+    })}\n`);
+    const proofOut = runVerifier(
+      reportPath, join(directory, "new-proof.json"), "--proof-out",
+    );
+    const proofIn = runVerifier(reportPath, mutatedProofPath, "--proof");
+    assert.notEqual(proofOut.status, 0, "array role passed --proof-out");
+    assert.notEqual(proofIn.status, 0, "array role passed --proof");
+    assert.match(proofOut.stderr, /attestation/u);
+    assert.match(proofIn.stderr, /attestation/u);
+  }, { mimo: true, relatedTopicRole: "topic_relation",
+    relatedTopicAttempt: "1" });
+});
+
+test("accepts the exact related-topic relation attestation inventory", () => {
+  withFixture(({ reportPath, proofPath }) => {
+    const result = runVerifier(reportPath, proofPath, "--proof-out");
+    assert.equal(result.status, 0, result.stderr);
+  }, { relatedTopicRole: "related_topic_relation" });
+});
+
+test("accepts provider telemetry bound to the daily job, receipt, and artifact", () => {
+  withFixture(({ reportPath, proofPath }) => {
+    const result = runVerifier(reportPath, proofPath, "--proof-out");
+    assert.equal(result.status, 0, result.stderr);
+  }, { dailyTelemetry: true });
+});
+
+test("accepts historical-incomplete telemetry only when the artifact is also null", () => {
+  withFixture(({ reportPath, proofPath, report, evidence }) => {
+    report.provenance = historicalRegenerationProvenance(
+      report.provenance.sourceEvidence,
+      evidence.provenance.datasetManifest,
+    );
+    report.model.liveCollection = false;
+    report.model.reusedCollection = true;
+    const result = runVerifier(reportPath, proofPath, "--proof-out", report);
+    assert.equal(result.status, 0, result.stderr);
+  }, { historicalDailyTelemetry: true });
+});
+
+for (const patch of [
+  { usageSource: "ESTIMATED" },
+  { durationMs: 0 },
+  { inputTokens: null },
+]) {
+  test(`rejects incomplete daily telemetry ${JSON.stringify(patch)}`, () => {
+    withFixture(({ reportPath, proofPath, report }) => {
+      Object.assign(report.model.modelExecution, patch);
+      writeFileSync(reportPath, `${JSON.stringify(report)}\n`);
+      const result = runVerifier(reportPath, proofPath, "--proof-out");
+      assert.notEqual(result.status, 0);
+    }, { dailyTelemetry: true });
+  });
+}
+
+test("rejects daily telemetry that disagrees with the runtime attestation", () => {
+  withFixture(({ reportPath, proofPath, report, evidence, evidencePath }) => {
+    report.model.modelExecution.provider = "claude";
+    evidence.provenance.dailySourceAuthority.modelExecution.provider = "claude";
+    writeFileSync(evidencePath, `${JSON.stringify(evidence)}\n`);
+    writeFileSync(reportPath, `${JSON.stringify(report)}\n`);
+    const result = runVerifier(reportPath, proofPath, "--proof-out");
+    assert.notEqual(result.status, 0);
+  }, { dailyTelemetry: true });
+});
+
+test("rejects an unknown relation attestation kind", () => {
+  withFixture(({ reportPath, proofPath }) => {
+    const result = runVerifier(reportPath, proofPath, "--proof-out");
+    assert.notEqual(result.status, 0);
+  }, { relatedTopicRole: "unknown_relation" });
 });
 
 test("continues to verify immutable reports from the migration-owning runner", () => {
@@ -78,7 +198,15 @@ test("accepts an in-flight legacy live report with its exact quality contract", 
 
     const created = runVerifier(reportPath, proofPath, "--proof-out");
     assert.equal(created.status, 0, created.stderr);
-  });
+  }, { legacyIdentity: true });
+});
+
+test("current live verification rejects a fully self-consistent legacy identity", () => {
+  withFixture(({ reportPath, proofPath }) => {
+    const result = runVerifier(reportPath, proofPath, "--proof-out");
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /attestation|provenance/u);
+  }, { legacyIdentity: true });
 });
 
 test("rejects an incomplete legacy live quality contract", () => {
@@ -91,20 +219,6 @@ test("rejects an incomplete legacy live quality contract", () => {
         .map((name) => [name, true]),
     );
   });
-});
-
-test("rejects the legacy live contract outside its in-flight date", () => {
-  assert.equal(
-    publicationQualityContract({
-      qualityGates: Object.fromEntries(
-        legacyLiveQualityGateNames.map((name) => [name, true]),
-      ),
-      provenance: { mode: "live-production" },
-      model: { liveCollection: true },
-      expectedDate: "2026-07-21",
-    }),
-    null,
-  );
 });
 
 for (const stepId of requiredStepIds) {
@@ -261,6 +375,57 @@ test("accepts hash-bound historical regeneration with a fresh summary", () => {
   });
 });
 
+test("accepts bounded-lifetime historical regeneration evidence", () => {
+  withFixture(({ reportPath, proofPath, report, evidence }) => {
+    report.provenance = historicalRegenerationProvenance(
+      report.provenance.sourceEvidence,
+      evidence.provenance.datasetManifest,
+    );
+    delete report.provenance.freshnessOverride.maxManifestAgeSeconds;
+    report.provenance.freshnessOverride.lifetimePolicy = {
+      mode: "fresh_admission_bounded_operation_v1",
+      maxAdmissionAgeSeconds: 1800,
+      maxOperationAgeSeconds: 11760,
+    };
+    report.model.liveCollection = false;
+    report.model.reusedCollection = true;
+    writeFileSync(reportPath, `${JSON.stringify(report)}\n`);
+    const created = runVerifier(reportPath, proofPath, "--proof-out");
+    assert.equal(created.status, 0, created.stderr);
+  });
+});
+
+test("accepts Promotion V2 active-publication source proof without an old report", () => {
+  withFixture(({ reportPath, proofPath, report, evidence }) => {
+    const provenance = historicalRegenerationProvenance(
+      report.provenance.sourceEvidence,
+      evidence.provenance.datasetManifest,
+    );
+    const publicationId = "00000000-0000-4000-8000-000000000301";
+    const artifactId = "00000000-0000-4000-8000-000000000302";
+    provenance.priorCollectionProof = null;
+    provenance.activeSourcePublicationProof = {
+      artifactFormat: "reader-summary-active-database-publication-v1",
+      publicationId,
+      artifactId,
+      reportSha256: "7".repeat(64),
+      proofSha256: "8".repeat(64),
+    };
+    provenance.promotionRebuild = {
+      sourceAuthorityKind: "active-database-publication",
+      sourcePublicationId: publicationId,
+      sourceArtifactId: artifactId,
+      sourcePublicationReportSha256: "7".repeat(64),
+      sourcePublicationProofSha256: "8".repeat(64),
+    };
+    report.provenance = provenance;
+    report.model.liveCollection = false;
+    report.model.reusedCollection = true;
+    const created = runVerifier(reportPath, proofPath, "--proof-out", report);
+    assert.equal(created.status, 0, created.stderr);
+  });
+});
+
 test("rejects historical regeneration with an unbound collection hash", () => {
   expectRejected(({ report }) => {
     report.provenance = historicalRegenerationProvenance(
@@ -287,9 +452,9 @@ test("rejects historical regeneration whose dataset guard is not evidence-bound"
 });
 
 for (const options of [
-  { modelVersion: "claude:gpt-5.6-sol:xhigh" },
-  { modelVersion: "codex:gpt-5.5:xhigh" },
-  { modelVersion: "codex:gpt-5.6-sol:high" },
+  { modelVersion: "claude:gpt-5.6-sol:high" },
+  { modelVersion: "codex:gpt-5.5:high" },
+  { modelVersion: "codex:gpt-5.6-sol:xhigh" },
   { attestationOutputKind: "output_text" },
   { attestationRuntimeEngine: "direct" },
   { topicGeneratedBy: "deterministic" },
@@ -345,8 +510,11 @@ function withFixture(assertion, options = {}) {
   }
 }
 
-function runVerifier(reportPath, proofPath, proofOption) {
+function runVerifier(reportPath, proofPath, proofOption, reportOverride) {
   const directory = dirname(reportPath);
+  if (reportOverride !== undefined) {
+    writeFileSync(reportPath, `${JSON.stringify(reportOverride)}\n`);
+  }
   return spawnSync(
     process.execPath,
     [
@@ -375,9 +543,19 @@ function buildFrontend(options) {
       readerSummaryId,
       period: utcPeriod(),
       lineage: {
-        modelVersion: options.modelVersion ?? "codex:gpt-5.6-sol:xhigh",
+        modelVersion: options.modelVersion ??
+          (options.legacyIdentity
+            ? "codex:gpt-5.6-sol:xhigh"
+            : options.mimo
+              ? "codex:mimo-v2.6-pro:high"
+              : "codex:gpt-5.6-sol:high"),
         providerVersion: options.providerVersion ?? "agent-runtime",
       },
+      ...(options.dailyTelemetry || options.historicalDailyTelemetry
+        ? { usage: options.historicalDailyTelemetry
+          ? { inputTokens: null, outputTokens: null, estimatedCostUsd: 0 }
+          : { inputTokens: 120, outputTokens: 30, estimatedCostUsd: 0 } }
+        : {}),
       content: {
         reliabilityReport: {
           risks: [],
@@ -410,6 +588,12 @@ function buildEvidence(frontend, frontendBytes, options) {
       database: "postgres",
       modelMode: "agent-runtime",
       datasetManifest: datasetGuardEvidence(),
+      ...(options.dailyTelemetry || options.historicalDailyTelemetry
+        ? { dailySourceAuthority: dailySourceAuthority(
+          options.historicalDailyTelemetry,
+          options.mimo,
+        ) }
+        : {}),
     },
     period: utcPeriod(),
     result: {
@@ -434,8 +618,12 @@ function buildEvidence(frontend, frontendBytes, options) {
       runtimeHealth: {
         status: "serving",
         runtimeEngine: options.runtimeEngine ?? "subscription-runtime-cli",
-        runtimeVersion: "0.1.0-main.2",
-        launcherSha256: "b".repeat(64),
+        runtimeVersion: options.mimo
+          ? "0.1.0-main.42-sm.3"
+          : "0.1.0-main.2",
+        launcherSha256: options.mimo
+          ? approvedLauncherSha256
+          : "b".repeat(64),
         checkedAt: "2026-07-16T01:00:30.000Z",
       },
       frontendArtifact: {
@@ -533,6 +721,17 @@ function buildReport(evidenceBytes, frontendBytes, evidence) {
       attestationSetSha256: runtimeProvenance.attestationSetSha256,
       completedTaskCount: runtimeProvenance.completedTaskCount,
       topicLabeler: runtimeProvenance.topicLabeler,
+      modelExecution: evidence.provenance.dailySourceAuthority === undefined
+        ? null
+        : {
+            ...evidence.provenance.dailySourceAuthority.modelExecution,
+            modelJobIdentity:
+              evidence.provenance.dailySourceAuthority.modelJobIdentity,
+            receiptSha256:
+              evidence.provenance.dailySourceAuthority.receiptSha256,
+            readerSummaryJobId,
+            readerSummaryArtifactId: readerSummaryId,
+          },
       writesProductionData: true,
       allowDegraded: false,
       allowHistorical: false,
@@ -615,10 +814,12 @@ function historicalRegenerationProvenance(sourceEvidence, datasetGuard) {
         sha256: "c".repeat(64),
       },
     },
+    activeSourcePublicationProof: null,
     regenerationInputManifest: regenerationManifest(),
     datasetGuardEvidence: datasetGuard,
-    githubOmission: {
-      mode: "github_projection_unavailable_historical",
+    githubPolicy: {
+      mode: "historical_unavailable",
+      collectedRowCount: 0,
       reason:
         "The exact end-of-day GitHub projection is unavailable for this completed UTC day.",
     },
@@ -638,7 +839,7 @@ function regenerationManifest() {
     generatedAt: "2026-07-16T00:59:00.000Z",
     datasetSha256: "e".repeat(64),
     feedRowCount: 10,
-    githubEligibilityRowCount: 1,
+    githubEligibilityRowCount: 0,
     providerCounts: { reddit: 10 },
   };
 }
@@ -653,6 +854,13 @@ function datasetGuardEvidence() {
     feedRowCount: manifest.feedRowCount,
     githubEligibilityRowCount: manifest.githubEligibilityRowCount,
     providerCounts: manifest.providerCounts,
+    lifetimePolicy: {
+      mode: "fresh_admission_bounded_operation_v1",
+      maxAdmissionAgeSeconds: 1800,
+      maxOperationAgeSeconds: 11760,
+    },
+    admittedAt: "2026-07-16T01:00:00.000Z",
+    validatedAt: "2026-07-16T01:01:00.000Z",
     completedPhases: [
       "before_evidence_selection",
       "after_evidence_selection",
@@ -697,12 +905,16 @@ function buildExecutionAttestations(options) {
     schemaVersion: 1,
     canonicalRequestSha256: "a".repeat(64),
     provider: "codex",
-    model: "gpt-5.6-sol",
-    reasoningEffort: "xhigh",
+    model: options.mimo ? "mimo-v2.6-pro" : "gpt-5.6-sol",
+    reasoningEffort: options.legacyIdentity ? "xhigh" : "high",
     runtimeEngine:
       options.attestationRuntimeEngine ?? "subscription-runtime-cli",
-    runtimePackageVersion: "0.1.0-main.2",
-    launcherSha256: "b".repeat(64),
+    runtimePackageVersion: options.mimo
+      ? "0.1.0-main.40-sm-mimo.7"
+      : "0.1.0-main.2",
+    launcherSha256: options.mimo
+      ? approvedLauncherSha256
+      : "b".repeat(64),
     selectedOutputKind:
       options.attestationOutputKind ?? "structured_output",
     selectedOutputSha256: "c".repeat(64),
@@ -715,7 +927,9 @@ function buildExecutionAttestations(options) {
       attestation: {
         ...common,
         requestId: "summary-request",
-        purpose: "social_monitor.reader_summary.generate",
+        purpose: options.legacyIdentity
+          ? "social_monitor.reader_summary.generate"
+          : "social_monitor.reader_summary.generate.v2",
       },
     },
     {
@@ -725,9 +939,27 @@ function buildExecutionAttestations(options) {
       attestation: {
         ...common,
         requestId: "topic-label-request",
-        purpose: "social_monitor.reader_summary.topic_map.label",
+        purpose: options.legacyIdentity
+          ? "social_monitor.reader_summary.topic_map.label"
+          : "social_monitor.reader_summary.topic_map.label.v2",
       },
     },
+    ...(options.relatedTopicRole === undefined
+      ? []
+      : [{
+          taskRole: options.relatedTopicRole,
+          attempt: options.relatedTopicAttempt ?? "related-topic",
+          normalizedOutputSha256: "f".repeat(64),
+          attestation: {
+            ...common,
+            requestId: "related-topic-relation-request",
+            purpose: options.relatedTopicRole === "topic_relation"
+              ? "social_monitor.reader_summary.topic_map.verify_relations.v2"
+              : options.legacyIdentity
+                ? "social_monitor.reader_summary.verify_related_topic_relations"
+                : "social_monitor.reader_summary.verify_related_topic_relations.v2",
+          },
+        }]),
   ];
 }
 

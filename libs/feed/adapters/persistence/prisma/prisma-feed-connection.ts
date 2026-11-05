@@ -39,6 +39,24 @@ export class PrismaFeedConnection implements PrismaFeedClient {
     this.feedSignalBaselineSample = this.client.feedSignalBaselineSample;
   }
 
+  $queryRawUnsafe<Result>(query: string, ...values: readonly unknown[]): Promise<Result> {
+    if (this.client.$queryRawUnsafe === undefined) {
+      throw new Error('Prisma feed runtime does not support aggregate reads');
+    }
+    return this.client.$queryRawUnsafe<Result>(query, ...values);
+  }
+
+  $transaction<Result>(
+    operation: (transaction: PrismaFeedClient) => Promise<Result>,
+    options: {
+      readonly isolationLevel: "RepeatableRead" | "Serializable";
+      readonly maxWait?: number;
+      readonly timeout?: number;
+    },
+  ): Promise<Result> {
+    return this.client.$transaction!(operation, options);
+  }
+
   close(): Promise<void> {
     return this.runtime.close();
   }

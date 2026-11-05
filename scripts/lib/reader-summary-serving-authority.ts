@@ -1,4 +1,10 @@
 import type { AgentRuntimeClientPort } from "@social-monitor/summary/ports";
+import {
+  resolveCodexGatewayReaderSummaryRoute,
+  resolveGatewayReaderSummaryRoute,
+  resolveReaderSummaryDailyTaskIdentityFromEnv,
+  resolveReaderSummaryGenerationIdentityFromEnv,
+} from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
 
 import { probeProductionRuntimeLiveIdentity } from "./reader-summary-runtime-live-identity";
 
@@ -17,6 +23,9 @@ export type ReaderSummaryServingAuthority = Readonly<{
     "deterministic" | "agent-runtime"
   >;
   topicRelationVerifier: ReaderSummaryComponentAuthority<
+    "deterministic" | "agent-runtime"
+  >;
+  storyRelationVerifier: ReaderSummaryComponentAuthority<
     "deterministic" | "agent-runtime"
   >;
   runtime: Readonly<{
@@ -54,6 +63,7 @@ export const resolveReaderSummaryServingAuthority = async (input: {
     summaryGenerator: summaryAuthority(input, agentProvider),
     topicLabeler: topicLabelerAuthority(input, agentProvider),
     topicRelationVerifier: topicRelationVerifierAuthority(input, agentProvider),
+    storyRelationVerifier: storyRelationVerifierAuthority(input, agentProvider),
     runtime,
   });
 };
@@ -63,22 +73,20 @@ const summaryAuthority = (
   agentProvider: string | null,
 ): ReaderSummaryServingAuthority["summaryGenerator"] => {
   if (input.summaryModelMode === "agent-runtime") {
+    const generation = resolveReaderSummaryGenerationIdentityFromEnv(input.env);
     const reasoningPolicy = configured(
       input.env.AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT ??
         input.env.AGENT_RUNTIME_REASONING_EFFORT,
-      "xhigh",
+      "high",
     );
-    if (reasoningPolicy !== "xhigh") {
+    if (reasoningPolicy !== "high") {
       throw new Error("Current reader summary reasoning effort is invalid");
     }
     return Object.freeze({
       mode: input.summaryModelMode,
       provider: requiredAgentProvider(agentProvider),
-      physicalModel: configured(
-        input.env.AGENT_RUNTIME_READER_SUMMARY_MODEL,
-        "gpt-5.6-sol",
-      ),
-      reasoningPolicy,
+      physicalModel: generation.model,
+      reasoningPolicy: gatewayRouteEffort(input.env) ?? reasoningPolicy,
     });
   }
   if (input.summaryModelMode === "openai-responses") {
@@ -108,11 +116,9 @@ const topicLabelerAuthority = (
     ? {
         mode: input.topicLabelerMode,
         provider: requiredAgentProvider(agentProvider),
-        physicalModel: configured(
-          input.env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MODEL,
-          "agent-runtime-reader-summary-topic-labeler",
-        ),
-        reasoningPolicy: "runtime-default",
+        physicalModel: dailyPhysicalModel(input.env,
+          input.env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MODEL),
+        reasoningPolicy: dailyReasoningPolicy(input.env),
       }
     : {
         mode: input.topicLabelerMode,
@@ -130,16 +136,35 @@ const topicRelationVerifierAuthority = (
     ? {
         mode: input.topicLabelerMode,
         provider: requiredAgentProvider(agentProvider),
-        physicalModel: configured(
-          input.env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_MODEL,
-          "agent-runtime-reader-summary-topic-relation-verifier",
-        ),
-        reasoningPolicy: "runtime-default",
+        physicalModel: dailyPhysicalModel(input.env,
+          input.env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_MODEL),
+        reasoningPolicy: dailyReasoningPolicy(input.env),
       }
     : {
         mode: input.topicLabelerMode,
         provider: "deterministic",
         physicalModel: "deterministic-reader-summary-topic-relation-verifier-v1",
+        reasoningPolicy: "not-applicable",
+      },
+);
+
+const storyRelationVerifierAuthority = (
+  input: Parameters<typeof resolveReaderSummaryServingAuthority>[0],
+  agentProvider: string | null,
+): ReaderSummaryServingAuthority["storyRelationVerifier"] => Object.freeze(
+  input.summaryModelMode === "agent-runtime"
+    ? {
+        mode: input.summaryModelMode,
+        provider: requiredAgentProvider(agentProvider),
+        physicalModel: dailyPhysicalModel(input.env,
+          input.env.AGENT_RUNTIME_READER_SUMMARY_STORY_RELATION_VERIFIER_MODEL),
+        reasoningPolicy: dailyReasoningPolicy(input.env),
+      }
+    : {
+        mode: "deterministic",
+        provider: "deterministic",
+        physicalModel:
+          "deterministic-reader-summary-story-relation-verifier-v1",
         reasoningPolicy: "not-applicable",
       },
 );
@@ -161,8 +186,8 @@ const resolveRuntime = async (
 
 const resolveAgentProvider = (configuredProvider: string | undefined): string => {
   const provider = configured(configuredProvider, "codex");
-  if (provider !== "codex" && provider !== "claude") {
-    throw new Error("Current agent-runtime provider is invalid");
+  if (provider !== "codex") {
+    throw new Error("Current reader-summary agent-runtime provider must be codex");
   }
   return provider;
 };
@@ -171,6 +196,24 @@ const requiredAgentProvider = (provider: string | null): string => {
   if (provider === null) throw new Error("Agent-runtime provider is required");
   return provider;
 };
+
+/**
+ * A gateway route owns its effort, for a gateway-only backend or Codex on the
+ * gateway transport; the Codex CLI effort setting does not apply there.
+ */
+const gatewayRouteEffort = (
+  env: Readonly<Record<string, string | undefined>>,
+): string | undefined => (resolveGatewayReaderSummaryRoute(env) ??
+  resolveCodexGatewayReaderSummaryRoute(env))?.reasoningEffort;
+
+const dailyReasoningPolicy = (
+  env: Readonly<Record<string, string | undefined>>,
+): string => gatewayRouteEffort(env) ?? "high";
+
+const dailyPhysicalModel = (
+  env: Readonly<Record<string, string | undefined>>,
+  purposeModel: string | undefined,
+): string => resolveReaderSummaryDailyTaskIdentityFromEnv(env, purposeModel).model;
 
 const configured = (value: string | undefined, fallback: string): string => {
   const normalized = value?.trim();

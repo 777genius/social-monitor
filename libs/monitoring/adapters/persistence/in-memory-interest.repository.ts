@@ -3,16 +3,29 @@ import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 import type { Interest } from '../../domain';
 import type { ArchiveInterestParams, ListInterestsQuery, ListInterestsResult, InterestRepositoryPort } from '../../ports';
 import { encodeOffsetCursor, parseOffsetCursor } from './offset-pagination';
+import { InMemoryInterestCreationState, monitoringInterestNameKey } from './in-memory-interest-creation-state';
 
 export class InMemoryInterestRepository implements InterestRepositoryPort {
-  private readonly interests = new Map<string, Interest>();
+  constructor(private readonly state = new InMemoryInterestCreationState()) {}
+
+  private get interests() { return this.state.interests; }
 
   async save(interest: Interest): Promise<void> {
     const snapshot = interest.toSnapshot();
+    for (const [name, id] of this.state.archivedNames) {
+      if (id === snapshot.id && name.startsWith(`${snapshot.tenantId}:${snapshot.workspaceId}:`)) {
+        this.state.archivedNames.delete(name);
+      }
+    }
     this.interests.set(this.key(snapshot.tenantId, snapshot.workspaceId, snapshot.id), interest);
   }
 
   async archive(params: ArchiveInterestParams): Promise<void> {
+    const current = this.interests.get(this.key(params.tenantId, params.workspaceId, params.interestId));
+    if (current) {
+      const snapshot = current.toSnapshot();
+      this.state.archivedNames.set(monitoringInterestNameKey(snapshot.tenantId, snapshot.workspaceId, snapshot.name), snapshot.id);
+    }
     this.interests.delete(this.key(params.tenantId, params.workspaceId, params.interestId));
   }
 
@@ -21,14 +34,14 @@ export class InMemoryInterestRepository implements InterestRepositoryPort {
     workspaceId: WorkspaceId;
     name: string;
   }): Promise<Interest | null> {
-    const normalizedName = params.name.trim().toLowerCase();
+    const normalizedName = params.name.trim();
 
     for (const interest of this.interests.values()) {
       const snapshot = interest.toSnapshot();
       if (
         snapshot.tenantId === params.tenantId &&
         snapshot.workspaceId === params.workspaceId &&
-        snapshot.name.toLowerCase() === normalizedName
+        snapshot.name === normalizedName
       ) {
         return interest;
       }

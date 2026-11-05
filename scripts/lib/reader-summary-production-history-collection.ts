@@ -7,12 +7,23 @@ import { readerSummaryProductionHistoryScope } from "./reader-summary-daily-main
 export const productionHistoryCollection = (params: {
   readonly directory: string | undefined;
   readonly collectionDate: string;
+  readonly evaluatedAt: Date;
 }): Readonly<{ path: string; arguments: readonly string[] }> | null => {
   if (params.directory === undefined) return null;
   const path = readerSummaryDailyCollectionArtifactPath({
     directory: params.directory,
     collectionDate: params.collectionDate,
   });
+  if (params.collectionDate === previousUtcDate(params.evaluatedAt)) {
+    return {
+      path,
+      arguments: [
+        "--production-scheduled-scope",
+        "--exact-date-artifact-directory",
+        params.directory,
+      ],
+    };
+  }
   const existing = readExactDayCollectionArtifact({
     path,
     collectionDate: params.collectionDate,
@@ -28,4 +39,10 @@ export const productionHistoryCollection = (params: {
       params.directory,
     ],
   };
+};
+
+const previousUtcDate = (evaluatedAt: Date): string => {
+  const value = new Date(evaluatedAt);
+  value.setUTCDate(value.getUTCDate() - 1);
+  return value.toISOString().slice(0, 10);
 };

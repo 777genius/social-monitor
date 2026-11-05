@@ -2,6 +2,46 @@
 BEGIN;
 SELECT set_config('social_monitor.bootstrap_runtime_role', :'runtime_role', false);
 SELECT set_config('social_monitor.bootstrap_system_runtime_role', :'system_runtime_role', false);
+DO $promotion_v2_receipt_owner_audit$
+BEGIN
+  -- These relations are absent together at historical cutoffs and present
+  -- together afterwards. Audit the atomic inventory before changing any state.
+  IF (
+    SELECT count(*)
+    FROM pg_class relation
+    JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = 'public'
+      AND relation.relname = ANY (ARRAY[
+        'reader_summary_promotion_v2_rollback_receipts',
+        'reader_summary_promotion_v2_canary_publication_receipts'
+      ]::NAME[])
+  ) NOT IN (0, 2) OR EXISTS (
+    SELECT 1
+    FROM (VALUES
+      (
+        'reader_summary_promotion_v2_rollback_receipts'::NAME,
+        'social_monitor_public_schema_owner'::NAME,
+        'r'::"char"
+      ),
+      (
+        'reader_summary_promotion_v2_canary_publication_receipts'::NAME,
+        'social_monitor_public_schema_owner'::NAME,
+        'r'::"char"
+      )
+    ) AS expected(relation_name, owner_name, relation_kind)
+    JOIN pg_class relation ON relation.relname = expected.relation_name
+    JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+    JOIN pg_roles owner ON owner.oid = relation.relowner
+    WHERE namespace.nspname = 'public'
+      AND (
+        relation.relkind <> expected.relation_kind
+        OR owner.rolname <> expected.owner_name
+      )
+  ) THEN
+    RAISE EXCEPTION 'Promotion V2 receipt table has an unexpected owner';
+  END IF;
+END
+$promotion_v2_receipt_owner_audit$;
 DO $bootstrap$
 DECLARE
   v_runtime_role NAME := current_setting('social_monitor.bootstrap_runtime_role')::NAME;
@@ -637,207 +677,7 @@ $ownership_transfer$;
 -- Move ordinary application tables away from the LOGIN runtime before RLS is
 -- enabled. The temporary membership is transaction-local from the point of
 -- view of concurrent sessions and is revoked before commit.
-DO $tenant_table_ownership_transfer$
-DECLARE
-  v_admin_role NAME := current_user;
-  v_runtime_role NAME := current_setting(
-    'social_monitor.bootstrap_runtime_role'
-  )::NAME;
-  v_relation RECORD;
-  v_type RECORD;
-  v_switched_to_runtime BOOLEAN := FALSE;
-  v_temporary_owner_membership BOOLEAN := FALSE;
-BEGIN
-  IF NOT pg_has_role(
-    v_admin_role,
-    'social_monitor_public_schema_owner',
-    'SET'
-  ) THEN
-    RAISE EXCEPTION 'migration admin cannot assume public schema ownership';
-  END IF;
-
-  IF EXISTS (
-    SELECT 1
-    FROM pg_class relation
-    JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
-    JOIN pg_roles owner ON owner.oid = relation.relowner
-    WHERE namespace.nspname = 'public'
-      AND relation.relkind IN ('r', 'p')
-      AND relation.relname NOT IN (
-        '_prisma_migrations',
-        'reader_summary_artifacts',
-        'reader_summary_publications',
-        'reader_summary_publication_slots', 'reader_summary_production_recovery_authority_corrections',
-        'reader_summary_production_recovery_days',
-        'reader_summary_production_recovery_dry_runs',
-        'reader_summary_production_recovery_leases',
-        'reader_summary_recovery_receipts', 'reader_summary_weekly_certification_seals',
-        'reader_summary_daily_canonical_recovery_v4_plans',
-        'reader_summary_daily_canonical_recovery_v4_authorities',
-        'reader_summary_daily_canonical_recovery_v4_leases',
-        'reader_summary_daily_canonical_recovery_v4_ambiguity_retries',
-        'reader_summary_weekly_publication_evidence',
-        'reader_summary_weekly_review_manifests'
-      )
-      AND owner.rolname NOT IN (
-        v_admin_role,
-        v_runtime_role,
-        'social_monitor_public_schema_owner'
-      )
-  ) THEN
-    RAISE EXCEPTION 'ordinary application table has an unexpected owner';
-  END IF;
-
-  IF EXISTS (
-    SELECT 1
-    FROM pg_class relation
-    JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
-    JOIN pg_roles owner ON owner.oid = relation.relowner
-    WHERE namespace.nspname = 'public'
-      AND relation.relkind IN ('r', 'p')
-      AND relation.relname NOT IN (
-        '_prisma_migrations',
-        'reader_summary_artifacts',
-        'reader_summary_publications',
-        'reader_summary_publication_slots', 'reader_summary_production_recovery_authority_corrections',
-        'reader_summary_production_recovery_days',
-        'reader_summary_production_recovery_dry_runs',
-        'reader_summary_production_recovery_leases',
-        'reader_summary_recovery_receipts', 'reader_summary_weekly_certification_seals',
-        'reader_summary_daily_canonical_recovery_v4_plans',
-        'reader_summary_daily_canonical_recovery_v4_authorities',
-        'reader_summary_daily_canonical_recovery_v4_leases',
-        'reader_summary_daily_canonical_recovery_v4_ambiguity_retries',
-        'reader_summary_weekly_publication_evidence',
-        'reader_summary_weekly_review_manifests'
-      )
-      AND owner.rolname = v_runtime_role
-  ) THEN
-    EXECUTE format(
-      'GRANT social_monitor_public_schema_owner TO %I WITH ADMIN FALSE',
-      v_runtime_role
-    );
-    EXECUTE format(
-      'GRANT social_monitor_public_schema_owner TO %I WITH INHERIT FALSE',
-      v_runtime_role
-    );
-    EXECUTE format(
-      'GRANT social_monitor_public_schema_owner TO %I WITH SET TRUE',
-      v_runtime_role
-    );
-    v_temporary_owner_membership := TRUE;
-  END IF;
-
-  FOR v_relation IN
-    SELECT relation.relname, owner.rolname AS owner_name
-    FROM pg_class relation
-    JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
-    JOIN pg_roles owner ON owner.oid = relation.relowner
-    WHERE namespace.nspname = 'public'
-      AND relation.relkind IN ('r', 'p')
-      AND relation.relname NOT IN (
-        '_prisma_migrations',
-        'reader_summary_artifacts',
-        'reader_summary_publications',
-        'reader_summary_publication_slots', 'reader_summary_production_recovery_authority_corrections',
-        'reader_summary_production_recovery_days',
-        'reader_summary_production_recovery_dry_runs',
-        'reader_summary_production_recovery_leases',
-        'reader_summary_recovery_receipts', 'reader_summary_weekly_certification_seals',
-        'reader_summary_daily_canonical_recovery_v4_plans',
-        'reader_summary_daily_canonical_recovery_v4_authorities',
-        'reader_summary_daily_canonical_recovery_v4_leases',
-        'reader_summary_daily_canonical_recovery_v4_ambiguity_retries',
-        'reader_summary_weekly_publication_evidence',
-        'reader_summary_weekly_review_manifests'
-      )
-      AND owner.rolname IN (v_admin_role, v_runtime_role)
-    ORDER BY owner.rolname, relation.relname
-  LOOP
-    IF v_relation.owner_name = v_runtime_role
-      AND NOT v_switched_to_runtime THEN
-      EXECUTE format('SET LOCAL ROLE %I', v_runtime_role);
-      v_switched_to_runtime := TRUE;
-    ELSIF v_relation.owner_name = v_admin_role
-      AND v_switched_to_runtime THEN
-      EXECUTE 'RESET ROLE';
-      v_switched_to_runtime := FALSE;
-    END IF;
-    EXECUTE format(
-      'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.%I TO %I',
-      v_relation.relname,
-      v_runtime_role
-    );
-    EXECUTE format(
-      'ALTER TABLE public.%I OWNER TO social_monitor_public_schema_owner',
-      v_relation.relname
-    );
-  END LOOP;
-
-  IF v_switched_to_runtime THEN
-    EXECUTE 'RESET ROLE';
-    v_switched_to_runtime := FALSE;
-  END IF;
-
-  FOR v_type IN
-    SELECT type.typname, owner.rolname AS owner_name
-    FROM pg_type type
-    JOIN pg_namespace namespace ON namespace.oid = type.typnamespace
-    JOIN pg_roles owner ON owner.oid = type.typowner
-    WHERE namespace.nspname = 'public'
-      AND type.typtype = 'e'
-      AND owner.rolname IN (v_admin_role, v_runtime_role)
-    ORDER BY owner.rolname, type.typname
-  LOOP
-    IF v_type.owner_name = v_runtime_role
-      AND NOT v_switched_to_runtime THEN
-      EXECUTE format('SET LOCAL ROLE %I', v_runtime_role);
-      v_switched_to_runtime := TRUE;
-    ELSIF v_type.owner_name = v_admin_role
-      AND v_switched_to_runtime THEN
-      EXECUTE 'RESET ROLE';
-      v_switched_to_runtime := FALSE;
-    END IF;
-    EXECUTE format(
-      'ALTER TYPE public.%I OWNER TO social_monitor_public_schema_owner',
-      v_type.typname
-    );
-  END LOOP;
-
-  IF v_switched_to_runtime THEN
-    EXECUTE 'RESET ROLE';
-  END IF;
-  IF v_temporary_owner_membership THEN
-    EXECUTE format(
-      'REVOKE social_monitor_public_schema_owner FROM %I',
-      v_runtime_role
-    );
-  END IF;
-
-  EXECUTE 'SET LOCAL ROLE social_monitor_public_schema_owner';
-  FOR v_relation IN
-    SELECT relation.relname
-    FROM pg_class relation
-    JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
-    WHERE namespace.nspname = 'public'
-      AND relation.relkind IN ('r', 'p')
-      AND relation.relname <> '_prisma_migrations'
-      AND relation.relname <> 'reader_summary_weekly_certification_seals'
-      AND relation.relowner = (
-        SELECT oid FROM pg_roles
-        WHERE rolname = 'social_monitor_public_schema_owner'
-      )
-    ORDER BY relation.relname
-  LOOP
-    EXECUTE format(
-      'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.%I TO %I',
-      v_relation.relname,
-      v_runtime_role
-    );
-  END LOOP;
-  EXECUTE 'RESET ROLE';
-END
-$tenant_table_ownership_transfer$;
+\ir reader-summary-publication-tenant-ownership.sql
 -- Repair the split ordinary/terminal capability before every migration pass.
 DO $daily_terminal_runtime_acl$ DECLARE v_runtime_role NAME := current_setting('social_monitor.bootstrap_runtime_role')::NAME; v_system_runtime_role NAME := current_setting('social_monitor.bootstrap_system_runtime_role')::NAME; v_terminal_role CONSTANT NAME := 'social_monitor_reader_summary_daily_terminal'; v_terminal RECORD;
 BEGIN
@@ -941,6 +781,7 @@ BEGIN
         'reader_summary_daily_canonical_recovery_v4_authorities',
         'reader_summary_daily_canonical_recovery_v4_leases',
         'reader_summary_daily_canonical_recovery_v4_ambiguity_retries',
+        'reader_summary_daily_canonical_recovery_v4_route_authorities',
         'reader_summary_weekly_publication_evidence',
         'reader_summary_weekly_review_manifests'
       )
@@ -964,7 +805,8 @@ BEGIN
       'reader_summary_daily_canonical_recovery_v4_plans',
       'reader_summary_daily_canonical_recovery_v4_authorities',
       'reader_summary_daily_canonical_recovery_v4_leases',
-      'reader_summary_daily_canonical_recovery_v4_ambiguity_retries'
+      'reader_summary_daily_canonical_recovery_v4_ambiguity_retries',
+    'reader_summary_daily_canonical_recovery_v4_route_authorities'
     )
     AND owner.rolname = 'social_monitor_reader_summary_publication_owner';
   SELECT count(*) INTO v_weekly_review_manifest_table_count
@@ -982,12 +824,13 @@ BEGIN
       'reader_summary_daily_canonical_recovery_v4_plans',
       'reader_summary_daily_canonical_recovery_v4_authorities',
       'reader_summary_daily_canonical_recovery_v4_leases',
-      'reader_summary_daily_canonical_recovery_v4_ambiguity_retries'
+      'reader_summary_daily_canonical_recovery_v4_ambiguity_retries',
+      'reader_summary_daily_canonical_recovery_v4_route_authorities'
     );
   -- A resumable pre-migration handoff may reach this audit with one protected
   -- table owner; every other state must match the exact final ownership count.
   IF v_weekly_review_manifest_table_count NOT IN (0, 1)
-    OR v_v4_table_count NOT IN (0, 3, 4)
+    OR v_v4_table_count NOT IN (0, 3, 4, 5)
     OR (
       v_owner_count <> 1
       AND v_owner_count <> 4 + v_weekly_review_manifest_table_count
@@ -1024,7 +867,7 @@ BEGIN
     FROM unnest(ARRAY['reader_summary_artifacts', 'reader_summary_publications', 'reader_summary_publication_slots', 'reader_summary_weekly_publication_evidence']) evidence_table(name)
     WHERE NOT has_table_privilege('social_monitor_reader_summary_daily_terminal', 'public.' || evidence_table.name, 'SELECT') OR has_table_privilege('social_monitor_reader_summary_daily_terminal', 'public.' || evidence_table.name, 'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
   ) OR EXISTS (SELECT 1
-    FROM unnest(ARRAY['reader_summary_jobs', 'reader_summary_production_recovery_leases', 'reader_summary_production_recovery_days', 'reader_summary_production_recovery_dry_runs', 'reader_summary_recovery_receipts', 'reader_summary_weekly_certification_seals', 'reader_summary_weekly_review_manifests', 'reader_summary_daily_canonical_recovery_v4_plans', 'reader_summary_daily_canonical_recovery_v4_authorities', 'reader_summary_daily_canonical_recovery_v4_leases', 'reader_summary_daily_canonical_recovery_v4_ambiguity_retries']) protected_table(name)
+    FROM unnest(ARRAY['reader_summary_jobs', 'reader_summary_production_recovery_leases', 'reader_summary_production_recovery_days', 'reader_summary_production_recovery_dry_runs', 'reader_summary_recovery_receipts', 'reader_summary_weekly_certification_seals', 'reader_summary_weekly_review_manifests', 'reader_summary_daily_canonical_recovery_v4_plans', 'reader_summary_daily_canonical_recovery_v4_authorities', 'reader_summary_daily_canonical_recovery_v4_leases', 'reader_summary_daily_canonical_recovery_v4_ambiguity_retries', 'reader_summary_daily_canonical_recovery_v4_route_authorities']) protected_table(name)
     WHERE has_table_privilege('social_monitor_reader_summary_daily_terminal', to_regclass('public.' || protected_table.name), 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
   ) THEN RAISE EXCEPTION 'daily terminal evidence authority is unsafe';
   ELSIF has_function_privilege('social_monitor_reader_summary_publication_runtime', 'public.claim_reader_summary_daily_terminal(uuid,uuid,uuid,text)', 'EXECUTE')

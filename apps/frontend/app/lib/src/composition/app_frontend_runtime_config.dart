@@ -2,10 +2,11 @@ import 'package:social_monitor_generated_api/social_monitor_generated_api.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
 import 'app_runtime.dart';
+import 'frontend_api_base_url.dart';
 
 final class AppFrontendRuntimeConfig {
   const AppFrontendRuntimeConfig({
-    required this.apiBaseUrl,
+    required String apiBaseUrl,
     required this.correlationId,
     this.tenantId,
     this.workspaceId,
@@ -15,7 +16,7 @@ final class AppFrontendRuntimeConfig {
     this.userId,
     this.userLabel,
     this.bearerToken,
-  });
+  }) : _apiBaseUrl = apiBaseUrl;
 
   factory AppFrontendRuntimeConfig.fromEnvironment() {
     return const AppFrontendRuntimeConfig(
@@ -50,7 +51,8 @@ final class AppFrontendRuntimeConfig {
     );
   }
 
-  final String apiBaseUrl;
+  final String _apiBaseUrl;
+  String get apiBaseUrl => resolveFrontendApiBaseUrl(_apiBaseUrl);
   final String correlationId;
   final String? tenantId;
   final String? workspaceId;

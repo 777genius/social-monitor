@@ -128,6 +128,11 @@ describe("PrismaReaderSummaryDailyExecutionCursor", () => {
       attestation: { schemaVersion: 1 }, attestationBytes: Buffer.from("attestation"),
       attestationSha256: "c".repeat(64), receiptBytes: Buffer.from("receipt"),
       receiptSha256: "d".repeat(64),
+      modelTelemetry: {
+        provider: "codex", model: "gpt-5.6-sol", reasoningEffort: "high",
+        inputTokens: 120, outputTokens: 30, totalTokens: 150,
+        usageSource: "PROVIDER_REPORTED", durationMs: 25,
+      },
     });
     await repository.finalizePublication({
       tenantId, workspaceId, workerId: "worker-1",
@@ -148,9 +153,12 @@ describe("PrismaReaderSummaryDailyExecutionCursor", () => {
     expect(sql.queries.map((query) => query.text)).toEqual(expect.arrayContaining([
       expect.stringContaining("renew_reader_summary_daily_execution_lease"),
       expect.stringContaining("mark_reader_summary_daily_model_job_running"),
-      expect.stringContaining("complete_reader_summary_daily_model_job"),
+      expect.stringContaining("complete_reader_summary_daily_model_job_v2"),
       expect.stringContaining("finalize_reader_summary_daily_publication"),
     ]));
+    expect(sql.queries[2]?.values.slice(-5)).toEqual([
+      120, 30, 150, "PROVIDER_REPORTED", 25,
+    ]);
   });
 });
 

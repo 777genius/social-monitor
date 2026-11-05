@@ -1,12 +1,14 @@
+import { withDisplayReadyRanking } from "./reader-summary-display-ready-ranking.spec-support";
 import { FeedItem } from "@social-monitor/feed/domain";
 import type { FeedItemReadRepositoryPort } from "@social-monitor/feed/ports";
 import type { RankFeedItemsCommand } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.command";
 import type { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
-import { ok, tenantId, workspaceId } from "@social-monitor/shared-kernel";
+import { ok, SystemClock, tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import { RelevanceReaderSummaryEvidenceSelector } from "./relevance-reader-summary-evidence.selector";
 import {
   FakeStoryRankingMetrics,
+  emptyPromotionSnapshot,
   githubTrendingMetadataFixture,
   readerSummaryRankedItemFixture as rankedItem,
   readerSummaryEvidenceTestClock as clock,
@@ -14,6 +16,64 @@ import {
 } from "./relevance-reader-summary-evidence-test-fixtures";
 
 describe("RelevanceReaderSummaryEvidenceSelector", () => {
+  it("keeps real-SystemClock evidence fresh against its single captured cutoff", async () => {
+    const systemClock = new SystemClock();
+    const observedAt = systemClock.now();
+    const publishedAt = new Date(observedAt.getTime() - 60_000);
+    const item = rankedItem({
+      feedItemId: "real-clock-hn",
+      providerKey: "hacker-news",
+      rank: 1,
+      score: 3,
+      publishedAt: publishedAt.toISOString(),
+      observedAt: observedAt.toISOString(),
+      engagementAuthority: {
+        observedAt: observedAt.toISOString(),
+        regressionState: "stable" as const,
+      },
+      providerMetadata: {
+        kind: "hacker_news_story",
+        points: 50,
+        comments: 2,
+      },
+    });
+    const selector = new RelevanceReaderSummaryEvidenceSelector(
+      { execute: jest.fn(async (command: RankFeedItemsCommand) => ok({
+        generatedAt: systemClock.now().toISOString(),
+        profileApplied: false,
+        items: withDisplayReadyRanking([item], command),
+      })) } as unknown as RankFeedItemsUseCase,
+      {
+        readPromotionSnapshot: emptyPromotionSnapshot,
+        list: jest.fn(async () => ({ items: [] })),
+        findById: jest.fn(async () => null),
+      },
+      systemClock,
+      new FakeStoryRankingMetrics(),
+    );
+
+    const selection = await selector.select({
+      tenantId: tenantId("tenant-real-system-clock"),
+      workspaceId: workspaceId("workspace-real-system-clock"),
+      scope: { type: "workspace" },
+      period: {
+        ...readerSummaryPeriod,
+        startedAt: new Date(publishedAt.getTime() - 60_000),
+        endedAt: new Date(observedAt.getTime() + 60_000),
+      },
+      maxItems: 5,
+    });
+
+    expect(selection.selectedEvidence[0]?.promotionFacts).toMatchObject({
+      freshnessValid: true,
+      freshnessProvenance: {
+        status: "observed",
+        observedAt,
+        ingestionCutoff: selection.sourceWindow.ingestionCutoff,
+      },
+    });
+  });
+
   it("keeps workspace reader summary evidence in relevance ranking order", async () => {
     const rankedItems = [
       rankedItem({
@@ -73,11 +133,12 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
             blockedProviderCount: 0,
             signals: ["provider:reddit", "keyword:agent"],
           },
-          items: rankedItems.slice(0, command.limit),
+          items: withDisplayReadyRanking(rankedItems.slice(0, command.limit), command),
         }),
       ),
     } as unknown as RankFeedItemsUseCase;
     const feedItems: FeedItemReadRepositoryPort = {
+      readPromotionSnapshot: emptyPromotionSnapshot,
       list: jest.fn(async ({ cursor }) =>
         cursor === undefined
           ? { items: [], nextCursor: "github-page-2" }
@@ -107,29 +168,21 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
       expect.objectContaining({
         publishedAtOrAfter: readerSummaryPeriod.startedAt,
         publishedBefore: readerSummaryPeriod.endedAt,
-        observedBefore: new Date(observedThrough.getTime() + 1),
+        observedAtOrBefore: observedThrough,
         limit: 200,
       }),
     );
-    expect(feedItems.list).toHaveBeenCalledWith(
-      expect.objectContaining({
-        providerKey: "github-trending-page",
-        cursor: "github-page-2",
-        observedBefore: new Date(observedThrough.getTime() + 1),
-      }),
-    );
+    expect(feedItems.list).not.toHaveBeenCalled();
     expect(
       selection.selectedEvidence.map((item) => item.providerKey).sort(),
     ).toEqual([
       "github-trending-page",
       "hacker-news",
       "reddit",
-      "rss",
     ]);
     expect(selection.selectedEvidence.map((item) => item.providerKey)).toEqual([
       "hacker-news",
       "reddit",
-      "rss",
       "github-trending-page",
     ]);
     expect(selection.sourceWindow.selectedFeedItemIds).toContain(
@@ -138,17 +191,9 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     expect(selection.sourceWindow.selectedFeedItemIds).not.toContain(
       "feed-trending-2",
     );
-    expect(
-      selection.selectedEvidence.find((item) => item.feedItemId === "feed-rss")
-        ?.previewMedia,
-    ).toEqual({
-      kind: "image",
-      url: "https://cdn.example.test/rss-preview.jpg",
-      sourceUrl: "https://example.test/feed-rss",
-      altText: "rss story 4",
-    });
+    expect(selection.sourceWindow.selectedFeedItemIds).not.toContain("feed-rss");
     expect(storyRankingMetrics.recorded[0]?.rankingPolicyVersion).toBe(
-      "story_ranking_v10",
+      "reader_promotion_policy.v2",
     );
     expect(selection.personalization).toEqual({
       memoryGuidanceStatus: "available",
@@ -165,6 +210,12 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
   });
 
   it("includes GitHub Trending while excluding technical issue events", async () => {
+    let clockCalls = 0;
+    const advancingClock = {
+      now: () => new Date(
+        Date.parse("2026-06-23T12:00:00.000Z") + clockCalls++ * 60_000,
+      ),
+    };
     const rankedItems = [
       ...Array.from({ length: 80 }, (_, index) =>
         rankedItem({
@@ -193,17 +244,18 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         ok({
           generatedAt: clock.now().toISOString(),
           profileApplied: false,
-          items: rankedItems.slice(0, command.limit),
+          items: withDisplayReadyRanking(rankedItems.slice(0, command.limit), command),
         }),
       ),
     } as unknown as RankFeedItemsUseCase;
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       rankFeedItems,
       {
+        readPromotionSnapshot: emptyPromotionSnapshot,
         list: jest.fn(async () => ({ items: [] })),
         findById: jest.fn(async () => null),
       },
-      clock,
+      advancingClock,
       new FakeStoryRankingMetrics(),
     );
 
@@ -224,6 +276,68 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     expect(
       selection.selectedEvidence.map((item) => item.feedItemId),
     ).not.toContain("feed-github-deep");
+    expect(clockCalls).toBe(1);
+    expect(selection.sourceWindow.ingestionCutoff).toEqual(
+      new Date("2026-06-23T12:00:00.000Z"),
+    );
+    expect(selection.selectedEvidence.every((item) =>
+      item.promotionFacts?.freshnessProvenance?.status !== "observed" ||
+      item.promotionFacts.freshnessProvenance.ingestionCutoff.getTime() ===
+        Date.parse("2026-06-23T12:00:00.000Z")
+    )).toBe(true);
+  });
+
+  it("keeps ranking telemetry invariant with zero versus N supplemental entries", async () => {
+    const recordWithSupplementalCount = async (supplementalCount: number) => {
+      const primary = rankedItem({
+        feedItemId: "telemetry-primary",
+        providerKey: "hacker-news",
+        rank: 1,
+        score: 3,
+      });
+      const supplemental = Array.from({ length: supplementalCount }, (_, index) =>
+        rankedItem({
+          feedItemId: `telemetry-trending-${index}`,
+          providerKey: "github-trending-page",
+          rank: index + 2,
+          score: 2 - index / 10,
+          providerMetadata: githubTrendingMetadataFixture(2_500 - index),
+        }));
+      const metrics = new FakeStoryRankingMetrics();
+      const selector = new RelevanceReaderSummaryEvidenceSelector(
+        { execute: jest.fn(async (command: RankFeedItemsCommand) => ok({
+          generatedAt: clock.now().toISOString(),
+          profileApplied: false,
+          items: withDisplayReadyRanking([primary, ...supplemental], command),
+        })) } as unknown as RankFeedItemsUseCase,
+        {
+          readPromotionSnapshot: emptyPromotionSnapshot,
+          list: jest.fn(async () => ({ items: [] })),
+          findById: jest.fn(async () => null),
+        },
+        clock,
+        metrics,
+      );
+      await selector.select({
+        tenantId: tenantId("tenant-telemetry-invariance"),
+        workspaceId: workspaceId("workspace-telemetry-invariance"),
+        scope: { type: "workspace" },
+        period: readerSummaryPeriod,
+        maxItems: 5,
+        observedThrough: clock.now(),
+      });
+      return metrics.recorded[0]!;
+    };
+
+    const withoutSupplemental = await recordWithSupplementalCount(0);
+    const withSupplemental = await recordWithSupplementalCount(3);
+    expect(withSupplemental.selectedEvidence).toEqual(
+      withoutSupplemental.selectedEvidence,
+    );
+    expect(withSupplemental.sourceWindow.selectedFeedItemIds).toEqual(
+      withoutSupplemental.sourceWindow.selectedFeedItemIds,
+    );
+    expect(withSupplemental.clusters).toEqual(withoutSupplemental.clusters);
   });
 
   it("preserves GitHub trend and repo providers while excluding technical-only providers", async () => {
@@ -271,11 +385,12 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         ok({
           generatedAt: clock.now().toISOString(),
           profileApplied: false,
-          items: rankedItems.slice(0, command.limit),
+          items: withDisplayReadyRanking(rankedItems.slice(0, command.limit), command),
         }),
       ),
     } as unknown as RankFeedItemsUseCase;
     const feedItems: FeedItemReadRepositoryPort = {
+      readPromotionSnapshot: emptyPromotionSnapshot,
       list: jest.fn(async () => ({ items: [] })),
       findById: jest.fn(async () => null),
     };
@@ -295,11 +410,13 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     });
 
     expect(selection.selectedEvidence.map((item) => item.providerKey)).toEqual([
-      "github-repo-radar",
-      "reddit",
       "hacker-news",
-      "rss",
+      "reddit",
       "github-trending-page",
+    ]);
+    expect(selection.editorialSlate?.orderedCandidateIds).toEqual([
+      "feed-hn",
+      "feed-reddit",
     ]);
   });
 
@@ -327,13 +444,14 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         ok({
           generatedAt: clock.now().toISOString(),
           profileApplied: false,
-          items: rankedItems.slice(0, command.limit),
+          items: withDisplayReadyRanking(rankedItems.slice(0, command.limit), command),
         }),
       ),
     } as unknown as RankFeedItemsUseCase;
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       rankFeedItems,
       {
+        readPromotionSnapshot: emptyPromotionSnapshot,
         list: jest.fn(async () => ({ items: [] })),
         findById: jest.fn(async () => null),
       },
@@ -352,62 +470,31 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     expect(rankFeedItems.execute).toHaveBeenCalledWith(
       expect.objectContaining({ limit: 200 }),
     );
-    expect(selection.selectedEvidence).toHaveLength(150);
+    expect(selection.selectedEvidence).toHaveLength(16);
     expect(
       selection.selectedEvidence.filter((item) => item.providerKey === "rss"),
-    ).toHaveLength(35);
+    ).toHaveLength(0);
     expect(selection.selectedEvidence[0]?.providerKey).toBe("reddit");
+    expect(selection.editorialSlate?.top).toHaveLength(8);
+    expect(selection.editorialSlate?.additional).toHaveLength(8);
   });
 
-  it("supplements reader summary evidence from feed repository when a provider is absent from top relevance ranks", async () => {
-    const tenant = tenantId("tenant-provider-supplement");
-    const workspace = workspaceId("workspace-provider-supplement");
-    const rankedItems = Array.from({ length: 20 }, (_, index) =>
-      rankedItem({
-        feedItemId: `feed-hn-${index + 1}`,
-        providerKey: "hacker-news",
-        rank: index + 1,
-        score: 3 - index / 100,
-      }),
-    );
-    const redditFeedItems = ["feed-reddit-1", "feed-reddit-2"].map(
-      (feedItemId, index) =>
-        FeedItem.publish({
-          id: feedItemId,
-          tenantId: tenant,
-          workspaceId: workspace,
-          interestId: "interest-ai",
-          sourceItemId: `source-${feedItemId}`,
-          sourceBindingId: "binding-reddit",
-          providerKey: "reddit",
-          canonicalUrl: `https://reddit.example/r/artificial/comments/${index + 1}`,
-          title: `Reddit AI discussion ${index + 1}`,
-          bodyPreview:
-            "Reddit users discuss practical AI coding workflows and developer tooling.",
-          publishedAt: new Date("2026-06-23T09:00:00.000Z"),
-          observedAt: new Date("2026-06-23T09:05:00.000Z"),
-          providerMetadata: {
-            kind: "reddit_post",
-            score: 727 - index,
-            comments: 140 - index,
-            upvoteRatio: 0.95,
-            subreddit: "ClaudeAI",
-          },
-        }),
-    );
+  it("does not refill ranked evidence from provider repository lanes", async () => {
     const rankFeedItems = {
-      execute: jest.fn(async (command: RankFeedItemsCommand) =>
-        ok({
-          generatedAt: clock.now().toISOString(),
-          profileApplied: false,
-          items: rankedItems.slice(0, command.limit),
-        }),
-      ),
+      execute: jest.fn(async (command: RankFeedItemsCommand) => ok({
+        generatedAt: clock.now().toISOString(),
+        profileApplied: false,
+        items: withDisplayReadyRanking([rankedItem({
+          feedItemId: "ranked-hn-only",
+          providerKey: "hacker-news",
+          rank: 1,
+          score: 3,
+        })], command),
+      })),
     } as unknown as RankFeedItemsUseCase;
     const feedItems: FeedItemReadRepositoryPort = {
-      list: jest.fn(async (query) => ({
-        items: query.providerKey === "reddit" ? redditFeedItems : [],
-      })),
+      readPromotionSnapshot: emptyPromotionSnapshot,
+      list: jest.fn(async () => ({ items: [] })),
       findById: jest.fn(async () => null),
     };
     const selector = new RelevanceReaderSummaryEvidenceSelector(
@@ -418,211 +505,22 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     );
 
     const selection = await selector.select({
-      tenantId: tenant,
-      workspaceId: workspace,
+      tenantId: tenantId("tenant-no-refill"),
+      workspaceId: workspaceId("workspace-no-refill"),
       scope: { type: "workspace" },
       period: readerSummaryPeriod,
       maxItems: 20,
     });
 
-    expect(feedItems.list).toHaveBeenCalledWith(
-      expect.objectContaining({
-        providerKey: "reddit",
-        limit: 10,
-        publishedAtOrAfter: readerSummaryPeriod.startedAt,
-        publishedBefore: readerSummaryPeriod.endedAt,
-      }),
-    );
-    expect(
-      selection.selectedEvidence.filter(
-        (item) => item.providerKey === "reddit",
-      ),
-    ).toHaveLength(2);
-    expect(selection.selectedEvidence.map((item) => item.feedItemId)).toEqual(
-      expect.arrayContaining(["feed-reddit-1", "feed-reddit-2"]),
-    );
-    expect(
-      selection.selectedEvidence.find(
-        (item) => item.feedItemId === "feed-reddit-1",
-      )?.score,
-    ).toBeGreaterThan(1.35);
-  });
-
-  it("reserves top-read eligible Reddit evidence even when weak Reddit already appears in ranked results", async () => {
-    const tenant = tenantId("tenant-top-read-reddit-reserve");
-    const workspace = workspaceId("workspace-top-read-reddit-reserve");
-    const rankedItems = [
-      ...Array.from({ length: 10 }, (_, index) =>
-        rankedItem({
-          feedItemId: `feed-x-${index + 1}`,
-          providerKey: "x-twitter",
-          rank: index + 1,
-          score: 3 - index / 100,
-          providerMetadata: {
-            kind: "x_post",
-            public_metrics: {
-              like_count: 100 - index,
-              retweet_count: 20,
-              reply_count: 10,
-            },
-          },
-        }),
-      ),
-      ...Array.from({ length: 10 }, (_, index) =>
-        rankedItem({
-          feedItemId: `feed-weak-reddit-${index + 1}`,
-          providerKey: "reddit",
-          rank: 11 + index,
-          score: 2 - index / 100,
-          providerMetadata: {
-            kind: "reddit_post",
-            score: 0,
-            comments: 0,
-            upvoteRatio: 0.46,
-          },
-        }),
-      ),
-    ];
-    const strongRedditFeedItems = Array.from({ length: 4 }, (_, index) =>
-      FeedItem.publish({
-        id: `feed-strong-reddit-${index + 1}`,
-        tenantId: tenant,
-        workspaceId: workspace,
-        interestId: "interest-ai",
-        sourceItemId: `source-strong-reddit-${index + 1}`,
-        sourceBindingId: "binding-reddit",
-        providerKey: "reddit",
-        canonicalUrl: `https://reddit.example/r/artificial/comments/strong-${index + 1}`,
-        title: `Strong Reddit AI discussion ${index + 1}`,
-        bodyPreview:
-          "Reddit users compare concrete AI coding workflows and reliability tradeoffs.",
-        publishedAt: new Date("2026-06-23T09:00:00.000Z"),
-        observedAt: new Date("2026-06-23T09:05:00.000Z"),
-        providerMetadata: {
-          kind: "reddit_post",
-          score: 500 - index * 20,
-          comments: 90 - index * 5,
-          upvoteRatio: 0.91,
-          subreddit: "ClaudeAI",
-        },
-      }),
-    );
-    const rankFeedItems = {
-      execute: jest.fn(async (command: RankFeedItemsCommand) =>
-        ok({
-          generatedAt: clock.now().toISOString(),
-          profileApplied: false,
-          items: rankedItems.slice(0, command.limit),
-        }),
-      ),
-    } as unknown as RankFeedItemsUseCase;
-    const feedItems: FeedItemReadRepositoryPort = {
-      list: jest.fn(async (query) => ({
-        items: query.providerKey === "reddit" ? strongRedditFeedItems : [],
-      })),
-      findById: jest.fn(async () => null),
-    };
-    const selector = new RelevanceReaderSummaryEvidenceSelector(
-      rankFeedItems,
-      feedItems,
-      clock,
-      new FakeStoryRankingMetrics(),
-    );
-
-    const selection = await selector.select({
-      tenantId: tenant,
-      workspaceId: workspace,
-      scope: { type: "workspace" },
-      period: readerSummaryPeriod,
-      maxItems: 10,
-    });
-
-    expect(feedItems.list).toHaveBeenCalledWith(
-      expect.objectContaining({
-        providerKey: "reddit",
-        limit: 12,
-      }),
-    );
-    const selectedRedditIds = selection.selectedEvidence
-      .filter((item) => item.providerKey === "reddit")
-      .map((item) => item.feedItemId);
-    expect(selectedRedditIds).toEqual(
-      expect.arrayContaining([
-        "feed-strong-reddit-1",
-        "feed-strong-reddit-2",
-        "feed-strong-reddit-3",
-      ]),
-    );
-    expect(selectedRedditIds).toHaveLength(5);
-  });
-
-  it("supplements up to forty items per provider for 120-item reader summaries", async () => {
-    const tenant = tenantId("tenant-provider-supplement-120");
-    const workspace = workspaceId("workspace-provider-supplement-120");
-    const rankedItems = Array.from({ length: 120 }, (_, index) =>
-      rankedItem({
-        feedItemId: `feed-hn-wide-${index + 1}`,
-        providerKey: "hacker-news",
-        rank: index + 1,
-        score: 3 - index / 100,
-      }),
-    );
-    const rssFeedItems = Array.from({ length: 45 }, (_, index) =>
-      FeedItem.publish({
-        id: `feed-rss-wide-${index + 1}`,
-        tenantId: tenant,
-        workspaceId: workspace,
-        interestId: "interest-ai",
-        sourceItemId: `source-rss-wide-${index + 1}`,
-        sourceBindingId: "binding-rss",
-        providerKey: "rss",
-        canonicalUrl: `https://rss.example/items/${index + 1}`,
-        title: `RSS AI tooling story ${index + 1}`,
-        bodyPreview:
-          "RSS coverage reports practical AI tooling, infrastructure and developer workflow updates.",
-        publishedAt: new Date("2026-06-23T09:00:00.000Z"),
-        observedAt: new Date("2026-06-23T09:05:00.000Z"),
-      }),
-    );
-    const rankFeedItems = {
-      execute: jest.fn(async (command: RankFeedItemsCommand) =>
-        ok({
-          generatedAt: clock.now().toISOString(),
-          profileApplied: false,
-          items: rankedItems.slice(0, command.limit),
-        }),
-      ),
-    } as unknown as RankFeedItemsUseCase;
-    const feedItems: FeedItemReadRepositoryPort = {
-      list: jest.fn(async (query) => ({
-        items: query.providerKey === "rss" ? rssFeedItems : [],
-      })),
-      findById: jest.fn(async () => null),
-    };
-    const selector = new RelevanceReaderSummaryEvidenceSelector(
-      rankFeedItems,
-      feedItems,
-      clock,
-      new FakeStoryRankingMetrics(),
-    );
-
-    const selection = await selector.select({
-      tenantId: tenant,
-      workspaceId: workspace,
-      scope: { type: "workspace" },
-      period: readerSummaryPeriod,
-      maxItems: 120,
-    });
-
-    expect(feedItems.list).toHaveBeenCalledWith(
-      expect.objectContaining({
-        providerKey: "rss",
-        limit: 80,
-      }),
-    );
-    expect(
-      selection.selectedEvidence.filter((item) => item.providerKey === "rss"),
-    ).toHaveLength(40);
+    expect(selection.selectedEvidence.map((item) => item.feedItemId)).toEqual([
+      "ranked-hn-only",
+    ]);
+    expect(feedItems.list).not.toHaveBeenCalledWith(expect.objectContaining({
+      providerKey: "reddit",
+    }));
+    expect(feedItems.list).not.toHaveBeenCalledWith(expect.objectContaining({
+      providerKey: "rss",
+    }));
   });
 
   it("preserves X engagement metrics from ranked feed metadata", async () => {
@@ -634,6 +532,7 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         score: 3.2,
         providerMetadata: {
           kind: "x_post",
+          contentKind: "original_post",
           authorHandle: "OpenAIDevs",
           searchQuery: "AI developer tools",
           public_metrics: {
@@ -651,13 +550,14 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         ok({
           generatedAt: clock.now().toISOString(),
           profileApplied: false,
-          items: rankedItems.slice(0, command.limit),
+          items: withDisplayReadyRanking(rankedItems.slice(0, command.limit), command),
         }),
       ),
     } as unknown as RankFeedItemsUseCase;
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       rankFeedItems,
       {
+        readPromotionSnapshot: emptyPromotionSnapshot,
         list: jest.fn(async () => ({ items: [] })),
         findById: jest.fn(async () => null),
       },
@@ -676,18 +576,114 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     expect(selection.selectedEvidence[0]).toEqual(
       expect.objectContaining({
         providerKey: "x-twitter",
-        providerMetricSummary: "1,280 likes, 240 reposts, 91 replies",
+        providerMetricSummary: "1,280 likes, 240 reposts",
         providerMetricLabels: expect.arrayContaining([
           { label: "Likes", value: "1,280" },
           { label: "Reposts", value: "240" },
-          { label: "Replies", value: "91" },
-          { label: "Impressions", value: "95,000" },
         ]),
       }),
     );
   });
 
-  it("expands eligible duplicates while dropping unrelated hard-blocked items", async () => {
+  it("filters forbidden conversation engagement before bounded candidate truncation", async () => {
+    const rankedItems = [
+      rankedItem({
+        feedItemId: "noisy-reddit-comment",
+        providerKey: "reddit",
+        rank: 1,
+        score: 99,
+        providerMetadata: {
+          kind: "reddit_comment",
+          role: "top_level_comment",
+          score: 1_000_000,
+          replyCount: 100_000,
+        },
+      }),
+      rankedItem({
+        feedItemId: "noisy-hn-reply",
+        providerKey: "hacker-news",
+        rank: 2,
+        score: 98,
+        providerMetadata: {
+          kind: "hacker_news_comment",
+          role: "reply",
+          score: 1_000_000,
+          replies: 100_000,
+          depth: 2,
+        },
+      }),
+      rankedItem({
+        feedItemId: "noisy-x-quote",
+        providerKey: "x-twitter",
+        rank: 3,
+        score: 97,
+        providerMetadata: {
+          kind: "x_post",
+          contentKind: "quote",
+          public_metrics: {
+            like_count: 1_000_000,
+            retweet_count: 500_000,
+            reply_count: 250_000,
+            quote_count: 125_000,
+            bookmark_count: 60_000,
+          },
+        },
+      }),
+      rankedItem({
+        feedItemId: "qualified-reddit-original",
+        providerKey: "reddit",
+        rank: 4,
+        score: 2,
+        providerMetadata: { kind: "reddit_post", score: 100 },
+      }),
+      rankedItem({
+        feedItemId: "qualified-hn-story",
+        providerKey: "hacker-news",
+        rank: 5,
+        score: 1,
+        providerMetadata: {
+          kind: "hacker_news_story",
+          points: 200,
+          comments: 0,
+        },
+      }),
+    ];
+    const selector = new RelevanceReaderSummaryEvidenceSelector(
+      {
+        execute: jest.fn(async (command: RankFeedItemsCommand) => ok({
+          generatedAt: clock.now().toISOString(),
+          profileApplied: false,
+          items: withDisplayReadyRanking(rankedItems, command),
+        })),
+      } as unknown as RankFeedItemsUseCase,
+      {
+        readPromotionSnapshot: emptyPromotionSnapshot,
+        list: jest.fn(async () => ({ items: [] })),
+        findById: jest.fn(async () => null),
+      },
+      clock,
+      new FakeStoryRankingMetrics(),
+    );
+
+    const selection = await selector.select({
+      tenantId: tenantId("tenant-forbidden-engagement"),
+      workspaceId: workspaceId("workspace-forbidden-engagement"),
+      scope: { type: "workspace" },
+      period: readerSummaryPeriod,
+      maxItems: 2,
+    });
+
+    expect(selection.selectedEvidence.map((item) => item.feedItemId)).toEqual([
+      "qualified-hn-story",
+      "qualified-reddit-original",
+    ]);
+    expect(selection.editorialSlate?.orderedCandidateIds).toEqual([
+      "qualified-hn-story",
+      "qualified-reddit-original",
+    ]);
+  });
+
+  it("never hydrates duplicate bodies after the authoritative snapshot", async () => {
     const tenant = tenantId("tenant-cross-source");
     const workspace = workspaceId("workspace-cross-source");
     const rankedItems = [
@@ -706,11 +702,12 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         ok({
           generatedAt: clock.now().toISOString(),
           profileApplied: true,
-          items: rankedItems.slice(0, command.limit),
+          items: withDisplayReadyRanking(rankedItems.slice(0, command.limit), command),
         }),
       ),
     } as unknown as RankFeedItemsUseCase;
     const feedItems: FeedItemReadRepositoryPort = {
+      readPromotionSnapshot: emptyPromotionSnapshot,
       list: jest.fn(async () => ({ items: [] })),
       findById: jest.fn(async ({ feedItemId }) => {
         const isGeneric = feedItemId === "feed-generic-hn";
@@ -734,6 +731,9 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
           observedAt: new Date("2026-06-23T10:06:00.000Z"),
           providerMetadata: {
             kind: isGeneric ? "hacker_news_story" : "reddit_post",
+            ...(isGeneric
+              ? { points: 10, comments: 0 }
+              : { score: 10, comments: 0 }),
             interestQuerySnapshot: {
               query: "Claude Codex OpenAI coding agents AI developer tools",
             },
@@ -757,30 +757,14 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
       observedThrough: clock.now(),
     });
 
-    expect(feedItems.findById).toHaveBeenCalledWith({
-      tenantId: tenant,
-      workspaceId: workspace,
-      feedItemId: "feed-reddit-codex",
-      observedBefore: new Date(clock.now().getTime() + 1),
-    });
-    expect(selection.selectedEvidence.map((item) => item.feedItemId)).toEqual([
-      "feed-github-codex",
-      "feed-reddit-codex",
-    ]);
+    expect(feedItems.findById).not.toHaveBeenCalled();
+    expect(selection.selectedEvidence).toEqual([]);
     expect(
       selection.selectedEvidence.find(
         (item) => item.feedItemId === "feed-generic-hn",
       )?.contentQuality?.eligibleForTopRead,
     ).toBeUndefined();
-    expect(selection.clusters).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          representativeFeedItemId: "feed-github-codex",
-          duplicateFeedItemIds: ["feed-reddit-codex"],
-          providerKeys: expect.arrayContaining(["github-repo-radar", "reddit"]),
-        }),
-      ]),
-    );
+    expect(selection.clusters).toEqual([]);
   });
 
   it("asks relevance ranking for the reader summary period and keeps exact window boundaries", async () => {
@@ -823,13 +807,14 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         ok({
           generatedAt: clock.now().toISOString(),
           profileApplied: false,
-          items: rankedItems.slice(0, command.limit),
+          items: withDisplayReadyRanking(rankedItems.slice(0, command.limit), command),
         }),
       ),
     } as unknown as RankFeedItemsUseCase;
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       rankFeedItems,
       {
+        readPromotionSnapshot: emptyPromotionSnapshot,
         list: jest.fn(async () => ({ items: [] })),
         findById: jest.fn(async () => null),
       },
@@ -853,7 +838,6 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     );
     expect(selection.selectedEvidence.map((item) => item.feedItemId)).toEqual([
       "feed-at-start",
-      "feed-inside",
     ]);
   });
 
@@ -889,13 +873,14 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         ok({
           generatedAt: clock.now().toISOString(),
           profileApplied: false,
-          items: rankedItems.slice(0, command.limit),
+          items: withDisplayReadyRanking(rankedItems.slice(0, command.limit), command),
         }),
       ),
     } as unknown as RankFeedItemsUseCase;
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       rankFeedItems,
       {
+        readPromotionSnapshot: emptyPromotionSnapshot,
         list: jest.fn(async () => ({ items: [] })),
         findById: jest.fn(async () => null),
       },
@@ -925,7 +910,13 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
     expect(rankingCommand?.publishedBefore).toBeUndefined();
     expect(selection.selectedEvidence.map((item) => item.feedItemId)).toEqual([
       "feed-observed-old-publication",
-      "feed-observed-future-publication",
+    ]);
+    expect(selection.selectedEvidence[0]).toEqual(expect.objectContaining({
+      publishedAt: new Date("2026-06-01T10:00:00.000Z"),
+      observedAt: new Date("2026-06-23T10:00:00.000Z"),
+    }));
+    expect(selection.sourceWindow.selectedFeedItemIds).toEqual([
+      "feed-observed-old-publication",
     ]);
   });
 
@@ -969,13 +960,14 @@ describe("RelevanceReaderSummaryEvidenceSelector", () => {
         ok({
           generatedAt: clock.now().toISOString(),
           profileApplied: false,
-          items: rankedItems.slice(0, command.limit),
+          items: withDisplayReadyRanking(rankedItems.slice(0, command.limit), command),
         }),
       ),
     } as unknown as RankFeedItemsUseCase;
     const selector = new RelevanceReaderSummaryEvidenceSelector(
       rankFeedItems,
       {
+        readPromotionSnapshot: emptyPromotionSnapshot,
         list: jest.fn(async () => ({ items: [] })),
         findById: jest.fn(async () => null),
       },

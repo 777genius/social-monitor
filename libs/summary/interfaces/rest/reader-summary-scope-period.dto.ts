@@ -22,6 +22,15 @@ export class ReaderSummarySourceWindowDto {
   @ApiProperty({ format: "date-time" })
   declare readonly endedAt: string;
 
+  @ApiPropertyOptional({ format: "date-time" })
+  declare readonly ingestionCutoff?: string;
+
+  @ApiPropertyOptional({
+    pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+    example: "2026-09-21T00:00:00.123456Z",
+  })
+  declare readonly exactIngestionCutoff?: string;
+
   @ApiProperty({ type: [String] })
   declare readonly selectedFeedItemIds: readonly string[];
 

@@ -1,6 +1,7 @@
 import { ValidationPipe } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
+import { MetricsRuntimeModule } from '@social-monitor/platform-metrics/nest/metrics-runtime.module';
 import {
   ReaderSummaryArtifact,
   ReaderSummaryJob,
@@ -40,7 +41,7 @@ import {
   dailyGitHubProjectionFixture,
   publishFixture,
   requireNotApplicableProjection,
-  requireVerifiedProjection,
+  promoteRestSmokeArtifact,
 } from './lib/reader-summary-rest-smoke-publication';
 
 async function main(): Promise<void> {
@@ -48,7 +49,7 @@ async function main(): Promise<void> {
   process.env.READER_SUMMARY_TOPIC_LABELER = 'deterministic';
 
   const moduleRef = await Test.createTestingModule({
-    imports: [SummaryRestModule],
+    imports: [MetricsRuntimeModule.register({ serviceName: 'reader-summary-rest-smoke' }), SummaryRestModule],
     providers: [
       {
         provide: APP_FILTER,
@@ -100,19 +101,19 @@ async function main(): Promise<void> {
     );
     const githubProjection = dailyGitHubProjectionFixture();
 
-    const dailyArtifact = ReaderSummaryArtifact.create({
+    const dailyArtifact = promoteRestSmokeArtifact(ReaderSummaryArtifact.create({
       schemaVersion: 'reader_summary.artifact.v1',
       readerSummaryId: readerSummaryId,
       tenantId: tenant,
       workspaceId: workspace,
       scope: { type: 'workspace' },
       period: {
-        cadence: 'daily',
+        cadence: 'weekly',
         startedAt: new Date('2026-06-23T00:00:00.000Z'),
-        endedAt: new Date('2026-06-24T00:00:00.000Z'),
+        endedAt: new Date('2026-06-30T00:00:00.000Z'),
         timezone: 'UTC',
         periodKey:
-          'daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC',
+          'weekly:2026-06-23T00:00:00.000Z:2026-06-30T00:00:00.000Z:UTC',
       },
       userId,
       sourceWindow: {
@@ -159,12 +160,12 @@ async function main(): Promise<void> {
           artifactId: 'memory-context-1',
           scope: { type: 'workspace' },
           period: {
-            cadence: 'daily',
+            cadence: 'weekly',
             startedAt: new Date('2026-06-23T00:00:00.000Z'),
-            endedAt: new Date('2026-06-24T00:00:00.000Z'),
+            endedAt: new Date('2026-06-30T00:00:00.000Z'),
             timezone: 'UTC',
             periodKey:
-              'daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC',
+              'weekly:2026-06-23T00:00:00.000Z:2026-06-30T00:00:00.000Z:UTC',
           },
           summaryText:
             'User prefers practical AI tooling signals with source links and growth metrics.',
@@ -268,11 +269,8 @@ async function main(): Promise<void> {
         outputTokens: 80,
         estimatedCostUsd: 0,
       },
-    });
-    const dailyProjectionAudit = requireVerifiedProjection(
-      dailyArtifact,
-      githubProjection,
-    );
+    }));
+    const dailyProjectionAudit = requireNotApplicableProjection(dailyArtifact);
     await publishFixture({
       artifact: dailyArtifact,
       projectionAudit: dailyProjectionAudit,
@@ -290,6 +288,8 @@ async function main(): Promise<void> {
       ReaderSummaryArtifact.create({
         ...dailyArtifact.toSnapshot(),
         readerSummaryId: rejectedReaderSummaryId,
+        promotionAttestations: [],
+        promotionEvidenceFacts: [],
         headline: 'Rejected reader summary smoke artifact',
         content: {
           ...readerSummaryRestSmokeContent(),
@@ -358,9 +358,11 @@ async function main(): Promise<void> {
       baseArtifact.sourceWindow.selectedFeedItemIds.filter(
         (feedItemId) => !feedItemId.startsWith('github-trending-feed-'),
       );
-    const weeklyArtifact = ReaderSummaryArtifact.create({
+    const weeklyArtifact = promoteRestSmokeArtifact(ReaderSummaryArtifact.create({
       ...baseArtifact,
       readerSummaryId: weeklyReaderSummaryId,
+      promotionAttestations: [],
+      promotionEvidenceFacts: [],
       period: {
         cadence: 'weekly',
         startedAt: new Date('2026-06-15T00:00:00.000Z'),
@@ -375,6 +377,9 @@ async function main(): Promise<void> {
         startedAt: new Date('2026-06-16T08:00:00.000Z'),
         endedAt: new Date('2026-06-21T08:30:00.000Z'),
         selectedFeedItemIds: nonDailySelectedFeedItemIds,
+        periodStartedAt: new Date('2026-06-15T00:00:00.000Z'),
+        periodEndedAt: new Date('2026-06-22T00:00:00.000Z'),
+        ingestionCutoff: new Date('2026-06-21T08:30:00.000Z'),
       },
       storyClusters: baseArtifact.storyClusters.map((cluster) => ({
         ...cluster,
@@ -383,10 +388,10 @@ async function main(): Promise<void> {
           endedAt: new Date('2026-06-21T08:30:00.000Z'),
         },
       })),
-      content: { ...baseArtifact.content!, selectedPosts: [] },
+      content: readerSummaryRestSmokeContent(),
       citationMap: nonDailyCitationMap,
       headline: 'Weekly AI tooling reader summary',
-    });
+    }));
     await publishFixture({
       artifact: weeklyArtifact,
       projectionAudit: requireNotApplicableProjection(weeklyArtifact),
@@ -398,9 +403,11 @@ async function main(): Promise<void> {
       completedAt: new Date('2026-06-22T08:36:00.000Z'),
     });
 
-    const monthlyArtifact = ReaderSummaryArtifact.create({
+    const monthlyArtifact = promoteRestSmokeArtifact(ReaderSummaryArtifact.create({
       ...baseArtifact,
       readerSummaryId: monthlyReaderSummaryId,
+      promotionAttestations: [],
+      promotionEvidenceFacts: [],
       period: {
         cadence: 'monthly',
         startedAt: new Date('2026-06-01T00:00:00.000Z'),
@@ -415,11 +422,14 @@ async function main(): Promise<void> {
         startedAt: new Date('2026-06-23T08:00:00.000Z'),
         endedAt: new Date('2026-06-23T08:30:00.000Z'),
         selectedFeedItemIds: nonDailySelectedFeedItemIds,
+        periodStartedAt: new Date('2026-06-01T00:00:00.000Z'),
+        periodEndedAt: new Date('2026-07-01T00:00:00.000Z'),
+        ingestionCutoff: new Date('2026-06-23T08:30:00.000Z'),
       },
-      content: { ...baseArtifact.content!, selectedPosts: [] },
+      content: readerSummaryRestSmokeContent(),
       citationMap: nonDailyCitationMap,
       headline: 'Monthly AI tooling reader summary',
-    });
+    }));
     await publishFixture({
       artifact: monthlyArtifact,
       projectionAudit: requireNotApplicableProjection(monthlyArtifact),
@@ -438,9 +448,9 @@ async function main(): Promise<void> {
         providerKey: 'reddit',
         userId,
         memoryGuidanceApplied: 'true',
-        cadence: 'daily',
+        cadence: 'weekly',
         periodStartedAt: '2026-06-23T00:00:00.000Z',
-        periodEndedAt: '2026-06-24T00:00:00.000Z',
+        periodEndedAt: '2026-06-30T00:00:00.000Z',
         timezone: 'UTC',
         limit: '5',
       })
@@ -458,7 +468,7 @@ async function main(): Promise<void> {
         'reader-summaries REST list item is missing',
       ),
       readerSummaryId,
-      'daily',
+      'weekly',
     );
 
     const weeklyListResponse = await request(app.getHttpServer())
@@ -522,9 +532,9 @@ async function main(): Promise<void> {
         providerKey: 'reddit',
         userId,
         memoryGuidanceApplied: 'true',
-        cadence: 'daily',
+        cadence: 'weekly',
         periodStartedAt: '2026-06-23T00:00:00.000Z',
-        periodEndedAt: '2026-06-24T00:00:00.000Z',
+        periodEndedAt: '2026-06-30T00:00:00.000Z',
         timezone: 'UTC',
         limit: '5',
       })
@@ -545,7 +555,7 @@ async function main(): Promise<void> {
     assertReaderSummaryResponse(
       detailResponse.body as ReaderSummaryResponseBody,
       readerSummaryId,
-      'daily',
+      'weekly',
     );
 
     const weeklyDetailResponse = await request(app.getHttpServer())

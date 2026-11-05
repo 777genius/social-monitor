@@ -70,9 +70,51 @@ void main() {
 
     final summary = mapper.readerSummaryToDomain(
       readerSummaryApiDto(
+        storyClusterIds: const [
+          'story:codex',
+          'story:cursor-agents',
+          'story:watermark',
+        ],
+        citations: [
+          summaryCitationApiDto(
+            id: 'bc-1',
+            feedItemId: 'feed-c-1',
+            sourceItemId: 'source-c-1',
+            providerKey: 'github-repo-radar',
+            canonicalUrl:
+                'https://github.com/openai/codex?token=secret&utm_source=feed',
+          ),
+          summaryCitationApiDto(
+            id: 'cursor-hn',
+            feedItemId: 'feed-cursor-hn',
+            providerKey: 'hacker-news',
+          ),
+          summaryCitationApiDto(
+            id: 'cursor-x',
+            feedItemId: 'feed-cursor-x',
+            providerKey: 'x-twitter',
+          ),
+          summaryCitationApiDto(
+            id: 'watermark-official',
+            feedItemId: 'feed-watermark-official',
+            providerKey: 'rss',
+          ),
+          summaryCitationApiDto(
+            id: 'watermark-hn',
+            feedItemId: 'feed-watermark-hn',
+            providerKey: 'hacker-news',
+          ),
+          summaryCitationApiDto(
+            id: 'reddit-question',
+            feedItemId: 'feed-reddit-question',
+            providerKey: 'reddit',
+          ),
+        ],
         content: readerSummaryContentApiDto(
           topReads: const [
             TopReadApiDto(
+              storyClusterId: 'story:codex',
+              cardKind: 'curated_top_read',
               title: 'openai/codex',
               providerKey: 'github-repo-radar',
               reason: 'Fast repo growth.',
@@ -93,6 +135,36 @@ void main() {
                 altText: 'Preview with Bearer demo',
               ),
               citationIds: ['bc-1'],
+            ),
+          ],
+          selectedPosts: const [
+            TopReadApiDto(
+              storyClusterId: 'story:cursor-agents',
+              cardKind: 'additional_notable_story',
+              title: 'Cursor background agents',
+              providerKey: 'hacker-news',
+              reason: 'HN and X describe the same Cursor launch.',
+              matchedInterestIds: ['ai-tools'],
+              matchedRules: ['interest:ai-tools'],
+              signalScore: 1,
+              confirmedProviderKeys: ['hacker-news', 'x-twitter'],
+              whyImportant: ['Cursor shipped background agents.'],
+              whyNow: 'The launch appeared in this summary window.',
+              citationIds: ['cursor-hn', 'cursor-x'],
+            ),
+            TopReadApiDto(
+              storyClusterId: 'story:watermark',
+              cardKind: 'additional_notable_story',
+              title: 'Official watermark standard ships',
+              providerKey: 'rss',
+              reason: 'Official RSS and HN describe the same release.',
+              matchedInterestIds: ['ai-tools'],
+              matchedRules: ['interest:ai-tools'],
+              signalScore: 0.9,
+              confirmedProviderKeys: ['rss', 'hacker-news'],
+              whyImportant: ['The official standard shipped.'],
+              whyNow: 'The release appeared in this summary window.',
+              citationIds: ['watermark-official', 'watermark-hn'],
             ),
           ],
         ),
@@ -116,6 +188,25 @@ void main() {
       'https://github.com/openai/codex?utm_source=feed',
     );
     expect(summary.content.topReads.single.signalScore.value, 1.23);
+    expect(summary.content.topReads.single.storyClusterId, 'story:codex');
+    expect(
+      summary.content.topReads.single.cardKind,
+      ReaderSummaryCardKind.curatedTopRead,
+    );
+    expect(
+      summary.content.selectedPosts[0].storyClusterId,
+      'story:cursor-agents',
+    );
+    expect(
+      summary.content.selectedPosts[0].cardKind,
+      ReaderSummaryCardKind.additionalNotableStory,
+    );
+    expect(summary.content.selectedPosts[1].storyClusterId, 'story:watermark');
+    expect(
+      summary.content.selectedPosts[1].cardKind,
+      ReaderSummaryCardKind.additionalNotableStory,
+    );
+    expect(summary.content.selectedPosts, hasLength(2));
     expect(
       summary.content.topReads.single.previewMedia?.kind,
       PreviewMediaKind.video,
@@ -154,6 +245,8 @@ void main() {
         content: readerSummaryContentApiDto(
           topReads: const [
             TopReadApiDto(
+              storyClusterId: 'story:reddit-image-post',
+              cardKind: 'curated_top_read',
               title: 'Reddit image post',
               providerKey: 'reddit',
               reason: 'The source includes a preview image.',
@@ -163,10 +256,16 @@ void main() {
                 url:
                     'https://preview.redd.it/example.jpg?width=140&height=140&auto=webp',
               ),
-              citationIds: [],
+              citationIds: ['reddit-image-citation'],
             ),
           ],
         ),
+        citations: [
+          summaryCitationApiDto(
+            id: 'reddit-image-citation',
+            providerKey: 'reddit',
+          ),
+        ],
       ),
     );
 
@@ -286,9 +385,17 @@ void main() {
 
     final summary = mapper.readerSummaryToDomain(
       readerSummaryApiDto(
+        citations: [
+          summaryCitationApiDto(
+            id: 'long-description-citation',
+            providerKey: 'x-twitter',
+          ),
+        ],
         content: readerSummaryContentApiDto(
           topReads: [
             TopReadApiDto(
+              storyClusterId: 'story:work-agent-description',
+              cardKind: 'curated_top_read',
               title: 'A work agent for longer operational projects',
               providerKey: 'x-twitter',
               reason: description,

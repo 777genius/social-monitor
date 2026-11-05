@@ -118,20 +118,22 @@ export function toPostgresPoolConfig(
   config: PostgresRuntimePoolConfig,
 ): {
   readonly application_name: string;
+  readonly options: '-c timezone=UTC';
   readonly connectionString: string;
   readonly min: 0;
   readonly max: 1 | 2;
   readonly connectionTimeoutMillis: number;
   readonly idleTimeoutMillis: number;
 } {
-  return {
+  return Object.freeze({
     application_name: `${POSTGRES_RUNTIME_APPLICATION_NAME_PREFIX}${config.processId}`,
+    options: '-c timezone=UTC',
     connectionString: config.connectionString,
     min: config.min,
     max: config.max,
     connectionTimeoutMillis: config.connectionTimeoutMillis,
     idleTimeoutMillis: config.idleTimeoutMillis,
-  };
+  });
 }
 
 export function samePostgresRuntimePoolConfig(

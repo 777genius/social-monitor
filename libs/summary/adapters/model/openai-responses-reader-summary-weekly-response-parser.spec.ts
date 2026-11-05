@@ -76,6 +76,118 @@ describe("OpenAI reader summary weekly response parser", () => {
     ).toThrow("exactly");
   });
 
+  it("normalizes legacy weekly sections that omit the takeaway field", () => {
+    const input = weeklyInput();
+    const current = weeklyOutput(input);
+    const legacy = legacyWeeklyOutput(input, current);
+    const withoutTakeaway = {
+      ...legacy,
+      sections: legacy.sections.map((section) => omitKeys(section, ["takeaway"])),
+    };
+
+    const parsed = parseOpenAiReaderSummaryWeeklyValue(input, withoutTakeaway);
+
+    expect(parsed.stories.map((story) => story.summary)).toEqual(
+      parsed.sections.map((section) => section.text),
+    );
+  });
+
+  it("normalizes sealed compact sections without claim type and stories with headline", () => {
+    const input = weeklyInput();
+    const current = weeklyOutput(input);
+    const compact = sealedCompactWeeklyOutput(input, current);
+    const drifted = {
+      ...compact,
+      stories: compact.stories.map((story) => ({
+        ...story,
+        headline: current.stories.find((item) => item.storyId === story.storyId)!
+          .headline,
+      })),
+      sections: compact.sections.map((section) =>
+        omitKeys(section, ["claimType"]),
+      ),
+    };
+
+    const parsed = parseOpenAiReaderSummaryWeeklyValue(input, drifted);
+
+    expect(parsed).toMatchObject({
+      stories: [
+        { storyId: "story:alpha", headline: current.sections[0]!.heading },
+        { storyId: "story:beta", headline: current.sections[1]!.heading },
+      ],
+    });
+    expect(parsed.sections.map((section) => section.claimType)).toEqual([
+      "snapshot",
+      "snapshot",
+    ]);
+    expect(() =>
+      parseOpenAiReaderSummaryWeeklyValue(input, {
+        ...drifted,
+        sections: drifted.sections.map((section) => ({
+          ...section,
+          storyId: "story:missing",
+        })),
+      }),
+    ).toThrow("exactly one story");
+  });
+
+  it("normalizes the observed context section kind to development", () => {
+    const input = weeklyInput();
+    const current = weeklyOutput(input);
+    const compact = sealedCompactWeeklyOutput(input, current);
+    const withContextKind = {
+      ...compact,
+      sections: compact.sections.map((section, index) =>
+        index === 1 ? { ...section, kind: "context" } : section,
+      ),
+    };
+
+    const parsed = parseOpenAiReaderSummaryWeeklyValue(input, withContextKind);
+
+    expect(parsed.sections.map((section) => section.kind)).toEqual([
+      "lead",
+      "development",
+    ]);
+  });
+
+  it("normalizes the observed risk section kind to watch", () => {
+    const input = weeklyInput();
+    const current = weeklyOutput(input);
+    const compact = sealedCompactWeeklyOutput(input, current);
+    const withRiskKind = {
+      ...compact,
+      sections: compact.sections.map((section, index) =>
+        index === 1 ? { ...section, kind: "risk" } : section,
+      ),
+    };
+
+    const parsed = parseOpenAiReaderSummaryWeeklyValue(input, withRiskKind);
+
+    expect(parsed.sections.map((section) => section.kind)).toEqual([
+      "lead",
+      "watch",
+    ]);
+  });
+
+  it("normalizes expanded legacy sections that omit claim type", () => {
+    const input = weeklyInput();
+    const current = weeklyOutput(input);
+    const expanded = expandedLegacyWeeklyOutput(input, current);
+    const withoutClaimType = {
+      ...expanded,
+      sections: expanded.sections.map((section) =>
+        omitKeys(section, ["claimType"]),
+      ),
+    };
+
+    const parsed = parseOpenAiReaderSummaryWeeklyValue(input, withoutClaimType);
+
+    expect(parsed.sections.map((section) => section.claimType)).toEqual([
+      "snapshot",
+      "snapshot",
+    ]);
+  });
+
   it("normalizes the exact expanded legacy weekly envelope", () => {
     const input = weeklyInput();
     const current = weeklyOutput(input);
@@ -523,6 +635,14 @@ const weeklyOutput = (
     },
   ],
 });
+
+const omitKeys = (
+  value: Record<string, unknown>,
+  keys: readonly string[],
+): Record<string, unknown> =>
+  Object.fromEntries(
+    Object.entries(value).filter(([key]) => !keys.includes(key)),
+  );
 
 const legacyWeeklyOutput = (
   input: ReaderSummaryWeeklyModelInput,

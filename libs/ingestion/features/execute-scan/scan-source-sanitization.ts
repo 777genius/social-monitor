@@ -1,11 +1,48 @@
 import {
   isSensitiveKey,
   type JsonObject,
-  redactSensitiveRecord,
   redactSensitiveText,
+  REDACTED_VALUE,
+  sanitizeUrlCredentials,
+  urlContainsCredentials,
 } from "@social-monitor/shared-kernel";
 
 import type { FetchedConversationUnit, FetchedSourceItem } from "../../ports";
+import {
+  articleFetchUrl,
+  articleRequestUrl,
+  markLiveArticleCredentialsRequired,
+} from '../../domain/value-objects/source-content-capture';
+
+export const sanitizeAndPrepareLiveArticleFetchUrls = (
+  providerKey: string,
+  items: readonly FetchedSourceItem[],
+): {
+  readonly sanitizedFetchedItems: readonly FetchedSourceItem[];
+  readonly liveArticleFetchUrls: ReadonlyMap<string, string>;
+} => {
+  const liveArticleFetchUrls = new Map<string, string>();
+  const ambiguousExternalIds = new Set<string>();
+  const sanitizedFetchedItems = items.map((item) => {
+    let sanitized = sanitizeFetchedSourceItem(item);
+    const fetchUrl = articleFetchUrl(providerKey, item);
+    const durableUrl = articleRequestUrl(providerKey, item);
+    if (fetchUrl !== undefined && durableUrl !== undefined && urlContainsCredentials(fetchUrl)) {
+      sanitized = markLiveArticleCredentialsRequired(sanitized);
+    }
+    if (fetchUrl !== undefined && !ambiguousExternalIds.has(sanitized.externalId)) {
+      const previous = liveArticleFetchUrls.get(sanitized.externalId);
+      if (previous === undefined || previous === fetchUrl) {
+        liveArticleFetchUrls.set(sanitized.externalId, fetchUrl);
+      } else {
+        liveArticleFetchUrls.delete(sanitized.externalId);
+        ambiguousExternalIds.add(sanitized.externalId);
+      }
+    }
+    return sanitized;
+  });
+  return { sanitizedFetchedItems, liveArticleFetchUrls };
+};
 
 export const sanitizeFetchedSourceItem = (
   item: FetchedSourceItem,
@@ -22,7 +59,7 @@ export const sanitizeFetchedSourceItem = (
   metadata:
     item.metadata === undefined
       ? undefined
-      : (redactSensitiveRecord(item.metadata) as JsonObject),
+      : sanitizeFetchedSourceMetadata(item.metadata),
 });
 
 export const sanitizeFetchedConversationUnit = (
@@ -46,7 +83,7 @@ export const sanitizeFetchedConversationUnit = (
   metadata:
     unit.metadata === undefined
       ? undefined
-      : (redactSensitiveRecord(unit.metadata) as JsonObject),
+      : sanitizeFetchedSourceMetadata(unit.metadata),
 });
 
 export const sanitizeSourceWarnings = (
@@ -59,23 +96,49 @@ export const sanitizeSourceWarnings = (
   ),
 ];
 
-const sanitizeFetchedSourceUrl = (value: string): string => {
-  const redacted = redactSensitiveText(value);
+export const sanitizeFetchedSourceMetadata = (metadata: JsonObject): JsonObject =>
+  Object.fromEntries(
+    Object.entries(metadata).map(([key, value]) => [
+      key,
+      sanitizeFetchedSourceMetadataValue(key, value),
+    ]),
+  ) as JsonObject;
 
-  try {
-    const parsed = new URL(redacted);
-    parsed.username = "";
-    parsed.password = "";
-    parsed.hash = "";
-
-    for (const key of [...parsed.searchParams.keys()]) {
-      if (isSensitiveKey(key)) {
-        parsed.searchParams.delete(key);
-      }
-    }
-
-    return parsed.toString();
-  } catch {
-    return redacted;
+const sanitizeFetchedSourceMetadataValue = (
+  key: string,
+  value: unknown,
+): unknown => {
+  if (isSensitiveKey(key)) {
+    return REDACTED_VALUE;
   }
+  if (typeof value === "string") {
+    return isUrlField(key) || isAbsoluteUrl(value)
+      ? sanitizeFetchedSourceUrl(value)
+      : redactSensitiveText(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => sanitizeFetchedSourceMetadataValue("", entry));
+  }
+  if (typeof value === "object" && value !== null) {
+    return sanitizeFetchedSourceMetadata(value as JsonObject);
+  }
+  return value;
+};
+
+const isUrlField = (key: string): boolean =>
+  /(?:url|uri|href|link)$/iu.test(key);
+
+const isAbsoluteUrl = (value: string): boolean => {
+  try {
+    new URL(value);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export const sanitizeFetchedSourceUrl = (value: string): string => {
+  const sanitized = sanitizeUrlCredentials(value);
+  const fragmentStart = sanitized.indexOf('#');
+  return fragmentStart < 0 ? sanitized : sanitized.slice(0, fragmentStart);
 };

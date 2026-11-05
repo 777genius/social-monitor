@@ -68,6 +68,21 @@
         },
         "type": "object"
       },
+      "AppBootstrapResponseDto": {
+        "properties": {
+          "readerSummaries": {
+            "$ref": "#/components/schemas/ReaderSummaryBootstrapResponseDto"
+          },
+          "session": {
+            "$ref": "#/components/schemas/AuthSessionResponseDto"
+          }
+        },
+        "required": [
+          "session",
+          "readerSummaries"
+        ],
+        "type": "object"
+      },
       "AuthSessionResponseDto": {
         "properties": {
           "selectedWorkspace": {
@@ -825,6 +840,14 @@
       },
       "FeedMetricDeltaDto": {
         "properties": {
+          "observation": {
+            "enum": [
+              "observed",
+              "missing",
+              "malformed"
+            ],
+            "type": "string"
+          },
           "value": {
             "type": "number"
           },
@@ -833,8 +856,7 @@
           }
         },
         "required": [
-          "window",
-          "value"
+          "window"
         ],
         "type": "object"
       },
@@ -3022,6 +3044,103 @@
         ],
         "type": "object"
       },
+      "ReaderPostDto": {
+        "properties": {
+          "bodyPreview": {
+            "type": "string"
+          },
+          "canonicalUrl": {
+            "type": "string"
+          },
+          "engagement": {
+            "nullable": true,
+            "type": "number"
+          },
+          "engagementObservedAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "likeCount": {
+            "description": "Raw X like count for Likes display and sorting; null when unknown, omitted for other providers. Reposts are excluded.",
+            "minimum": 0,
+            "nullable": true,
+            "type": "number"
+          },
+          "providerFamily": {
+            "type": "string"
+          },
+          "providerKey": {
+            "type": "string"
+          },
+          "publishedAt": {
+            "type": "string"
+          },
+          "quotedContext": {
+            "description": "Whether the original quoted post text was captured; the author text is assessed separately",
+            "type": "string"
+          },
+          "relevance": {
+            "nullable": true,
+            "type": "string"
+          },
+          "sourceItemId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "usefulness": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "sourceItemId",
+          "providerKey",
+          "providerFamily",
+          "title",
+          "bodyPreview",
+          "canonicalUrl",
+          "publishedAt",
+          "engagement",
+          "engagementObservedAt",
+          "usefulness",
+          "relevance"
+        ],
+        "type": "object"
+      },
+      "ReaderPostsPageDto": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderPostDto"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": "string"
+          },
+          "providerKeys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "providerKeys"
+        ],
+        "type": "object"
+      },
       "ReaderSummaryAcceptedTopicApplicationBindingDto": {
         "properties": {
           "changed": {
@@ -3153,12 +3272,6 @@
           "confidence": {
             "$ref": "#/components/schemas/ReaderSummaryConfidenceDto"
           },
-          "contextArtifacts": {
-            "items": {
-              "$ref": "#/components/schemas/ReaderSummaryContextArtifactDto"
-            },
-            "type": "array"
-          },
           "coverage": {
             "$ref": "#/components/schemas/ReaderSummaryCoverageSummaryDto"
           },
@@ -3272,7 +3385,6 @@
           "period",
           "sourceWindow",
           "storyClusters",
-          "contextArtifacts",
           "headline",
           "executiveSummary",
           "readerBrief",
@@ -3286,6 +3398,60 @@
           "lineage",
           "usage",
           "freshness"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryBootstrapResponseDto": {
+        "properties": {
+          "latest": {
+            "$ref": "#/components/schemas/ListReaderSummariesResponseDto"
+          },
+          "periods": {
+            "$ref": "#/components/schemas/ListReaderSummaryPeriodsResponseDto"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenantId",
+          "workspaceId",
+          "latest",
+          "periods"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryCapturedSourceDto": {
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "captureAvailability": {
+            "enum": [
+              "available",
+              "unavailable"
+            ],
+            "type": "string"
+          },
+          "reviewAvailability": {
+            "enum": [
+              "body_present",
+              "title_only",
+              "unavailable"
+            ],
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "captureAvailability",
+          "reviewAvailability"
         ],
         "type": "object"
       },
@@ -3435,43 +3601,6 @@
         ],
         "type": "object"
       },
-      "ReaderSummaryContextArtifactDto": {
-        "properties": {
-          "artifactId": {
-            "type": "string"
-          },
-          "freshness": {
-            "enum": [
-              "fresh",
-              "stale",
-              "unknown"
-            ],
-            "type": "string"
-          },
-          "generatedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "period": {
-            "$ref": "#/components/schemas/ReaderSummaryPeriodDto"
-          },
-          "scope": {
-            "$ref": "#/components/schemas/ReaderSummaryScopeDto"
-          },
-          "summaryText": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "artifactId",
-          "scope",
-          "period",
-          "summaryText",
-          "generatedAt",
-          "freshness"
-        ],
-        "type": "object"
-      },
       "ReaderSummaryCoverageSummaryDto": {
         "properties": {
           "citationCount": {
@@ -3599,6 +3728,74 @@
         ],
         "type": "object"
       },
+      "ReaderSummaryDisplayHeadlineDto": {
+        "properties": {
+          "binding": {
+            "$ref": "#/components/schemas/ReaderSummaryHeadlineBindingDto"
+          },
+          "confidence": {
+            "maximum": 1,
+            "minimum": 0.8,
+            "type": "number"
+          },
+          "kind": {
+            "enum": [
+              "claim",
+              "subject_label"
+            ],
+            "type": "string"
+          },
+          "qualifications": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryHeadlineQualificationDto"
+            },
+            "type": "array"
+          },
+          "reasonCode": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "accepted",
+              "unavailable"
+            ],
+            "type": "string"
+          },
+          "support": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryHeadlineReferenceDto"
+            },
+            "type": "array"
+          },
+          "text": {
+            "maxLength": 119,
+            "minLength": 1,
+            "type": "string"
+          },
+          "wholeInput": {
+            "$ref": "#/components/schemas/ReaderSummaryHeadlineWholeInputDto"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryDisplayHeadlineSealDto": {
+        "properties": {
+          "capturedSourceDigest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "headline": {
+            "$ref": "#/components/schemas/ReaderSummaryDisplayHeadlineDto"
+          }
+        },
+        "required": [
+          "headline"
+        ],
+        "type": "object"
+      },
       "ReaderSummaryFreshnessDto": {
         "properties": {
           "checkedAt": {
@@ -3636,6 +3833,134 @@
         "required": [
           "status",
           "checkedAt"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryHeadlineBindingDto": {
+        "properties": {
+          "availability": {
+            "enum": [
+              "title_only",
+              "body_present"
+            ],
+            "type": "string"
+          },
+          "candidateId": {
+            "type": "string"
+          },
+          "interestDigest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "interestId": {
+            "type": "string"
+          },
+          "providerKey": {
+            "type": "string"
+          },
+          "reviewedInputDigest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "sourceBindingId": {
+            "type": "string"
+          },
+          "sourceItemId": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "trustedIntent": {
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "candidateId",
+          "providerKey",
+          "tenantId",
+          "workspaceId",
+          "interestId",
+          "sourceBindingId",
+          "sourceItemId",
+          "availability",
+          "reviewedInputDigest"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryHeadlineQualificationDto": {
+        "properties": {
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryHeadlineReferenceDto"
+            },
+            "type": "array"
+          },
+          "phrase": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "phrase",
+          "evidence"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryHeadlineReferenceDto": {
+        "properties": {
+          "end": {
+            "minimum": 1,
+            "type": "number"
+          },
+          "field": {
+            "enum": [
+              "title",
+              "bodyPreview"
+            ],
+            "type": "string"
+          },
+          "quote": {
+            "type": "string"
+          },
+          "start": {
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "field",
+          "start",
+          "end",
+          "quote"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryHeadlineWholeInputDto": {
+        "properties": {
+          "bodyLength": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "qualificationJudgment": {
+            "enum": [
+              "none",
+              "preserved",
+              "subject_only"
+            ],
+            "type": "string"
+          },
+          "titleLength": {
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "titleLength",
+          "bodyLength",
+          "qualificationJudgment"
         ],
         "type": "object"
       },
@@ -4041,6 +4366,484 @@
         ],
         "type": "object"
       },
+      "ReaderSummaryPromotionAttestationDto": {
+        "properties": {
+          "artifactId": {
+            "type": "string"
+          },
+          "assessment": {
+            "$ref": "#/components/schemas/ReaderSummaryPromotionV3AssessmentDto"
+          },
+          "candidateDigestInput": {
+            "type": "string"
+          },
+          "candidateId": {
+            "type": "string"
+          },
+          "canonicalIdentity": {
+            "type": "string"
+          },
+          "canonicalPayload": {
+            "type": "string"
+          },
+          "citationIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "comparator": {
+            "$ref": "#/components/schemas/ReaderSummaryPromotionV3ComparatorDto"
+          },
+          "decision": {
+            "enum": [
+              "promote_top",
+              "promote_additional",
+              "promote_news"
+            ],
+            "type": "string"
+          },
+          "digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "digestVersion": {
+            "enum": [
+              "reader_post_promotion_digest.sha256.v1",
+              "reader_post_promotion_digest.sha256.v2",
+              "reader_post_promotion_digest.sha256.v3"
+            ],
+            "type": "string"
+          },
+          "displayHeadline": {
+            "$ref": "#/components/schemas/ReaderSummaryDisplayHeadlineSealDto"
+          },
+          "displaySummary": {
+            "maxLength": 300,
+            "minLength": 1,
+            "type": "string"
+          },
+          "evidenceLineage": {
+            "$ref": "#/components/schemas/ReaderSummaryPromotionEvidenceLineageDto"
+          },
+          "exactIngestionCutoff": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+            "type": "string"
+          },
+          "ingestionCutoff": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "periodEndedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "periodStartedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "placement": {
+            "enum": [
+              "top",
+              "additional",
+              "news"
+            ],
+            "type": "string"
+          },
+          "policyVersion": {
+            "description": "For reader_post_promotion_attestation.v3 this is the promotion policy stamp. Supported historical stamps retain their original validation.",
+            "enum": [
+              "reader_post_promotion.v1",
+              "reader_post_promotion.v2",
+              "reader_promotion.2026-11-02",
+              "reader_promotion.2026-11-01"
+            ],
+            "type": "string"
+          },
+          "presentation": {
+            "$ref": "#/components/schemas/ReaderSummaryPromotionV3PresentationDto"
+          },
+          "provider": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "publishedAt": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+            "type": "string"
+          },
+          "reasonCodes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "schemaVersion": {
+            "enum": [
+              "reader_post_promotion_attestation.v1",
+              "reader_post_promotion_attestation.v2",
+              "reader_post_promotion_attestation.v3"
+            ],
+            "type": "string"
+          },
+          "scoreComponents": {
+            "$ref": "#/components/schemas/ReaderSummaryPromotionScoreComponentsDto"
+          },
+          "slateDigest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "slateDigestInput": {
+            "type": "string"
+          },
+          "slateEntryDigestInput": {
+            "type": "string"
+          },
+          "slot": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "sourceWindowId": {
+            "type": "string"
+          },
+          "storyClusterId": {
+            "type": "string"
+          },
+          "storyId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "policyVersion",
+          "digestVersion",
+          "digest",
+          "canonicalPayload",
+          "artifactId",
+          "sourceWindowId",
+          "slot",
+          "candidateId",
+          "canonicalIdentity",
+          "placement",
+          "decision",
+          "citationIds"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryPromotionEngagementDto": {
+        "properties": {
+          "method": {
+            "enum": [
+              "likes_plus_two_reposts",
+              "reddit_score",
+              "hacker_news_points",
+              "max_stars_or_half_forks"
+            ],
+            "type": "string"
+          },
+          "observedAt": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+            "type": "string"
+          },
+          "value": {
+            "description": "Provider signal; integer except GitHub half forks (x.5).",
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "method",
+          "value",
+          "observedAt"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryPromotionEvidenceLineageDto": {
+        "properties": {
+          "citationIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "leadCandidateId": {
+            "type": "string"
+          },
+          "leadCitationId": {
+            "type": "string"
+          },
+          "supportCandidateIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "supportCitationIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "leadCandidateId",
+          "leadCitationId",
+          "supportCandidateIds",
+          "supportCitationIds",
+          "citationIds"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryPromotionPopularityDto": {
+        "properties": {
+          "below": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "cohortSize": {
+            "minimum": 1,
+            "type": "number"
+          },
+          "equal": {
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "cohortSize",
+          "below",
+          "equal"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryPromotionScoreComponentsDto": {
+        "properties": {
+          "engagementSalience": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "evidenceQuality": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "freshness": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "integrity": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "relevance": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "total": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "weightedEngagement": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "weightedEvidenceQuality": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "weightedFreshness": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "weightedIntegrity": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "weightedRelevance": {
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "engagementSalience",
+          "relevance",
+          "evidenceQuality",
+          "integrity",
+          "freshness",
+          "weightedEngagement",
+          "weightedRelevance",
+          "weightedEvidenceQuality",
+          "weightedIntegrity",
+          "weightedFreshness",
+          "total"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryPromotionV3AssessmentDto": {
+        "properties": {
+          "answers": {
+            "type": "object"
+          },
+          "assessedAt": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+            "type": "string"
+          },
+          "assessmentId": {
+            "type": "string"
+          },
+          "inputSha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "modelConfigVersion": {
+            "type": "string"
+          },
+          "rubricSha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "rubricVersion": {
+            "type": "string"
+          },
+          "schemaVersion": {
+            "enum": [
+              "reader_value.v1"
+            ],
+            "type": "string"
+          },
+          "sourceSnapshotSha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "assessmentId",
+          "assessedAt",
+          "sourceSnapshotSha256",
+          "inputSha256",
+          "rubricVersion",
+          "rubricSha256",
+          "modelConfigVersion",
+          "answers"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryPromotionV3ComparatorDto": {
+        "properties": {
+          "block": {
+            "description": "Source registry class; unranked posts are only in the news block.",
+            "enum": [
+              "ranked",
+              "unranked"
+            ],
+            "type": "string"
+          },
+          "candidateId": {
+            "type": "string"
+          },
+          "engagement": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ReaderSummaryPromotionEngagementDto"
+              }
+            ],
+            "description": "Frozen metric of a ranked source; null means unknown. Always present in responses.",
+            "nullable": true,
+            "type": "object"
+          },
+          "metricMature": {
+            "description": "engagement.observedAt - publishedAt >= 6 hours.",
+            "type": "boolean"
+          },
+          "newsPublisher": {
+            "description": "Real publisher of a news.google.com item (title suffix), else null.",
+            "nullable": true,
+            "type": "string"
+          },
+          "popularity": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ReaderSummaryPromotionPopularityDto"
+              }
+            ],
+            "description": "Mid-rank inside providerFamily: (below + equal / 2) / cohortSize. Present only when metricMature and the family has at least 5 mature gate-passed posts (cohortSize >= 5), otherwise null. Always present in responses.",
+            "nullable": true,
+            "type": "object"
+          },
+          "providerFamily": {
+            "description": "Source registry family, e.g. x, reddit, hacker_news, github_radar, rss.",
+            "type": "string"
+          },
+          "publishedAt": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+            "type": "string"
+          },
+          "relevance": {
+            "description": "Admission gate only; not an order key.",
+            "enum": [
+              "unrelated",
+              "adjacent",
+              "relevant",
+              "central",
+              "insufficient_context"
+            ],
+            "type": "string"
+          },
+          "usefulness": {
+            "enum": [
+              "noise",
+              "context",
+              "useful",
+              "important",
+              "insufficient_context"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "block",
+          "providerFamily",
+          "usefulness",
+          "relevance",
+          "metricMature",
+          "newsPublisher",
+          "publishedAt",
+          "candidateId"
+        ],
+        "type": "object"
+      },
+      "ReaderSummaryPromotionV3PresentationDto": {
+        "properties": {
+          "displayHeadline": {
+            "$ref": "#/components/schemas/ReaderSummaryDisplayHeadlineSealDto"
+          },
+          "presentationIdentity": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "presentationInputDigest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "schemaVersion": {
+            "enum": [
+              "reader_post_presentation.v3"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "presentationInputDigest",
+          "presentationIdentity",
+          "displayHeadline"
+        ],
+        "type": "object"
+      },
       "ReaderSummaryProviderCollectionHealthDto": {
         "properties": {
           "acceptedItemCount": {
@@ -4441,6 +5244,14 @@
             },
             "type": "array"
           },
+          "newsWithoutRatingPosts": {
+            "description": "News without rating: posts from sources without a popularity rating (for example RSS). Never part of topReads or selectedPosts; one post per story, ordered by usefulness then publishedAt descending. Each item carries promotionAttestation.placement = \"news\" and signalScore = 0.",
+            "items": {
+              "$ref": "#/components/schemas/ReaderSummaryReaderItemDto"
+            },
+            "maxItems": 16,
+            "type": "array"
+          },
           "nextActions": {
             "items": {
               "$ref": "#/components/schemas/ReaderSummaryNextActionDto"
@@ -4469,6 +5280,7 @@
             "type": "array"
           },
           "selectedPosts": {
+            "description": "\"Show more\" for Top: ranked posts after the first 12, same order, followed by supplemental GitHub Trending rows.",
             "items": {
               "$ref": "#/components/schemas/ReaderSummaryReaderItemDto"
             },
@@ -4484,9 +5296,11 @@
             "$ref": "#/components/schemas/ReaderSummaryTopicMapDto"
           },
           "topReads": {
+            "description": "Top posts: ranked sources only, ordered by the hybrid score 0.4 * model (important 1.0, useful 0.5) + 0.6 * popularity percentile inside the source network (0 when the metric is unknown), then publishedAt descending.",
             "items": {
               "$ref": "#/components/schemas/ReaderSummaryReaderItemDto"
             },
+            "maxItems": 12,
             "type": "array"
           },
           "trendDelta": {
@@ -4505,6 +5319,7 @@
           "sourceMix",
           "topReads",
           "selectedPosts",
+          "newsWithoutRatingPosts",
           "claimBoard",
           "reliabilityReport",
           "trendDelta",
@@ -4577,6 +5392,9 @@
           "canonicalUrl": {
             "type": "string"
           },
+          "capturedSource": {
+            "$ref": "#/components/schemas/ReaderSummaryCapturedSourceDto"
+          },
           "citationIds": {
             "items": {
               "type": "string"
@@ -4591,6 +5409,9 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "displayHeadline": {
+            "$ref": "#/components/schemas/ReaderSummaryDisplayHeadlineDto"
           },
           "matchedInterestIds": {
             "items": {
@@ -4614,6 +5435,9 @@
             ],
             "type": "string"
           },
+          "promotionAttestation": {
+            "$ref": "#/components/schemas/ReaderSummaryPromotionAttestationDto"
+          },
           "providerKey": {
             "type": "string"
           },
@@ -4635,6 +5459,11 @@
           },
           "signalScore": {
             "type": "number"
+          },
+          "summary": {
+            "maxLength": 300,
+            "minLength": 1,
+            "type": "string"
           },
           "title": {
             "type": "string"
@@ -4830,12 +5659,6 @@
           "confidence": {
             "$ref": "#/components/schemas/ReaderSummaryConfidenceDto"
           },
-          "contextArtifacts": {
-            "items": {
-              "$ref": "#/components/schemas/ReaderSummaryContextArtifactDto"
-            },
-            "type": "array"
-          },
           "coverage": {
             "$ref": "#/components/schemas/ReaderSummaryCoverageSummaryDto"
           },
@@ -4949,7 +5772,6 @@
           "period",
           "sourceWindow",
           "storyClusters",
-          "contextArtifacts",
           "headline",
           "executiveSummary",
           "readerBrief",
@@ -5051,6 +5873,15 @@
       "ReaderSummarySourceWindowDto": {
         "properties": {
           "endedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "exactIngestionCutoff": {
+            "example": "2026-09-21T00:00:00.123456Z",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$",
+            "type": "string"
+          },
+          "ingestionCutoff": {
             "format": "date-time",
             "type": "string"
           },
@@ -5719,9 +6550,11 @@
             "type": "number"
           },
           "inputTokens": {
+            "nullable": true,
             "type": "number"
           },
           "outputTokens": {
+            "nullable": true,
             "type": "number"
           }
         },
@@ -5913,13 +6746,19 @@
             "type": "boolean"
           },
           "artifact": {
-            "allOf": [
+            "nullable": true,
+            "oneOf": [
               {
                 "$ref": "#/components/schemas/ReaderSummaryWeeklyProjectionArtifactDto"
+              },
+              {
+                "enum": [
+                  null
+                ],
+                "nullable": true,
+                "type": "object"
               }
-            ],
-            "nullable": true,
-            "type": "object"
+            ]
           },
           "blockingReasons": {
             "items": {
@@ -9856,8 +10695,6 @@
           "providerKey",
           "sourceKey",
           "contentType",
-          "likes",
-          "reposts",
           "replies",
           "quotes",
           "bookmarks",
@@ -9875,6 +10712,38 @@
   },
   "openapi": "3.0.0",
   "paths": {
+    "/app/bootstrap": {
+      "get": {
+        "operationId": "AppBootstrapController_get",
+        "parameters": [
+          {
+            "description": "Bearer OIDC JWT user session token.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppBootstrapResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Restore the session and initial daily reader-summary data in one request.",
+        "tags": [
+          "app-bootstrap"
+        ]
+      }
+    },
     "/auth/session": {
       "get": {
         "operationId": "AuthSessionController_get",
@@ -12453,6 +13322,123 @@
         "summary": "Create or update the interest-level summary preference overlay for one user.",
         "tags": [
           "user-summary-preferences"
+        ]
+      }
+    },
+    "/reader-posts": {
+      "get": {
+        "operationId": "ReaderPostsController_list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "excludedProviders",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "enum": [
+                "model",
+                "likes"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "interestId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "endedAt",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "startedAt",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional Bearer API key. Requires read:feed. If supplied, x-workspace-role is not required.",
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Workspace feed read access. Required when Authorization bearer API key is not supplied.",
+            "in": "header",
+            "name": "x-workspace-role",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-workspace-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-tenant-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReaderPostsPageDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "Browse all collected posts in a period using saved assessments; no model calls.",
+        "tags": [
+          "reader-summaries"
         ]
       }
     },

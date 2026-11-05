@@ -1,5 +1,14 @@
+import type { SummaryReaderHeadline } from "./summary-reader-headline";
+
 import type { ProviderMetric } from "./provider-metric-label";
 import type { PreviewMedia } from "./preview-media";
+import type { ReaderSummaryRelatedTopicRelationProps } from "./reader-summary-related-topic-relation";
+import type { ReaderPostPromotionAttestation } from "../policies/reader-post-promotion-policy-contract";
+import type { ReaderPostPromotionV3Selection } from
+  "../policies/reader-post-promotion-v3";
+import type { ReaderSummaryEditorialSlate } from
+  "./reader-summary-editorial-slate";
+import type { ReaderSummaryDailyGenerationInput } from "./reader-summary-daily-generation-input";
 
 export type SummaryEvidenceReaderActionKind =
   "read_source" | "watch_repository";
@@ -16,7 +25,87 @@ export type SummaryEvidenceContentQuality = {
   readonly reason: string;
 };
 
+export type SummaryEvidenceRetainedEngagementAuthority = {
+  readonly mode: "retained-current-authority";
+  readonly projection: "feed-engagement-snapshot-and-last-two-observations-v1";
+  readonly boundThrough: string;
+  readonly authoritySha256: string;
+  readonly cutoffAt: string;
+};
+
+export type SummaryEvidencePromotionMetrics =
+  | {
+      readonly provider: "x";
+      readonly likes: number;
+      readonly reposts: number;
+      readonly weightedScore: number;
+    }
+  | {
+      readonly provider: "reddit";
+      readonly score: number;
+      readonly upvoteRatio?: number;
+    }
+  | {
+      readonly provider: "hacker_news";
+      readonly points: number;
+    }
+  | {
+      readonly provider: "github_radar";
+      readonly snapshotKind: "repository_growth";
+      readonly windowStartedAt: Date;
+      readonly windowEndedAt: Date;
+      readonly starsDelta: number;
+      readonly forksDelta: number;
+    };
+
+export type SummaryEvidencePromotionFacts = {
+  readonly contentKind:
+    | "original_post"
+    | "story"
+    | "repository"
+    | "comment"
+    | "reply"
+    | "quote"
+    | "github_trending"
+    | "unknown";
+  readonly canonicalIdentity: string;
+  readonly checkedAt?: Date;
+  readonly retainedEngagementAuthority?: SummaryEvidenceRetainedEngagementAuthority;
+  readonly engagementAuthority?: {
+    readonly observedAt: Date;
+    readonly regressionState:
+      | "stable"
+      | "confirmed_correction"
+      | "unresolved_regression";
+  };
+  readonly authorityAttestation?: {
+    readonly status: "attested";
+    readonly official: boolean;
+    readonly trusted: boolean;
+    readonly attestedBy: "producer" | "source_catalog";
+  };
+  /** Legacy LLM quality hints; promotion authority never reads these fields. */
+  readonly officialAccount?: boolean;
+  readonly trustedAuthor?: boolean;
+  readonly safetyValid: boolean;
+  readonly freshnessValid: boolean;
+  readonly freshnessProvenance?:
+    | { readonly status: "unknown" }
+    | {
+        readonly status: "observed";
+        readonly publishedAt: Date;
+        readonly observedAt: Date;
+        readonly ingestionCutoff: Date;
+        readonly exactPublishedAt?: string;
+        readonly exactObservedAt?: string;
+        readonly exactIngestionCutoff?: string;
+      };
+  readonly metricsState?: "observed" | "missing" | "malformed" | "conflict";
+  readonly metrics?: SummaryEvidencePromotionMetrics;
+};
+
 export type SummaryEvidenceItem = {
+  readonly readerHeadline?: SummaryReaderHeadline;
   readonly feedItemId: string;
   readonly sourceItemId: string;
   readonly sourceBindingId: string;
@@ -35,9 +124,12 @@ export type SummaryEvidenceItem = {
   readonly whyImportant: readonly string[];
   readonly providerMetricLabels?: readonly ProviderMetric[];
   readonly providerMetricSummary?: string;
+  /** Engagement strength derived from typed provider metrics. */
+  readonly providerMetricStrength?: number;
   readonly previewMedia?: PreviewMedia;
   readonly conversationContext?: SummaryEvidenceConversationContext;
   readonly contentQuality?: SummaryEvidenceContentQuality;
+  readonly promotionFacts?: SummaryEvidencePromotionFacts;
   readonly readerActionKind?: SummaryEvidenceReaderActionKind;
   readonly matchedRules?: readonly string[];
   readonly storyKeyHint?: string;
@@ -114,12 +206,34 @@ export type StorySignalBreakdown = {
 };
 
 export type SummaryEvidenceSelection = {
+  readonly dailyGenerationInput?: ReaderSummaryDailyGenerationInput;
+  /** Actual narrative text view; sealed card source text remains independent. */
+  readonly dailyGenerationEvidence?: readonly SummaryEvidenceItem[];
   readonly rankingPolicyVersion: string;
   readonly personalization?: SummaryEvidencePersonalization;
   readonly sourceWindow: SummarySourceWindow;
   readonly clusters: readonly StoryCluster[];
   readonly selectedEvidence: readonly SummaryEvidenceItem[];
+  readonly relatedTopicRelations?: readonly RelatedTopicRelation[];
+  readonly approvedSameStoryRelations?: readonly ApprovedSameStoryRelation[];
+  readonly promotionAttestations?: readonly ReaderPostPromotionAttestation[];
+  readonly editorialSlate?: ReaderSummaryEditorialSlate;
+  /** Frozen V3 authority. When present, legacy promotion scoring is bypassed. */
+  readonly promotionV3?: ReaderPostPromotionV3Selection;
+  /**
+   * Internal V3 disclosure: some headline checks failed in the model runtime
+   * and their stories were skipped. Publication still binds only sealed cards.
+   */
+  readonly presentationRuntimeDegraded?: true;
 };
+
+export type ApprovedSameStoryRelation = {
+  readonly leftFeedItemId: string;
+  readonly rightFeedItemId: string;
+  readonly confidence: number;
+};
+
+export type RelatedTopicRelation = ReaderSummaryRelatedTopicRelationProps;
 
 export type SummaryEvidencePersonalization = {
   readonly memoryGuidanceStatus:
@@ -138,4 +252,9 @@ export type SummarySourceWindow = {
   readonly endedAt: Date;
   readonly selectedFeedItemIds: readonly string[];
   readonly storyClusterIds: readonly string[];
+  readonly periodStartedAt?: Date;
+  readonly periodEndedAt?: Date;
+  readonly ingestionCutoff?: Date;
+  /** Canonical microsecond timestamp retained alongside the legacy Date view. */
+  readonly exactIngestionCutoff?: string;
 };

@@ -8,6 +8,7 @@ import {
 } from 'amqplib';
 
 import type { RabbitMqFieldValue } from './rabbitmq-queue-arguments';
+import { RabbitMqPublicationTracker } from './rabbitmq-publication-tracker';
 import type {
   RabbitMqExchangeType,
   RabbitMqPublishOptions,
@@ -17,12 +18,24 @@ import type {
 export type AmqplibRabbitMqChannelOptions = {
   readonly url: string;
   readonly socketOptions?: SocketOptions;
+  /** Optional synchronous authority check immediately before handing bytes to amqplib. */
+  readonly beforePublish?: () => void;
+  readonly connect?: (
+    url: string,
+    socketOptions?: SocketOptions,
+  ) => Promise<ChannelModel>;
 };
 
 export class AmqplibRabbitMqChannel implements RabbitMqQueueChannelPort {
   private connectionPromise: Promise<ChannelModel> | undefined;
   private channelPromise: Promise<ConfirmChannel> | undefined;
-  private readonly returnedMessages: ReturnedRabbitMqMessage[] = [];
+  private readonly publications = new RabbitMqPublicationTracker();
+  private readonly deliveryChannels = new WeakMap<Message, ConfirmChannel>();
+  private readonly channelOrigins = new WeakMap<ConfirmChannel, Promise<ConfirmChannel>>();
+  private readonly originRecovery = new WeakMap<ConfirmChannel, Promise<void>>();
+  private readonly connectionChannels = new WeakMap<ChannelModel, Set<ConfirmChannel>>();
+  private readonly closedConnections = new WeakSet<ChannelModel>();
+  private publishesCancelled = false;
 
   constructor(private readonly options: AmqplibRabbitMqChannelOptions) {
     if (options.url.trim().length === 0) {
@@ -57,36 +70,85 @@ export class AmqplibRabbitMqChannel implements RabbitMqQueueChannelPort {
     return (await this.channel()).bindQueue(queue, exchange, routingKey, args);
   }
 
-  async publish(
+  async publishAndConfirm(
     exchange: string,
     routingKey: string,
     content: Buffer,
     options: RabbitMqPublishOptions,
   ): Promise<boolean> {
-    return (await this.channel()).publish(exchange, routingKey, content, options);
+    this.assertPublishAllowed();
+    const channel = await this.channel();
+    // No await between this terminal guard and the wire-library call. A send
+    // already handed to amqplib cannot be recalled; its outcome remains uncertain.
+    this.assertPublishAllowed();
+    this.options.beforePublish?.();
+    this.assertPublishAllowed();
+    return this.publications.publishAndConfirm(channel, exchange, routingKey, content, options);
   }
 
-  async waitForConfirms(exchange: string, routingKey: string, messageId: string): Promise<void> {
-    await (await this.channel()).waitForConfirms();
-    const returned = this.takeReturnedMessage(exchange, routingKey, messageId);
+  /** Synchronously and permanently inhibits future sends, including pending
+   * connect/assert/channel creation continuations. close/reconnect never resets it.
+   * Does not claim to retract bytes already handed to the wire library. */
+  cancelPendingPublishes(): void {
+    this.publishesCancelled = true;
+    this.publications.cancel();
+  }
 
-    if (returned !== undefined) {
-      throw new Error(
-        `RabbitMQ mandatory publish returned: exchange=${returned.exchange} routingKey=${returned.routingKey} messageId=${returned.messageId} replyCode=${returned.replyCode} replyText=${returned.replyText}`,
-      );
-    }
+  private assertPublishAllowed(): void {
+    if (this.publishesCancelled) throw new Error('RabbitMQ publishing cancelled');
   }
 
   async get(queue: string, options: { readonly noAck: boolean }): Promise<GetMessage | false> {
-    return (await this.channel()).get(queue, options);
+    const channel = await this.channel();
+    const message = await channel.get(queue, options);
+    if (message !== false && !options.noAck) this.deliveryChannels.set(message, channel);
+    return message;
   }
 
   async ack(message: Message): Promise<void> {
-    (await this.channel()).ack(message);
+    this.deliveryChannel(message).ack(message);
+    this.deliveryChannels.delete(message);
   }
 
   async nack(message: Message, allUpTo: boolean, requeue: boolean): Promise<void> {
-    (await this.channel()).nack(message, allUpTo, requeue);
+    this.deliveryChannel(message).nack(message, allUpTo, requeue);
+    this.deliveryChannels.delete(message);
+  }
+
+  /** Requeue uncertainty belongs to the native acquisition channel. A reconnect
+   * may already exist, so neither channel() nor close() is safe here. */
+  async recoverDelivery(message: Message): Promise<void> {
+    const origin = this.deliveryChannels.get(message);
+    if (origin === undefined) throw new Error('RabbitMQ delivery has no unsettled origin channel');
+    if (!this.publications.isClosed(origin)) {
+      let recovery = this.originRecovery.get(origin);
+      if (recovery === undefined) {
+        recovery = this.closeDeliveryOrigin(origin).finally(() => { this.originRecovery.delete(origin); });
+        this.originRecovery.set(origin, recovery);
+      }
+      await recovery;
+    }
+    this.deliveryChannels.delete(message);
+  }
+
+  private async closeDeliveryOrigin(origin: ConfirmChannel): Promise<void> {
+    try {
+      await origin.close();
+    } catch (error) {
+      // A native close/error event independently proves this origin is gone.
+      // Otherwise retain its authority and allow a later cleanup retry.
+      if (!this.publications.isClosed(origin)) throw error;
+    }
+    const pending = this.channelOrigins.get(origin);
+    if (pending === undefined) this.publications.close(origin);
+    else this.invalidateChannel(pending, origin);
+  }
+
+  private deliveryChannel(message: Message): ConfirmChannel {
+    const channel = this.deliveryChannels.get(message);
+    if (channel === undefined) throw new Error('RabbitMQ delivery has no unsettled origin channel');
+    if (this.publications.isClosed(channel)) throw new Error('RabbitMQ delivery origin channel closed');
+    return channel;
   }
 
   async prefetch(count: number): Promise<unknown> {
@@ -95,6 +157,7 @@ export class AmqplibRabbitMqChannel implements RabbitMqQueueChannelPort {
 
   async close(): Promise<void> {
     const channel = await this.channelPromise?.catch(() => undefined);
+    if (channel !== undefined) this.publications.close(channel);
     await channel?.close().catch(() => undefined);
 
     const connection = await this.connectionPromise?.catch(() => undefined);
@@ -109,64 +172,75 @@ export class AmqplibRabbitMqChannel implements RabbitMqQueueChannelPort {
   }
 
   private async channel(): Promise<ConfirmChannel> {
-    this.channelPromise ??= this.connection().then(async (connection) => {
+    const active = this.channelPromise;
+    if (active !== undefined) {
+      return active;
+    }
+
+    const pending = this.connection().then(async (connection) => {
       const channel = await connection.createConfirmChannel();
+      this.channelOrigins.set(channel, pending);
+      this.connectionChannels.get(connection)?.add(channel);
+      if (this.closedConnections.has(connection)) this.publications.close(channel);
       channel.on('return', (message) => {
-        this.returnedMessages.push(toReturnedMessage(message));
+        this.publications.returned(channel, message);
       });
+      channel.on('error', () => this.invalidateChannel(pending, channel));
+      channel.on('close', () => this.invalidateChannel(pending, channel));
 
       return channel;
     });
+    this.channelPromise = pending;
+    void pending.catch(() => this.invalidateChannel(pending));
 
-    return this.channelPromise;
+    return pending;
   }
 
   private async connection(): Promise<ChannelModel> {
-    this.connectionPromise ??= connect(this.options.url, this.options.socketOptions);
-
-    return this.connectionPromise;
-  }
-
-  private takeReturnedMessage(
-    exchange: string,
-    routingKey: string,
-    messageId: string,
-  ): ReturnedRabbitMqMessage | undefined {
-    const index = this.returnedMessages.findIndex((message) =>
-      message.exchange === exchange &&
-      message.routingKey === routingKey &&
-      message.messageId === messageId,
-    );
-
-    if (index === -1) {
-      return undefined;
+    const active = this.connectionPromise;
+    if (active !== undefined) {
+      return active;
     }
 
-    const [message] = this.returnedMessages.splice(index, 1);
+    const connectToBroker = this.options.connect ?? connect;
+    const pending = connectToBroker(
+      this.options.url,
+      this.options.socketOptions,
+    ).then((connection) => {
+      this.connectionChannels.set(connection, new Set());
+      connection.on('error', () => this.invalidateConnection(pending, connection));
+      connection.on('close', () => this.invalidateConnection(pending, connection));
+      return connection;
+    });
+    this.connectionPromise = pending;
+    void pending.catch(() => this.invalidateConnection(pending));
 
-    return message;
+    return pending;
+  }
+
+  private invalidateChannel(pending: Promise<ConfirmChannel>, channel?: ConfirmChannel): void {
+    if (channel !== undefined) this.publications.close(channel);
+    if (this.channelPromise !== pending) {
+      return;
+    }
+
+    this.channelPromise = undefined;
+  }
+
+  private invalidateConnection(pending: Promise<ChannelModel>, connection?: ChannelModel): void {
+    if (connection !== undefined) {
+      this.closedConnections.add(connection);
+      for (const channel of this.connectionChannels.get(connection) ?? []) {
+        this.publications.close(channel);
+      }
+    }
+    if (this.connectionPromise !== pending) {
+      return;
+    }
+
+    this.connectionPromise = undefined;
+    const channel = this.channelPromise;
+    this.channelPromise = undefined;
+    void channel?.then((resolved) => this.publications.close(resolved)).catch(() => undefined);
   }
 }
-
-type ReturnedRabbitMqMessage = {
-  readonly exchange: string;
-  readonly routingKey: string;
-  readonly messageId: string;
-  readonly replyCode: string;
-  readonly replyText: string;
-};
-
-const toReturnedMessage = (message: Message): ReturnedRabbitMqMessage => {
-  const fields = message.fields as Message['fields'] & {
-    readonly replyCode?: number;
-    readonly replyText?: string;
-  };
-
-  return {
-    exchange: message.fields.exchange,
-    routingKey: message.fields.routingKey,
-    messageId: String(message.properties.messageId ?? ''),
-    replyCode: fields.replyCode === undefined ? 'unknown' : String(fields.replyCode),
-    replyText: fields.replyText ?? 'unknown',
-  };
-};

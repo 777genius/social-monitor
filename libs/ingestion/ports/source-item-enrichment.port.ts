@@ -1,4 +1,4 @@
-import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
+import type { Clock, TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
 import type { FetchedSourceItem } from './source-fetcher.port';
 
@@ -9,6 +9,16 @@ export type EnrichSourceItemsCommand = {
   readonly scanJobId: string;
   readonly providerKey: string;
   readonly correlationId: string;
+  readonly capturedAt: Date;
+  readonly clock: Clock;
+  readonly signal?: AbortSignal;
+  readonly deadlineAt?: Date;
+  /**
+   * Ephemeral, signed URLs for this live scan only. Implementations must never
+   * return these values or add them to item metadata; durable provenance is
+   * derived from the sanitized item representation instead.
+   */
+  readonly liveArticleFetchUrls?: ReadonlyMap<string, string>;
   readonly items: readonly FetchedSourceItem[];
 };
 

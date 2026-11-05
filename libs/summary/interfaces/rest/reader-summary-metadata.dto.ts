@@ -88,11 +88,11 @@ export class ReaderSummaryLineageDto {
 }
 
 export class ReaderSummaryUsageDto {
-  @ApiProperty()
-  declare readonly inputTokens: number;
+  @ApiProperty({ nullable: true, type: Number })
+  declare readonly inputTokens: number | null;
 
-  @ApiProperty()
-  declare readonly outputTokens: number;
+  @ApiProperty({ nullable: true, type: Number })
+  declare readonly outputTokens: number | null;
 
   @ApiProperty()
   declare readonly estimatedCostUsd: number;

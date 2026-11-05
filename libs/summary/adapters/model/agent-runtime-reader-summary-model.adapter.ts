@@ -1,3 +1,6 @@
+import { readerSummaryRepairInstruction, isRepairableNarrativeError } from "./reader-summary-narrative-repair-contract";
+import { readerSummaryDailyInputReceipt } from "./reader-summary-daily-input-receipt";
+import { runAgentRuntimeDailyEditor } from "./agent-runtime-reader-summary-daily-editorial";
 import {
   buildReaderSummary,
   primaryReaderSummaryEvidence,
@@ -7,7 +10,9 @@ import type {
   AgentRuntimeClientPort,
   AgentRuntimeProvider,
   AgentRuntimeTaskCommand,
+  AgentRuntimeTaskResult,
   ProviderReaderSummaryAttempt,
+  ReaderSummaryDailyEditorialAttempt,
   ReaderSummaryModelBudget,
   ReaderSummaryModelEstimate,
   ReaderSummaryModelFailure,
@@ -29,7 +34,7 @@ import {
   currentReaderSummaryPromptRelease,
 } from "./openai-responses-reader-summary-prompt";
 import { parseOpenAiReaderSummaryJsonObject } from "./openai-responses-reader-summary-response-parser";
-import { openAiReaderSummaryJsonSchema } from "./openai-responses-reader-summary-schema";
+import { readerSummaryWriterSchema } from "./openai-responses-reader-summary-schema";
 import { buildReaderSummaryEvidenceCitationMap } from "./reader-summary-evidence-citation-map";
 import {
   verifyAndRecordReaderSummaryExecution,
@@ -37,6 +42,7 @@ import {
 } from "./reader-summary-execution-attestation";
 import {
   AgentRuntimeModelProviderError,
+  assertReaderSummaryRepairWithinBudget,
   buildAgentRuntimeRequestId,
   classifyAgentRuntimeError,
   nonEmptyOrFallback,
@@ -44,36 +50,60 @@ import {
   positiveIntegerOrFallback,
   readAgentRuntimeObjectOutput,
   usageFromAgentRuntime,
+  sumReaderSummaryUsage,
 } from "./agent-runtime-model-support";
+import {
+  type activeReaderSummaryProvider,
+  activeReaderSummaryPurposes,
+  activeReaderSummaryReasoningEffort,
+  isGatewayReaderSummaryBackend,
+  resolveReaderSummaryBackendEffort,
+  readerSummaryRouteControls,
+  resolveReaderSummaryGenerationIdentity,
+  resolveReaderSummaryGenerationIdentityFromEnv,
+  resolveReaderSummaryReasoningEffortFromEnv,
+  type ReaderSummaryGenerationBackend,
+  frozenLegacyReaderSummaryRecoveryContract,
+  type FrozenLegacyReaderSummaryRecoveryContract,
+} from "./active-reader-summary-generation-profile";
+import { maxReportedOutputViolations, safeOutputViolationPattern } from
+  "./gateway-llm/gateway-llm-output-violations";
+import { gatewayOutputHardLimits } from "./gateway-llm/gateway-llm-schema-limits";
 
 export type AgentRuntimeReaderSummaryModelAdapterOptions = {
   readonly client: AgentRuntimeClientPort;
   readonly agentProvider?: AgentRuntimeProvider;
   readonly providerInstanceId?: string;
   readonly model?: string;
-  readonly reasoningEffort?: "xhigh";
+  readonly modelBackend?: ReaderSummaryGenerationBackend;
+  /**
+   * high for gpt-5.6-sol and MiMo, xhigh for legacy recovery, the route effort
+   * for a gateway backend or gateway-only Codex model.
+   */
+  readonly reasoningEffort?: string;
+  readonly legacyRecoveryContract?: FrozenLegacyReaderSummaryRecoveryContract;
   readonly evalDatasetVersion?: string;
   readonly timeoutMs?: number;
   readonly maxOutputTokens?: number;
   readonly inputTokenDivisor?: number;
   readonly verifiedAttestationSink?: VerifiedReaderSummaryExecutionAttestationSink;
 };
-
 const provider = "agent-runtime";
-const defaultAgentProvider: AgentRuntimeProvider = "codex";
-const defaultModel = "gpt-5.6-sol";
-const defaultReasoningEffort = "xhigh" as const;
+const defaultReasoningEffort = activeReaderSummaryReasoningEffort;
 const defaultEvalDatasetVersion = "reader_summary.eval.mvp.v1";
-const defaultTimeoutMs = 600_000;
+export const defaultTimeoutMs = 600_000;
+export const readerSummaryNarrativeAttempts = ["primary", "repair"] as const;
 const defaultMaxOutputTokens = 16_000;
 const defaultInputTokenDivisor = 4;
 
 export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModelPort {
   private readonly client: AgentRuntimeClientPort;
-  private readonly agentProvider: AgentRuntimeProvider;
+  private readonly agentProvider: typeof activeReaderSummaryProvider;
   private readonly providerInstanceId?: string;
   private readonly model: string;
-  private readonly reasoningEffort: "xhigh";
+  private readonly modelBackend: ReaderSummaryGenerationBackend;
+  private readonly reasoningEffort: string;
+  private readonly legacyRecovery: boolean;
   private readonly evalDatasetVersion: string;
   private readonly timeoutMs: number;
   private readonly maxOutputTokens: number;
@@ -82,10 +112,29 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
 
   constructor(options: AgentRuntimeReaderSummaryModelAdapterOptions) {
     this.client = options.client;
-    this.agentProvider = options.agentProvider ?? defaultAgentProvider;
+    const generationIdentity = resolveReaderSummaryGenerationIdentity({
+      provider: options.agentProvider,
+      model: options.model,
+      backend: options.modelBackend,
+      legacyRecovery: options.legacyRecoveryContract !== undefined,
+    });
+    this.agentProvider = generationIdentity.provider;
+    this.modelBackend = generationIdentity.backend;
     this.providerInstanceId = options.providerInstanceId;
-    this.model = nonEmptyOrFallback(options.model, defaultModel);
-    this.reasoningEffort = options.reasoningEffort ?? defaultReasoningEffort;
+    this.model = generationIdentity.model;
+    this.legacyRecovery = options.legacyRecoveryContract !== undefined;
+    if (
+      options.legacyRecoveryContract !== undefined &&
+      options.legacyRecoveryContract !== frozenLegacyReaderSummaryRecoveryContract
+    ) {
+      throw new Error("Reader summary legacy recovery contract is not canonical");
+    }
+    this.reasoningEffort = resolveReaderSummaryBackendEffort(
+      this.modelBackend,
+      options.reasoningEffort,
+      this.legacyRecovery ? "xhigh" : defaultReasoningEffort,
+      this.model,
+    );
     this.evalDatasetVersion = nonEmptyOrFallback(
       options.evalDatasetVersion,
       defaultEvalDatasetVersion,
@@ -110,7 +159,10 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     policy: ReaderSummaryModelPolicy,
     budget: ReaderSummaryModelBudget,
   ): ReaderSummaryModelRoute {
-    const route = this.buildRoute();
+    const route = { ...this.buildRoute(), ...(input.dailyEditorialPlan !== undefined
+      ? { promptVersion: "reader_summary.prompt.2026-11-03.daily_editorial_v1" }
+      : input.evidence.dailyGenerationInput === undefined ? {} :
+        { promptVersion: "reader_summary.prompt.2026-11-03.daily_likes_digest" }) };
     const estimate = this.estimate(input, route);
 
     if (
@@ -155,9 +207,17 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     };
   }
 
-  async generate(
-    input: ReaderSummaryModelInput,
-    selectedRoute: ReaderSummaryModelRoute,
+  async planDaily(input: ReaderSummaryModelInput, route: ReaderSummaryModelRoute):
+    Promise<ReaderSummaryDailyEditorialAttempt> {
+    if (this.legacyRecovery || input.evidence.dailyGenerationInput === undefined)
+      throw new Error("Daily editorial planning is not available for this profile");
+    return runAgentRuntimeDailyEditor({ input, client: this.client,
+      baseCommand: this.buildTaskCommand(input, route, "primary"),
+      inputTokenDivisor: this.inputTokenDivisor, maxOutputTokens: this.maxOutputTokens,
+      sink: this.verifiedAttestationSink });
+  }
+  async generate(input: ReaderSummaryModelInput,
+    selectedRoute: ReaderSummaryModelRoute, writerBudget?: ReaderSummaryModelBudget,
   ): Promise<ProviderReaderSummaryAttempt> {
     if (
       primaryReaderSummaryEvidence(input.evidence).selectedEvidence.length === 0
@@ -165,24 +225,34 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
       return this.buildNoSignalAttempt(input, selectedRoute);
     }
 
-    for (const attempt of ["primary", "repair"] as const) {
-      const command = this.buildTaskCommand(input, selectedRoute, attempt);
+    let logicalRunUsage: ReaderSummaryModelEstimate | undefined;
+    let schemaViolations: readonly string[] | undefined;
+    // Two attempts at most: the repair runs once, for either cause.
+    for (const attempt of readerSummaryNarrativeAttempts) {
+      const command = this.buildTaskCommand(input, selectedRoute, attempt, schemaViolations);
+      const dailyGenerationReceipt = readerSummaryDailyInputReceipt(command.prompt, input.evidence.dailyGenerationInput, input.dailyEditorialPlan);
       const result = await this.client.runTask(command);
+      const estimate = this.estimate(input, selectedRoute);
+      const attemptUsage = usageFromAgentRuntime(result.usage, estimate);
+      logicalRunUsage = sumReaderSummaryUsage(logicalRunUsage, attemptUsage);
+      if (attempt === "primary") {
+        schemaViolations = this.gatewaySchemaViolations(result);
+        if (schemaViolations !== undefined) {
+          assertReaderSummaryRepairWithinBudget(logicalRunUsage, estimate, writerBudget);
+          continue;
+        }
+      }
       try {
         const rawDraft = readAgentRuntimeObjectOutput(
           result,
           parseOpenAiReaderSummaryJsonObject,
           "Reader summary",
         );
-        const usage = usageFromAgentRuntime(
-          result.usage,
-          this.estimate(input, selectedRoute),
-        );
         const draft = normalizeOpenAiReaderSummaryDraft(
           rawDraft,
           input,
           selectedRoute,
-          usage,
+          logicalRunUsage,
           this.evalDatasetVersion,
         );
         await verifyAndRecordReaderSummaryExecution({
@@ -191,12 +261,16 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
           taskRole: "summary",
           attempt,
           normalizedOutput: draft,
+          legacyRecoveryContract: this.legacyRecovery
+            ? frozenLegacyReaderSummaryRecoveryContract
+            : undefined,
           sink: this.verifiedAttestationSink,
         });
 
-        return { route: selectedRoute, draft };
+        return { route: selectedRoute, draft, ...(dailyGenerationReceipt === undefined ? {} : { dailyGenerationReceipt }) };
       } catch (error) {
         if (attempt === "primary" && isRepairableNarrativeError(error)) {
+          assertReaderSummaryRepairWithinBudget(logicalRunUsage, estimate, writerBudget);
           continue;
         }
         throw error;
@@ -205,13 +279,37 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
 
     throw new Error("Reader summary repair attempt did not return a result");
   }
+  /**
+   * Output the gateway strict decode rejects gets one repair that names every
+   * broken path and limit, never the rejected text, on every backend the
+   * gateway serves (Codex included). Only the gateway client reports
+   * outputValidationViolations; the CLI runtime enforces the schema itself
+   * and keeps failing such output.
+   */
+  private gatewaySchemaViolations(result: AgentRuntimeTaskResult): readonly string[] | undefined {
+    const failure = result.status === "failed" ? result.failure : undefined;
+    if (failure?.code !== "provider_output_invalid" ||
+        failure.details?.outputValidationStage !== "schema_normalization" ||
+        failure.details.outputValidationViolations === undefined) return undefined;
+    const reported = (failure.details.outputValidationViolations ?? "").split(" ")
+      .filter((entry) => safeOutputViolationPattern.test(entry));
+    const first = failure.details.outputValidationPath;
+    return (reported.length > 0 ? reported : [first ?? "json_parse_or_empty"])
+      .slice(0, maxReportedOutputViolations);
+  }
 
   private buildTaskCommand(
     input: ReaderSummaryModelInput,
     selectedRoute: ReaderSummaryModelRoute,
     attempt: "primary" | "repair",
+    schemaViolations?: readonly string[],
   ): AgentRuntimeTaskCommand {
     const isRepair = attempt === "repair";
+    const selectedSchema = readerSummaryWriterSchema(input);
+    const hardLimits = isGatewayReaderSummaryBackend(this.modelBackend)
+      ? `\n${gatewayOutputHardLimits(selectedSchema)}` : "";
+    const repairInstruction = !isRepair ? ""
+      : `\n${readerSummaryRepairInstruction(input, schemaViolations)}`;
     return {
       requestId: buildAgentRuntimeRequestId(
         isRepair ? "reader-summary-repair" : "reader-summary",
@@ -232,18 +330,26 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
       provider: this.agentProvider,
       providerInstanceId: this.providerInstanceId,
       purpose: isRepair
-        ? "social_monitor.reader_summary.repair"
-        : "social_monitor.reader_summary.generate",
-      systemPrompt: isRepair
-        ? `${buildOpenAiReaderSummaryInstructions(input)}\n${narrativeRepairInstruction}`
-        : buildOpenAiReaderSummaryInstructions(input),
+        ? this.legacyRecovery
+          ? frozenLegacyReaderSummaryRecoveryContract.purposes.repair
+          : activeReaderSummaryPurposes.repair
+        : this.legacyRecovery
+          ? frozenLegacyReaderSummaryRecoveryContract.purposes.generate
+          : activeReaderSummaryPurposes.generate,
+      systemPrompt: `${buildOpenAiReaderSummaryInstructions(input)}${hardLimits}${repairInstruction}`,
       prompt: buildOpenAiReaderSummaryPromptPayload(input),
-      outputSchema: openAiReaderSummaryJsonSchema,
+      outputSchema: selectedSchema,
       controls: {
         interactive: false,
         outputSchemaName: "social_monitor_reader_summary_artifact",
         schemaVersion: selectedRoute.schemaVersion,
         model: this.model,
+        ...(this.modelBackend === "xiaomi-mimo-token-plan"
+          ? { modelBackend: this.modelBackend }
+          : {}),
+        ...readerSummaryRouteControls(this.modelBackend, this.reasoningEffort),
+        toolsEnabled: false,
+        toolPolicy: "none",
         maxOutputTokens: this.maxOutputTokens,
       },
       timeoutMs: this.timeoutMs,
@@ -347,18 +453,13 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
           storyClusters: input.evidence.clusters,
           sourceWindow: input.evidence.sourceWindow,
           selectedEvidence: input.evidence.selectedEvidence,
+          editorialSlate: input.evidence.editorialSlate,
         }),
       },
     };
   }
 }
 
-const narrativeRepairInstruction =
-  "Repair the complete JSON response. Every narrativeSections item must use the non-empty string fields title and text, never summary, body or description. If coveragePlan.lead is null, return empty topStories and narrativeSections plus a concrete noSignalReason. For single_story, narrativeSections[0] must have kind lead and cite coveragePlan.lead. For daily_synthesis, it must have kind lead, set storyClusterId to null, and cite both coveragePlan.lead and at least one coveragePlan.secondary cluster. Return exactly one secondary_signal for every coveragePlan.secondary entry. Omit any watch that is not self-contained and backed by high engagement, first-party authority or cross-provider support. Do not change facts or invent citations.";
-
-const isRepairableNarrativeError = (error: unknown): boolean =>
-  error instanceof Error &&
-  error.message.startsWith("Reader summary narrative");
 
 export const resolveAgentRuntimeReaderSummaryModelOptions = (
   env: NodeJS.ProcessEnv,
@@ -369,15 +470,14 @@ export const resolveAgentRuntimeReaderSummaryModelOptions = (
     value: env.AGENT_RUNTIME_READER_SUMMARY_PROMPT_VERSION,
   });
 
+  const generationIdentity = resolveReaderSummaryGenerationIdentityFromEnv(env);
   return {
     client,
-    agentProvider: parseAgentRuntimeProvider(env.AGENT_RUNTIME_PROVIDER),
+    agentProvider: generationIdentity.provider,
     providerInstanceId: env.AGENT_RUNTIME_PROVIDER_INSTANCE_ID,
-    model: env.AGENT_RUNTIME_READER_SUMMARY_MODEL,
-    reasoningEffort: parseReaderSummaryReasoningEffort(
-      env.AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT ??
-        env.AGENT_RUNTIME_REASONING_EFFORT,
-    ),
+    model: generationIdentity.model,
+    modelBackend: generationIdentity.backend,
+    reasoningEffort: resolveReaderSummaryReasoningEffortFromEnv(env),
     evalDatasetVersion: env.READER_SUMMARY_EVAL_DATASET_VERSION,
     timeoutMs: parsePositiveInteger(
       env.AGENT_RUNTIME_READER_SUMMARY_TIMEOUT_MS ??
@@ -387,32 +487,4 @@ export const resolveAgentRuntimeReaderSummaryModelOptions = (
       env.AGENT_RUNTIME_READER_SUMMARY_MAX_OUTPUT_TOKENS,
     ),
   };
-};
-
-const parseReaderSummaryReasoningEffort = (
-  value: string | undefined,
-): "xhigh" | undefined => {
-  if (value === undefined || value.trim().length === 0) {
-    return undefined;
-  }
-  if (value.trim() !== "xhigh") {
-    throw new Error(
-      "AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT must be xhigh",
-    );
-  }
-
-  return "xhigh";
-};
-
-const parseAgentRuntimeProvider = (
-  value: string | undefined,
-): AgentRuntimeProvider | undefined => {
-  if (value === undefined || value.trim().length === 0) {
-    return undefined;
-  }
-  if (value === "codex" || value === "claude") {
-    return value;
-  }
-
-  throw new Error('AGENT_RUNTIME_PROVIDER must be "codex" or "claude"');
 };

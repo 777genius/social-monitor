@@ -51,6 +51,30 @@ export default tseslint.config(
     },
   },
   {
+    files: ['scripts/evals/reader-paired-experiment/**/*.cjs'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: {
+        AbortController: 'readonly',
+        AbortSignal: 'readonly',
+        Buffer: 'readonly',
+        DOMException: 'readonly',
+        TextDecoder: 'readonly',
+        TextEncoder: 'readonly',
+        URL: 'readonly',
+        __dirname: 'readonly',
+        clearImmediate: 'readonly',
+        console: 'readonly',
+        process: 'readonly',
+        setImmediate: 'readonly',
+        structuredClone: 'readonly',
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
+    },
+  },
+  {
     files: ['**/*.spec.ts', '**/*.e2e-spec.ts'],
     rules: {
       '@typescript-eslint/no-unsafe-assignment': 'off',

@@ -7,6 +7,17 @@ import type {
   PrismaSourceItemRecord,
 } from "./prisma-ingestion-records";
 
+export type PrismaScanRetryWhere = {
+  readonly id?: string | { readonly in: readonly string[] };
+  readonly tenantId?: string;
+  readonly workspaceId?: string;
+  readonly status?: "RETRY_ENQUEUED" | "DEAD_LETTERED";
+  readonly claimToken?: string | null;
+  readonly claimedUntil?: { readonly gt: Date };
+  readonly OR?: readonly ({ readonly claimedUntil: null } |
+    { readonly claimedUntil: { readonly lte: Date } })[];
+};
+
 type GitHubRepositoryTrendCandidateKey = {
   readonly tenantId: string;
   readonly workspaceId: string;
@@ -229,17 +240,19 @@ export type PrismaIngestionClient = {
       };
     }): Promise<PrismaScanFailureQueueEntryRecord>;
     findMany(args: {
-      readonly where: {
-        readonly tenantId?: string;
-        readonly workspaceId?: string;
-        readonly status: "RETRY_ENQUEUED" | "DEAD_LETTERED";
-      };
+      readonly where: PrismaScanRetryWhere;
       readonly orderBy: { readonly createdAt: "asc" | "desc" };
       readonly take: number;
     }): Promise<readonly PrismaScanFailureQueueEntryRecord[]>;
     deleteMany(args: {
-      readonly where: {
-        readonly id: { readonly in: readonly string[] };
+      readonly where: PrismaScanRetryWhere;
+    }): Promise<{ readonly count: number }>;
+    updateMany(args: {
+      readonly where: PrismaScanRetryWhere;
+      readonly data: {
+        readonly claimToken?: string | null;
+        readonly claimedUntil?: Date | null;
+        readonly status?: "RETRY_ENQUEUED" | "DEAD_LETTERED";
       };
     }): Promise<{ readonly count: number }>;
     count(args: {
@@ -263,6 +276,7 @@ export type PrismaIngestionClient = {
         readonly skippedDuplicates: number;
         readonly projected: number;
         readonly failureReason?: string | null;
+        readonly terminalFailure?: boolean;
       };
       readonly create: {
         readonly scanJobId: string;
@@ -278,6 +292,7 @@ export type PrismaIngestionClient = {
         readonly skippedDuplicates: number;
         readonly projected: number;
         readonly failureReason?: string | null;
+        readonly terminalFailure?: boolean;
       };
     }): Promise<PrismaScanAttemptRecord>;
     findFirst(args: {

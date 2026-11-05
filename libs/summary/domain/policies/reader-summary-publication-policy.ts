@@ -1,22 +1,39 @@
+import { readerDisplayPublicationFindings } from "./reader-summary-display-publication";
+
 import type {
   ReaderSummaryArtifact,
   ReaderSummaryContent,
 } from "../entities/reader-summary-artifact";
-import type { TopRead } from "../entities/top-read";
 import type { SummaryEvidenceSelection } from "../value-objects/summary-evidence-item";
+import type { ReaderSummaryCitation } from "../entities/citation";
+import { readerSummaryIndependentProviderFamilyCount } from "../value-objects/reader-summary-provider-identity";
 import {
   buildReaderSummaryCoveragePlan,
   type ReaderSummaryCoveragePlan,
 } from "../services/reader-summary-coverage-plan";
+import { dailyEditorialCoveragePlan } from "../services/reader-summary-daily-editorial-plan";
 import { evaluateReaderSummaryArtifactEditorialQuality } from "./reader-summary-artifact-editorial-quality-policy";
 import { primaryReaderSummaryEvidence } from "./reader-summary-github-trending-policy";
+import { isGitHubReaderItem } from "./reader-summary-github-projection-audit";
 import type {
   ReaderSummaryPublicationDecision,
   ReaderSummaryPublicationRejectionFinding,
 } from "./reader-summary-publication-decision";
 import { publicationShadowReport } from "./reader-summary-publication-shadow";
-import { isTopReadEligibleEvidence } from "./top-read-eligibility-policy";
+import { promotionPublicationFindings } from "./reader-summary-promotion-publication-verification";
+import { readerSummaryPromotionPublicationOracle } from "./reader-summary-promotion-publication-oracle";
+import { readerSummaryV3PromotionFindings } from
+  "./reader-summary-v3-publication";
+import {
+  READER_POST_PROMOTION_ATTESTATION_POLICY_VERSION,
+  READER_POST_PROMOTION_POLICY_V1,
+} from "./reader-post-promotion-policy";
 
+import {
+  collectReaderSummaryTechnicalLeaks,
+  collectReaderSummaryUserFacingTechnicalLeaks,
+} from "./reader-summary-publication-technical-leaks";
+export { collectReaderSummaryUserFacingTechnicalLeaks } from "./reader-summary-publication-technical-leaks";
 export { withReaderSummaryPublicationRejections } from "./reader-summary-publication-decision";
 export type {
   ReaderSummaryPublicationDecision,
@@ -31,6 +48,7 @@ export class ReaderSummaryPublicationPolicy {
   evaluate(params: {
     readonly artifact: ReaderSummaryArtifact;
     readonly evidence: SummaryEvidenceSelection;
+    readonly editorialEvidence?: SummaryEvidenceSelection;
   }): ReaderSummaryPublicationDecision {
     const snapshot = params.artifact.toSnapshot();
     const noSignal = isValidNoSignalArtifact(snapshot);
@@ -45,14 +63,49 @@ export class ReaderSummaryPublicationPolicy {
       ),
     );
     const technicalLeaks = unique([
-      ...collectTechnicalLeaks([snapshot.headline, snapshot.executiveSummary]),
+      ...collectReaderSummaryTechnicalLeaks([
+        snapshot.headline,
+        snapshot.executiveSummary,
+      ]),
       ...(snapshot.content === undefined
         ? []
         : collectReaderSummaryUserFacingTechnicalLeaks(snapshot.content)),
     ]);
     const topReads = topReadReferences(snapshot);
     const shadow = publicationShadowReport(params);
-    const rejectionFindings: ReaderSummaryPublicationRejectionFinding[] = [];
+    const rejectionFindings: ReaderSummaryPublicationRejectionFinding[] = [
+      ...readerDisplayPublicationFindings(snapshot, params.evidence),
+    ];
+
+    if (params.evidence.promotionV3 !== undefined) {
+      rejectionFindings.push(...readerSummaryV3PromotionFindings(snapshot, params.evidence));
+    } else {
+      const verification = readerSummaryPromotionPublicationOracle({
+        evidence: params.evidence.selectedEvidence,
+        citations: independentPromotionCitations(
+          params.evidence.selectedEvidence,
+          snapshot.citationMap,
+        ),
+        sourceWindow: params.evidence.sourceWindow,
+        clusters: params.evidence.clusters,
+        approvedSameStoryRelations: params.evidence.approvedSameStoryRelations,
+        relatedTopicRelations: params.evidence.relatedTopicRelations,
+        editorialSlate: params.evidence.editorialSlate,
+      });
+      rejectionFindings.push(
+        ...promotionPublicationFindings({
+          expectedTop: verification.top,
+          expectedAdditional: verification.additional,
+          actualTop: snapshot.content?.topReads ?? [],
+          actualSelected: (snapshot.content?.selectedPosts ?? []).filter(
+            (item) => !isGitHubReaderItem(item),
+          ),
+          expectedPolicyVersion: params.evidence.editorialSlate === undefined
+            ? READER_POST_PROMOTION_POLICY_V1.version
+            : READER_POST_PROMOTION_ATTESTATION_POLICY_VERSION,
+        }),
+      );
+    }
 
     if (!noSignal && topReads.length === 0) {
       rejectionFindings.push({
@@ -77,14 +130,13 @@ export class ReaderSummaryPublicationPolicy {
     }
 
     if (!noSignal) {
-      const coveragePlan = buildReaderSummaryCoveragePlan(
-        primaryReaderSummaryEvidence(params.evidence),
-      );
+      const editorialEvidence = primaryReaderSummaryEvidence(params.editorialEvidence ?? params.evidence);
+      const coveragePlan = snapshot.dailyEditorialPlan === undefined
+        ? buildReaderSummaryCoveragePlan(editorialEvidence)
+        : dailyEditorialCoveragePlan(snapshot.dailyEditorialPlan.plan, editorialEvidence);
       const editorialQuality = evaluateReaderSummaryArtifactEditorialQuality(
-        editorialQualityInput(
-          snapshot,
-          coveragePlan.mode,
-        ),
+        { ...editorialQualityInput(snapshot, coveragePlan.mode, params.evidence),
+          coveragePolicyVersion: coveragePlan.policyVersion },
       );
       for (const issue of editorialQuality.issues) {
         rejectionFindings.push({
@@ -92,7 +144,7 @@ export class ReaderSummaryPublicationPolicy {
           reason: `Reader summary editorial quality gate failed: ${issue}`,
         });
       }
-      for (const issue of coveragePlanIssues(snapshot, coveragePlan)) {
+      for (const issue of snapshot.dailyEditorialPlan === undefined ? coveragePlanIssues(snapshot, coveragePlan) : []) {
         rejectionFindings.push({
           code: "editorial_quality",
           reason: `Reader summary editorial quality gate failed: ${issue}`,
@@ -136,19 +188,6 @@ export class ReaderSummaryPublicationPolicy {
           });
           continue;
         }
-
-        if (!isTopReadEligibleEvidence(evidence)) {
-          rejectionFindings.push({
-            code: "top_read_ineligible_source",
-            reason: `Top read "${topRead.title}" references ineligible ${evidence.providerKey} evidence.`,
-            topReadTitle: topRead.title,
-            citationId: citation.citationId,
-            feedItemId: citation.feedItemId,
-            sourceItemId: citation.sourceItemId,
-            providerKey: evidence.providerKey,
-            canonicalUrl: evidence.canonicalUrl,
-          });
-        }
       }
     }
 
@@ -157,9 +196,9 @@ export class ReaderSummaryPublicationPolicy {
       rejectionCount: rejectionFindings.length,
       confidenceScore: snapshot.confidence.score,
       selectedEvidenceCount: params.evidence.selectedEvidence.length,
-      providerCount: new Set(
+      providerCount: readerSummaryIndependentProviderFamilyCount(
         params.evidence.selectedEvidence.map((item) => item.providerKey),
-      ).size,
+      ),
     });
 
     if (rejectionFindings.length > 0) {
@@ -186,26 +225,32 @@ export class ReaderSummaryPublicationPolicy {
   }
 }
 
-export const collectReaderSummaryUserFacingTechnicalLeaks = (
-  content: ReaderSummaryContent,
-): readonly string[] => {
-  const values = [
-    content.headline,
-    content.oneLineTakeaway,
-    ...content.bullets,
-    ...(content.narrativeSections ?? []).flatMap((section) => [
-      section.title,
-      section.text,
-    ]),
-    ...content.risks,
-    ...content.openQuestions,
-    ...content.nextActions.flatMap((item) => [item.label, item.reason]),
-    ...content.topReads.flatMap(topReadUserFacingText),
-    ...(content.selectedPosts ?? []).flatMap(topReadUserFacingText),
-  ];
-
-  return collectTechnicalLeaks(values);
-};
+const independentPromotionCitations = (
+  evidence: SummaryEvidenceSelection["selectedEvidence"],
+  citations: readonly ReaderSummaryCitation[],
+): readonly ReaderSummaryCitation[] =>
+  evidence.map((item) => {
+    const citation = [...citations]
+      .sort((left, right) => left.citationId.localeCompare(right.citationId))
+      .find(
+        (candidate) =>
+          candidate.feedItemId === item.feedItemId &&
+          candidate.sourceItemId === item.sourceItemId &&
+          candidate.providerKey === item.providerKey &&
+          (candidate.canonicalUrl === undefined ||
+            candidate.canonicalUrl === item.canonicalUrl),
+      );
+    return (
+      citation ?? {
+        citationId: `publication-expected:${item.feedItemId}`,
+        feedItemId: item.feedItemId,
+        sourceItemId: item.sourceItemId,
+        providerKey: item.providerKey,
+        field: "canonicalUrl",
+        canonicalUrl: item.canonicalUrl,
+      }
+    );
+  });
 
 const isValidNoSignalArtifact = (
   snapshot: ReturnType<ReaderSummaryArtifact["toSnapshot"]>,
@@ -281,8 +326,7 @@ const coveragePlanIssues = (
           : []),
         ...(sectionClusterId !== undefined &&
         section.citationIds.some(
-          (citationId) =>
-            clusterIdForCitation(citationId) !== sectionClusterId,
+          (citationId) => clusterIdForCitation(citationId) !== sectionClusterId,
         )
           ? ["Secondary signal cites evidence from another story cluster"]
           : []),
@@ -311,7 +355,8 @@ const coveragePlanIssues = (
     ...mainNarrativeCitationClusterIds
       .filter((clusterId) => !plannedClusterIds.has(clusterId))
       .map(
-        () => "Main narrative cites a story outside the deterministic coverage plan",
+        () =>
+          "Main narrative cites a story outside the deterministic coverage plan",
       ),
     ...secondaryIssues,
   ]);
@@ -322,14 +367,28 @@ const editorialQualityInput = (
   coverageMode: Parameters<
     typeof evaluateReaderSummaryArtifactEditorialQuality
   >[0]["coverageMode"],
+  evidence: SummaryEvidenceSelection,
 ): Parameters<typeof evaluateReaderSummaryArtifactEditorialQuality>[0] => {
   const narrativeSections = snapshot.content?.narrativeSections ?? [];
   const clusterIdsByFeedItemId = storyClusterIdsByFeedItemId(snapshot);
 
   return {
     headline: snapshot.content?.headline ?? snapshot.headline,
+    dailyEditorialPlan: snapshot.dailyEditorialPlan !== undefined,
+    ...(snapshot.dailyEditorialPlan?.plan.version === "reader_summary.daily_editorial.v2" && snapshot.dailyGenerationInput ? {synthesisProof:{plan:snapshot.dailyEditorialPlan.plan,selected:snapshot.dailyGenerationInput.selected,citations:snapshot.citationMap}} : {}),
     coverageMode,
-    topPostTitles: topReadReferences(snapshot).map((item) => item.title),
+    // Board titles now carry full source context. Also compare the original
+    // headings of their cited sources so appended bodies cannot hide copying.
+    topPostTitles: [
+      ...topReadReferences(snapshot).map((item) => item.title),
+      ...evidence.selectedEvidence
+        .filter((item) => snapshot.citationMap.some((citation) =>
+          citation.feedItemId === item.feedItemId &&
+          topReadReferences(snapshot).some((read) =>
+            read.citationIds.includes(citation.citationId)),
+        ))
+        .map((item) => item.title),
+    ],
     citations: snapshot.citationMap.map((citation) => {
       const storyClusterIds = clusterIdsByFeedItemId.get(citation.feedItemId);
       const storyClusterId =
@@ -368,6 +427,7 @@ const renderedNarrativeMarkdown = (
 const storyClusterIdsByFeedItemId = (
   snapshot: ReturnType<ReaderSummaryArtifact["toSnapshot"]>,
 ): ReadonlyMap<string, ReadonlySet<string>> => {
+  if (snapshot.dailyGenerationInput !== undefined) return new Map(snapshot.dailyGenerationInput.selected.map(entry => [entry.feedItemId, new Set([entry.storyId])]));
   const clusterIdsByFeedItemId = new Map<string, Set<string>>();
   for (const cluster of snapshot.storyClusters) {
     for (const feedItemId of [
@@ -389,7 +449,9 @@ const topReadReferences = (
   readonly title: string;
   readonly citationIds: readonly string[];
 }[] => {
-  const topReads = snapshot.content?.topReads;
+  // Without ranked posts the news block is the reader's lead board.
+  const topReads = (snapshot.content?.topReads.length ?? 0) > 0
+    ? snapshot.content?.topReads : snapshot.content?.newsWithoutRatingPosts;
   if (topReads !== undefined && topReads.length > 0) {
     return topReads.map((item) => ({
       title: item.title,
@@ -402,13 +464,6 @@ const topReadReferences = (
     citationIds: item.citationIds,
   }));
 };
-
-const topReadUserFacingText = (item: TopRead): readonly string[] => [
-  item.title,
-  item.reason,
-  item.whyNow,
-  ...item.whyImportant,
-];
 
 const canonicalPublicationScore = (params: {
   readonly topReadCount: number;
@@ -431,32 +486,10 @@ const canonicalPublicationScore = (params: {
   );
 };
 
-const technicalLeakPatterns = [
-  /\bsource item\b/i,
-  /\bcanonicalurl\b/i,
-  /\bsource-binding\b/i,
-  /\bsourcebinding\b/i,
-  /\binterest:[0-9a-f-]{8,}\b/i,
-  /\bprovider:[a-z0-9_-]+\b/i,
-  /\bfeed_item\b/i,
-  /\bsource_item\b/i,
-  /\breadersummary\b/i,
-  /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i,
-];
-
-const collectTechnicalLeaks = (values: readonly string[]): readonly string[] =>
-  unique(
-    values.filter((value) =>
-      technicalLeakPatterns.some((pattern) => pattern.test(value)),
-    ),
-  );
-
 const distinctDefined = (
   values: readonly (string | undefined)[],
 ): readonly string[] => [
-  ...new Set(
-    values.filter((value): value is string => value !== undefined),
-  ),
+  ...new Set(values.filter((value): value is string => value !== undefined)),
 ];
 
 const unique = <TValue>(values: readonly TValue[]): readonly TValue[] => [

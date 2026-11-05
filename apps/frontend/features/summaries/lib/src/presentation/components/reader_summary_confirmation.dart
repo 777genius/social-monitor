@@ -1,5 +1,6 @@
 import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/summary_citation.dart';
+import '../../domain/value_objects/reader_summary_provider_family.dart';
 
 bool readerSummaryHasCrossSourceSupport(
   TopRead item,
@@ -10,17 +11,12 @@ bool readerSummaryHasCrossSourceSupport(
             ...item.confirmedProviderKeys,
             ...citations.map((citation) => citation.providerKey ?? ''),
           ]
-          .map((providerKey) => providerKey.trim().toLowerCase())
-          .where((providerKey) => providerKey.isNotEmpty)
+          .map(readerSummaryIndependentProviderFamily)
+          .where((providerFamily) => providerFamily.isNotEmpty)
           .toSet()
           .length;
 
-  if (providerCount > 1) {
-    return true;
-  }
-
-  final evidenceText = '${item.reason} ${item.whyNow}'.toLowerCase();
-  return evidenceText.contains('cross-source');
+  return providerCount > 1;
 }
 
 String? readerSummarySourceSupportBadge(

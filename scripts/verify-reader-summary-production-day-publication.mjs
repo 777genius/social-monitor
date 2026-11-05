@@ -2,8 +2,20 @@
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";
+import { historicalGithubPolicyMatches } from "./lib/reader-summary-historical-github-policy.mjs";
+import { validHistoricalRegenerationSourceAuthority } from
+  "./lib/reader-summary-production-day-regeneration-source-authority.mjs";
 import { publicationQualityContract } from "./lib/reader-summary-publication-quality-contract.mjs";
-
+import { validateDailyModelExecution } from "./lib/reader-summary-production-day-model-telemetry-verifier.mjs";
+import {
+  approvedCodexRuntimeVersion,
+  approvedLauncherSha256,
+  approvedMimoRuntimeVersion,
+  isAttestedRuntimeEngine,
+  isGatewayModel,
+  isPublicationRuntimeProvenance,
+  validatePublicationAttestationRecord,
+} from "./lib/reader-summary-publication-runtime-policy.mjs";
 const reportArtifactFormat = "reader-summary-production-day-run-v1";
 const reportGeneratedBy = "npm run run:reader-summary-production-day";
 const evidenceArtifactId = "durable-reader-summary-postgres-evidence-v1";
@@ -24,7 +36,6 @@ const datedReportPath = requiredOption(options, "--dated-report");
 const evidencePath = requiredOption(options, "--evidence-artifact");
 const frontendPath = requiredOption(options, "--frontend-artifact");
 assertDate(expectedDate);
-
 const datedReportBytes = readFileSync(datedReportPath);
 const report = parseJson(datedReportBytes, datedReportPath);
 const evidenceBinding = validateReport(
@@ -54,7 +65,6 @@ const proofPath = options.get("--proof");
 if ((proofOutPath === undefined) === (proofPath === undefined)) {
   fail("provide exactly one of --proof-out or --proof");
 }
-
 if (proofOutPath !== undefined) {
   writeFileSync(proofOutPath, `${stableJson(expectedProof)}\n`, {
     encoding: "utf8",
@@ -108,12 +118,21 @@ function validateReport(report, expectedDate, evidencePath, frontendPath) {
     frontend,
     frontendBytes,
     expectedPeriod,
+    reportContract,
   );
   validateModel(
     report.model,
     binding.runtimeProvenance,
     report.provenance,
     reportContract,
+  );
+  validateDailyModelExecution(
+    report.model.modelExecution,
+    evidence,
+    frontend,
+    binding,
+    reportContract,
+    report.provenance.mode,
   );
   validateSummary(report.summary, binding);
   validateReportIdentity(report.reportIdentity, binding, expectedDate);
@@ -150,7 +169,10 @@ function validateModel(model, runtimeProvenance, provenance, reportContract) {
     stableJson(runtimeFields(model, runtimeProvenance)) !==
       stableJson(runtimeProvenance) ||
     !validNotExecutedModelFields(model, runtimeProvenance) ||
-    !isProductionRuntimeProvenance(runtimeProvenance) ||
+    !isPublicationRuntimeProvenance(
+      runtimeProvenance,
+      reportContract !== "current",
+    ) ||
     model.writesProductionData !== true ||
     model.allowDegraded !== false ||
     model.allowHistorical !== false ||
@@ -205,7 +227,7 @@ function runtimeFields(model, provenance) {
   };
 }
 
-function runtimeProvenanceFromExecutorAttestations(evidence) {
+function runtimeProvenanceFromExecutorAttestations(evidence, allowLegacy, requireDailyEditor) {
   if (!Array.isArray(evidence.executionAttestations)) {
     fail("evidence execution attestations are missing");
   }
@@ -221,7 +243,7 @@ function runtimeProvenanceFromExecutorAttestations(evidence) {
     fail("not_executed is valid only for selected=0 and no_signal");
   }
   const records = evidence.executionAttestations;
-  for (const record of records) validateAttestationRecord(record);
+  for (const record of records) validatePublicationAttestationRecord(record, allowLegacy);
   if (
     new Set(records.map((record) => record.attestation.requestId)).size !==
     records.length
@@ -230,6 +252,16 @@ function runtimeProvenanceFromExecutorAttestations(evidence) {
   }
   if (records.filter((record) => record.taskRole === "summary").length !== 1) {
     fail("exactly one final summary attestation is required");
+  }
+  const editor = records.find(record => record.taskRole === "daily_editor");
+  if (records.filter((record) => record.taskRole === "daily_editor").length !==
+      (requireDailyEditor ? 1 : 0)) {
+    fail("daily editor attestation count does not match the writer profile");
+  }
+  if (requireDailyEditor
+    ? evidence.dailyEditorOutputSha256 !== editor?.normalizedOutputSha256
+    : evidence.dailyEditorOutputSha256 !== undefined) {
+    fail("attested daily editor output differs from persisted plan");
   }
   const topicLabels = records.filter(
     (record) => record.taskRole === "topic_label",
@@ -253,8 +285,10 @@ function runtimeProvenanceFromExecutorAttestations(evidence) {
   ) {
     fail("duplicate execution task attempt");
   }
+  const topicRecords = records.filter((record) =>
+    record.taskRole !== "summary" && record.taskRole !== "daily_editor");
   const identities = new Set(
-    records.map((record) =>
+    topicRecords.map((record) =>
       [
         record.attestation.provider,
         record.attestation.model,
@@ -265,10 +299,40 @@ function runtimeProvenanceFromExecutorAttestations(evidence) {
       ].join("\0"),
     ),
   );
-  if (identities.size !== 1) {
+  const summaryIdentity = records.find(
+    (record) => record.taskRole === "summary",
+  ).attestation;
+
+  if (editor && !["provider", "model", "reasoningEffort", "runtimeEngine",
+    "runtimePackageVersion", "launcherSha256"].every(field =>
+    editor.attestation[field] === summaryIdentity[field])) {
+    fail("daily editor runtime identity must match the summary runtime");
+  }
+  const topicIdentity = topicLabels[0].attestation;
+  const sameCodexIdentity = [
+    "provider", "model", "reasoningEffort", "runtimeEngine",
+    "runtimePackageVersion", "launcherSha256",
+  ].every((field) => summaryIdentity[field] === topicIdentity[field]);
+  const validMimoPair = summaryIdentity.model === "mimo-v2.6-pro" &&
+    summaryIdentity.runtimePackageVersion === approvedMimoRuntimeVersion &&
+    summaryIdentity.launcherSha256 === approvedLauncherSha256 &&
+    (topicIdentity.model === "mimo-v2.6-pro"
+      ? topicIdentity.runtimePackageVersion === approvedMimoRuntimeVersion
+      : topicIdentity.model === "gpt-5.6-sol" &&
+        topicIdentity.runtimePackageVersion === approvedCodexRuntimeVersion);
+  if (
+    identities.size !== 1 ||
+    (summaryIdentity.model === "mimo-v2.6-pro" &&
+      topicRecords.some((record) =>
+        record.attestation.reasoningEffort !== "high")) ||
+    summaryIdentity.launcherSha256 !== topicIdentity.launcherSha256 ||
+    !(validMimoPair ||
+      ((summaryIdentity.model === "gpt-5.6-sol" ||
+        isGatewayModel(summaryIdentity.model)) && sameCodexIdentity))
+  ) {
     fail("observed executor attestations do not agree");
   }
-  const identity = records[0].attestation;
+  const identity = summaryIdentity;
   const readback = evidence.durableReadback;
   const attestationSetSha256 = sha256Hex(Buffer.from(stableJson(records)));
   if (
@@ -282,11 +346,11 @@ function runtimeProvenanceFromExecutorAttestations(evidence) {
   return {
     execution: "attested",
     summaryModel: "agent-runtime",
-    physicalModel: "gpt-5.6-sol",
+    physicalModel: identity.model,
     provider: "codex",
-    runtime: "subscription-runtime-cli",
+    runtime: identity.runtimeEngine,
     runtimeVersion: identity.runtimePackageVersion,
-    reasoningEffort: "xhigh",
+    reasoningEffort: identity.reasoningEffort,
     launcherSha256: identity.launcherSha256,
     summaryContentSha256: readback.summaryContentSha256,
     topicMapSha256: readback.topicMapSha256,
@@ -294,54 +358,14 @@ function runtimeProvenanceFromExecutorAttestations(evidence) {
     completedTaskCount: records.length,
     topicLabeler: {
       mode: "agent-runtime",
-      physicalModel: "gpt-5.6-sol",
+      physicalModel: topicIdentity.model,
       provider: "codex",
-      runtime: "subscription-runtime-cli",
-      runtimeVersion: identity.runtimePackageVersion,
-      reasoningEffort: "xhigh",
-      launcherSha256: identity.launcherSha256,
+      runtime: topicIdentity.runtimeEngine,
+      runtimeVersion: topicIdentity.runtimePackageVersion,
+      reasoningEffort: topicIdentity.reasoningEffort,
+      launcherSha256: topicIdentity.launcherSha256,
     },
   };
-}
-
-function validateAttestationRecord(record) {
-  assertObject(record, "execution attestation record");
-  assertObject(record.attestation, "execution attestation");
-  const attestation = record.attestation;
-  const purposes = {
-    topic_label: "social_monitor.reader_summary.topic_map.label",
-    topic_relation: "social_monitor.reader_summary.topic_map.verify_relations",
-    story_relation: "social_monitor.reader_summary.verify_story_relations",
-  };
-  const summaryPurpose =
-    record.attempt === "primary"
-      ? "social_monitor.reader_summary.generate"
-      : record.attempt === "repair"
-        ? "social_monitor.reader_summary.repair"
-        : undefined;
-  const expectedPurpose =
-    record.taskRole === "summary" ? summaryPurpose : purposes[record.taskRole];
-  if (
-    typeof record.attempt !== "string" ||
-    record.attempt.length === 0 ||
-    !isSha256(record.normalizedOutputSha256) ||
-    expectedPurpose === undefined ||
-    attestation.schemaVersion !== 1 ||
-    typeof attestation.requestId !== "string" ||
-    attestation.requestId.length === 0 ||
-    attestation.purpose !== expectedPurpose ||
-    !isSha256(attestation.canonicalRequestSha256) ||
-    attestation.provider !== "codex" ||
-    attestation.model !== "gpt-5.6-sol" ||
-    attestation.reasoningEffort !== "xhigh" ||
-    attestation.runtimeEngine !== "subscription-runtime-cli" ||
-    !isConcreteVersion(attestation.runtimePackageVersion) ||
-    !isSha256(attestation.launcherSha256) ||
-    attestation.selectedOutputKind !== "structured_output" ||
-    !isSha256(attestation.selectedOutputSha256)
-  ) {
-    fail("executor execution attestation is malformed or mismatched");
-  }
 }
 
 function validateFrontendRuntimeConsistency(frontend, runtimeProvenance) {
@@ -361,36 +385,6 @@ function validateFrontendRuntimeConsistency(frontend, runtimeProvenance) {
   ) {
     fail("frontend runtime fields contradict executor attestations");
   }
-}
-
-function isProductionRuntimeProvenance(value) {
-  if (isObject(value) && value.execution === "not_executed") {
-    return value.reason === "no_signal";
-  }
-  return (
-    isObject(value) &&
-    isObject(value.topicLabeler) &&
-    value.execution === "attested" &&
-    value.summaryModel === "agent-runtime" &&
-    value.physicalModel === "gpt-5.6-sol" &&
-    value.provider === "codex" &&
-    value.runtime === "subscription-runtime-cli" &&
-    isConcreteVersion(value.runtimeVersion) &&
-    value.reasoningEffort === "xhigh" &&
-    isSha256(value.launcherSha256) &&
-    isSha256(value.summaryContentSha256) &&
-    isSha256(value.topicMapSha256) &&
-    isSha256(value.attestationSetSha256) &&
-    Number.isInteger(value.completedTaskCount) &&
-    value.completedTaskCount >= 2 &&
-    value.topicLabeler.mode === "agent-runtime" &&
-    value.topicLabeler.physicalModel === "gpt-5.6-sol" &&
-    value.topicLabeler.provider === "codex" &&
-    value.topicLabeler.runtime === "subscription-runtime-cli" &&
-    value.topicLabeler.runtimeVersion === value.runtimeVersion &&
-    value.topicLabeler.reasoningEffort === "xhigh" &&
-    value.topicLabeler.launcherSha256 === value.launcherSha256
-  );
 }
 
 function validateCaptureTimestamps(
@@ -483,6 +477,7 @@ function validateEvidence(
   frontend,
   frontendBytes,
   expectedPeriod,
+  reportContract,
 ) {
   assertObject(evidence, "evidence artifact");
   assertObject(evidence.provenance, "evidence.provenance");
@@ -511,7 +506,12 @@ function validateEvidence(
   const capture = evidence.captureExecution;
   const runtimeHealth = capture.runtimeHealth;
   const frontendBinding = capture.frontendArtifact;
-  const runtimeProvenance = runtimeProvenanceFromExecutorAttestations(evidence);
+  const runtimeProvenance = runtimeProvenanceFromExecutorAttestations(
+    evidence,
+    reportContract !== "current",
+    frontend.readerSummaryArtifact.lineage.promptVersion ===
+      "reader_summary.prompt.2026-11-03.daily_editorial_v1",
+  );
   if (evidence.provenance.datasetManifest !== undefined) {
     validateDatasetGuardEvidence(evidence.provenance.datasetManifest);
   }
@@ -536,18 +536,27 @@ function validateEvidence(
     !periodsEqual(frontend.readerSummaryArtifact.period, expectedPeriod) ||
     capture.schemaVersion !== 1 ||
     runtimeHealth.status !== "serving" ||
-    runtimeHealth.runtimeEngine !== "subscription-runtime-cli" ||
+    !isAttestedRuntimeEngine(runtimeHealth.runtimeEngine) ||
+    (runtimeProvenance.execution === "attested" &&
+      runtimeHealth.runtimeEngine !== runtimeProvenance.runtime) ||
     !isConcreteVersion(runtimeHealth.runtimeVersion) ||
     !isSha256(runtimeHealth.launcherSha256) ||
     (runtimeProvenance.execution === "attested" &&
-      (runtimeHealth.runtimeVersion !== runtimeProvenance.runtimeVersion ||
+      ((runtimeProvenance.physicalModel === "mimo-v2.6-pro"
+        ? runtimeHealth.runtimeVersion !== approvedCodexRuntimeVersion ||
+          runtimeProvenance.runtimeVersion !== approvedMimoRuntimeVersion ||
+          runtimeHealth.launcherSha256 !== approvedLauncherSha256
+        : runtimeHealth.runtimeVersion !== runtimeProvenance.runtimeVersion) ||
         runtimeHealth.launcherSha256 !== runtimeProvenance.launcherSha256)) ||
     frontendBinding.format !== frontendArtifactFormat ||
     frontendBinding.sha256 !== sha256Hex(frontendBytes) ||
     frontendBinding.byteLength !== frontendBytes.byteLength ||
     frontendBinding.generatedAt !== frontend.generatedAt ||
     stableJson(capture.runtimeResult) !== stableJson(runtimeProvenance) ||
-    !isProductionRuntimeProvenance(runtimeProvenance)
+    !isPublicationRuntimeProvenance(
+      runtimeProvenance,
+      reportContract !== "current",
+    )
   ) {
     fail("durable evidence artifact provenance or UTC period is invalid");
   }
@@ -653,36 +662,34 @@ function validateLiveProvenance(
   assertObject(provenance.sourceEvidence, "report.provenance.sourceEvidence");
   const standardLiveProvenance =
     provenance.mode === "live-production" && provenance.sourceReport === null;
+  const regenerationSourceAuthority =
+    validHistoricalRegenerationSourceAuthority(provenance);
+  const legacyFreshness =
+    provenance.freshnessOverride?.maxManifestAgeSeconds === 1800 &&
+    provenance.freshnessOverride?.lifetimePolicy === undefined;
+  const currentFreshness =
+    provenance.freshnessOverride?.maxManifestAgeSeconds === undefined &&
+    validDatasetLifetimePolicy(
+      provenance.freshnessOverride?.lifetimePolicy,
+    );
   const regenerationProvenance =
     provenance.mode === "historical-regeneration" &&
-    provenance.priorCollectionProof !== null &&
-    typeof provenance.priorCollectionProof === "object" &&
-    hashBoundArtifactMatches(
-      provenance.priorCollectionProof.sourceAttempt,
-      "reader-summary-production-day-run-v1",
-    ) &&
-    hashBoundArtifactMatches(
-      provenance.priorCollectionProof.collectionArtifact,
-      "reader-summary-clean-real-day-collection-v1",
-    ) &&
-    hashBoundArtifactMatches(
-      provenance.priorCollectionProof.collectionQualityReport,
-      "yesterday-social-collection-quality-report-v1",
-    ) &&
+    regenerationSourceAuthority &&
     datasetGuardMatchesManifest(
       provenance.datasetGuardEvidence,
       provenance.regenerationInputManifest,
+      legacyFreshness,
     ) &&
     provenance.freshnessOverride?.mode ===
       "historical_regeneration_current_snapshot" &&
     provenance.freshnessOverride?.generalAllowHistorical === false &&
-    provenance.freshnessOverride?.maxManifestAgeSeconds === 1800 &&
+    (legacyFreshness || currentFreshness) &&
     stableJson(provenance.datasetGuardEvidence) ===
       stableJson(evidenceDatasetGuard) &&
-    provenance.githubOmission?.mode ===
-      "github_projection_unavailable_historical" &&
-    typeof provenance.githubOmission?.reason === "string" &&
-    provenance.githubOmission.reason.trim().length >= 20;
+    historicalGithubPolicyMatches(
+      provenance.githubPolicy,
+      provenance.regenerationInputManifest,
+    );
   if (
     (!standardLiveProvenance && !regenerationProvenance) ||
     provenance.nonLive !== false ||
@@ -718,7 +725,7 @@ function validateDatasetGuardEvidence(guard) {
   }
 }
 
-function datasetGuardMatchesManifest(guard, manifest) {
+function datasetGuardMatchesManifest(guard, manifest, allowLegacyLifetime = false) {
   if (
     guard === null ||
     typeof guard !== "object" ||
@@ -728,6 +735,9 @@ function datasetGuardMatchesManifest(guard, manifest) {
     return false;
   }
   return (
+    (validDatasetGuardLifetime(guard) ||
+      (allowLegacyLifetime && guard.lifetimePolicy === undefined &&
+        guard.admittedAt === undefined && guard.validatedAt === undefined)) &&
     guard.manifestFormat === manifest.artifactFormat &&
     guard.manifestFileSha256 === manifest.sha256 &&
     guard.manifestGeneratedAt === manifest.generatedAt &&
@@ -744,14 +754,21 @@ function datasetGuardMatchesManifest(guard, manifest) {
   );
 }
 
-function hashBoundArtifactMatches(value, artifactFormat) {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    value.artifactFormat === artifactFormat &&
-    typeof value.sha256 === "string" &&
-    /^[0-9a-f]{64}$/u.test(value.sha256)
-  );
+function validDatasetLifetimePolicy(value) {
+  return value?.mode === "fresh_admission_bounded_operation_v1" &&
+    value.maxAdmissionAgeSeconds === 1800 &&
+    value.maxOperationAgeSeconds === 11760;
+}
+
+function validDatasetGuardLifetime(guard) {
+  if (!validDatasetLifetimePolicy(guard?.lifetimePolicy)) return false;
+  const generatedAt = Date.parse(guard.manifestGeneratedAt);
+  const admittedAt = Date.parse(guard.admittedAt);
+  const validatedAt = Date.parse(guard.validatedAt);
+  return [generatedAt, admittedAt, validatedAt].every(Number.isFinite) &&
+    generatedAt <= admittedAt && admittedAt <= validatedAt &&
+    admittedAt - generatedAt <= 1_800_000 &&
+    validatedAt - admittedAt <= 11_760_000;
 }
 
 function buildProof({

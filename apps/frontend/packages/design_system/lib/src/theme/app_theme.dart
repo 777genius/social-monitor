@@ -42,6 +42,7 @@ abstract final class AppTheme {
     return ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
+      fontFamily: 'Roboto',
       visualDensity: VisualDensity.standard,
       textButtonTheme: TextButtonThemeData(
         style: ButtonStyle(shape: buttonShape),

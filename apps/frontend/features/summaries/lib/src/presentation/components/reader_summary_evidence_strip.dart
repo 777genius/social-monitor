@@ -96,7 +96,7 @@ class _SourceMixChip extends StatelessWidget {
       return AppStatusBadge(label: label, tone: AppStatusTone.neutral);
     }
     final intent = intentForAction(resolvedAction);
-    return Tooltip(
+    return AppTooltip(
       message: intent.disabledReasonCode ?? resolvedAction.reason,
       child: ActionChip(
         key: ValueKey('reader-summary-source-chip-${entry.providerKey}'),

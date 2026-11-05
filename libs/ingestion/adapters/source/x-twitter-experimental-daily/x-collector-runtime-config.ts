@@ -4,6 +4,10 @@ export type XCollectorRuntimeConfig = {
   readonly serviceToken?: string;
 };
 
+// A multi-pass collection can take two minutes before ranking and returning.
+// Keep the RPC bounded while allowing that result to reach the scan caller.
+export const DEFAULT_X_COLLECTOR_GRPC_TIMEOUT_MS = 180_000;
+
 export const resolveXCollectorRuntimeConfig = (
   env: NodeJS.ProcessEnv,
 ): XCollectorRuntimeConfig | null => {
@@ -18,7 +22,10 @@ export const resolveXCollectorRuntimeConfig = (
 
   return {
     address,
-    timeoutMs: readPositiveEnvInteger(env.X_COLLECTOR_GRPC_TIMEOUT_MS, 60_000),
+    timeoutMs: readPositiveEnvInteger(
+      env.X_COLLECTOR_GRPC_TIMEOUT_MS,
+      DEFAULT_X_COLLECTOR_GRPC_TIMEOUT_MS,
+    ),
     serviceToken: readOptionalEnvString(env.X_COLLECTOR_SERVICE_TOKEN),
   };
 };

@@ -33,12 +33,12 @@ void main() {
     expect(find.text('Evidence'), findsNothing);
     expect(find.text('Open source repos'), findsOneWidget);
     expect(find.byType(Scrollbar), findsOneWidget);
-    expect(find.byTooltip('Show previous topic recommendation'), findsNothing);
-    expect(find.byTooltip('Show next topic recommendation'), findsOneWidget);
+    expect(_findTooltip('Show previous topic recommendation'), findsNothing);
+    expect(_findTooltip('Show next topic recommendation'), findsOneWidget);
     expect(find.byIcon(Icons.thumb_up_alt_outlined), findsNWidgets(2));
     expect(find.byIcon(Icons.thumb_down_alt_outlined), findsNWidgets(2));
 
-    await tester.tap(find.byTooltip('Add topic query: Open source repos'));
+    await tester.tap(_findTooltip('Add topic query: Open source repos'));
     await tester.pump();
 
     expect(decisions, [
@@ -65,17 +65,14 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.byTooltip('Show previous topic recommendation'), findsNothing);
-    expect(find.byTooltip('Show next topic recommendation'), findsOneWidget);
+    expect(_findTooltip('Show previous topic recommendation'), findsNothing);
+    expect(_findTooltip('Show next topic recommendation'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Show next topic recommendation'));
+    await tester.tap(_findTooltip('Show next topic recommendation'));
     await tester.pumpAndSettle();
 
-    expect(
-      find.byTooltip('Show previous topic recommendation'),
-      findsOneWidget,
-    );
-    expect(find.byTooltip('Show next topic recommendation'), findsNothing);
+    expect(_findTooltip('Show previous topic recommendation'), findsOneWidget);
+    expect(_findTooltip('Show next topic recommendation'), findsNothing);
   });
 }
 
@@ -154,4 +151,10 @@ ReaderSummaryTopicRecommendation recommendation(
   interestIds: const ['interest-ai'],
   evidenceReaderSummaryIds: const ['summary-1'],
   reasons: const ['4 selected evidence items', '4 top reads', '1 citations'],
+);
+
+Finder _findTooltip(String message) => find.byWidgetPredicate(
+  (widget) =>
+      widget is AppTooltip &&
+      (widget.message ?? widget.richMessage?.toPlainText()) == message,
 );

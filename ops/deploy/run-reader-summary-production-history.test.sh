@@ -18,7 +18,7 @@ export HISTORY_LOG=$FIXTURE/history.log
 bash "$FIXTURE/wrapper.sh" 2026-07-25
 [[ $(cat "$HISTORY_LOG") == $'--maintenance-date 2026-07-23\n--maintenance-date 2026-07-24\n--maintenance-date 2026-07-25' ]]
 
-for invalid in 2026-07-22 2026-08-13 garbage; do
+for invalid in 2026-07-22 2026-08-21 garbage; do
   if bash "$FIXTURE/wrapper.sh" "$invalid" >/dev/null 2>&1; then
     echo "invalid historical bound was accepted: $invalid" >&2
     exit 1

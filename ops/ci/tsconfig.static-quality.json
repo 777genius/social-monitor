@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "target": "ES2023", "module": "NodeNext", "moduleResolution": "NodeNext",
+    "strict": true, "noUncheckedIndexedAccess": true, "exactOptionalPropertyTypes": true,
+    "noImplicitReturns": true, "noEmit": true, "allowImportingTsExtensions": true,
+    "types": ["node"], "skipLibCheck": false
+  },
+  "include": ["static-quality-runner.mts", "static-quality-runner.test.mts", "static-quality-group-keeper.mts"]
+}

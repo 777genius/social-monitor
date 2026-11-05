@@ -9,6 +9,7 @@ import {
   type ReaderSummaryWeeklyPublicationProviderEvidence,
 } from "../../libs/summary/domain";
 import { createVerifiedReaderSummaryGitHubFixtureAuthority } from "./reader-summary-weekly-publication-github-fixture";
+import { maxGitHubTrendingDisplayRepositories } from "../../libs/summary/domain/policies/reader-summary-github-trending-policy";
 export type ReaderSummaryPublicationEvidenceFixture = Readonly<{
   jobId: string;
   artifactId: string;
@@ -18,10 +19,13 @@ export type ReaderSummaryPublicationEvidenceFixture = Readonly<{
 }>;
 export type ReaderSummaryPublicationGitHubEvidenceMode =
   | "verified"
+  | "archived_verified"
   | "ordinary_not_required"
   | "historical_unavailable";
 export type EvidenceFixtureOverrides = Readonly<{
-  providerEvidence?: "default" | "none" | "rss";
+  providerEvidence?: "default" | "none" | "reddit" | "rss";
+  providerPublishedAt?: string;
+  providerObservedAt?: string;
   githubEvidenceMode?: ReaderSummaryPublicationGitHubEvidenceMode;
   publicationInterestId?: string;
 }>;
@@ -51,9 +55,13 @@ export const createReaderSummaryPublicationFixtureAuthority = async (params: {
   }
   const citations =
     params.overrides?.providerEvidence === "rss" ||
+    params.overrides?.providerEvidence === "reddit" ||
     (params.overrides?.providerEvidence !== "none" &&
       params.status === "COMPLETED")
-      ? [await createRssCitation(params)]
+      ? [await createOrdinaryCitation(
+          params,
+          params.overrides?.providerEvidence === "reddit" ? "reddit" : "rss",
+        )]
       : [];
   const common = {
     schemaVersion: "reader_summary.github_projection.v1",
@@ -428,23 +436,37 @@ export const assertReaderSummaryWeeklyPublicationEvidenceRow = async (
         AND reader_summary_artifact_id = $2`,
     [fixture.jobId, fixture.artifactId],
   );
+  const row = result.rows[0];
+  assert(row !== undefined, `${status} publication evidence row is missing`);
+  const githubBoardMode =
+    githubMode === "verified" || githubMode === "archived_verified";
+  const expectedGithubCount =
+    githubMode === "verified"
+      ? 10
+      : githubMode === "archived_verified"
+        ? row.github_evidence.evidenceCount
+        : 0;
+  assert(
+    row.github_evidence.repositories.length === expectedGithubCount &&
+      expectedGithubCount <= maxGitHubTrendingDisplayRepositories &&
+      expectedGithubCount >= (githubBoardMode ? 1 : 0),
+    `${status} publication evidence GitHub board is not exact`,
+  );
   const expectedProviderCount =
-    githubMode === "verified" ? 10 : status === "COMPLETED" ? 1 : 0;
+    githubBoardMode ? expectedGithubCount : status === "COMPLETED" ? 1 : 0;
   const expectedProviderCounts = [
     {
       providerKey: "github-trending-page",
-      count: githubMode === "verified" ? 10 : 0,
+      count: expectedGithubCount,
     },
     { providerKey: "hacker-news", count: 0 },
     { providerKey: "reddit", count: 0 },
     {
       providerKey: "rss",
-      count: githubMode === "verified" ? 0 : expectedProviderCount,
+      count: githubBoardMode ? 0 : expectedProviderCount,
     },
     { providerKey: "x-twitter", count: 0 },
   ];
-  const row = result.rows[0];
-  assert(row !== undefined, `${status} publication evidence row is missing`);
   const postgresCanonical = await canonicalJson(canonicalJsonAuditor, row.canonical_record);
   const jsEvidence = deriveReaderSummaryWeeklyPublicationEvidence({
     tenantId: row.tenant_id,
@@ -468,8 +490,8 @@ export const assertReaderSummaryWeeklyPublicationEvidenceRow = async (
       row.provider_count === expectedProviderCount &&
       row.report_citation_count === expectedProviderCount &&
       row.github_mode === githubMode &&
-      row.github_count === (githubMode === "verified" ? 10 : 0) &&
-      row.github_repositories === (githubMode === "verified" ? 10 : 0) &&
+      row.github_count === expectedGithubCount &&
+      row.github_repositories === expectedGithubCount &&
       row.stored_canonical_matches &&
       postgresCanonical === jsEvidence.canonicalJson &&
       row.canonical_sha256 === jsEvidence.sha256 &&
@@ -614,25 +636,54 @@ export const sha256 = (value: string): string =>
 type FixtureAuthorityParams = Parameters<
   typeof createReaderSummaryPublicationFixtureAuthority
 >[0];
-const createRssCitation = async (
+const createOrdinaryCitation = async (
   params: FixtureAuthorityParams,
+  providerKey: "reddit" | "rss",
 ): Promise<Readonly<Record<string, unknown>>> => {
   const sourceItemId = randomUUID();
   const feedItemId = randomUUID();
   const sourceBindingId = randomUUID();
+  const interestId = params.overrides?.publicationInterestId ?? randomUUID();
   const canonicalUrl = `https://example.test/publication/${sourceItemId}`;
+  const publishedAt = params.overrides?.providerPublishedAt ?? params.requestedAt;
+  const observedAt = params.overrides?.providerObservedAt ?? params.requestedAt;
+  if (params.overrides?.publicationInterestId !== undefined) {
+    const catalog = await params.client.query<{ readonly id: string }>(
+      `SELECT id::text FROM source_catalog_entries WHERE provider_key = $1`,
+      [providerKey],
+    );
+    const sourceCatalogEntryId = catalog.rows[0]?.id ?? randomUUID();
+    if (catalog.rows[0] === undefined) {
+      await params.client.query(
+        `INSERT INTO source_catalog_entries (
+           id, provider_key, display_name, acquisition_mode, readiness,
+           created_at, updated_at
+         ) VALUES ($1, $2, $3, 'pull', 'ready', $4, $4)`,
+        [sourceCatalogEntryId, providerKey,
+          `Publication fixture ${providerKey}`, params.requestedAt],
+      );
+    }
+    await params.client.query(
+      `INSERT INTO source_bindings (
+         id, tenant_id, workspace_id, interest_id, source_catalog_entry_id,
+         capability_profile_version, status, config, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, 1, 'ENABLED', '{}'::jsonb, $6, $6)`,
+      [sourceBindingId, params.tenantId, params.workspaceId, interestId,
+        sourceCatalogEntryId, params.requestedAt],
+    );
+  }
   await params.client.query(
     `INSERT INTO source_items (
        id, tenant_id, workspace_id, source_binding_id, provider_key,
        provider_item_id, canonical_url, title, body, published_at,
        content_hash, observed_at, metadata
      ) VALUES (
-       $1, $2, $3, $4, 'rss', $5, $6, 'Publication evidence',
-       'Exact provider evidence body.', $7, $8, $7, '{}'::jsonb
+       $1, $2, $3, $4, $10, $5, $6, 'Publication evidence',
+       'Exact provider evidence body.', $7, $8, $9, '{}'::jsonb
      )`,
     [sourceItemId, params.tenantId, params.workspaceId, sourceBindingId,
-      `publication-provider:${sourceItemId}`, canonicalUrl, params.requestedAt,
-      "a".repeat(64)],
+      `publication-provider:${sourceItemId}`, canonicalUrl, publishedAt,
+      "a".repeat(64), observedAt, providerKey],
   );
   await params.client.query(
     `INSERT INTO feed_items (
@@ -640,20 +691,20 @@ const createRssCitation = async (
        source_binding_id, provider_key, dedupe_key, canonical_url, title,
        body_preview, published_at, observed_at, updated_at
      ) VALUES (
-       $1, $2, $3, $4, $5, $6, 'rss', $7, $8,
+       $1, $2, $3, $4, $5, $6, $11, $7, $8,
        'Publication evidence', 'Exact provider evidence body.',
-       $9, $9, $9
+       $9, $10, $10
      )`,
-    [feedItemId, params.tenantId, params.workspaceId, randomUUID(),
+    [feedItemId, params.tenantId, params.workspaceId, interestId,
       sourceItemId, sourceBindingId, `publication-feed:${feedItemId}`,
-      canonicalUrl, params.requestedAt],
+      canonicalUrl, publishedAt, observedAt, providerKey],
   );
   return {
     citationId: randomUUID(),
     field: "title",
     feedItemId,
     sourceItemId,
-    providerKey: "rss",
+    providerKey,
     canonicalUrl,
   };
 };

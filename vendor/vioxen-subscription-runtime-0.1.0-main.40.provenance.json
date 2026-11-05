@@ -1,0 +1,13 @@
+{
+  "sourceCommit": "2d53ea63a54769567c6ac64e8658363ead638b43",
+  "source": "gh api repos/vioxen/subscription-runtime/tarball/2d53ea63a54769567c6ac64e8658363ead638b43",
+  "archiveSha256": "2422ac0ffe453f4e7a98e2016c96d72961963e1d644ccf213b1d12b7290fe560",
+  "gitCheckout": false,
+  "schemaVersion": 1,
+  "sourceRepository": "https://github.com/vioxen/subscription-runtime.git",
+  "sourcePullRequest": 164,
+  "packageVersion": "0.1.0-main.40",
+  "packagingProfile": "thin-bundle-agent-account-observability-v1",
+  "sha256": "05d4e10a0b78c51b80fc220c08434221b91decb1be416564a8a32011b62a4a22",
+  "launcherSha256": "50ea49b618cb3273421fe8f39b571194cb3250270477efb20298eea927e6c533"
+}

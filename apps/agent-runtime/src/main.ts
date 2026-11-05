@@ -7,9 +7,23 @@ import "reflect-metadata";
 import { createAgentRuntimeGrpcService } from "./agent-runtime-grpc-service";
 import { resolveAgentRuntimeSettings } from "./agent-runtime-settings";
 import { SubscriptionRuntimeCliExecutor } from "./subscription-runtime-cli-executor";
+import { FileSubscriptionRuntimeInstallationInspector } from "./subscription-runtime-installation";
+import { isMimoOnly } from "./backend-admission-policy";
 
-async function bootstrap(): Promise<void> {
+export type AgentRuntimeStartupProof = {
+  readonly contract: "social-monitor.agent-runtime.startup.v1";
+  readonly endpoint: string;
+  readonly admission: "strict-mimo-token" | "ordinary";
+};
+
+async function bootstrap(): Promise<AgentRuntimeStartupProof> {
   const settings = resolveAgentRuntimeSettings(process.env);
+  if (settings.strictAdmission !== undefined) {
+    await new FileSubscriptionRuntimeInstallationInspector(settings.strictAdmission.workspaceRoot).inspect(
+      settings.cli.command,
+      isMimoOnly(settings.strictAdmission.allowedModelBackends) ? "xiaomi-mimo-token-plan" : undefined,
+    );
+  }
   const server = new Server();
   const executor = new SubscriptionRuntimeCliExecutor(settings.cli);
 
@@ -17,6 +31,7 @@ async function bootstrap(): Promise<void> {
     AgentRuntimeServiceService,
     createAgentRuntimeGrpcService(executor, {
       serviceToken: settings.serviceToken,
+      strictAdmission: settings.strictAdmission,
     }),
   );
 
@@ -45,6 +60,15 @@ async function bootstrap(): Promise<void> {
 
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);
+
+  return {
+    contract: "social-monitor.agent-runtime.startup.v1",
+    endpoint: settings.bindAddress,
+    admission: settings.strictAdmission !== undefined &&
+      isMimoOnly(settings.strictAdmission.allowedModelBackends)
+      ? "strict-mimo-token" : "ordinary",
+  };
 }
 
-void bootstrap();
+// The dedicated readiness launcher awaits this real admission and bind result.
+export const applicationReady = bootstrap();

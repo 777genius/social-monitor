@@ -3,6 +3,8 @@ coverage
 dist
 node_modules
 npm-debug.log
+.social-monitor/
+**/._*
 
 # Python local environments and generated caches
 **/.venv/

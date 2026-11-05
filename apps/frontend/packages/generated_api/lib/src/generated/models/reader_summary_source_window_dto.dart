@@ -14,12 +14,16 @@ class ReaderSummarySourceWindowDto {
     required this.startedAt,
     required this.storyClusterIds,
     required this.windowId,
+    this.exactIngestionCutoff,
+    this.ingestionCutoff,
   });
 
   factory ReaderSummarySourceWindowDto.fromJson(Map<String, Object?> json) =>
       _$ReaderSummarySourceWindowDtoFromJson(json);
 
   final DateTime endedAt;
+  final String? exactIngestionCutoff;
+  final DateTime? ingestionCutoff;
   final List<String> selectedFeedItemIds;
   final DateTime startedAt;
   final List<String> storyClusterIds;

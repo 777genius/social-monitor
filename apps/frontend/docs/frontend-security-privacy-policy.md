@@ -55,6 +55,10 @@ Allowed by default:
 - in-memory cache of read models;
 - short-lived route/workflow state.
 
+Persisting even an allowed UI preference across reloads still needs an ADR and
+an architecture-test allowlist entry. Approved today: the Top posts sort order
+only (`docs/architecture-memory/398-frontend-ui-preference-browser-storage.md`).
+
 Requires ADR and privacy review:
 
 - persistent read-model cache;

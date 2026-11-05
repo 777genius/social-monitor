@@ -14,15 +14,14 @@ class _AiBriefCopy extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final content = summary.content;
-    final primaryTheme = _primaryTheme(content);
     final citationSourceById = _primaryCitationSourceById(content.topReads);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          _headlineCopy(primaryTheme),
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+        _briefHeadline(
+          summary,
+          Theme.of(context).textTheme.headlineSmall?.copyWith(
             height: 1.15,
             fontWeight: FontWeight.w900,
             letterSpacing: 0,
@@ -78,6 +77,7 @@ class _MarkdownBriefText extends StatelessWidget {
     return MarkdownBody(
       data: markdown,
       selectable: false,
+      builders: {'a': _ReaderSummaryMarkdownLinkBuilder(onOpenUrl: onOpenUrl)},
       onTapLink: (_, href, _) {
         if (href != null && href.trim().isNotEmpty) {
           onOpenUrl(href);
@@ -91,6 +91,33 @@ class _MarkdownBriefText extends StatelessWidget {
         blockSpacing: AppSpacing.xs,
         listIndent: AppSpacing.lg,
         listBullet: bodyStyle,
+      ),
+    );
+  }
+}
+
+class _ReaderSummaryMarkdownLinkBuilder extends MarkdownElementBuilder {
+  _ReaderSummaryMarkdownLinkBuilder({required this.onOpenUrl});
+
+  final ValueChanged<String> onOpenUrl;
+
+  @override
+  Widget? visitElementAfterWithContext(
+    BuildContext context,
+    markdown.Element element,
+    TextStyle? preferredStyle,
+    TextStyle? parentStyle,
+  ) {
+    final url = element.attributes['href']?.trim();
+    if (url == null || url.isEmpty) return Text(element.textContent);
+    final identity = readerSummaryUrlIdentity(url);
+    return Semantics(
+      key: readerSummaryUrlActionKey('brief-markdown-link', identity),
+      link: true,
+      label: readerSummaryUrlActionSemantics('brief-markdown-link', identity),
+      child: InkWell(
+        onTap: () => onOpenUrl(url),
+        child: Text(element.textContent, style: preferredStyle),
       ),
     );
   }

@@ -1,96 +1,54 @@
 part of 'reader_summary_brief_surface.dart';
 
-class _MoreSelectedSortIndicator extends StatelessWidget {
-  const _MoreSelectedSortIndicator();
+/// "By model" / "By likes" order of the visible lane.
+class _TopPostSortToggle extends StatelessWidget {
+  const _TopPostSortToggle({
+    required this.sortOrder,
+    required this.onSortOrderChanged,
+  });
+
+  final TopPostsSortOrder sortOrder;
+  final ValueChanged<TopPostsSortOrder> onSortOrderChanged;
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final colorScheme = Theme.of(context).colorScheme;
-    return Tooltip(
-      message:
-          'Normalized Signal, independent source support, confidence, '
-          'then matched interests.',
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.auto_awesome_outlined,
-            size: 16,
-            color: colorScheme.primary,
-          ),
-          const SizedBox(width: AppSpacing.xs),
-          Text(
-            'Sorted by usefulness',
-            style: textTheme.labelSmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0,
-            ),
-          ),
-        ],
+    // The compact header stacks its controls full width; the wide header
+    // lays them out in a row with unbounded width.
+    return LayoutBuilder(
+      builder: (context, constraints) => AppSegmentedControl<TopPostsSortOrder>(
+        key: const ValueKey('reader-summary-top-posts-sort'),
+        semanticLabel: 'Top posts order',
+        selected: sortOrder,
+        onChanged: onSortOrderChanged,
+        expanded: constraints.hasBoundedWidth,
+        segments: _topPostSortSegments,
       ),
     );
   }
 }
 
-class _TopPostSortMenu extends StatelessWidget {
-  const _TopPostSortMenu({required this.sort, required this.onSortChanged});
-
-  final _TopPostSort sort;
-  final ValueChanged<_TopPostSort> onSortChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final colorScheme = Theme.of(context).colorScheme;
-    return PopupMenuButton<_TopPostSort>(
-      key: const ValueKey('reader-summary-top-posts-sort'),
-      tooltip: 'Sort top posts',
-      position: PopupMenuPosition.under,
-      onSelected: onSortChanged,
-      itemBuilder: (context) => [
-        for (final option in _TopPostSort.values)
-          PopupMenuItem<_TopPostSort>(
-            value: option,
-            child: Row(
-              children: [
-                Expanded(child: Text(_sortLabel(option))),
-                if (option == sort) const Icon(Icons.check, size: 18),
-              ],
-            ),
-          ),
-      ],
-      child: _TopPostControlSurface(
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              _sortLabel(sort),
-              style: textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0,
-              ),
-            ),
-            const SizedBox(width: AppSpacing.xs),
-            Icon(
-              Icons.keyboard_arrow_down_rounded,
-              size: 18,
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _sortLabel(_TopPostSort value) {
-    return switch (value) {
-      _TopPostSort.editorial => 'Editorial',
-      _TopPostSort.engagement => 'Engagement',
-    };
-  }
-}
+const _topPostSortSegments = [
+  AppSegment(
+    key: ValueKey('reader-summary-top-posts-sort-model'),
+    value: TopPostsSortOrder.modelRank,
+    label: 'By model',
+    icon: Icons.auto_awesome_outlined,
+    semanticLabel: 'Sort by model rank',
+    tooltip:
+        'Useful and important posts, balanced with popularity. Unassessed posts stay last.',
+  ),
+  AppSegment(
+    key: ValueKey('reader-summary-top-posts-sort-likes'),
+    value: TopPostsSortOrder.engagement,
+    label: 'By likes',
+    icon: Icons.favorite_border_rounded,
+    semanticLabel: 'Sort by likes',
+    tooltip:
+        'Most liked first: X likes, Reddit score, '
+        'Hacker News points, GitHub stars. Posts without a metric '
+        'stay last.',
+  ),
+];
 
 class _TopPostFilterMenu extends StatelessWidget {
   const _TopPostFilterMenu({
@@ -107,37 +65,42 @@ class _TopPostFilterMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
-    return PopupMenuButton<String>(
-      key: const ValueKey('reader-summary-top-posts-filters'),
-      tooltip: 'Filter posts by source',
-      position: PopupMenuPosition.under,
-      onSelected: onProviderToggled,
-      itemBuilder: (context) => [
-        for (final providerKey in providerKeys)
-          CheckedPopupMenuItem<String>(
-            value: providerKey,
-            checked: !hiddenProviders.contains(providerKey),
-            child: Text(readerSummaryProviderLabel(providerKey)),
-          ),
-      ],
-      child: _TopPostControlSurface(
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.tune_rounded,
-              size: 15,
-              color: colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: AppSpacing.xs + 2),
-            Text(
-              'Filters',
-              style: textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0,
+    return MergeSemantics(
+      child: AppTooltip(
+        message: 'Filter posts by source',
+        child: PopupMenuButton<String>(
+          key: const ValueKey('reader-summary-top-posts-filters'),
+          tooltip: '',
+          position: PopupMenuPosition.under,
+          onSelected: onProviderToggled,
+          itemBuilder: (context) => [
+            for (final providerKey in providerKeys)
+              CheckedPopupMenuItem<String>(
+                value: providerKey,
+                checked: !hiddenProviders.contains(providerKey),
+                child: Text(readerSummaryProviderLabel(providerKey)),
               ),
-            ),
           ],
+          child: _TopPostControlSurface(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.tune_rounded,
+                  size: 15,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: AppSpacing.xs + 2),
+                Text(
+                  'Filters',
+                  style: textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -207,7 +170,7 @@ class _TopPostViewToggleButton extends StatelessWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
         child: InkWell(
           onTap: selected ? null : onPressed,
-          child: Tooltip(
+          child: AppTooltip(
             message: tooltip,
             child: SizedBox.square(
               dimension: 28,

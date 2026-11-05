@@ -1,3 +1,4 @@
+import { CryptoIdGenerator } from '@social-monitor/shared-kernel';
 import { correlationId, FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { InMemoryDeliveryProvider } from '../libs/delivery/adapters/notification/in-memory-delivery.provider';
@@ -143,10 +144,11 @@ async function proveDeliveryIdempotencyAndPreferenceRecheck(): Promise<void> {
   });
 
   const sent = await new SendDeliveryAttemptUseCase(
-    attempts,
+    attempts.workflow,
     [provider],
     preferences,
     new FixedClock(new Date('2026-06-06T01:01:00.000Z')),
+    new CryptoIdGenerator(),
   ).execute({
     tenantId: tenant,
     workspaceId: workspace,

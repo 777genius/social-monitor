@@ -225,7 +225,9 @@ describe('reader summary production source bootstrap', () => {
     };
 
     const result = await new PrismaReaderSummaryProductionIdentityStore(
-      prisma,
+      prisma as unknown as ConstructorParameters<
+        typeof PrismaReaderSummaryProductionIdentityStore
+      >[0],
     ).ensureScope();
 
     expect(result).toEqual({

@@ -3,7 +3,6 @@ import type {
   ReaderSummaryTopicNodeLabel,
 } from "./reader-summary-topic-label-plan";
 import type { ReaderSummaryTopicRelationCandidate } from "./reader-summary-topic-relation-candidates";
-import { slug } from "./reader-summary-topic-map-text";
 
 export const READER_SUMMARY_TOPIC_RELATION_CONFIDENCE_MIN = 0.82;
 
@@ -28,28 +27,31 @@ export const reconcileVerifiedReaderSummaryTopicRelations = (params: {
   const parentByNodeId = new Map(
     params.labelPlan.nodeLabels.map((label) => [label.nodeId, label.nodeId]),
   );
-  const originalTopicSize = new Map<string, number>();
-  for (const label of params.labelPlan.nodeLabels) {
-    if (label.topicId !== undefined) {
-      originalTopicSize.set(
-        label.topicId,
-        (originalTopicSize.get(label.topicId) ?? 0) + 1,
-      );
-    }
-  }
   let acceptedPairCount = 0;
+  const rejectedPairs = params.decisions.filter((decision) =>
+    decision.sameTopic === false && validDecision(decision, allowedPairs, labelByNodeId),
+  );
 
   for (const decision of params.decisions) {
     if (
       !decision.sameTopic ||
-      decision.confidenceScore < READER_SUMMARY_TOPIC_RELATION_CONFIDENCE_MIN ||
-      !allowedPairs.has(relationPairKey(decision))
+      !validDecision(decision, allowedPairs, labelByNodeId)
     ) {
       continue;
     }
     const source = labelByNodeId.get(decision.sourceNodeId);
     const target = labelByNodeId.get(decision.targetNodeId);
     if (!labelsCanShareVerifiedTopic(source, target)) {
+      continue;
+    }
+    const rootsToMerge = new Set([
+      findRoot(parentByNodeId, decision.sourceNodeId),
+      findRoot(parentByNodeId, decision.targetNodeId),
+    ]);
+    if (rejectedPairs.some((pair) =>
+      rootsToMerge.has(findRoot(parentByNodeId, pair.sourceNodeId)) &&
+      rootsToMerge.has(findRoot(parentByNodeId, pair.targetNodeId)),
+    )) {
       continue;
     }
     union(parentByNodeId, decision.sourceNodeId, decision.targetNodeId);
@@ -64,25 +66,40 @@ export const reconcileVerifiedReaderSummaryTopicRelations = (params: {
     const root = findRoot(parentByNodeId, label.nodeId);
     membersByRoot.set(root, [...(membersByRoot.get(root) ?? []), label]);
   }
+  const rootsByTopicId = new Map<string, Set<string>>();
+  for (const [root, members] of membersByRoot) {
+    for (const label of members) {
+      if (label.topicId !== undefined) {
+        const roots = rootsByTopicId.get(label.topicId) ?? new Set<string>();
+        roots.add(root);
+        rootsByTopicId.set(label.topicId, roots);
+      }
+    }
+  }
   const topicIdByNodeId = new Map<string, string>();
+  const canonicalNodeIdByNodeId = new Map<string, string>();
   for (const members of membersByRoot.values()) {
     const ranked = members.slice().sort(compareCanonicalLabels);
+    members.forEach((label) => canonicalNodeIdByNodeId.set(label.nodeId, ranked[0]!.nodeId));
     if (ranked.length === 1) {
       const singleton = ranked[0]!;
       if (
         singleton.topicId !== undefined &&
-        (originalTopicSize.get(singleton.topicId) ?? 0) > 1
+        (rootsByTopicId.get(singleton.topicId)?.size ?? 0) > 1
       ) {
         topicIdByNodeId.set(
           singleton.nodeId,
-          `topic:verified-single-${slug(singleton.nodeId)}`,
+          `topic:verified-single-${encodeURIComponent(singleton.nodeId)}`,
         );
       }
       continue;
     }
     const canonical = ranked.find((label) => label.topicId !== undefined);
     const topicId =
-      canonical?.topicId ?? `topic:verified-${slug(ranked[0]!.nodeId)}`;
+      canonical?.topicId !== undefined &&
+      rootsByTopicId.get(canonical.topicId)?.size === 1
+        ? canonical.topicId
+        : `topic:verified-${encodeURIComponent(ranked[0]!.nodeId)}`;
     members.forEach((label) => topicIdByNodeId.set(label.nodeId, topicId));
   }
 
@@ -91,10 +108,26 @@ export const reconcileVerifiedReaderSummaryTopicRelations = (params: {
     nodeLabels: params.labelPlan.nodeLabels.map((label) => ({
       ...label,
       topicId: topicIdByNodeId.get(label.nodeId) ?? label.topicId,
+      relationIdentity: {
+        source: "topic-relation-reconciliation",
+        canonicalNodeId: canonicalNodeIdByNodeId.get(label.nodeId)!,
+      },
     })),
     warnings: [...(params.labelPlan.warnings ?? []), verificationWarning],
   };
 };
+
+const validDecision = (
+  decision: ReaderSummaryTopicRelationDecision,
+  allowedPairs: ReadonlySet<string>,
+  labels: ReadonlyMap<string, ReaderSummaryTopicNodeLabel>,
+): boolean =>
+  Number.isFinite(decision.confidenceScore) &&
+  decision.confidenceScore >= READER_SUMMARY_TOPIC_RELATION_CONFIDENCE_MIN &&
+  decision.confidenceScore <= 1 &&
+  decision.sourceNodeId !== decision.targetNodeId &&
+  labels.has(decision.sourceNodeId) && labels.has(decision.targetNodeId) &&
+  allowedPairs.has(relationPairKey(decision));
 
 const labelsCanShareVerifiedTopic = (
   source: ReaderSummaryTopicNodeLabel | undefined,

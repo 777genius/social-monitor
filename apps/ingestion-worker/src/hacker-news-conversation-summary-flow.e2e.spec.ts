@@ -342,7 +342,7 @@ describe('Hacker News conversation summary e2e flow', () => {
       },
     });
     expect(hackerNewsClient.storyCommentRequests).toEqual([
-      { storyId: 1001, limit: 2, depth: 1 },
+      { storyId: 1001, limit: 2, depth: 1, requireComplete: false, expectedComments: 2 },
     ]);
     expect(feedItems.all()).toHaveLength(1);
     expect(conversationUnits.all()).toHaveLength(2);

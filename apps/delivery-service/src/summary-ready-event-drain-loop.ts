@@ -1,8 +1,9 @@
 import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
-import { ProjectSummaryReadyEventHandler } from '@social-monitor/delivery/interfaces/events/project-summary-ready-event.handler';
+import { SummaryReadyEventDispatcher } from '@social-monitor/delivery/interfaces/events/summary-ready-event.dispatcher';
 import { NestStructuredLogger, type StructuredLogger } from '@social-monitor/platform-logging';
 import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
-import { queueCommandDeliveryLagSeconds } from '@social-monitor/platform-queue';
+import { QueueDeliveryBatch, queueCommandDeliveryLagSeconds } from '@social-monitor/platform-queue';
+import { classifyWorkerRuntimeFailure } from '@social-monitor/platform-worker';
 import { DomainError, type Clock } from '@social-monitor/shared-kernel';
 
 import {
@@ -14,7 +15,7 @@ import {
   type SummaryReadyEventQueueReaderPort,
 } from './summary-ready-event-queue-reader';
 
-export type SummaryReadyEventHandlerPort = Pick<ProjectSummaryReadyEventHandler, 'handle'>;
+export type SummaryReadyEventHandlerPort = { handle(event: Readonly<Record<string, unknown>>): Promise<unknown> };
 
 @Injectable()
 export class SummaryReadyEventDrainLoop implements OnModuleInit, OnModuleDestroy {
@@ -26,7 +27,7 @@ export class SummaryReadyEventDrainLoop implements OnModuleInit, OnModuleDestroy
   constructor(
     @Inject(DELIVERY_SUMMARY_READY_EVENT_QUEUE_READER)
     private readonly queue: SummaryReadyEventQueueReaderPort,
-    @Inject(ProjectSummaryReadyEventHandler)
+    @Inject(SummaryReadyEventDispatcher)
     private readonly handler: SummaryReadyEventHandlerPort,
     @Inject(DELIVERY_SUMMARY_READY_EVENT_DRAIN_LOOP_OPTIONS)
     private readonly options: DeliverySummaryReadyEventDrainLoopOptions,
@@ -88,7 +89,19 @@ export class SummaryReadyEventDrainLoop implements OnModuleInit, OnModuleDestroy
       return;
     }
 
-    this.currentTick = this.executeTick(trigger).finally(() => {
+    this.currentTick = this.executeTick(trigger).catch((error: unknown) => {
+      // Startup remains fail-fast; a transient interval failure must not become
+      // an unhandled rejection or prevent the next scheduled recovery attempt.
+      if (trigger === 'startup') throw error;
+      const failure = classifyWorkerRuntimeFailure(error);
+      this.logger.error('queue drain loop tick failed', {
+        trigger,
+        error: failure.message,
+        errorClassification: failure.classification,
+        errorCode: failure.code,
+        worker: 'delivery-service',
+      });
+    }).finally(() => {
       this.currentTick = undefined;
     });
     await this.currentTick;
@@ -96,35 +109,44 @@ export class SummaryReadyEventDrainLoop implements OnModuleInit, OnModuleDestroy
 
   private async executeTick(trigger: 'startup' | 'interval'): Promise<void> {
     const deliveries = await this.queue.drain({ limit: this.options.limit });
+    const batch = new QueueDeliveryBatch(deliveries);
     let completed = 0;
     let failed = 0;
     let requeued = 0;
 
-    for (const delivery of deliveries) {
-      if (this.shuttingDown) {
-        await delivery.nack({ requeue: true });
-        requeued += 1;
-        continue;
-      }
-      this.recordDeliveryLag(delivery);
-      try {
-        await this.handler.handle(delivery.event);
-        await delivery.ack();
-        completed += 1;
-      } catch (error) {
-        const requeue =
-          this.shuttingDown ||
-          (error instanceof DomainError &&
-            error.code === 'operation.backpressure');
-        await delivery.nack({ requeue });
+    try {
+      for (const delivery of deliveries) {
+        if (this.shuttingDown) {
+          await batch.nack(delivery, { requeue: true });
+          requeued += 1;
+          continue;
+        }
+        this.recordDeliveryLag(delivery);
+        let handlerFailed = false;
+        let handlerError: unknown;
+        try {
+          await this.handler.handle(delivery.event);
+        } catch (error) {
+          handlerFailed = true;
+          handlerError = error;
+        }
+        if (!handlerFailed) {
+          await batch.ack(delivery);
+          completed += 1;
+          continue;
+        }
+        const requeue = this.shuttingDown ||
+          (handlerError instanceof DomainError && handlerError.code === 'operation.backpressure');
+        await batch.nack(delivery, { requeue });
         if (requeue) {
           requeued += 1;
           continue;
         }
         failed += 1;
-        this.logger.error('summary ready event drain loop item failed', {
+        const failure = classifyWorkerRuntimeFailure(handlerError);
+        this.logger.error('summary ready event queue drain loop item failed', {
           trigger,
-          error: error instanceof Error ? error.message : String(error),
+          error: failure.message,
           redelivered: delivery.diagnostics.redelivered,
           deadLetterCount: delivery.diagnostics.deadLetterCount,
           deadLetterReason: delivery.diagnostics.deadLetterReason,
@@ -132,16 +154,20 @@ export class SummaryReadyEventDrainLoop implements OnModuleInit, OnModuleDestroy
           worker: 'delivery-service',
         });
       }
-    }
 
-    this.logger.info('summary ready event drain loop tick completed', {
-      trigger,
-      evaluated: deliveries.length,
-      completed,
-      failed,
-      requeued,
-      worker: 'delivery-service',
-    });
+      this.logger.info('summary ready event queue drain loop tick completed', {
+        trigger, evaluated: deliveries.length, completed, failed, requeued,
+        worker: 'delivery-service',
+      });
+    } finally {
+      for (const error of await batch.releaseUnsettled()) {
+        const failure = classifyWorkerRuntimeFailure(error);
+        this.logger.error('queue delivery cleanup remains unresolved; reader will retry before acquiring more work', {
+          error: failure.message, errorClassification: failure.classification,
+          errorCode: failure.code, worker: 'delivery-service',
+        });
+      }
+    }
   }
 
   private recordDeliveryLag(
@@ -157,7 +183,7 @@ export class SummaryReadyEventDrainLoop implements OnModuleInit, OnModuleDestroy
       name: 'queue_command_delivery_lag_seconds',
       value: lagSeconds,
       labels: {
-        command_type: 'summary.ready',
+        command_type: String(delivery.event.eventType),
         queue: 'events',
         worker: 'delivery-service',
       },

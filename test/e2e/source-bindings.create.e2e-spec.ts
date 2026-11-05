@@ -267,7 +267,7 @@ describe('Bind source flow (e2e)', () => {
       });
   });
 
-  it('rejects deferred providers before creating bindings', async () => {
+  it('rejects private Telegram preview scopes before creating bindings', async () => {
     const tenant = tenantId(deterministicTestUuid('tenant-source-deferred-e2e'));
     const workspace = workspaceId(deterministicTestUuid('workspace-source-deferred-e2e'));
     const topic = await request(app.getHttpServer())
@@ -292,15 +292,16 @@ describe('Bind source flow (e2e)', () => {
       .set('idempotency-key', 'bind-deferred-source')
       .send({
         providerKey: 'telegram',
-        config: { query: 'telegram launch monitoring' },
+        config: { channel: 'https://t.me/+synthetic_invite' },
       })
       .expect(400)
       .expect((response) => {
         expect(response.body).toMatchObject({
           code: 'validation.failed',
-          detail: 'Source provider is not available for production-safe MVP scans',
+          detail: 'Source binding config is invalid for provider',
           details: {
             providerKey: 'telegram',
+            reason: 'Telegram requires a public channel username or HTTPS t.me channel URL.',
           },
         });
       });

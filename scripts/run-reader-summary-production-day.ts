@@ -11,8 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-import { GrpcAgentRuntimeClient } from "@social-monitor/summary/adapters/model/grpc-agent-runtime-client";
-import { SystemClock } from "@social-monitor/shared-kernel";
+import { connectReaderSummaryRuntimeHealthClient } from "./lib/reader-summary-runtime-health-client";
 
 import {
   nextDate,
@@ -53,12 +52,21 @@ import {
 } from "./lib/reader-summary-production-day-reuse-provenance";
 import { loadHistoricalRegeneration } from "./lib/reader-summary-production-day-regeneration";
 import { buildProductionDayTerminalOutcome } from "./lib/reader-summary-production-day-outcome";
+import { printProductionDayStats } from
+  "./lib/reader-summary-production-day-console";
+import { productionDayPromotionRebuildEnvironment } from
+  "./lib/reader-summary-production-day-promotion-rebuild";
+import { historicalCleanDayCollectionPath, historicalPromotionQualityOutput } from "./lib/reader-summary-promotion-v2-quality-output";
 import {
   resolveProductionDayProviderReadiness,
   type ProductionDayDatabaseQualityReport,
   type ProductionDayProviderReadiness,
 } from "./lib/reader-summary-production-day-provider-readiness";
-import { productionDayQualityDateArgs } from "./lib/reader-summary-production-day-quality-date";
+import {
+  productionDayQualityDateArgs,
+  resolveBoundedHistoricalRecovery,
+  shouldRunCleanDayE2e,
+} from "./lib/reader-summary-production-day-quality-date";
 import { resolveProductionDayCollectionDate } from "./lib/reader-summary-production-day-date";
 import { collectionQualityRegenerationFreshnessArgs } from "./lib/yesterday-social-collection-quality-regeneration";
 import type { CleanRealDayCollectionReport } from "./lib/clean-real-day-collection-report";
@@ -66,6 +74,8 @@ import { readerSummaryProductionHistoryScope } from "./lib/reader-summary-daily-
 import { productionHistoryCollection } from "./lib/reader-summary-production-history-collection";
 import { type YesterdaySocialProviderReadiness } from "./lib/yesterday-social-collection-quality";
 import { readProductionDayScope } from "./lib/reader-summary-production-day-scope";
+import { bindInheritedDirectoryPath } from
+  "./lib/reader-summary-inherited-directory-path";
 import {
   probeProductionRuntimeLiveIdentity,
   runtimeLiveIdentityProofRequired,
@@ -76,7 +86,13 @@ type StepReport = ProductionDayStepReport;
 
 loadDotenvIfPresent(".env");
 
-const outputPath = "ops/evals/reader-summary-production-day-run.v1.json";
+const reportDirectory = bindInheritedDirectoryPath(resolve(
+  process.env.READER_SUMMARY_PRODUCTION_DAY_REPORT_DIR ?? "ops/evals",
+));
+const outputPath = join(
+  reportDirectory,
+  "reader-summary-production-day-run.v1.json",
+);
 const update = process.argv.includes("--update");
 const artifactOnly = process.argv.includes("--artifact-only");
 let executionRequest: ReturnType<typeof resolveProductionDayExecutionRequest>;
@@ -85,6 +101,7 @@ let skipLiveCollection: boolean;
 let allowDegraded: boolean;
 let allowHistorical: boolean;
 let allowHistoricalProviderCollection: boolean;
+let boundedHistoricalRecovery: boolean;
 let qualityDateArgs: readonly string[];
 let collectionDate: string;
 let summaryModel: ReturnType<typeof resolveSummaryModel>;
@@ -101,18 +118,15 @@ let nextRuntimeIdentityPath: string;
 let datedOutputPath: string;
 let terminalOutcomePath: string;
 let liveCaptureExecution: ProductionDayCaptureExecution | null = null;
-
 void main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
-
 async function main(): Promise<void> {
   if (artifactOnly) {
     validateExistingReport();
     return;
   }
-
   const startedAt = new Date();
   const steps: StepReport[] = [];
   initializeProductionDayRuntime();
@@ -145,6 +159,7 @@ async function main(): Promise<void> {
     executionRequest.mode === "historical-regeneration"
       ? loadHistoricalRegeneration({
           request: executionRequest,
+          environment: process.env,
           collectionDate,
           githubOmissionReason:
             process.env
@@ -168,10 +183,11 @@ async function main(): Promise<void> {
         })
       : null;
   const historicalCollection = allowHistoricalProviderCollection
-    ? productionHistoryCollection({
-        directory: process.env.READER_SUMMARY_PRODUCTION_HISTORY_COLLECTION_DIR,
-        collectionDate,
-      })
+      ? productionHistoryCollection({
+          directory: process.env.READER_SUMMARY_PRODUCTION_HISTORY_COLLECTION_DIR,
+          collectionDate,
+          evaluatedAt: startedAt,
+        })
     : null;
   if (
     historicalCollection !== null &&
@@ -180,7 +196,6 @@ async function main(): Promise<void> {
   ) {
     throw new Error("Production history collection scope is not 6101/6102");
   }
-
   let collectionStep: StepReport = historicalRegeneration
     ? historicalRegeneration.verifiedCollectionStep
     : skipLiveCollection
@@ -208,9 +223,20 @@ async function main(): Promise<void> {
             : []),
           ...(allowHistorical ? [] : ["--wait-for-x-readiness"]),
         ]);
-  mkdirSync(runtimeArtifactDirectory, { recursive: true });
+  if (!existsSync(runtimeArtifactDirectory)) {
+    mkdirSync(runtimeArtifactDirectory, { recursive: true });
+  }
   isolateCaptureArtifacts();
-
+  const isolatedQuality = historicalPromotionQualityOutput({
+    enabled: executionRequest.mode === "historical-regeneration" &&
+      executionRequest.promotionRebuild !== undefined, reportDirectory,
+    cleanDayCollectionPath: historicalCleanDayCollectionPath(
+      executionRequest, historicalCollection?.path, collectionDate, {
+        productionHistoryDirectory:
+          process.env.READER_SUMMARY_PRODUCTION_HISTORY_COLLECTION_DIR,
+        rollingArtifactRoot: process.env.ROLLING_ARTIFACT_ROOT,
+      }),
+  });
   let collectionQualityStep = runNpm("collection-quality", [
     "run",
     "check:yesterday-social-collection-quality",
@@ -238,10 +264,12 @@ async function main(): Promise<void> {
         })
       : []),
     ...(allowHistorical ? ["--allow-historical"] : []),
+    ...isolatedQuality.args("yesterday-social-collection-quality-report.v1.json"),
   ]);
   const collectionQualityReport =
     readJsonIfExists<ProductionDayDatabaseQualityReport>(
-      "ops/evals/yesterday-social-collection-quality-report.v1.json",
+      isolatedQuality.path("yesterday-social-collection-quality-report.v1.json") ??
+        "ops/evals/yesterday-social-collection-quality-report.v1.json",
     );
   const collectionReport = readJsonIfExists<CleanRealDayCollectionReport>(
     historicalCollection?.path ??
@@ -340,7 +368,6 @@ async function main(): Promise<void> {
     });
     throw new Error(safeMessage);
   }
-
   const captureExecutionId = randomUUID();
   const captureStartedAt = new Date();
   let summaryStep = reuseExistingArtifacts
@@ -365,7 +392,10 @@ async function main(): Promise<void> {
           DURABLE_READER_SUMMARY_MODEL: summaryModel,
           AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.6-sol",
           AGENT_RUNTIME_PROVIDER: "codex",
-          AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "xhigh",
+          AGENT_RUNTIME_GRPC_TIMEOUT_MS: String(
+            READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.runtimeHealthTimeoutMs,
+          ),
+          AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "high",
           AGENT_RUNTIME_READER_SUMMARY_TIMEOUT_MS: String(
             READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.summaryModelTimeoutMs,
           ),
@@ -380,15 +410,19 @@ async function main(): Promise<void> {
             String(
               READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.topicRelationTimeoutMs,
             ),
-          AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MAX_CANDIDATES: "18",
+          AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MAX_CANDIDATES:
+            process.env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MAX_CANDIDATES ??
+            "18",
           DURABLE_READER_SUMMARY_TOPIC_LABELER: topicLabeler,
           DURABLE_READER_SUMMARY_TENANT_ID: scope.tenantId,
           DURABLE_READER_SUMMARY_WORKSPACE_ID: scope.workspaceId,
           DURABLE_READER_SUMMARY_CADENCE: "daily",
           DURABLE_READER_SUMMARY_PERIOD_STARTED_AT: periodStartedAt,
           DURABLE_READER_SUMMARY_PERIOD_ENDED_AT: periodEndedAt,
-          DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS: "120",
-          DURABLE_READER_SUMMARY_MAX_STORIES: "15",
+          DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS:
+            process.env.DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS ?? "120",
+          DURABLE_READER_SUMMARY_MAX_STORIES:
+            process.env.DURABLE_READER_SUMMARY_MAX_STORIES ?? "15",
           DURABLE_READER_SUMMARY_EVIDENCE_PATH: nextEvidencePath,
           DURABLE_READER_SUMMARY_FRONTEND_FIXTURE_PATH: nextFrontendFixturePath,
           DURABLE_READER_SUMMARY_REJECTED_TOPIC_MAP_PATH: join(
@@ -400,12 +434,19 @@ async function main(): Promise<void> {
             join(runtimeArtifactDirectory, ".db-publication-recovery"),
           ...(executionRequest.mode === "historical-regeneration"
             ? {
-                DURABLE_READER_SUMMARY_SOURCE_REPORT_SHA256:
-                  executionRequest.sourceReportSha256,
-                DURABLE_READER_SUMMARY_COLLECTION_ARTIFACT_SHA256:
-                  executionRequest.collectionArtifactSha256,
-                DURABLE_READER_SUMMARY_COLLECTION_QUALITY_REPORT_SHA256:
-                  executionRequest.collectionQualityReportSha256,
+                ...(executionRequest.sourceEvidence.kind ===
+                  "preserved-production-day-report"
+                  ? {
+                      DURABLE_READER_SUMMARY_SOURCE_REPORT_SHA256:
+                        executionRequest.sourceEvidence.sourceReportSha256,
+                      DURABLE_READER_SUMMARY_COLLECTION_ARTIFACT_SHA256:
+                        executionRequest.sourceEvidence
+                          .collectionArtifactSha256,
+                      DURABLE_READER_SUMMARY_COLLECTION_QUALITY_REPORT_SHA256:
+                        executionRequest.sourceEvidence
+                          .collectionQualityReportSha256,
+                    }
+                  : {}),
                 DURABLE_READER_SUMMARY_DATASET_MANIFEST_PATH:
                   executionRequest.datasetManifestPath,
                 DURABLE_READER_SUMMARY_DATASET_MANIFEST_SHA256:
@@ -415,6 +456,11 @@ async function main(): Promise<void> {
                   `/var/lib/social-monitor/artifacts/recovery/${collectionDate}`,
                 DURABLE_READER_SUMMARY_RECOVERY_TIMESTAMP_POLICY:
                   executionRequest.timestampPolicy,
+                ...(executionRequest.promotionRebuild === undefined
+                  ? {}
+                  : productionDayPromotionRebuildEnvironment(
+                      executionRequest.promotionRebuild,
+                    )),
               }
             : {}),
         },
@@ -442,7 +488,6 @@ async function main(): Promise<void> {
     rmSync(nextFrontendFixturePath, { force: true });
   }
   steps.push(summaryStep);
-
   const artifactQualityStep = runNpm("artifact-quality", [
     "run",
     "check:yesterday-reader-summary-artifact-quality",
@@ -452,6 +497,7 @@ async function main(): Promise<void> {
     collectionDate,
     ...(allowDegraded ? ["--allow-dirty-collection"] : []),
     ...qualityDateArgs,
+    ...isolatedQuality.args("yesterday-reader-summary-artifact-quality.v1.json"),
   ]);
   steps.push(artifactQualityStep);
   steps.push(
@@ -464,6 +510,7 @@ async function main(): Promise<void> {
       collectionDate,
       ...(allowDegraded ? ["--allow-degraded"] : []),
       ...qualityDateArgs,
+      ...isolatedQuality.args("reader-summary-quality-dashboard.v1.json"),
     ]),
   );
   steps.push(
@@ -475,6 +522,7 @@ async function main(): Promise<void> {
       "--date",
       collectionDate,
       "--write-failed-report",
+      ...isolatedQuality.args("reader-summary-top-read-ranking.v1.json"),
     ]),
   );
   steps.push(
@@ -485,6 +533,7 @@ async function main(): Promise<void> {
       "--update",
       "--date",
       collectionDate,
+      ...isolatedQuality.args("reader-summary-source-quality-trace.v1.json"),
     ]),
   );
   if (!artifactQualityIsReadyForCleanDayE2e(artifactQualityStep.status)) {
@@ -493,7 +542,11 @@ async function main(): Promise<void> {
         "artifact-quality failed; no current-date artifact was written",
       ),
     );
-  } else if (shouldRunCleanDayE2e()) {
+  } else if (shouldRunCleanDayE2e({
+    reuseExistingArtifacts, executionMode: executionRequest.mode,
+    skipLiveCollection, allowHistorical, boundedHistoricalRecovery,
+    collectionDate,
+  })) {
     steps.push(
       runNpm("clean-day-e2e", [
         "run",
@@ -502,6 +555,7 @@ async function main(): Promise<void> {
         "--update",
         ...(allowDegraded ? ["--allow-degraded"] : []),
         ...qualityDateArgs,
+        ...isolatedQuality.cleanDayArgs,
       ]),
     );
   } else {
@@ -514,7 +568,6 @@ async function main(): Promise<void> {
       exitCode: null,
     });
   }
-
   const report = persistProductionDayReport({
     startedAt,
     completedAt: new Date(),
@@ -527,7 +580,6 @@ async function main(): Promise<void> {
     historicalRegenerationProvenance:
       historicalRegeneration?.provenance ?? null,
   });
-
   if (
     executionRequest.mode === "historical-reuse" &&
     report.qualityGates.historicalReuseEvaluationPassed
@@ -541,7 +593,6 @@ async function main(): Promise<void> {
     throw new Error("Reader summary production day run gates failed");
   }
 }
-
 function initializeProductionDayRuntime(): void {
   executionRequest = resolveProductionDayExecutionRequest(
     process.argv.slice(2),
@@ -550,18 +601,26 @@ function initializeProductionDayRuntime(): void {
   skipLiveCollection = executionRequest.mode !== "live-production";
   allowDegraded = process.argv.includes("--allow-degraded");
   allowHistorical = process.argv.includes("--allow-historical");
+  collectionDate = resolveProductionDayCollectionDate(process.argv.slice(2));
+  boundedHistoricalRecovery = resolveBoundedHistoricalRecovery({
+    requested: process.argv.includes("--bounded-historical-recovery"),
+    executionMode: executionRequest.mode,
+    allowHistorical,
+    update,
+    collectionDate,
+    expectedDate: process.env.READER_SUMMARY_DAILY_RUN_EXPECTED_DATE,
+  });
   allowHistoricalProviderCollection =
     allowHistorical && executionRequest.mode === "live-production";
   qualityDateArgs = productionDayQualityDateArgs({
     executionMode: executionRequest.mode,
     allowHistorical,
   });
-  collectionDate = resolveProductionDayCollectionDate(process.argv.slice(2));
   summaryModel = resolveSummaryModel();
   topicLabeler = resolveTopicLabeler();
   periodStartedAt = `${collectionDate}T00:00:00.000Z`;
   periodEndedAt = nextDate(collectionDate);
-  runtimeArtifactDirectory = resolve(
+  runtimeArtifactDirectory = bindInheritedDirectoryPath(resolve(
     process.env.READER_SUMMARY_PRODUCTION_DAY_ARTIFACT_DIR ??
       join(
         tmpdir(),
@@ -569,7 +628,7 @@ function initializeProductionDayRuntime(): void {
         "reader-summary-production-day",
         collectionDate,
       ),
-  );
+  ));
   evidencePath = join(
     runtimeArtifactDirectory,
     `durable-reader-summary-${collectionDate}.v1.json`,
@@ -591,8 +650,14 @@ function initializeProductionDayRuntime(): void {
     /\.json$/u,
     ".next.json",
   );
-  datedOutputPath = `ops/evals/reader-summary-production-day-run.${collectionDate}.v1.json`;
-  terminalOutcomePath = `ops/evals/reader-summary-production-day-outcome.${collectionDate}.v1.json`;
+  datedOutputPath = join(
+    reportDirectory,
+    `reader-summary-production-day-run.${collectionDate}.v1.json`,
+  );
+  terminalOutcomePath = join(
+    reportDirectory,
+    `reader-summary-production-day-outcome.${collectionDate}.v1.json`,
+  );
 }
 
 function persistTerminalOutcome(
@@ -633,7 +698,7 @@ function persistProductionDayReport(params: {
     console.log(`Updated ${outputPath}`);
     console.log(`Updated ${datedOutputPath}`);
   }
-  printStats(report);
+  printProductionDayStats(report);
   return report;
 }
 
@@ -699,7 +764,7 @@ async function bindAndPromoteFreshCapture(params: {
       format: "reader-summary-runtime-live-identity-v1",
       checkedAt: runtimeHealth.checkedAt,
       status: "serving",
-      runtimeEngine: "subscription-runtime-cli",
+      runtimeEngine: runtimeHealth.runtimeEngine,
       runtimePackageVersion: runtimeHealth.runtimeVersion,
       launcherSha256: runtimeHealth.launcherSha256,
     }),
@@ -744,19 +809,9 @@ async function bindAndPromoteFreshCapture(params: {
 }
 
 async function readActualRuntimeHealth(): Promise<ProductionDayRuntimeHealth> {
-  const address = process.env.AGENT_RUNTIME_GRPC_ADDRESS?.trim();
-  if (address === undefined || address.length === 0) {
-    throw new Error("AGENT_RUNTIME_GRPC_ADDRESS is required for runtime proof");
-  }
-  const client = GrpcAgentRuntimeClient.connect({
-    address,
-    clock: new SystemClock(),
-    options: {
-      timeoutMs: 5_000,
-      serviceToken:
-        process.env.AGENT_RUNTIME_SERVICE_TOKEN?.trim() || undefined,
-    },
-  });
+  // The proof binds the transport the capture child used (gRPC CLI or gateway SDK).
+  const client = connectReaderSummaryRuntimeHealthClient(process.env,
+    READER_SUMMARY_PRODUCTION_RUNTIME_POLICY.runtimeHealthTimeoutMs);
   const checkedAt = new Date().toISOString();
   const identity = await probeProductionRuntimeLiveIdentity({
     client,
@@ -770,27 +825,9 @@ async function readActualRuntimeHealth(): Promise<ProductionDayRuntimeHealth> {
     checkedAt,
   };
 }
-
-function shouldRunCleanDayE2e(): boolean {
-  if (
-    reuseExistingArtifacts ||
-    executionRequest.mode === "historical-regeneration"
-  ) {
-    return true;
-  }
-  if (skipLiveCollection) {
-    return false;
-  }
-  if (!allowHistorical) {
-    return true;
-  }
-  return collectionDate >= new Date().toISOString().slice(0, 10);
-}
-
 function existingSummaryArtifactStep(): StepReport {
   const artifactExists =
     existsSync(evidencePath) && existsSync(frontendFixturePath);
-
   return {
     id: "durable-reader-summary",
     command: "reuse persisted durable reader summary artifact",
@@ -799,7 +836,6 @@ function existingSummaryArtifactStep(): StepReport {
     exitCode: artifactExists ? null : 1,
   };
 }
-
 function buildReport(params: {
   readonly startedAt: Date;
   readonly completedAt: Date;
@@ -839,6 +875,7 @@ function buildReport(params: {
     liveCaptureExecution,
     allowDegraded,
     allowHistorical,
+    boundedHistoricalRecovery,
     failure: params.failure,
   });
 }
@@ -872,43 +909,6 @@ function readEvidenceArtifact(): {
     );
   }
   return { evidence, binding: inspection.binding };
-}
-
-function printStats(report: ProductionDayReport): void {
-  console.log(
-    [
-      `production-day=${report.collectionDate}`,
-      `collected=${report.stats.collectedFeedItemCount ?? "n/a"}`,
-      `published=${report.stats.publishedInsideWindowFeedItemCount ?? "n/a"}`,
-      `outside=${report.stats.observedButPublishedOutsideWindowFeedItemCount ?? "n/a"}`,
-      `duplicates=${report.stats.duplicateFeedItemCount ?? "n/a"}`,
-      `lowRelevance=${report.stats.lowRelevanceFeedItemCount ?? "n/a"}`,
-      `candidates=${report.stats.summaryCandidateFeedItemCount ?? "n/a"}`,
-      `selected=${report.stats.selectedFeedItemCount ?? "n/a"}`,
-      `topReads=${report.stats.topReadCount ?? "n/a"}`,
-      `xAccountsEligible=${report.stats.xAccountEligibleCount ?? "n/a"}/${report.stats.xAccountTotalCount ?? "n/a"}`,
-      `xAccountEvents=${report.stats.xAccountUsageEventCount ?? "n/a"}`,
-    ].join(" | "),
-  );
-  for (const account of report.stats.xAccounts ?? []) {
-    console.log(
-      [
-        `xAccount=${account.accountFingerprint}`,
-        `priority=${account.priorityRank}`,
-        `prioritySource=${account.prioritySource}`,
-        `eligible=${account.eligible ?? "n/a"}`,
-        `ineligibleReasons=${account.ineligibilityReasonCodes?.join(",") || "none"}`,
-        `requests=${account.dailyRequests}`,
-        `tweets=${account.dailyTweets}`,
-        `success=${account.passSucceededCount}`,
-        `failed=${account.passFailedCount}`,
-        `rateLimit=${account.rateLimitCount}`,
-        `cooldown=${account.cooldownObservedCount}`,
-        `lastUsed=${account.lastUsedAt ?? "n/a"}`,
-        `cooldownUntil=${account.cooldownUntil ?? "n/a"}`,
-      ].join(" | "),
-    );
-  }
 }
 
 function resolveSummaryModel():
@@ -975,18 +975,14 @@ function validateExistingReport(): void {
           expectedDate: report.requestedDate,
         });
   const valid = violations.length === 0 && noRawSecretFragments(report);
-
   if (!valid) {
     throw new Error(`${outputPath} failed validation`);
   }
-
-  printStats(report as ProductionDayReport);
+  printProductionDayStats(report as ProductionDayReport);
 }
-
 function readJsonIfExists<TValue>(path: string): TValue | null {
   if (!existsSync(path)) {
     return null;
   }
-
   return JSON.parse(readFileSync(path, "utf8")) as TValue;
 }

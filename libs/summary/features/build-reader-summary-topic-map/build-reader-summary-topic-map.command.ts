@@ -4,6 +4,7 @@ import type {
   ReaderSummaryCitation,
   ReaderSummaryPeriod,
   ReaderSummaryScope,
+  ReaderSummaryTopicMapEvidenceAdmission,
   StoryCluster,
   SummaryEvidenceItem,
   TopReadCandidate,
@@ -15,6 +16,7 @@ export type BuildReaderSummaryTopicMapCommand = {
   readonly scope: ReaderSummaryScope;
   readonly period: ReaderSummaryPeriod;
   readonly requestedAt: Date;
+  readonly evidenceAdmission: ReaderSummaryTopicMapEvidenceAdmission;
   readonly clusters: readonly StoryCluster[];
   readonly selectedEvidence: readonly SummaryEvidenceItem[];
   readonly topStories: readonly TopReadCandidate[];

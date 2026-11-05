@@ -1,8 +1,9 @@
 import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { NestStructuredLogger, type StructuredLogger } from '@social-monitor/platform-logging';
 import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
-import { queueCommandDeliveryLagSeconds } from '@social-monitor/platform-queue';
+import { QueueDeliveryBatch, queueCommandDeliveryLagSeconds } from '@social-monitor/platform-queue';
 import { SendDeliveryAttemptCommandHandler } from '@social-monitor/delivery/interfaces/queue/send-delivery-attempt-command.handler';
+import { classifyWorkerRuntimeFailure } from '@social-monitor/platform-worker';
 import { DomainError, type Clock } from '@social-monitor/shared-kernel';
 
 import {
@@ -85,7 +86,19 @@ export class DeliveryAttemptQueueDrainLoop implements OnModuleInit, OnModuleDest
       return;
     }
 
-    this.currentTick = this.executeTick(trigger).finally(() => {
+    this.currentTick = this.executeTick(trigger).catch((error: unknown) => {
+      // Startup remains fail-fast; a transient interval failure must not become
+      // an unhandled rejection or prevent the next scheduled recovery attempt.
+      if (trigger === 'startup') throw error;
+      const failure = classifyWorkerRuntimeFailure(error);
+      this.logger.error('queue drain loop tick failed', {
+        trigger,
+        error: failure.message,
+        errorClassification: failure.classification,
+        errorCode: failure.code,
+        worker: 'delivery-service',
+      });
+    }).finally(() => {
       this.currentTick = undefined;
     });
     await this.currentTick;
@@ -96,37 +109,46 @@ export class DeliveryAttemptQueueDrainLoop implements OnModuleInit, OnModuleDest
       commandType: 'delivery.attempt.send',
       limit: this.options.limit,
     });
+    const batch = new QueueDeliveryBatch(deliveries);
     let completed = 0;
     let failed = 0;
     let requeued = 0;
 
-    for (const delivery of deliveries) {
-      const { command } = delivery;
-      if (this.shuttingDown) {
-        await delivery.nack({ requeue: true });
-        requeued += 1;
-        continue;
-      }
-      this.recordDeliveryLag(delivery);
-      try {
-        await this.handler.handle(command);
-        await delivery.ack();
-        completed += 1;
-      } catch (error) {
-        const requeue =
-          this.shuttingDown ||
-          (error instanceof DomainError &&
-            error.code === 'operation.backpressure');
-        await delivery.nack({ requeue });
+    try {
+      for (const delivery of deliveries) {
+        const { command } = delivery;
+        if (this.shuttingDown) {
+          await batch.nack(delivery, { requeue: true });
+          requeued += 1;
+          continue;
+        }
+        this.recordDeliveryLag(delivery);
+        let handlerFailed = false;
+        let handlerError: unknown;
+        try {
+          await this.handler.handle(command);
+        } catch (error) {
+          handlerFailed = true;
+          handlerError = error;
+        }
+        if (!handlerFailed) {
+          await batch.ack(delivery);
+          completed += 1;
+          continue;
+        }
+        const requeue = this.shuttingDown ||
+          (handlerError instanceof DomainError && handlerError.code === 'operation.backpressure');
+        await batch.nack(delivery, { requeue });
         if (requeue) {
           requeued += 1;
           continue;
         }
         failed += 1;
+        const failure = classifyWorkerRuntimeFailure(handlerError);
         this.logger.error('delivery attempt queue drain loop item failed', {
           commandId: command.commandId,
           trigger,
-          error: error instanceof Error ? error.message : String(error),
+          error: failure.message,
           redelivered: delivery.diagnostics.redelivered,
           deadLetterCount: delivery.diagnostics.deadLetterCount,
           deadLetterReason: delivery.diagnostics.deadLetterReason,
@@ -134,16 +156,20 @@ export class DeliveryAttemptQueueDrainLoop implements OnModuleInit, OnModuleDest
           worker: 'delivery-service',
         });
       }
-    }
 
-    this.logger.info('delivery attempt queue drain loop tick completed', {
-      trigger,
-      evaluated: deliveries.length,
-      completed,
-      failed,
-      requeued,
-      worker: 'delivery-service',
-    });
+      this.logger.info('delivery attempt queue drain loop tick completed', {
+        trigger, evaluated: deliveries.length, completed, failed, requeued,
+        worker: 'delivery-service',
+      });
+    } finally {
+      for (const error of await batch.releaseUnsettled()) {
+        const failure = classifyWorkerRuntimeFailure(error);
+        this.logger.error('queue delivery cleanup remains unresolved; reader will retry before acquiring more work', {
+          error: failure.message, errorClassification: failure.classification,
+          errorCode: failure.code, worker: 'delivery-service',
+        });
+      }
+    }
   }
 
   private recordDeliveryLag(delivery: Awaited<ReturnType<DeliveryAttemptQueueReaderPort['drain']>>[number]): void {

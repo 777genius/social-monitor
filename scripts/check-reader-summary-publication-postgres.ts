@@ -1,4 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import { assertLargeDailyPublicationPostgresContract } from "./lib/reader-summary-large-daily-publication-postgres-contract";
+import { spawnSync } from "node:child_process";
 import { Pool, type PoolClient } from "pg";
 import {
   provisionReaderSummaryPublicationFixtureScope,
@@ -30,6 +32,11 @@ import {
   type ReaderSummaryPublicationRunningFixture as Fixture,
 } from "./lib/reader-summary-publication-postgres-running-fixture";
 import { assertReaderSummaryRecoveryPostgresContract } from "./lib/reader-summary-recovery-postgres-contract";
+import {
+  assertReaderSummaryPromotionV2ReceiptOwners,
+  assertReaderSummaryPromotionV2RollbackPostgresContract,
+} from
+  "./lib/reader-summary-promotion-v2-rollback-postgres-contract";
 import { assertReaderSummaryWeeklyDailyCertificationBackfillPostgresContract } from "./lib/reader-summary-weekly-daily-certification-backfill-postgres-contract";
 import { assertReaderSummaryWeeklyCertificationSealPostgresContract } from "./lib/reader-summary-weekly-certification-seal-postgres-contract";
 import { assertReaderSummaryWeeklyAtomicPublicationPostgresContract } from "./lib/reader-summary-weekly-atomic-publication-postgres-contract";
@@ -59,13 +66,17 @@ import {
   makePublicationFixtureRuntimeDatabaseOwner,
   publicationProtectedRolePresence,
   publicationDatabaseUrl,
-  provisionPublicationFixtureDailyTerminalRole,
+  provisionPublicationFixtureDailyTerminalRole, provisionPublicationFixtureFirstPublicationRole,
   publicationRuntimeDatabaseUrl,
   quotePostgresIdentifier,
   quotePostgresLiteral,
   runReaderSummaryPublicationBootstrapSql,
 } from "./reader-summary-publication-postgres-privileges";
 import { assertReaderSummaryPublicationRuntimeGuard } from "./reader-summary-publication-postgres-runtime-guard";
+import { assertReaderValueAssessmentPublicationAcl } from "./lib/reader-value-assessment-publication-acl";
+import { publish, reverseObject } from "./lib/reader-summary-publication-postgres-publish";
+import { withProvisionedPublicationFixture } from "./lib/reader-summary-publication-disposable-fixture";
+import { assertPostgres18PsqlTransportConfiguration } from "./reader-summary-publication-postgres18-regression";
 const serverAdminDatabaseUrl = requiredReaderSummaryPublicationAdminDatabaseUrl(
   process.env,
 );
@@ -103,13 +114,23 @@ let dailyActivationDefinerRolePreexisting = false;
 let fixtureDatabaseCreated = false;
 let fixtureMigrationAdminRoleCreated = false;
 let fixtureRuntimeRoleCreated = false;
-let fixtureDailyTerminalRoleCreated = false;
+let fixtureDailyTerminalRoleCreated = false; let fixtureFirstPublicationRoleOwnership: Readonly<{ oid: number }> | undefined;
 export type ReaderSummaryPublicationPostgresContract =
+  | "feed-promotion"
+  | "promotion-v2-ownership"
+  | "promotion-v2-rollback"
+  | "promotion-v3"
   | "publication"
   | "weekly-certification-seal"
   | "weekly-atomic-publication"
   | "weekly-projection"
   | "weekly-review-manifest";
+
+export type ReaderSummaryPublicationPostgresFixture = Readonly<{
+  databaseName: string;
+  runtimeDatabaseUrl: string;
+  auditorDatabaseUrl: string;
+}>;
 
 export const closeReaderSummaryPublicationPostgresContract = async (
 ): Promise<void> => {
@@ -118,11 +139,20 @@ export const closeReaderSummaryPublicationPostgresContract = async (
 
 export const runReaderSummaryPublicationPostgresContract = async (
   contract: ReaderSummaryPublicationPostgresContract = "publication",
+  testFixtureCallback?: (
+    fixture: ReaderSummaryPublicationPostgresFixture,
+  ) => Promise<void> | void,
 ): Promise<void> => {
   assert(
     /^reader_summary_publication_test_[0-9a-f]{20}$/.test(databaseName),
     "temporary publication database name must be bounded",
   );
+  try {
+    assertPostgres18PsqlTransportConfiguration(serverAdminDatabaseUrl, runtimeRole);
+  } catch (error) {
+    removeReaderSummaryPublicationMigrationWorkspace(migrationWorkspace);
+    throw error;
+  }
   const protectedRoles = await publicationProtectedRolePresence(serverAdmin);
   ownerRolePreexisting = protectedRoles.owner;
   capabilityRolePreexisting = protectedRoles.capability;
@@ -183,6 +213,7 @@ export const runReaderSummaryPublicationPostgresContract = async (
       migrationAdminRole,
       runtimeRole,
     );
+    fixtureFirstPublicationRoleOwnership = await provisionPublicationFixtureFirstPublicationRole(serverAdmin);
     fixtureDailyTerminalRoleCreated =
       await provisionPublicationFixtureDailyTerminalRole({
         dailyTerminalPassword,
@@ -218,7 +249,28 @@ export const runReaderSummaryPublicationPostgresContract = async (
       adminDatabaseUrl,
       runtimeRole,
     );
+    if (!testFixtureCallback && contract === "promotion-v2-ownership") {
+      await assertReceiptOwnerAuditsRejectDrift();
+    }
     assertReaderSummaryMigrationDatabaseMatchesSchema(targetDatabaseUrl);
+    if (testFixtureCallback) {
+      const fixture = Object.freeze({
+        databaseName,
+        runtimeDatabaseUrl,
+        auditorDatabaseUrl: targetDatabaseUrl,
+      });
+      await withProvisionedPublicationFixture(fixture, testFixtureCallback);
+      return;
+    }
+    if (contract === "feed-promotion") {
+      await assertFeedPromotionOwnerOrder();
+      runFeedPromotionRepositoryCheck();
+      runFeedPromotionRecoveryCheck();
+      console.log(
+        "Feed promotion ordered-bootstrap PostgreSQL 18 contract OK",
+      );
+      return;
+    }
     const auditorPool = new Pool({
       connectionString: targetDatabaseUrl,
       max: 1,
@@ -251,6 +303,36 @@ export const runReaderSummaryPublicationPostgresContract = async (
           readerSummaryPublicationMigration,
         );
         await assertLegacyRepositoryVisibility(runtimeDatabaseUrl);
+        if (contract === "promotion-v2-ownership") {
+          await assertReaderSummaryPromotionV2ReceiptOwners(auditor);
+          console.log("Promotion V2 receipt ownership PostgreSQL 18 contract OK");
+          return;
+        }
+        if (contract === "promotion-v2-rollback") {
+          await assertReaderSummaryPromotionV2RollbackPostgresContract({
+            adminClient,
+            auditorClient: auditor,
+            runtimeClient: first,
+            runtimeRole,
+            createFixture: (status, day, overrides) =>
+              createRunningFixture(first, status, day, overrides),
+            publish: (payload) => publish(first, payload),
+          });
+          return;
+        }
+        if (contract === "promotion-v3") {
+          await assertReaderValueAssessmentPublicationAcl(adminClient);
+          const { assertReaderSummaryV3PostgresContract } = await import(
+            "./lib/reader-summary-v3-postgres-contract"
+          );
+          await assertReaderSummaryV3PostgresContract({ client: first,
+            adminClient,
+            concurrentClient: second,
+            createFixture: (status, day, overrides) =>
+              createRunningFixture(first, status, day, overrides),
+            publish: (client, payload) => publish(client, payload) });
+          return;
+        }
         if (
           contract === "weekly-certification-seal" ||
           contract === "weekly-atomic-publication" ||
@@ -294,6 +376,7 @@ export const runReaderSummaryPublicationPostgresContract = async (
           }
           return;
         }
+        await assertLargeDailyPublicationPostgresContract(first, auditor);
         await assertReaderSummaryWeeklyPublicationEvidencePostgresContract({
           runtimeClient: first,
           canonicalJsonAuditor: auditor,
@@ -387,12 +470,133 @@ export const runReaderSummaryPublicationPostgresContract = async (
       fixtureDatabaseCreated,
       fixtureMigrationAdminRoleCreated,
       fixtureRuntimeRoleCreated,
-      fixtureDailyTerminalRoleCreated,
+      fixtureDailyTerminalRoleCreated, fixtureFirstPublicationRoleOwnership,
     });
   }
   console.log(
     "Reader summary PostgreSQL privilege, upgrade, replay, and concurrency gate OK",
   );
+};
+const assertFeedPromotionOwnerOrder = async (): Promise<void> => {
+  const admin = new Pool({ connectionString: adminDatabaseUrl, max: 1 });
+  try {
+    const result = await admin.query<{
+      readonly feed_owner: string;
+      readonly safe_set_membership: boolean;
+    }>(`SELECT
+        pg_get_userbyid(relation.relowner) AS feed_owner,
+        EXISTS (
+          SELECT 1 FROM pg_auth_members membership
+          JOIN pg_roles granted ON granted.oid = membership.roleid
+          JOIN pg_roles member ON member.oid = membership.member
+          WHERE granted.rolname = 'social_monitor_public_schema_owner'
+            AND member.rolname = current_user
+            AND NOT membership.admin_option
+            AND NOT membership.inherit_option
+            AND membership.set_option
+        ) AS safe_set_membership
+      FROM pg_class relation WHERE relation.oid = 'public.feed_items'::regclass`);
+    assert(
+      result.rows[0]?.feed_owner === "social_monitor_public_schema_owner" &&
+        result.rows[0]?.safe_set_membership === true,
+      "feed promotion indexes must follow the production table-owner transition",
+    );
+  } finally {
+    await admin.end();
+  }
+};
+const assertReceiptOwnerAuditsRejectDrift = async (): Promise<void> => {
+  const admin = new Pool({ connectionString: targetDatabaseUrl, max: 1 });
+  const receipts = [
+    [
+      "reader_summary_promotion_v2_rollback_receipts",
+      "social_monitor_public_schema_owner",
+      "social_monitor_reader_summary_publication_owner",
+    ],
+    [
+      "reader_summary_promotion_v2_canary_publication_receipts",
+      "social_monitor_public_schema_owner",
+      "social_monitor_reader_summary_publication_owner",
+    ],
+  ] as const;
+  try {
+    for (const [table, expectedOwner, wrongOwner] of receipts) {
+      for (const phase of ["pre", "post"] as const) {
+        await admin.query(
+          `ALTER TABLE public.${quotePostgresIdentifier(table)} OWNER TO ${quotePostgresIdentifier(wrongOwner)}`,
+        );
+        try {
+          await assertRejectsContaining(
+            () => runReaderSummaryPublicationBootstrapSql(
+              phase, adminDatabaseUrl, runtimeRole,
+            ),
+            "Promotion V2 receipt table has an unexpected owner",
+            `${phase} audit must reject wrong ${table} owner`,
+          );
+        } finally {
+          await admin.query(
+            `ALTER TABLE public.${quotePostgresIdentifier(table)} OWNER TO ${quotePostgresIdentifier(expectedOwner)}`,
+          );
+          const restored = await admin.query<{ owner: string }>(
+            `SELECT pg_get_userbyid(relation.relowner) AS owner
+               FROM pg_class relation
+              WHERE relation.oid = $1::regclass`,
+            [`public.${table}`],
+          );
+          assert(
+            restored.rows[0]?.owner === expectedOwner,
+            `${phase} drift exercise must restore ${table} owner`,
+          );
+        }
+      }
+    }
+    const missingTable = receipts[1]![0];
+    const hiddenTable = `${missingTable}_inventory_drift_fixture`;
+    for (const phase of ["pre", "post"] as const) {
+      await admin.query(
+        `ALTER TABLE public.${quotePostgresIdentifier(missingTable)} RENAME TO ${quotePostgresIdentifier(hiddenTable)}`,
+      );
+      try {
+        await assertRejectsContaining(
+          () => runReaderSummaryPublicationBootstrapSql(
+            phase, adminDatabaseUrl, runtimeRole,
+          ),
+          "Promotion V2 receipt table has an unexpected owner",
+          `${phase} audit must reject a partial receipt inventory`,
+        );
+      } finally {
+        await admin.query(
+          `ALTER TABLE public.${quotePostgresIdentifier(hiddenTable)} RENAME TO ${quotePostgresIdentifier(missingTable)}`,
+        );
+      }
+    }
+  } finally {
+    await admin.end();
+  }
+};
+const runFeedPromotionRepositoryCheck = (): void => {
+  const script = "check:feed-promotion-keyset-plan-postgres";
+  const result = spawnSync("npm", ["run", script], {
+    env: {
+      ...process.env,
+      DATABASE_URL: runtimeDatabaseUrl,
+      FEED_PROMOTION_FIXTURE_DATABASE_URL: targetDatabaseUrl,
+    },
+    stdio: "inherit",
+  });
+  if (result.status !== 0) {
+    throw new Error(`${script} failed in the ordered-bootstrap fixture`);
+  }
+};
+const runFeedPromotionRecoveryCheck = (): void => {
+  const script = "check:feed-promotion-index-recovery-postgres";
+  const result = spawnSync("npm", ["run", script], {
+    env: { ...process.env, DATABASE_URL: adminDatabaseUrl },
+    stdio: "inherit",
+  });
+  if (result.status !== 0) {
+    throw new Error(`${script} failed in the ordered-bootstrap fixture`);
+  }
 };
 const assertOrderedUpgrade = async (client: PoolClient): Promise<void> => {
   const expected = readerSummaryMigrationNames();
@@ -782,23 +986,6 @@ const assertPublishedExactlyOnce = async (
     `${status} must retain one proof, outbox event, and public artifact`,
   );
 };
-const publish = async (
-  client: PoolClient,
-  payload: Readonly<Record<string, unknown>>,
-): Promise<string> => {
-  const result = await client.query<{ readonly outcome: string }>(
-    `SELECT outcome FROM publish_reader_summary($1::jsonb)`,
-    [JSON.stringify(payload)],
-  );
-  const outcome = result.rows[0]?.outcome;
-  assert(outcome !== undefined, "publication function returned no outcome");
-  return outcome;
-};
-const reverseObject = (
-  value: Readonly<Record<string, unknown>>,
-): Readonly<Record<string, unknown>> =>
-  Object.fromEntries(Object.entries(value).reverse());
-
 if (require.main === module) {
   void runReaderSummaryPublicationPostgresContract()
     .catch((error: unknown) => {

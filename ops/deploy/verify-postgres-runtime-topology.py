@@ -185,7 +185,10 @@ def verify_daily_topology(service_path: str, runner_path: str) -> None:
         line.strip() for line in service.splitlines() if line.startswith("ExecStart=")
     ]
     if runner_name == "daily-run.sh":
-        expected = "ExecStart=/var/data/social-monitor/control/daily-run.sh --yesterday"
+        expected = (
+            "ExecStart=/var/data/social-monitor/control/postgres-runtime-current/"
+            "reader-summary-one-shot.sh daily"
+        )
         if exec_start_lines != [expected]:
             fail("effective daily service does not execute the reviewed runner")
         if any(
@@ -202,7 +205,8 @@ def verify_daily_topology(service_path: str, runner_path: str) -> None:
         "control/compose.production.yml",
         "control/compose.managed-db.yml",
         "control/postgres-runtime-current/compose.postgres-runtime.yml",
-        "integration/ops/deploy/production-runtime/compose.agent-runtime-model.yml",
+        "control/postgres-runtime-current/compose.agent-runtime-model.yml",
+        "control/postgres-runtime-current/compose.daily-artifacts.yml",
     ):
         if compose_path not in runner:
             fail(f"effective daily runner omits Compose input: {compose_path}")

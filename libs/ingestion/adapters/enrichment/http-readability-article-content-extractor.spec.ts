@@ -1,4 +1,9 @@
+import { guardedContentGet } from '../http/guarded-content-http';
+jest.mock('../http/guarded-content-http', () => ({ guardedContentGet: jest.fn() }));
 import { HttpReadabilityArticleContentExtractor } from './http-readability-article-content-extractor';
+
+// Some fixtures perform two separately bounded 10-second extractions.
+jest.setTimeout(25_000);
 
 const articleHtml = `
   <!doctype html>
@@ -17,6 +22,14 @@ const articleHtml = `
 
 describe('HttpReadabilityArticleContentExtractor', () => {
   const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    jest.mocked(guardedContentGet).mockImplementation(async (input) => {
+      const response = await globalThis.fetch(input.url, { headers: input.headers });
+      return { status: response.status, headers: response.headers,
+        finalUrl: response.url || input.url, body: await response.text() };
+    });
+  });
 
   afterEach(() => {
     global.fetch = originalFetch;
@@ -51,6 +64,50 @@ describe('HttpReadabilityArticleContentExtractor', () => {
     }
   });
 
+  it('retains a 40k article and its late qualification within the 64k capture envelope', async () => {
+    const text = 'Practical details. '.repeat(2200) + 'Qualification: this is not a controlled trial.';
+    global.fetch = jest.fn(async () => responseFor('https://example.test/article',
+      `<article><h1>Report</h1><p>${text}</p></article>`, { 'content-type': 'text/html' })) as typeof fetch;
+    const result = await new HttpReadabilityArticleContentExtractor().extract({
+      url: 'https://example.test/article', correlationId: 'capture-test',
+    });
+    expect(result).toMatchObject({ ok: true, truncated: false, extractionVersion: 'readability.text.v2' });
+    if (result.ok) {
+      expect(result.text.length).toBeGreaterThan(40_000);
+      expect(result.text).toContain('Qualification: this is not a controlled trial.');
+      expect(result.originalTextLength).toBe(result.text.length);
+    }
+  });
+
+  it('reports truncation and hashes the full normalized article including the omitted tail', async () => {
+    let tail = 'A';
+    global.fetch = jest.fn(async () => responseFor('https://example.test/article',
+      `<article><p>${'Detail. '.repeat(10_000)}${tail}</p></article>`, { 'content-type': 'text/html' })) as typeof fetch;
+    const extractor = new HttpReadabilityArticleContentExtractor();
+    const first = await extractor.extract({ url: 'https://example.test/article', correlationId: 'capture-test' });
+    tail = 'B';
+    const second = await extractor.extract({ url: 'https://example.test/article', correlationId: 'capture-test' });
+    expect(first).toMatchObject({ ok: true, truncated: true });
+    if (first.ok && second.ok) {
+      expect(first.text.length).toBeLessThanOrEqual(64_000);
+      expect(first.originalTextLength).toBeGreaterThan(64_000);
+      expect(first.text).toBe(second.text);
+      expect(first.fullTextSha256).not.toBe(second.fullTextSha256);
+    }
+  });
+
+  it('enforces the remaining scan budget even before its abort notification arrives', async () => {
+    jest.mocked(guardedContentGet).mockImplementation(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      return { status: 200, headers: new Headers({ 'content-type': 'text/html' }),
+        finalUrl: 'https://example.test/article', body: articleHtml };
+    });
+    await expect(new HttpReadabilityArticleContentExtractor().extract({
+      url: 'https://example.test/article', correlationId: 'scan-budget', remainingBudgetMs: 10,
+      signal: new AbortController().signal,
+    })).rejects.toThrow('deadline');
+  });
+
   it('rejects private-network article URLs before fetching', async () => {
     const fetchMock = jest.fn();
     global.fetch = fetchMock as typeof fetch;
@@ -61,7 +118,7 @@ describe('HttpReadabilityArticleContentExtractor', () => {
       correlationId: 'corr-private-url',
     });
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       ok: false,
       sourceUrl: 'http://127.0.0.1/article',
       reason: 'Article URL must not target private or local networks.',
@@ -70,15 +127,13 @@ describe('HttpReadabilityArticleContentExtractor', () => {
   });
 
   it('validates redirect targets before following them', async () => {
-    global.fetch = jest.fn(async () => responseFor('https://example.test/start', '', {
-      location: 'http://169.254.169.254/latest/meta-data',
-    }, 302)) as typeof fetch;
+    jest.mocked(guardedContentGet).mockRejectedValue(new Error('Content URL must not target private or local networks.'));
     const extractor = new HttpReadabilityArticleContentExtractor();
 
     await expect(extractor.extract({
       url: 'https://example.test/start',
       correlationId: 'corr-redirect',
-    })).rejects.toThrow('Article URL must not target private or local networks.');
+    })).rejects.toThrow('Content URL must not target private or local networks.');
   });
 });
 

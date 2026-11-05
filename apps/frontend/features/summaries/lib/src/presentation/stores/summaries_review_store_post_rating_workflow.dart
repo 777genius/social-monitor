@@ -104,7 +104,10 @@ extension SummariesReviewStorePostRatingWorkflow on SummariesReviewStore {
   }
 }
 
-List<TopRead> _postRatingItems(ReaderSummary summary) =>
-    summary.content.selectedPosts.isNotEmpty
-    ? summary.content.selectedPosts
-    : summary.content.topReads;
+/// Every promoted card a reader can rate. "Show more" continues Top instead
+/// of repeating it, and news cards are rated like any other post.
+List<TopRead> _postRatingItems(ReaderSummary summary) => [
+  ...summary.content.topReads,
+  ...summary.content.selectedPosts,
+  ...summary.content.newsWithoutRatingPosts,
+];

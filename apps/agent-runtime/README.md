@@ -1,9 +1,113 @@
 # Agent Runtime Service
 
+## Host release for the disabled systemd bridge
+
+The host release is a tarball built from a clean product checkout. It
+does not contain a `bridge.mjs`. Build on a Linux host with Node 22 or newer,
+`tar`, the checked-in vendor archives, and the lockfile. The command runs the
+existing Prisma codegen with a synthetic, nonconnecting database URL, compiles
+TypeScript into fresh temporary output with fresh incremental state, and
+installs locked production dependencies in an isolated temporary directory.
+It emits a tarball plus a separate JSON
+provenance manifest in an output directory outside the checkout. It does not
+start an agent or enable any unit. Existing ignored `dist` in the checkout is
+neither modified nor packaged.
+Set `TMPDIR` to a writable scratch directory when the host's `/tmp` is
+read-only; temporary installation files are removed after packaging.
+
+```sh
+node apps/agent-runtime/bin/host-release.mjs build --output-dir /tmp/agent-runtime-host-release
+```
+
+The extracted root has these exact entry paths:
+
+- `dist/apps/agent-runtime/src/main.js` - Node service entrypoint.
+- `apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs` - pinned CLI wrapper, with its pinned adjacent helper closure.
+- `apps/agent-runtime/bin/host-release.mjs` - packaged verifier, covered by the release tree hash.
+- `dist/libs/` - compiled Social Monitor libraries, including the generated gRPC contract.
+- `node_modules/` - locked production dependencies, including the vendored
+  `@vioxen/subscription-runtime` and pinned Codex native package. The wrapper's
+  direct vendored import resolves to
+  `node_modules/@vioxen/subscription-runtime/dist/worker-local/agent-task-runner-cli.js`.
+- `package.json` and `package-lock.json` - root package metadata and lockfile.
+
+The archive filename includes its Linux CPU architecture. The JSON manifest
+records equal `sourceCommit` and `productCommit` pins, the target architecture,
+`entry`, `cli`, `verifier`, `helpers`, each helper SHA-256, the archive SHA-256,
+wrapper SHA-256, verifier SHA-256, lockfile SHA-256, and a canonical hash of all extracted file bytes,
+modes, paths and symlink targets. Copy the manifest and archive together over
+an authenticated channel. Platform infra must pin
+the intended product commit independently; a manifest supplied with an
+untrusted archive is not itself an authority for that commit.
+
+Keep the archive and sidecar under `/opt/social-monitor-agent-runtime/artifacts/`,
+outside the extracted release root. Before extracting, compare the sidecar's
+SHA-256 with the independently approved manifest hash and verify its product
+commit and archive SHA-256. Extract as root into a **new, empty** directory
+under `/opt/social-monitor-agent-runtime/releases/<product-sha>`. Then run the
+packaged verifier; the approved manifest and archive hashes pin its bytes:
+
+```sh
+approved_commit="${APPROVED_PRODUCT_COMMIT:?set the reviewed product commit}"
+service_uid="${AGENT_RUNTIME_SERVICE_UID:?set the numeric systemd service UID}"
+archive="/opt/social-monitor-agent-runtime/artifacts/agent-runtime-host-${approved_commit}-linux-$(uname -m | sed 's/x86_64/x64/; s/aarch64/arm64/').tar.gz"
+manifest="${archive}.json"
+release="/opt/social-monitor-agent-runtime/releases/${approved_commit}"
+mkdir "$release"
+tar -xzf "$archive" -C "$release" --no-same-owner
+node "$release/apps/agent-runtime/bin/host-release.mjs" verify \
+  --release-dir "$release" \
+  --manifest "$manifest" --archive "$archive" \
+  --expect-product-commit "$approved_commit" \
+  --service-uid "$service_uid"
+```
+
+The verifier rejects a wrong archive hash, product commit, missing helper or
+verifier,
+changed extracted bytes, forbidden `.env`/`.git`/test/fixture paths, and a
+symlink that leaves the extracted tree. It also rejects release entries owned
+by the target service UID or writable by group/other. Ancestor directories
+through `/` must also be real directories, not service-owned, and not writable
+by group/other unless a sticky directory protects its root-owned child. Keep
+the verified release and its parent owned by root; its archived directories
+and files have no group or other write bits.
+The systemd service UID must be non-root and must receive write access only to
+separate state, logs and auth-pool mounts. Set `AGENT_RUNTIME_CLI_PATH` to the absolute
+extracted wrapper path. Start Node with the absolute extracted entrypoint and
+the release root as working directory; `node_modules` resolution and the
+wrapper's relative vendored import depend on this layout. The auth pool,
+local encryption key and state root are operator-managed external paths and
+must never be copied into the release.
+
+For a verified release at `/opt/social-monitor-agent-runtime/releases/<product-sha>`, the
+systemd bridge's paths are:
+
+```ini
+WorkingDirectory=/opt/social-monitor-agent-runtime/releases/<product-sha>
+ExecStart=/usr/bin/node /opt/social-monitor-agent-runtime/releases/<product-sha>/dist/apps/agent-runtime/src/main.js
+Environment=AGENT_RUNTIME_CLI_PATH=/opt/social-monitor-agent-runtime/releases/<product-sha>/apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs
+```
+
+The release command requires working `npm ci` and pinned `tsc` binary and TypeScript compiler library
+plus `scripts/rewrite-build-aliases.mjs` in the clean product checkout. If its pinned lockfile or dependency installation fails,
+no archive should be promoted. The synthetic packaging and verifier tests do
+not start the service:
+
+```sh
+node --test apps/agent-runtime/bin/host-release*.test.mjs
+```
+
 Internal gRPC boundary between Social Monitor summary adapters and
 `@vioxen/subscription-runtime`. The dependency is vendored as
-`vendor/vioxen-subscription-runtime-0.1.0-main.2-sm.1.tgz` so Docker and `npm ci`
-install the CLI binary deterministically.
+`vendor/vioxen-subscription-runtime-0.1.0-main.42-sm.3.tgz` so Docker and
+`npm ci` install the CLI binary deterministically. The active artifact includes
+the reviewed one-shot executor profile from upstream commit `5ff55dc2` (PR
+#176). Provenance and packaging are proved by
+`npm run vendor:subscription-runtime`; the usage contract itself is proved by
+`npm run check:subscription-runtime-usage-contract`.
+
+`vendor/vioxen-subscription-runtime-0.1.0-main.30.tgz` stays vendored because the
+Reader Promotion V2 canary lane pins that release deliberately.
 
 ## Protocol
 
@@ -26,13 +130,18 @@ apps/agent-runtime/bin/run-codex-subscription-runtime-agent-task.mjs --provider 
 
 The bridge delegates lifecycle, durable sessions and task execution to
 `@vioxen/subscription-runtime`, while enforcing the exact purpose route before
-constructing the Codex worker. Daily summary purposes use `gpt-5.6-sol`, `xhigh`
-and structured JSON output. `social_monitor.reader_summary.weekly.generate`
-uses `gpt-5.6-sol`, `xhigh` and `output_text`. These admitted routes use Codex
-subscription-account auth from the configured auth JSON; API-key credentials
-are removed from the runtime child environment. The CLI path can be overridden
-through `AGENT_RUNTIME_CLI_PATH`. Docker stores runtime session state in
-`/var/lib/subscription-runtime` via `AGENT_RUNTIME_STATE_ROOT`.
+constructing a one-shot Codex executor. Its writable `CODEX_HOME` is isolated
+for the task and removed when the executor settles; agents cannot opt into
+retention through a request or prompt. Active `social_monitor.reader_summary.*.v2`
+routes use `gpt-5.6-sol` with `high` reasoning; structured routes use structured
+JSON output, while `social_monitor.reader_summary.weekly.generate.v2` and the
+dedicated `social_monitor.reader_summary.daily.canonical_recovery.v2` route use
+`output_text`. Unversioned reader-summary purposes are retained only in frozen
+historical evidence and are not admitted for execution. These admitted routes use Codex subscription-account auth from the
+configured auth JSON; API-key credentials are removed from the runtime child
+environment. The CLI path can be overridden through `AGENT_RUNTIME_CLI_PATH`.
+Docker stores runtime session state in `/var/lib/subscription-runtime` via
+`AGENT_RUNTIME_STATE_ROOT`.
 
 Important env:
 
@@ -44,12 +153,139 @@ Important env:
   32-byte key used to decrypt durable subscription-runtime sessions
 - `AGENT_RUNTIME_PROVIDER`, `codex` or `claude`, selected by Social Monitor
 - `AGENT_RUNTIME_MODEL`, required production model (`gpt-5.6-sol`)
-- `AGENT_RUNTIME_REASONING_EFFORT`, required production effort (`xhigh`)
+- `AGENT_RUNTIME_REASONING_EFFORT`, exact production service-admission baseline
+  (`high`); purpose policy still selects the independent generic-summary
+  profile as `xhigh`, while every admitted reader-summary v2 route uses `high`
 - `AGENT_RUNTIME_TIMEOUT_MS`, generic Social Monitor task timeout fallback
 - `AGENT_RUNTIME_CODEX_AUTH_JSON_PATH`
 - `AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT`, immutable pool snapshot root
 - `AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST`, manifest path inside the pool root
 - `AGENT_RUNTIME_CLAUDE_TOKEN_ENV`, default `CLAUDE_CODE_OAUTH_TOKEN`
+
+MiMo Token Plan admission is reserved for the daily reader-summary
+generate, repair, topic-map label, topic-map relation, story relation, and
+related-topic relation v2 purposes with model `mimo-v2.6-pro`. Each purpose
+requires its named structured-output schema and schema version. Weekly,
+canonical-recovery, generic summary, and relevance tasks remain on Codex.
+The reader summary adapters select this route only when
+`AGENT_RUNTIME_READER_SUMMARY_BACKEND=xiaomi-mimo-token-plan`; its default
+remains the Codex ChatGPT backend. The optional
+`AGENT_RUNTIME_READER_SUMMARY_GENERATION_MODEL` must be `mimo-v2.6-pro` on
+this route. Optional purpose-specific topic and relation model overrides must
+also be `mimo-v2.6-pro` when MiMo is selected. The historic
+`AGENT_RUNTIME_READER_SUMMARY_MODEL` stays pinned to `gpt-5.6-sol` for the
+default Codex route. MiMo uses the Codex provider transport.
+The summary route uses the isolated `@vioxen/subscription-runtime-mimo`
+package. The existing `main.42-sm.3` package still runs every other purpose.
+The MiMo package is built from upstream commit
+`ec1db998bb002aa41b9a45ce44d5eadc9836ca2d` in the checked-in source
+bundle. Run `npm run check:subscription-runtime-mimo-rebuild` to verify both
+the bundle and the exact vendored archive. The archived package reports
+`0.1.0-main.40-sm-mimo.7`; the runtime attestation uses this version for MiMo
+and the original package version for other purposes.
+
+Daily reader-summary tasks (generate, repair, topic label, topic and story
+relations, V3 presentation) can bypass this service and run through
+account-gateway with `AGENT_RUNTIME_TRANSPORT=gateway-llm`. That transport
+serves `AGENT_RUNTIME_READER_SUMMARY_BACKEND=kimi-code` (model `k3-256k`, no
+reasoning control), `openrouter` (`AGENT_RUNTIME_GATEWAY_LLM_MODEL`, default
+`openai/gpt-oss-120b`) and `openai-chatgpt` (Codex accounts connected to the
+gateway, profile `openai-codex-oauth-responses-v1`). On the gateway, Codex runs
+one allowed pair from `AGENT_RUNTIME_GATEWAY_LLM_MODEL` and
+`AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT`: `gpt-6.1-sol`/`low` (default)
+or `gpt-5.6-sol`/`high`; any other pair fails at startup. `gpt-6.1-sol` runs
+only through the gateway, and this service keeps `gpt-5.6-sol`/`high`.
+Kimi and OpenRouter never run here; Codex runs here or on the
+gateway depending on the transport, and the gateway needs the backend named
+explicitly. MiMo stays on this service. Weekly, canonical
+recovery, generic summary and relevance tasks keep the gRPC client. The
+gateway settings (`AGENT_RUNTIME_GATEWAY_LLM_*`) are listed in
+`libs/summary/adapters/composition/reader-summary-agent-runtime-transport.ts`.
+
+Pass the existing root-only key file to the agent-runtime service using a
+systemd credential. An operator-owned unit drop-in can use these settings,
+with the actual root-only source path substituted during deployment:
+
+```ini
+[Service]
+LoadCredential=mimo-token-plan:/absolute/root-only/mimo-key-file
+Environment=AGENT_RUNTIME_MIMO_API_KEY_FILE=%d/mimo-token-plan
+```
+
+The service receives only the credential path. The wrapper opens a regular,
+owner-only file after exact summary admission and gives its contents only to
+the MiMo worker's child-process environment. It does not copy `auth.json` or
+put the key on argv or in the product process environment. Missing, linked,
+group-readable, multiline, or oversized files fail closed. The MiMo worker
+uses one read-only app-server-goal attempt, disables native tools and project
+instructions, binds the named reader-summary output schema, and never enters
+the Codex auth pool. Leave the summary backend
+selector on its Codex default until the integrated release, credential mount,
+and sandbox-only acceptance check are ready. No production key is needed for
+the source rebuild or focused tests.
+
+## Opt-in strict gRPC admission
+
+Set `AGENT_RUNTIME_STRICT_PRODUCTION_ADMISSION=1` to enable strict admission.
+The default remains compatible with existing source DO and Agent Teams callers.
+Strict startup requires all of these explicit values:
+
+- `AGENT_RUNTIME_SERVICE_TOKEN`: nonempty bearer token required by both RPCs.
+- `AGENT_RUNTIME_GRPC_BIND`: numeric private or loopback IP and port; wildcard,
+  public and hostname binds are rejected.
+- `AGENT_RUNTIME_PROJECT_WORKSPACE_ROOT`: existing absolute trusted project
+  directory. Every `RunAgentTask.cwd` must name this directory or a descendant.
+- `AGENT_RUNTIME_STATE_ROOT`: existing absolute directory on an operator-managed
+  durable volume; `AGENT_RUNTIME_EPHEMERAL` must be disabled.
+- `AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT` and
+  `AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST`: required for the default Codex strict
+  service. The pool is an existing absolute directory with a manifest inside it
+  and at least one account reference. Single-account auth paths are rejected.
+- `AGENT_RUNTIME_CLI_PATH`: existing absolute executable regular file with no
+  symlink or traversal components. Startup also checks the pinned installation
+  bytes and package identity.
+
+For a MiMo-only strict service, explicitly set
+`AGENT_RUNTIME_ALLOWED_MODEL_BACKENDS=xiaomi-mimo-token-plan` and
+`AGENT_RUNTIME_MIMO_API_KEY_FILE` to an absolute root-controlled key file.
+Do not configure either Codex pool variable, `AGENT_RUNTIME_CODEX_AUTH_JSON_PATH`,
+or `CODEX_AUTH_JSON_PATH`; startup rejects even empty values. The key must be a
+regular file with no symlink or traversal components, 1 to 4096 bytes, and no
+group or world permissions. Every parent directory must be free of group or
+world write access. The key must be outside the workspace and state roots.
+Startup checks metadata only and verifies the pinned MiMo runtime installation;
+the worker reads the key only for an admitted MiMo task. This mode rejects
+Codex and legacy purpose requests before installation inspection or execution.
+The selected MiMo package, the base runtime package, and their manifests must
+resolve outside the admitted workspace. MiMo-only admission checks a pinned
+SHA256 inventory of all regular distribution files, including extensionless
+executables, `package.json`, JavaScript, JSON and native modules in both packages and the hoisted imports loaded by
+their worker entrypoints. The inventory rejects missing or changed files and
+symlinks within those code trees. The base fingerprint requires npm's locked
+dependency completion of its vendored archive; the MiMo fingerprint matches
+its pinned archive. Health and execution
+reinspect the same code before spawn, and completed results require a fresh
+inspection before attestation. A changed distribution requires a reviewed pin
+update. The wrapper receives the exact admitted project cwd, including when
+that project is a sibling of the service checkout; the CLI timeout signals its
+local process group. MiMo app-server children are tracked by the wrapper
+process factory and shut down through the same bounded lifecycle, including
+detached native children.
+The setting is accepted only with strict admission. Its only known values are
+`openai-chatgpt` and `xiaomi-mimo-token-plan`, comma-separated without duplicates.
+When unset, the established Codex-pool strict behavior remains available.
+
+The workspace, state and configured pool roots must be separate. The CLI must sit outside
+the task workspace and state roots so admitted tasks cannot rewrite runtime
+state, auth references or launcher bytes through their workspace.
+
+Strict task admission rejects empty, relative, traversing, symlinked and
+foreign-mounted cwd paths before execution. The trusted project root and
+mounts must remain under operator control while tasks run; a mutable directory
+tree can still change after admission. The gRPC server uses `createInsecure`,
+so production strict mode also requires peer-only private transport and a
+firewall that prevents untrusted peers from reaching the bind address. This
+change does not enable strict mode in any deployment or compose configuration.
 
 Operational invariant: production summary launchers append
 `compose.agent-runtime-model.yml` last and idempotently recreate
@@ -60,10 +296,13 @@ transaction, aligning `backend.sha`, the PostgreSQL runtime `READY` marker and
 integration `HEAD` before bounded recovery.
 
 For local development, `npm run start:agent-runtime` loads only the runtime
-allowlist above from the repository `.env`; unrelated application credentials
+allowlist above from the repository `.env`, including strict admission, workspace,
+backend allowlist and MiMo key file settings; unrelated application credentials
 are not copied into the child process. It also uses the standard local durable
 state root under `XDG_STATE_HOME` (or `~/.local/state`) and the current
-`~/.codex/auth.json` when no explicit Codex auth path is configured.
+`~/.codex/auth.json` when no explicit Codex auth path is configured for a
+legacy Codex service. Explicit MiMo-only selection never adds that fallback;
+an explicitly configured Codex auth path remains forbidden in MiMo-only strict mode.
 
 ## Production Codex Auth Pool
 
@@ -129,5 +368,18 @@ The override mounts the host Codex auth JSON at
 `@openai/codex` and CA certificates, so the container does not need a manual
 Codex install step.
 
-The health RPC probes `AGENT_RUNTIME_CLI_PATH --help`. It does not run an agent
-task.
+For MiMo-only strict mode, the health RPC inspects the pinned installation
+without running a CLI task. Other modes probe `AGENT_RUNTIME_CLI_PATH` without
+an input task.
+
+
+The build helper parses the inherited TypeScript config and emitted module syntax
+with the locked TypeScript library. It rewrites configured aliases to existing
+emitted JS/declaration targets, matching exact entries before the longest wildcard
+prefix. The host command passes its isolated `--outDir`; the helper never writes
+source `dist` during host packaging. Missing alias targets or unsafe output paths
+fail the build. It changes only module specifier text and leaves `.map` files and
+sourceMappingURL comments unchanged. Like the previous post-emit alias step,
+changed specifier lengths can leave compiler map columns stale; no map accuracy
+improvement is claimed. The helper and compiler stay build-time tools and are
+not added to the release helper closure or production dependencies.

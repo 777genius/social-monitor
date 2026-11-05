@@ -9,8 +9,8 @@ SummaryCitationApiDto summaryCitationApiDto({
   String id = 'c-1',
   String sourceLabel = 'Reddit thread',
   String rawSnippet = 'Users compared competitor pricing tiers.',
-  String feedItemId = 'feed-c-1',
-  String sourceItemId = 'source-c-1',
+  String? feedItemId,
+  String? sourceItemId,
   String? providerKey,
   String? canonicalUrl,
 }) {
@@ -18,8 +18,8 @@ SummaryCitationApiDto summaryCitationApiDto({
     id: id,
     sourceLabel: sourceLabel,
     rawSnippet: rawSnippet,
-    feedItemId: feedItemId,
-    sourceItemId: sourceItemId,
+    feedItemId: feedItemId ?? 'feed-$id',
+    sourceItemId: sourceItemId ?? 'source-$id',
     providerKey: providerKey,
     canonicalUrl: canonicalUrl,
   );

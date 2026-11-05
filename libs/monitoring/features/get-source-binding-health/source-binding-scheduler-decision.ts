@@ -1,16 +1,11 @@
-import type { ScanJob } from '../../domain';
+import type { ScanAdmissionAssessment } from '../../domain/policies/scan-admission-policy';
 import {
   minimumScanIntervalSecondsForProvider,
   type EffectiveProviderScanCadence,
-} from '../shared/scan-cadence-policy';
-import {
-  boundedTransientProviderBackoffSeconds,
-  isFreshSuccessfulScan,
-  rateLimitBackoffUntil,
-} from '../shared/scan-freshness-guard';
+} from '../../domain/policies/provider-scan-cadence';
 import {
   nextScanPolicyRunAfterDecision,
-} from '../shared/scan-scheduler-decision-policy';
+} from '../../domain/policies/scan-schedule-policy';
 import type {
   SourceBindingHealthFreshnessView,
   SourceBindingHealthSchedulerDecisionView,
@@ -25,12 +20,9 @@ export const buildSchedulerDecision = (params: {
     readonly id: string;
     readonly nextRunAt: Date;
   };
-  readonly activeScanJob: ScanJob | null;
-  readonly duplicateScheduledScan: ScanJob | null;
-  readonly latestScanJob: ScanJob | null;
+  readonly admission?: ScanAdmissionAssessment;
   readonly freshness?: SourceBindingHealthFreshnessView;
   readonly cadence?: EffectiveProviderScanCadence;
-  readonly providerFailureBackoff: Date | null;
   readonly now: Date;
 }): SourceBindingHealthSchedulerDecisionView => {
   const minimumIntervalSeconds = params.cadence?.minimumIntervalSeconds ??
@@ -63,7 +55,7 @@ export const buildSchedulerDecision = (params: {
     };
   }
 
-  if (params.activeScanJob !== null) {
+  if (params.admission?.reason === 'active_scan') {
     return {
       ...base,
       canScanNow: false,
@@ -74,8 +66,7 @@ export const buildSchedulerDecision = (params: {
   }
 
   if (
-    params.duplicateScheduledScan !== null &&
-    params.scanPolicySnapshot.nextRunAt.getTime() <= params.now.getTime()
+    params.admission?.reason === 'duplicate_window'
   ) {
     const nextEligibleAt = nextScanPolicyRunAfterDecision({
       dueAt: params.scanPolicySnapshot.nextRunAt,
@@ -95,11 +86,7 @@ export const buildSchedulerDecision = (params: {
     };
   }
 
-  if (isFreshSuccessfulScan({
-    latestJob: params.latestScanJob,
-    freshnessSeconds: params.cadence?.freshnessSeconds ?? params.scanPolicySnapshot.freshnessSeconds,
-    now: params.now,
-  })) {
+  if (params.admission?.reason === 'fresh_success') {
     return {
       ...base,
       canScanNow: false,
@@ -111,14 +98,8 @@ export const buildSchedulerDecision = (params: {
     };
   }
 
-  const rateLimitBackoff = rateLimitBackoffUntil({
-    latestJob: params.latestScanJob,
-    backoffSeconds: boundedTransientProviderBackoffSeconds({
-      intervalSeconds: params.cadence?.intervalSeconds ?? params.scanPolicySnapshot.intervalSeconds,
-    }),
-    now: params.now,
-  });
-  if (rateLimitBackoff !== null) {
+  const rateLimitBackoff = params.admission?.rateLimitBackoff;
+  if (params.admission?.reason === 'rate_limit_backoff' && rateLimitBackoff != null) {
     const backoffUntil = rateLimitBackoff.toISOString();
 
     return {
@@ -133,8 +114,8 @@ export const buildSchedulerDecision = (params: {
     };
   }
 
-  if (params.providerFailureBackoff !== null) {
-    const backoffUntil = params.providerFailureBackoff.toISOString();
+  if (params.admission?.reason === 'provider_failure_backoff' && params.admission.providerFailureBackoff !== null) {
+    const backoffUntil = params.admission.providerFailureBackoff.toISOString();
 
     return {
       ...base,

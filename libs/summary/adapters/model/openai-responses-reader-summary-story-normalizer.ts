@@ -3,6 +3,7 @@ import type {
   ReaderSummaryTopStory,
 } from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
+import { primaryReaderSummaryEvidence } from "../../domain";
 import {
   firstNonEmptyString,
   knownStringSubset,
@@ -23,7 +24,12 @@ export const normalizeTopStories = (
   input: ReaderSummaryModelInput,
   citationMap: readonly ReaderSummaryCitation[],
 ): readonly ReaderSummaryTopStory[] => {
-  if (input.coveragePlan.lead === undefined) {
+  if (input.dailyEditorialPlan !== undefined) {
+    return normalizeDailyEditorialStories(values, input, citationMap);
+  }
+  if (input.evidence.editorialSlate?.top.length === 0 ||
+      (input.evidence.editorialSlate === undefined &&
+        input.coveragePlan.lead === undefined)) {
     return [];
   }
 
@@ -113,6 +119,13 @@ export const normalizeTopStories = (
 
   const normalized =
     repaired.length === 0 ? fallbackTopStories(input, citationMap) : repaired;
+  if (input.evidence.editorialSlate !== undefined) {
+    return immutableEditorialSlateTopStories(
+      normalized,
+      input,
+      citationMap,
+    );
+  }
   const coverageComplete = ensureCoveragePlanStories(
     normalized,
     input,
@@ -218,26 +231,41 @@ const providerKeysCoveredByCitations = (
 
 const normalizeTopStory = (
   value: Record<string, unknown>,
-): ReaderSummaryTopStory => ({
-  storyClusterId: optionalString(value.storyClusterId) ?? "",
-  title: optionalString(value.title) ?? "Cited story",
-  summary:
-    optionalString(value.summary) ??
-    optionalString(value.description) ??
-    "Selected evidence supports this story.",
-  interestIds: normalizeStringArrayLike(
-    value.interestIds,
-    "top story interests",
-  ),
-  providerKeys: normalizeStringArrayLike(
-    value.providerKeys,
-    "top story providers",
-  ),
-  citationIds: normalizeStringArrayLike(
+): ReaderSummaryTopStory => {
+  const storyClusterId = optionalString(value.storyClusterId) ?? "";
+  const modelSummary = optionalString(value.summary) ??
+    optionalString(value.description);
+  const citationIds = normalizeStringArrayLike(
     value.citationIds,
     "top story citations",
-  ),
-});
+  );
+  return {
+    storyClusterId,
+    title: optionalString(value.title) ?? "Cited story",
+    summary:
+      modelSummary ??
+      "Selected evidence supports this story.",
+    interestIds: normalizeStringArrayLike(
+      value.interestIds,
+      "top story interests",
+    ),
+    providerKeys: normalizeStringArrayLike(
+      value.providerKeys,
+      "top story providers",
+    ),
+    citationIds,
+    // Never read provenance supplied by the model. Keep its complete original
+    // binding before unknown citations, cluster repair, or coverage completion.
+    readerReasonProvenance: modelSummary === undefined
+      ? { kind: "normalizer_fallback" }
+      : {
+          kind: "model",
+          originalStoryClusterId: storyClusterId,
+          originalCitationIds: [...citationIds],
+          originalSummary: modelSummary,
+        },
+  };
+};
 
 const normalizeStringArrayLike = (
   value: unknown,
@@ -294,6 +322,7 @@ const fallbackTopStories = (
             cluster.whyImportant[0],
             leadEvidence.title,
           ),
+          readerReasonProvenance: { kind: "normalizer_fallback" },
           interestIds: uniqueNonEmptyStrings([
             ...cluster.interestIds,
             leadEvidence.interestId,
@@ -309,7 +338,33 @@ const fallbackTopStories = (
         },
       ];
     })
-    .slice(0, input.policy.maxStories);
+    .slice(
+      0,
+      input.evidence.editorialSlate?.top.length ?? input.policy.maxStories,
+    );
+};
+
+const immutableEditorialSlateTopStories = (
+  modelStories: readonly ReaderSummaryTopStory[],
+  input: ReaderSummaryModelInput,
+  citationMap: readonly ReaderSummaryCitation[],
+): readonly ReaderSummaryTopStory[] => {
+  const modelByClusterId = new Map(modelStories.map((story) =>
+    [story.storyClusterId, story] as const));
+  const fallbackByClusterId = new Map(
+    fallbackTopStories(input, citationMap).map((story) =>
+      [story.storyClusterId, story] as const),
+  );
+  return (input.evidence.editorialSlate?.top ?? []).map((entry) => {
+    const story = modelByClusterId.get(entry.storyClusterId) ??
+      fallbackByClusterId.get(entry.storyClusterId);
+    if (story === undefined) {
+      throw new Error(
+        `Editorial slate Top entry has no citable evidence: ${entry.candidateId}`,
+      );
+    }
+    return { ...story, storyClusterId: entry.storyClusterId };
+  });
 };
 
 const topUpTopStories = (
@@ -380,4 +435,36 @@ const ensureCoveragePlanStories = (
     ...plannedStories,
     ...stories.filter((story) => !plannedSet.has(story.storyClusterId)),
   ];
+};
+
+/** The model cannot backfill topics from unplanned context in the new profile. */
+const normalizeDailyEditorialStories = (
+  values: readonly Record<string, unknown>[],
+  input: ReaderSummaryModelInput,
+  citationMap: readonly ReaderSummaryCitation[],
+): readonly ReaderSummaryTopStory[] => {
+  const plan = input.dailyEditorialPlan;
+  const frozen = input.evidence.dailyGenerationInput;
+  if (plan === undefined || frozen === undefined || values.length !== plan.topics.length) {
+    throw new Error("Daily editorial stories must match the plan");
+  }
+  const byFeed = new Map(frozen.selected.map(item => [item.feedItemId, item] as const));
+  const byCitation = new Map(citationMap.map(item => [item.citationId, item] as const));
+  const evidenceById = new Map(primaryReaderSummaryEvidence(input.evidence).selectedEvidence
+    .map(item => [item.feedItemId, item] as const));
+  return values.map((raw, index): ReaderSummaryTopStory => {
+    const topic = plan.topics[index]!;
+    const anchor = byFeed.get(topic.feedItemIds[0]!);
+    const story = normalizeTopStory(raw);
+    if (anchor === undefined || story.storyClusterId !== anchor.storyId ||
+        story.readerReasonProvenance?.kind !== "model" ||
+        story.citationIds.length !== 1 ||
+        byCitation.get(story.citationIds[0]!)?.feedItemId !== anchor.feedItemId) {
+      throw new Error("Daily editorial story is missing or cites an unplanned source");
+    }
+    const evidence = evidenceById.get(anchor.feedItemId);
+    if (evidence === undefined) throw new Error("Daily editorial story evidence missing");
+    return { ...story, interestIds: [evidence.interestId],
+      providerKeys: [evidence.providerKey] };
+  });
 };

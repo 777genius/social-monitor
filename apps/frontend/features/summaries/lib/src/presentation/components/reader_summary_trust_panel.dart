@@ -5,6 +5,8 @@ import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/summary_citation.dart';
 import '../formatters/reader_summary_trust_copy.dart';
 import '../view_models/reader_summary_trust_snapshot.dart';
+import 'reader_summary_source_text.dart';
+import 'reader_summary_url_action_contract.dart';
 
 part 'reader_summary_trust_summary_line.dart';
 
@@ -316,7 +318,7 @@ class _EvidenceLine extends StatelessWidget {
           ),
           const SizedBox(width: AppSpacing.xs),
           Expanded(
-            child: Text(
+            child: ReaderSummarySourceText(
               '$label - ${evidence.title}',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
@@ -324,14 +326,26 @@ class _EvidenceLine extends StatelessWidget {
             ),
           ),
           if (url != null)
-            IconButton(
-              key: ValueKey(
-                'reader-summary-trust-evidence-source-${evidence.citationId}',
+            Semantics(
+              key: readerSummaryUrlActionKey(
+                'trust-evidence',
+                evidence.citationId,
               ),
-              tooltip: 'Open source',
-              visualDensity: VisualDensity.compact,
-              onPressed: () => onOpenUrl(url),
-              icon: const Icon(Icons.open_in_new_outlined, size: 16),
+              link: true,
+              label: readerSummaryUrlActionSemantics(
+                'trust-evidence',
+                evidence.citationId,
+              ),
+              child: MergeSemantics(
+                child: AppTooltip(
+                  message: 'Open source',
+                  child: IconButton(
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => onOpenUrl(url),
+                    icon: const Icon(Icons.open_in_new_outlined, size: 16),
+                  ),
+                ),
+              ),
             ),
         ],
       ),

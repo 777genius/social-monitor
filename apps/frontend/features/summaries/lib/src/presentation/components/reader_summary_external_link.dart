@@ -1,15 +1,19 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import 'reader_summary_url_action_contract.dart';
+
 class ReaderSummaryExternalLink extends StatefulWidget {
   const ReaderSummaryExternalLink({
     super.key,
     required this.url,
+    this.actionIdentity,
     this.onOpenUrl,
     this.maxLines = 2,
   });
 
   final String url;
+  final String? actionIdentity;
   final ValueChanged<String>? onOpenUrl;
   final int maxLines;
 
@@ -49,8 +53,12 @@ class _ReaderSummaryExternalLinkState extends State<ReaderSummaryExternalLink> {
       height: 1.25,
     );
 
+    final identity =
+        widget.actionIdentity ?? readerSummaryUrlIdentity(widget.url);
     return Semantics(
+      key: readerSummaryUrlActionKey('external-link', identity),
       link: canOpen,
+      label: readerSummaryUrlActionSemantics('external-link', identity),
       child: MouseRegion(
         cursor: canOpen ? SystemMouseCursors.click : MouseCursor.defer,
         child: SelectableText.rich(

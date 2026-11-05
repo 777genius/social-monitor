@@ -1,4 +1,9 @@
+import { createRequire } from 'node:module';
 import { existsSync, readFileSync } from 'node:fs';
+
+const requireSourcePolicy = createRequire(import.meta.url);
+requireSourcePolicy('ts-node/register');
+const { requiredDeferredProviders } = requireSourcePolicy('./lib/source-live-provider-policy');
 
 const contractPath = 'ops/release/backend-ops-readiness-contract.json';
 const packagePath = 'package.json';
@@ -138,7 +143,11 @@ for (const provider of sourceCertification.certifiedProviders ?? []) {
   }
 }
 
-if (!Array.isArray(sourceCertification.deferredProviders) || sourceCertification.deferredProviders.length < 2) {
+const deferredKeys = Array.isArray(sourceCertification.deferredProviders)
+  ? sourceCertification.deferredProviders.map((provider) => provider.providerKey)
+  : [];
+if (deferredKeys.length !== requiredDeferredProviders.size ||
+    [...requiredDeferredProviders].some((key) => !deferredKeys.includes(key))) {
   violations.push(`${contract.sourceCertification}: deferred providers must stay explicit`);
 }
 

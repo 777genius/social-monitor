@@ -35,11 +35,28 @@ export * from "./policies/reader-summary-multi-day-quality-eval";
 export * from "./policies/reader-summary-multi-day-generation-profile";
 export * from "./policies/reader-summary-publication-policy";
 export * from "./policies/reader-summary-publication-generation-policy";
+export * from "./policies/reader-post-promotion-policy";
+export * from "./policies/reader-post-promotion-selection";
+export * from "./policies/reader-post-promotion-v3";
+export * from "./policies/reader-post-promotion-engagement";
+export * from "./policies/reader-promotion-news-publisher";
+export * from "./policies/reader-promotion-ranking";
+export * from "./policies/reader-promotion-policy-version";
+export * from "./policies/reader-promotion-score";
+export * from "./policies/reader-promotion-source-registry";
+export * from "./policies/reader-post-promotion-support-authority";
+export * from "./services/reader-post-promotion-attestation";
+export * from "./services/reader-post-promotion-attestation-v3";
+export * from "./services/reader-post-presentation-v3";
+export * from "./services/reader-post-promotion-projection";
+export * from "./services/reader-post-promotion-evidence-admission";
+export * from "./services/reader-promotion-story-title-duplicate";
 export * from "./policies/reader-summary-schedule-window-policy";
 export * from "./policies/reader-summary-source-authority-policy";
 export * from "./policies/reader-summary-lead-eligibility-policy";
 export * from "./policies/reader-summary-watch-eligibility-policy";
 export * from "./policies/rendered-top-read-selection-policy";
+export * from "./policies/reader-display-title-quality";
 export * from "./policies/reader-summary-topic-recommendation-policy";
 export * from "./policies/reader-summary-topic-map-grouping-policy";
 export * from "./policies/reader-summary-topic-map-structure-quality";
@@ -50,11 +67,16 @@ export * from "./policies/summary-evidence-pack-policy";
 export * from "./policies/summary-evidence-profile-policy";
 export * from "./policies/summary-feedback-eval-backlog-policy";
 export * from "./policies/story-ranking-policy";
-export * from "./policies/top-read-selection-policy";
+export * from "./policies/story-relation-eval-policy";
+export * from "./policies/story-relation-safe-recall-rollout-policy";
 export * from "./services/story-clustering.service";
 export * from "./services/story-cluster-membership";
 export * from "./services/story-relation-candidates";
+export * from "./services/story-relation-decision-trace";
+export * from "./services/story-relation-safe-recall-shadow";
+export * from "./services/story-relation-safe-recall-shadow-decision";
 export * from "./services/reader-summary-claim-board";
+export * from "./services/reader-summary-related-topics";
 export * from "./services/reader-summary-coverage-plan";
 export * from "./services/reader-summary-topic-map-builder";
 export * from "./services/reader-summary-topic-label-candidates";
@@ -70,7 +92,10 @@ export * from "./services/story-ranking-telemetry";
 export * from "./value-objects/provider-metric-label";
 export * from "./value-objects/preview-media";
 export * from "./value-objects/reader-summary-provider-identity";
+export * from "./value-objects/reader-summary-editorial-slate";
 export * from "./value-objects/reader-summary-period";
+export * from "./value-objects/reader-summary-preparation";
+export * from "./value-objects/reader-summary-related-topic-relation";
 export * from "./value-objects/reader-summary-weekly-canonical-json";
 export * from "./value-objects/reader-summary-weekly-daily-certification";
 export * from "./value-objects/reader-summary-weekly-publication-evidence";
@@ -79,11 +104,16 @@ export * from "./value-objects/reader-summary-scope";
 export * from "./value-objects/signal-score";
 export type {
   StoryCluster,
+  ApprovedSameStoryRelation,
+  RelatedTopicRelation,
   StorySignalBreakdown,
   SummaryEvidenceConversationAncestor,
   SummaryEvidenceConversationContext,
   SummaryEvidenceConversationUnit,
   SummaryEvidenceItem,
+  SummaryEvidenceContentQuality,
+  SummaryEvidencePromotionFacts,
+  SummaryEvidencePromotionMetrics,
   SummaryEvidencePersonalization,
   SummaryEvidenceSelection,
   SummarySourceWindow as ReaderSummarySourceWindow,
@@ -91,3 +121,23 @@ export type {
 export * from "./value-objects/summary-quality";
 export * from "./value-objects/summary-text";
 export * from "./value-objects/summary-window";
+
+export type {
+  SummaryReaderHeadline, SummaryHeadlineReference, SummaryHeadlineQualification,
+  SummaryHeadlineUnavailableReason, ReaderCapturedSource, ReaderDisplayHeadline,
+  ReaderDisplayHeadlineSeal,
+} from "./value-objects/summary-reader-headline";
+export { readerPostDisplayHeadline, readerPostPublishedHeadline, capturedReaderSource,
+  readerCapturedSourceDigest, isReaderDisplayReadyLead } from
+  "./services/reader-post-display-headline";
+export { readerDisplayIdentityMatches } from "./services/reader-post-display-identity";
+export { readerPostPresentationCandidates, validReaderPostPresentationProposals, readerPostPresentationProposalFailure,
+  readerPostPresentationV3OutputSchema } from "./services/reader-post-presentation-v3-proposal";
+export { readerPostPresentationReferenceCatalog, readerPostPresentationCatalogOutputSchema,
+  readerPostPresentationCatalogProposalFailure } from "./services/reader-post-presentation-reference-catalog";
+
+export { MIMO_QUALIFIED_HEADLINE_CONTRACT, mimoQualifiedHeadlineOutputSchema, decodeMimoQualifiedHeadlines } from "./services/mimo-qualified-headline-codec";
+
+export * from "./value-objects/reader-summary-daily-generation-input";
+export * from "./services/reader-summary-daily-generation-selection";
+export * from "./services/reader-summary-daily-editorial-plan";

@@ -1,3 +1,5 @@
+import { approvedGatewayLlmSdkIdentity } from "../../libs/summary/adapters/model/gateway-llm/gateway-llm-sdk-identity";
+import type { ReaderSummaryWeeklyReviewExecutionAttestation } from "../../libs/summary/domain/value-objects/reader-summary-weekly-review-manifest";
 import {
   readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity,
 } from "../../libs/summary/domain/value-objects/reader-summary-weekly-input-manifest";
@@ -12,10 +14,12 @@ import {
   readerSummaryWeeklyReviewAuthorityFromProductionState,
 } from "./reader-summary-weekly-production-postgres-contract";
 import {
+  archivedGithubSubTop10DbState,
   completeDbState,
   historicalGithubUnavailableDbState,
   reviewManifestFor,
   sha,
+  shortVerifiedGithubDbState,
 } from "./reader-summary-weekly-production-test-fixture";
 
 describe("reader summary weekly production manifest input admission", () => {
@@ -50,6 +54,48 @@ describe("reader summary weekly production manifest input admission", () => {
         sourceSha256: reviewed.sourceContentHash,
       });
     }
+  });
+
+  it("admits a gateway review receipt with exact sealed evidence and rejects an unapproved SDK on replay", () => {
+    const dbState = completeDbState();
+    const old = reviewManifestFor(dbState).executionAttestation;
+    const executionAttestation: ReaderSummaryWeeklyReviewExecutionAttestation = { ...old,
+      purpose: "social_monitor.reader_summary.weekly.review.v2", model: "gpt-6.1-sol", reasoningEffort: "low",
+      runtimeEngine: "gateway-llm", runtimePackageVersion: approvedGatewayLlmSdkIdentity.packageVersion,
+      launcherSha256: approvedGatewayLlmSdkIdentity.archiveSha256,
+      gateway: { profileId: "openai-codex-oauth-responses-v1", taskId: "weekly_review_test", attempt: 1,
+        executionRef: "test_execution", requestRef: "test_request", accountRef: "test_account",
+        observedModel: null, requestSha256: sha("wire") },
+    };
+    const manifest = reviewManifestFor(dbState, { executionAttestation });
+    const built = buildModelInputFromDbState(dbState, manifest);
+    expect(built.status).toBe("complete");
+    if (built.status !== "complete") throw new Error("gateway fixture should be admitted");
+    expect(built.input.citations).toHaveLength(manifest.citations.length);
+    const forged = reviewManifestFor(dbState, { executionAttestation: { ...executionAttestation,
+      launcherSha256: sha("different-sdk") } });
+    expect(buildModelInputFromDbState(dbState, forged).status).toBe("partial");
+  });
+
+  it("admits an archived sub-Top-10 GitHub board as truthful evidence", () => {
+    const dbState = archivedGithubSubTop10DbState();
+    const manifest = reviewManifestFor(dbState);
+    const built = buildModelInputFromDbState(dbState, manifest);
+
+    if (built.status !== "complete") throw new Error(built.reasons.join("; "));
+    const day = built.input.days.find((candidate) => candidate.date === "2026-07-23");
+    expect(day?.githubBoardStatus).toBe("archived_verified");
+    expect(
+      day?.providerCounts.find((count) => count.providerKey === "github-trending-page")?.count,
+    ).toBe(9);
+  });
+
+  it("still rejects a short board that claims the verified status", () => {
+    const dbState = shortVerifiedGithubDbState();
+    const manifest = reviewManifestFor(dbState);
+    const built = buildModelInputFromDbState(dbState, manifest);
+
+    expect(built.status).toBe("partial");
   });
 
   it("keeps cross-date duplicate local citation ids isolated by exact manifest selectors", () => {

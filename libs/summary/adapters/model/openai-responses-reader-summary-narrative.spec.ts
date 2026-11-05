@@ -41,6 +41,25 @@ describe("normalizeOpenAiReaderSummaryNarrative", () => {
     ]);
   });
 
+  it("drops optional narrative sections that cite outside the coverage plan", () => {
+    const result = normalize([
+      section("lead", "lead", "c1"),
+      {
+        ...section("main_signal", "unplanned", "c4"),
+        citationIds: ["c2", "c4"],
+      },
+      section("secondary_signal", "security", "c2"),
+      section("secondary_signal", "database", "c3"),
+    ]);
+
+    expect(result.some((item) => item.kind === "main_signal")).toBe(false);
+    expect(result.map((item) => item.kind)).toEqual([
+      "lead",
+      "secondary_signal",
+      "secondary_signal",
+    ]);
+  });
+
   it("binds a lead section to the planned cluster when the model omits it", () => {
     const result = normalize([
       {

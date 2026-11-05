@@ -87,6 +87,12 @@ DEPLOY_CONTROL_BRIDGE_LIBRARY_LOADED=false
 load_deploy_control_bridge_library() {
   [[ $DEPLOY_CONTROL_BRIDGE_LIBRARY_LOADED == true ]] && return 0
   local deploy_control_library_directory deploy_control_bridge_library
+  if [[ -n ${PRODUCTION_TRANSITION_PRELUDE_COMMIT:-} ]]; then
+    production_transition_host_source_authorized_prelude \
+      ops/deploy/deploy-control-bridge-lib.sh 'deploy control bridge library'
+    DEPLOY_CONTROL_BRIDGE_LIBRARY_LOADED=true
+    return 0
+  fi
   deploy_control_library_directory=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
   deploy_control_bridge_library=$deploy_control_library_directory/deploy-control-bridge-lib.sh
   [[ -f $deploy_control_bridge_library && ! -L $deploy_control_bridge_library ]] || \
@@ -99,6 +105,11 @@ load_deploy_control_bridge_library() {
 initialize_deploy_control_bridge() {
   load_deploy_control_bridge_library
   initialize_deploy_control_bridge
+  if [[ -n ${PRODUCTION_TRANSITION_PRELUDE_COMMIT:-} ]]; then
+    source_reviewed_deploy_library "$DEPLOY_CONTROL_BRIDGE_INITIALIZED_HEAD" \
+      ops/deploy/deploy-control-current-target-lib.sh 'current target control checks'
+    deploy_control_install_current_target_checks
+  fi
 }
 
 probe_daily_singleton_clear() {
@@ -694,7 +705,10 @@ reconcile_current_postgres_pool_bootstrap() {
   local commit_mode=normal
   local force_advance=false
   validate_current_postgres_pool_bootstrap_recovery "$current"
-  postgres_pool_bootstrap_installed "$current" && return 0
+  # An ancestor marker can be valid while its entrypoint still predates HEAD.
+  # A no-op must also prove the current commit's installed controller bytes.
+  if postgres_pool_bootstrap_installed "$current" && \
+      postgres_pool_bootstrap_physically_installed "$current" "$current"; then return 0; fi
   [[ -f $installed && ! -L $installed ]] || \
     fail 'installed deploy entrypoint is not a regular non-symlink file'
   if [[ -n $expected_backend ]]; then
@@ -824,6 +838,8 @@ reconcile_current_postgres_pool_bootstrap() {
 }
 deploy_frontend() {
   local sha=$1
+  local PUBLIC_LINK=$ROOT/runtime/frontend-public-web
+  local ADMIN_LINK=$ROOT/runtime/frontend-admin-web
   local staged=$STAGING/$sha/frontend
   local release=$RELEASES/$sha
   local upload_lock=$STAGING/$sha/upload.lock
@@ -882,7 +898,11 @@ deploy_frontend() {
 }
 
 deploy_release() {
-  local sha=$1 atomic_state
+  local sha=$1 mode=${2:-ordinary} atomic_state resume_state
+  case $mode in
+    ordinary|resume-target-prepared) ;;
+    *) fail 'deployment resume mode is invalid' ;;
+  esac
   if postgres_pool_atomic_legacy_state; then
     deploy_postgres_pool_atomic_control_bootstrap "$sha" || \
       fail 'atomic PostgreSQL bootstrap loader failed'
@@ -900,9 +920,19 @@ deploy_release() {
   fetch_main
   validate_main_commit "$sha"
   install -d -m 0755 "$STATE" "$STAGING" "$RELEASES"
-  local current
+  local current checkout_status
   current=$(git -C "$REPO" rev-parse HEAD)
-  if [[ $sha == "$current" ]] && \
+  if [[ $mode == resume-target-prepared ]]; then
+    [[ $sha == "$current" ]] || \
+      fail 'target-prepared resume requires the exact current integration target'
+    declare -F production_transition_require_target_deploy_state >/dev/null || \
+      fail 'target-prepared resume state verifier is unavailable'
+    resume_state=$(production_transition_require_target_deploy_state \
+      "$sha" allow-expired classify) || return 1
+    [[ $resume_state == target-prepared ]] || \
+      fail 'target-prepared resume requires the exact authenticated prepared state'
+  fi
+  if [[ $mode == ordinary && $sha == "$current" ]] && \
      ! postgres_pool_bootstrap_installed "$current"; then
     # The client must recapture the ordinary plan; stdout is non-authoritative.
     reconcile_current_postgres_pool_bootstrap \
@@ -936,7 +966,20 @@ deploy_release() {
         $x_image_provenance_release == true ]]; then
     verify_deploy_control_bridge_target_compatibility "$sha"
   fi
-  advance_integration "$sha"
+  if [[ $sha == "$current" ]]; then
+    checkout_status=$(git -C "$REPO" status --porcelain --untracked-files=all) || \
+      fail 'cannot inspect integration worktree'
+    [[ -z $checkout_status ]] || fail 'integration worktree is dirty'
+  else
+    advance_integration "$sha"
+  fi
+  # The entrypoint already authenticated and froze an installed B0 authority.
+  # Re-sourcing that authority after an ordinary fast-forward would attempt to
+  # redefine readonly functions. A predecessor that has not loaded B0 still
+  # performs the exact bootstrap before any target-controlled work is loaded.
+  if ! declare -F production_transition_host_failpoint >/dev/null; then
+    deploy_control_bootstrap_production_transition_b0 "$sha"
+  fi
   if [[ $backend == true ]]; then
     load_target_rabbitmq_quorum_backend_health "$sha"
     load_target_reader_summary_publication_deploy_library "$sha"

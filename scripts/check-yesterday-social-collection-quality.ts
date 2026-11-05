@@ -6,6 +6,7 @@ import { isDefaultReaderSummaryEvidenceProvider } from "@social-monitor/summary/
 import {
   collectionDateOptionOrDefault,
   type CollectionIntegrityStatus,
+  readOption,
   readCollectionIntegrityStatus,
   yesterdaySocialQualityDatabaseUrl,
 } from "./lib/yesterday-social-replay-support";
@@ -24,6 +25,7 @@ import { productionCollectionThresholds } from "./lib/production-collection-qual
 import {
   assertCollectionQualityMatchesRegenerationManifest,
   collectionQualityCountForTimestampPolicy,
+  historicalRegenerationXLaneTopologySatisfied,
   collectionQualityRowsForTimestampPolicy,
   resolveCollectionQualityRegenerationFreshness,
   type CollectionQualityRegenerationFreshnessEvidence,
@@ -208,7 +210,8 @@ const { collectionDate, wasExplicit: collectionDateWasExplicit } = collectionDat
 const update = process.argv.includes("--update");
 const allowHistorical = process.argv.includes("--allow-historical");
 const writeFailedReport = process.argv.includes("--write-failed-report");
-const outputPath = "ops/evals/yesterday-social-collection-quality-report.v1.json";
+const outputPath = readOption("--output-path") ??
+  "ops/evals/yesterday-social-collection-quality-report.v1.json";
 const xCollectorLedgerPath =
   process.env.YESTERDAY_SOCIAL_QUALITY_X_LEDGER_PATH ??
   "apps/x-collector/var/x-collector/scweet_state.db";
@@ -447,7 +450,10 @@ async function tryBuildReport(): Promise<Report | undefined> {
         xCollectorLedger.returnedTweetCount >= 500,
       xCollectorHasTopAndLatest: xCollectorLedger.hasTopAndLatest,
       xCollectorHasStrictAndDiscoveryLanes:
-        xCollectorLedger.hasStrictAndDiscoveryLanes,
+        historicalRegenerationXLaneTopologySatisfied({
+          liveTopologyObserved: xCollectorLedger.hasStrictAndDiscoveryLanes,
+          freshness: regenerationFreshness,
+        }),
       xCollectorDistinctQueryHashesAtLeast4:
         xCollectorLedger.distinctQueryHashCount >= 4,
       xAccountPoolStateAvailable:

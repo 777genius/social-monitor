@@ -1,14 +1,25 @@
-import { canReaderSummaryGenerationSupersede } from "../../domain";
+import { canReaderSummaryGenerationSupersede,
+  readerSummaryWorkspaceManifestSha256,
+  sameReaderSummaryPreparationConfig } from "../../domain";
 import type {
   ReaderSummaryPublicationCommand,
   ReaderSummaryPublicationOutcome,
   ReaderSummaryPublicationPort,
+  ReaderSummaryV3PreparationSourcePort,
   SummaryEventPublisherPort,
 } from "../../ports";
 import type { InMemorySummaryEventPublisher } from "../messaging/in-memory-summary-event-publisher";
 import type { InMemoryReaderSummaryArtifactRepository } from "./in-memory-reader-summary-artifact.repository";
 import type { InMemoryReaderSummaryJobRepository } from "./in-memory-reader-summary-job.repository";
 import { buildReaderSummaryPublicationPayload } from "./reader-summary-publication-proof";
+import { frozenEngagementMatchesAttestation, frozenPopularityMatchesAttestations } from
+  "./reader-summary-promotion-engagement-guard";
+
+/** Locked assessment row as the Prisma guard reads it (result + input snapshot). */
+export type InMemoryFrozenAssessment = {
+  readonly result: unknown;
+  readonly input_snapshot: unknown;
+};
 
 type CurrentPublication = Readonly<{
   requestedAt: Date;
@@ -24,28 +35,21 @@ export class InMemoryReaderSummaryPublication
 {
   private readonly proofByJobId = new Map<string, StoredPublicationProof>();
   private readonly currentBySlot = new Map<string, CurrentPublication>();
-  private publicationTail = Promise.resolve();
 
   constructor(
     private readonly jobs: InMemoryReaderSummaryJobRepository,
     private readonly artifacts: InMemoryReaderSummaryArtifactRepository,
     private readonly events: InMemorySummaryEventPublisher | SummaryEventPublisherPort,
+    private readonly v3Source?: ReaderSummaryV3PreparationSourcePort,
+    /** Needed to recompute signed popularity; without it a ranked board fails closed. */
+    private readonly frozenAssessment?: (assessmentId: string) =>
+      InMemoryFrozenAssessment | undefined,
   ) {}
 
   async publish(
     command: ReaderSummaryPublicationCommand,
   ): Promise<ReaderSummaryPublicationOutcome> {
-    const previous = this.publicationTail;
-    let release = (): void => undefined;
-    this.publicationTail = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    await previous;
-    try {
-      return await this.publishLocked(command);
-    } finally {
-      release();
-    }
+    return this.jobs.runExclusive(() => this.publishLocked(command));
   }
 
   private async publishLocked(
@@ -61,6 +65,82 @@ export class InMemoryReaderSummaryPublication
         throw new Error("Reader summary publication idempotency conflict");
       }
       return "replayed";
+    }
+    const durableJob = await this.jobs.findById({
+      tenantId: command.finalJob.toSnapshot().tenantId,
+      workspaceId: command.finalJob.toSnapshot().workspaceId,
+      readerSummaryJobId: command.finalJob.toSnapshot().id,
+    });
+    const durable = durableJob?.toSnapshot();
+    const artifactSnapshot = command.artifact.toSnapshot();
+    const attestations = artifactSnapshot.promotionAttestations ?? [];
+    const isNoSignal = artifactSnapshot.qualityFlags.includes("no_signal");
+    if (durable?.selectionStrategy === "jev_primary_v3" && (
+      durable.status !== "running" || durable.terminalFailureCode !== undefined ||
+      durable.preparationManifest === undefined ||
+      durable.startedAt?.getTime() !== command.finalJob.toSnapshot().startedAt?.getTime() ||
+      attestations.some((attestation) =>
+        attestation.schemaVersion !== "reader_post_promotion_attestation.v3") ||
+      (!isNoSignal && attestations.length === 0) ||
+      (isNoSignal && attestations.length !== 0)
+    )) {
+      throw new Error("Reader summary V3 publication guard rejected the execution fence");
+    }
+    if (durable?.selectionStrategy === "jev_primary_v3" &&
+        durable.preparationManifest?.schemaVersion ===
+          "reader_summary_preparation_manifest.v2") {
+      if (this.v3Source === undefined || durableJob === null ||
+          durable.preparationConfig?.schemaVersion !==
+            "reader_summary_preparation_config.v2" ||
+          durable.preparationManifest.periodKey !== durable.period.periodKey ||
+          artifactSnapshot.period.periodKey !== durable.preparationManifest.periodKey ||
+          artifactSnapshot.sourceWindow.exactIngestionCutoff !==
+            durable.preparationManifest.cutoffAt ||
+          durable.preparationDeadlineAt === undefined) {
+        throw new Error("Workspace V3 publication readiness is unavailable");
+      }
+      if (durable.preparationManifestSha256 !==
+          readerSummaryWorkspaceManifestSha256(durable.preparationManifest)) {
+        throw new Error("Workspace V3 publication manifest digest changed");
+      }
+      const current = await this.v3Source.configuration(durableJob);
+      const coverage = await this.v3Source.coverage({ job: durableJob,
+        manifest: durable.preparationManifest,
+        deadlineAt: durable.preparationDeadlineAt });
+      if (!current.ok || !sameReaderSummaryPreparationConfig(current.config,
+          durable.preparationConfig) || coverage.status !== "ready" ||
+          (isNoSignal && coverage.hasPromotableSignal !== false)) {
+        throw new Error("Workspace V3 publication scope or coverage changed");
+      }
+      const frozen = new Map(durable.preparationManifest.candidates.map((candidate) =>
+        [candidate.candidateId, candidate] as const));
+      const frozenInterests = new Map(durable.preparationConfig.interests.map(
+        (interest) => [interest.interestId, interest] as const));
+      if (attestations.some((attestation) => {
+        const candidate = frozen.get(attestation.candidateId);
+        const interest = candidate === undefined ? undefined :
+          frozenInterests.get(candidate.interestId);
+        return candidate === undefined || attestation.schemaVersion !==
+          "reader_post_promotion_attestation.v3" ||
+          interest === undefined ||
+          attestation.assessment.assessmentId !== candidate.assessmentId ||
+          attestation.assessment.sourceSnapshotSha256 !== candidate.sourceSnapshotSha256 ||
+          attestation.assessment.inputSha256 !== candidate.inputSha256 ||
+          attestation.assessment.rubricVersion !== interest.rubricVersion ||
+          attestation.assessment.rubricSha256 !== interest.rubricSha256 ||
+          attestation.assessment.modelConfigVersion !== interest.modelConfigVersion ||
+          !frozenEngagementMatchesAttestation(candidate, attestation) ||
+          attestation.exactIngestionCutoff !== durable.preparationManifest!.cutoffAt;
+      })) {
+        throw new Error("Workspace V3 publication provenance changed");
+      }
+      // Same cohort recomputation as the Prisma guard.
+      if (!frozenPopularityMatchesAttestations({
+        candidates: durable.preparationManifest.candidates, period: durable.period,
+        attestations, assessmentFor: (candidate) => typeof candidate.assessmentId === "string"
+          ? this.frozenAssessment?.(candidate.assessmentId) : undefined })) {
+        throw new Error("Workspace V3 publication provenance changed");
+      }
     }
 
     const slotKey = [

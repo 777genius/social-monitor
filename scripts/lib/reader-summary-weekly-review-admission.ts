@@ -1,3 +1,4 @@
+import type { ReaderSummaryWeeklyExecutionProfile } from "./reader-summary-weekly-execution-profile";
 import type {
   ReaderSummaryWeeklyReviewManifest,
 } from "../../libs/summary/domain/value-objects/reader-summary-weekly-review-manifest";
@@ -39,6 +40,7 @@ export type AdmitReaderSummaryWeeklyReviewParams = Readonly<{
   replay: boolean;
   manifestStore: ReaderSummaryWeeklyReviewManifestPort;
   agentRuntime?: AgentRuntimeClientPort;
+  executionProfile?: ReaderSummaryWeeklyExecutionProfile;
 }>;
 
 export const admitReaderSummaryWeeklyReviewManifest = async (
@@ -75,6 +77,7 @@ export const admitReaderSummaryWeeklyReviewManifest = async (
       authorityLoader: { load: async () => authority },
       manifestStore: params.manifestStore,
       agentRuntime: params.agentRuntime,
+      executionProfile: params.executionProfile,
     });
     return complete({
       dbState: params.dbState,

@@ -1,0 +1,201 @@
+import { randomUUID } from "node:crypto";
+import { createSummaryAgentRuntimeClient, resolveSummaryAgentRuntimeTransport, resolveGatewayLlmTransportConfig, assertReaderSummaryTransportBackend } from
+  "@social-monitor/summary/adapters/composition/reader-summary-agent-runtime-transport";
+import { PrismaMonitoringConnection } from "@social-monitor/monitoring/adapters/persistence/prisma/prisma-monitoring-connection";
+import { PrismaInterestRepository } from "@social-monitor/monitoring/adapters/persistence/prisma/prisma-interest.repository";
+import { MonitoringConfiguredInterestReader } from "@social-monitor/relevance/adapters/monitoring/monitoring-configured-interest.reader";
+import { credentials } from "@grpc/grpc-js";
+import { AgentRuntimeServiceClient } from "@social-monitor/contracts/generated/grpc/agent_runtime/v1/agent_runtime";
+import { mkdirSync, constants, realpathSync, openSync, writeSync, fsyncSync, closeSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { runWithTenantDatabaseAccess, resolvePostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
+import { SystemClock } from "@social-monitor/shared-kernel";
+import { PrismaFeedConnection } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-connection";
+import { PrismaFeedItemReadRepository } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-item-read.repository";
+import { PrismaSummaryConnection } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-connection";
+import { GrpcAgentRuntimeClient } from "@social-monitor/summary/adapters/model/grpc-agent-runtime-client";
+import { requiredHistoricalPromotionSystemDatabaseUrl, assertHistoricalPromotionSystemRole } from "./lib/reader-summary-promotion-v2-system-database";
+import { refreshScope, refreshDates, refreshDefaultDates, refreshOperation, refreshBytesHash,
+  assertRefreshManifest, type RefreshManifest } from "./lib/reader-summary-new-input-refresh-manifest";
+import { refreshSourceSha256, readReviewedRefresh, readReviewedRefreshSuccessor, assertRefreshFences, readRefreshFenceAuthority } from "./lib/reader-summary-new-input-refresh-files";
+import { captureRefreshAuthority, preflightRefreshSelection, assertRefreshHasNewInput, refreshPeriod } from "./lib/reader-summary-new-input-refresh-capture";
+import { readRefreshJobs, readRefreshPrior, readRefreshReconciliations } from "./lib/reader-summary-new-input-refresh-postgres";
+import { refreshGenerationSha256, refreshGatewayRoute } from "./lib/reader-summary-new-input-refresh-model";
+import { assertRefreshEqual, refreshLiveJobs } from "./lib/reader-summary-new-input-refresh-guard";
+import { executeNewInputRefresh } from "./lib/reader-summary-new-input-refresh-execution";
+import { resolveReaderSummaryServingAuthority } from "./lib/reader-summary-serving-authority";
+import { readerSummaryCliRuntimeEnv } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
+import { assertRefreshSuccessorCurrent } from "./lib/reader-summary-new-input-refresh-successor";
+
+import { RefreshRuntimeAssertionFailure, singleFlightRefreshRuntimeAssertion } from "./lib/reader-summary-new-input-refresh-runtime-assertion";
+
+export function parseRefreshCommand(argv: readonly string[]) {
+  if (argv.length === 1 && argv[0] === "--source-sha256") return { mode: "source" } as const;
+  if ((argv.length === 4 || (argv.length === 6 && argv[4] === "--capture-path" && argv[5]?.startsWith("/"))) && argv[0] === "--apply" && argv[2] === "--sha256" && /^[0-9a-f]{64}$/u.test(argv[3]!)) {
+    return { mode: "apply", path: argv[1]!, sha256: argv[3]!,
+      ...(argv.length === 6 ? { capturePath: argv[5]! } : {}) } as const;
+  }
+  if (argv.length === 7 && argv[0] === "--prepare" && argv[1] === "--date" && refreshDates.includes(argv[2]!) &&
+      argv[3] === "--successor" && argv[4]!.length > 0 && argv[5] === "--sha256" && /^[0-9a-f]{64}$/u.test(argv[6]!)) {
+    return { mode: "prepare", dates: [argv[2]!], successor: { path: argv[4]!, sha256: argv[6]! } } as const;
+  }
+  if (argv.length === 0 || (argv.length === 1 && argv[0] === "--prepare")) {
+    return { mode: "prepare", dates: refreshDefaultDates } as const;
+  }
+  if (argv.length === 3 && argv[0] === "--prepare" && argv[1] === "--date" && refreshDates.includes(argv[2]!)) {
+    return { mode: "prepare", dates: [argv[2]!] } as const;
+  }
+  throw new Error("Use --prepare [--date ACCEPTED_DATE [--successor GRANT --sha256 HASH]], --apply MANIFEST --sha256 HASH [--capture-path ABSOLUTE_DIRECTORY], or --source-sha256");
+}
+async function main(): Promise<void> {
+  const command = parseRefreshCommand(process.argv.slice(2));
+  if (command.mode === "source") { console.log(refreshSourceSha256()); return; }
+  const clock = new SystemClock();
+  const transport = resolveSummaryAgentRuntimeTransport(process.env);
+  assertReaderSummaryTransportBackend(transport, process.env);
+  const runtimeEnv = transport === "gateway-llm" ? process.env : readerSummaryCliRuntimeEnv(process.env);
+  const gateway = transport === "gateway-llm"
+    ? refreshGatewayRoute(resolveGatewayLlmTransportConfig(runtimeEnv).route) : undefined;
+  const sourceSha256 = refreshSourceSha256();
+  const deployedSourceSha256 = required("READER_SUMMARY_REFRESH_DEPLOYED_SOURCE_SHA256");
+  if (sourceSha256 !== deployedSourceSha256) throw new Error("Refresh source differs from reviewed deployed source");
+  const runtimeAuthority = JSON.parse(required("READER_SUMMARY_REFRESH_RUNTIME_AUTHORITY_JSON")) as RefreshManifest["runtime"];
+  const generationSha256 = refreshGenerationSha256(runtimeEnv);
+  const fencePaths = {
+    globalLock: required("READER_SUMMARY_REFRESH_GLOBAL_LOCK"),
+    dateDirectory: required("READER_SUMMARY_REFRESH_DATE_LOCK_DIR"),
+    fenceDirectory: required("READER_SUMMARY_REFRESH_FENCE_DIR"),
+  };
+  const fenceAuthority = readRefreshFenceAuthority(fencePaths);
+  const config = resolvePostgresRuntimePoolConfig({ ...process.env,
+    DATABASE_URL: requiredHistoricalPromotionSystemDatabaseUrl(process.env),
+    POSTGRES_RUNTIME_PROCESS: "daily-runner", POSTGRES_RUNTIME_POOL_MIN: "0", POSTGRES_RUNTIME_POOL_MAX: "2" });
+  const summary = await PrismaSummaryConnection.create(config);
+  const feedConnection = await PrismaFeedConnection.create(config);
+  const feed = new PrismaFeedItemReadRepository(feedConnection);
+  let monitoring: PrismaMonitoringConnection | undefined;
+  const output = resolve(".cache/reader-summary-new-input-refresh");
+  mkdirSync(output, { recursive: true, mode: 0o700 });
+  if (realpathSync(output) !== output) throw new Error("Refresh evidence directory must not contain symlinks");
+  try {
+    monitoring = await PrismaMonitoringConnection.create(config);
+    const configuredInterests = new MonitoringConfiguredInterestReader(new PrismaInterestRepository(monitoring));
+    await runWithTenantDatabaseAccess(refreshScope, async () => {
+      await assertHistoricalPromotionSystemRole(summary);
+      if (command.mode === "prepare") {
+        const successor = command.successor !== undefined
+          ? readReviewedRefreshSuccessor(command.successor.path, command.successor.sha256) : undefined;
+        for (const date of command.dates) {
+          const reconciled = await readRefreshReconciliations(summary, date);
+          if (refreshLiveJobs(await readRefreshJobs(summary, date), reconciled, "").length > 0) {
+            console.log(JSON.stringify({ date, status: "consumed_use_original_manifest_to_reconcile" }));
+            continue;
+          }
+          const observedThrough = clock.now();
+          const prior = await readRefreshPrior(summary, date);
+          const authority = await captureRefreshAuthority({ client: summary, feed, date, observedThrough, clock });
+          await assertRefreshHasNewInput(summary, date, prior.observedThrough, observedThrough.toISOString());
+          const eligible = await preflightRefreshSelection({ configuredInterests, feed, date, observedThrough, clock });
+          assertRefreshEqual(await captureRefreshAuthority({ client: summary, feed, date, observedThrough, clock }), authority, "preparation input");
+          assertRefreshEqual(await readRefreshPrior(summary, date), prior, "preparation prior");
+          const period = refreshPeriod(date);
+          const value: Omit<RefreshManifest, "operation"> = {
+            format: gateway ? "reader-summary-seven-day-new-input-v2" : "reader-summary-seven-day-new-input-v1", ...refreshScope, date,
+            ...(gateway ? { gateway } : {}),
+            ...(successor === undefined ? {} : { successor }),
+            startedAt: period.startedAt.toISOString(), endedAt: period.endedAt.toISOString(), timezone: "UTC",
+            observedThrough: observedThrough.toISOString(), preparedAt: clock.now().toISOString(),
+            prior, authority, sourceSha256, deployedSourceSha256, generationSha256,
+            runtime: runtimeAuthority, fenceAuthority, model: gateway?.model ?? "gpt-5.6-sol",
+            reasoningEffort: gateway ? gateway.reasoningEffort ?? "default" : "high",
+          };
+          const manifest: RefreshManifest = { ...value, operation: refreshOperation(value) };
+          assertRefreshManifest(manifest, clock.now());
+          if (successor !== undefined) {
+            await assertRefreshSuccessorCurrent(summary, manifest, clock.now());
+            if ((await readRefreshJobs(summary, date)).some((job) => job.operation === manifest.operation)) {
+              throw new Error("Refresh successor already consumed");
+            }
+          }
+          // Identical prior/input authority reproduces a reconciled operation.
+          // That is the already-consumed identity, not a fresh attempt.
+          if (reconciled.some((record) => record.operation === manifest.operation)) {
+            console.log(JSON.stringify({ date, status: "reconciled_identity_unchanged_requires_new_input",
+              operation: manifest.operation }));
+            continue;
+          }
+          const bytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
+          const sha256 = refreshBytesHash(bytes);
+          const path = join(output, `${date}.${sha256}.json`);
+          writeFileSync(path, bytes, { flag: "wx", mode: 0o400 });
+          console.log(JSON.stringify({ date, status: eligible ? "prepared" : "no_eligible_input",
+            path, sha256, operation: manifest.operation, observedThrough: manifest.observedThrough,
+            counts: { feed: authority.feedCount, candidates: authority.eligibleCount, selected: eligible } }));
+        }
+        return;
+      }
+      const manifest = readReviewedRefresh(command.path, command.sha256);
+      // Expired successful operations can reconcile, but cannot start again.
+      assertRefreshManifest(manifest, clock.now(), false);
+      const assertSource = () => {
+        assertRefreshEqual(refreshSourceSha256(), manifest.sourceSha256, "source");
+        assertRefreshEqual(deployedSourceSha256, manifest.deployedSourceSha256, "deployment");
+        assertRefreshEqual(refreshGenerationSha256(runtimeEnv), manifest.generationSha256, "model configuration");
+      };
+      const assertFences = () => assertRefreshFences(manifest.date, fencePaths,
+        process.env.READER_SUMMARY_DATE_FENCE_TOKEN, manifest.fenceAuthority);
+      assertFences(); assertSource();
+      assertRefreshEqual(gateway, manifest.gateway, "selected gateway route");
+      let channel: AgentRuntimeServiceClient | undefined;
+      const runtime = createSummaryAgentRuntimeClient({ transport, env: runtimeEnv, clock, runId: randomUUID(),
+        agentRuntime: () => {
+          channel = new AgentRuntimeServiceClient(required("AGENT_RUNTIME_GRPC_ADDRESS"), credentials.createInsecure());
+          return new GrpcAgentRuntimeClient(channel, clock, {
+            timeoutMs: 5_000, serviceToken: process.env.AGENT_RUNTIME_SERVICE_TOKEN });
+        } });
+      const record = (event: unknown) => {
+        const fd = openSync(join(output, `${manifest.date}.journal.jsonl`), constants.O_APPEND | constants.O_CREAT | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600);
+        try { writeSync(fd, JSON.stringify({ at: clock.now().toISOString(), event }) + "\n"); fsyncSync(fd); }
+        finally { closeSync(fd); }
+      };
+      try {
+        const receipt = await executeNewInputRefresh({ configuredInterests, manifest, summary, feed, clock, env: runtimeEnv,
+          runtime, assertFences, assertSource, record, capturePath: command.capturePath,
+          assertRuntime: singleFlightRefreshRuntimeAssertion(async () => {
+            const serving = await resolveReaderSummaryServingAuthority({ summaryModelMode: "agent-runtime",
+              topicLabelerMode: "agent-runtime", env: runtimeEnv,
+              agentRuntimeClient: { checkHealth: async (service) => {
+                try {
+                  const health = await runtime.checkHealth(service);
+                  if (health.status !== "serving") throw new RefreshRuntimeAssertionFailure("runtime_health");
+                  return health;
+                } catch { throw new RefreshRuntimeAssertionFailure("runtime_health"); }
+              } },
+              checkedAt: clock.now().toISOString() }).catch((error: unknown) => {
+                if (error instanceof RefreshRuntimeAssertionFailure) throw error;
+                throw new RefreshRuntimeAssertionFailure("runtime_mismatch");
+              });
+            try { assertRefreshEqual(serving.runtime, manifest.runtime, "deployed runtime"); }
+            catch { throw new RefreshRuntimeAssertionFailure("runtime_mismatch"); }
+          }),
+        });
+        record({ ...receipt, operation: manifest.operation, manifestSha256: command.sha256,
+          observedThrough: manifest.observedThrough });
+        console.log(JSON.stringify(receipt));
+      } catch {
+        record({ status: "stopped_requires_reconciliation", operation: manifest.operation, manifestSha256: command.sha256 });
+        throw new Error("Refresh stopped; reconcile original operation");
+      } finally { channel?.close(); }
+    });
+  } finally { await Promise.all([monitoring?.close(), feedConnection.close(), summary.close()]); }
+}
+function required(name: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error(`${name} is required`);
+  return value;
+}
+if (require.main === module) void main().catch(() => {
+  // SQL and provider exceptions can contain payloads or credentials.
+  console.error("Reader summary refresh stopped. Reconcile the original manifest/job; do not reset its budget.");
+  process.exitCode = 1;
+});

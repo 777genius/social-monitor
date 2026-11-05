@@ -93,22 +93,26 @@ class _TopPostRelevanceColumn extends StatelessWidget {
   const _TopPostRelevanceColumn({
     required this.item,
     required this.supportSignal,
+    required this.showSignal,
   });
 
   final TopRead item;
   final _TopPostSupportSignal supportSignal;
+  final bool showSignal;
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
-    final badge = _topPostSupportStyle(context, supportSignal);
+    final badge = item.cardKind == ReaderSummaryCardKind.relatedTopic
+        ? _relatedTopicBadge(context)
+        : _topPostSupportStyle(context, supportSignal);
     final interestCount = item.matchedInterestIds.length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Tooltip(
+        AppTooltip(
           message: badge.tooltip,
           child: DecoratedBox(
             decoration: BoxDecoration(
@@ -154,15 +158,17 @@ class _TopPostRelevanceColumn extends StatelessWidget {
             ),
           ),
         ],
-        const SizedBox(height: AppSpacing.xs),
-        Text(
-          'Signal ${item.signalScore.value.toStringAsFixed(2)}',
-          style: textTheme.labelSmall?.copyWith(
-            color: colorScheme.onSurfaceVariant,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0,
+        if (showSignal) ...[
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            'Signal ${item.signalScore.value.toStringAsFixed(2)}',
+            style: textTheme.labelSmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0,
+            ),
           ),
-        ),
+        ],
       ],
     );
   }
@@ -175,6 +181,17 @@ typedef _TopPostRelevanceBadge = ({
   Color foreground,
   IconData icon,
 });
+
+_TopPostRelevanceBadge _relatedTopicBadge(BuildContext context) {
+  final colorScheme = Theme.of(context).colorScheme;
+  return (
+    label: 'Related topic',
+    tooltip: 'A distinct story explicitly related to an official source topic.',
+    background: colorScheme.tertiaryContainer,
+    foreground: colorScheme.onTertiaryContainer,
+    icon: Icons.link_rounded,
+  );
+}
 
 /// Resolves the cross-source/same-source/single-source relevance badge shared
 /// by the detailed relevance column and the compact dense row chip.
@@ -212,10 +229,9 @@ _TopPostRelevanceBadge _topPostSupportStyle(
 }
 
 int _topPostConfirmedProviderCount(TopRead item) {
-  final keys = {
-    for (final key in item.confirmedProviderKeys)
-      if (key.trim().isNotEmpty) key.trim().toLowerCase(),
-  };
+  final keys = readerSummaryIndependentProviderFamilies(
+    item.confirmedProviderKeys,
+  );
 
   return keys.isEmpty ? 1 : keys.length;
 }
@@ -230,27 +246,45 @@ class _TopPostMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     final url = item.canonicalUrl;
     final colorScheme = Theme.of(context).colorScheme;
-    return PopupMenuButton<String>(
-      tooltip: 'Post actions',
-      position: PopupMenuPosition.under,
-      icon: Icon(
-        Icons.more_vert_rounded,
-        size: 18,
-        color: colorScheme.onSurfaceVariant,
+    return MergeSemantics(
+      child: AppTooltip(
+        message: 'Post actions',
+        child: PopupMenuButton<String>(
+          key: ValueKey(
+            'reader-summary-url-menu-${readerSummaryTopPostIdentity(item)}',
+          ),
+          tooltip: '',
+          position: PopupMenuPosition.under,
+          icon: Icon(
+            Icons.more_vert_rounded,
+            size: 18,
+            color: colorScheme.onSurfaceVariant,
+          ),
+          onSelected: (action) => _handle(context, action),
+          itemBuilder: (context) => [
+            PopupMenuItem<String>(
+              key: readerSummaryUrlActionKey(
+                'post-menu',
+                readerSummaryTopPostIdentity(item),
+              ),
+              value: 'open',
+              enabled: url != null,
+              child: Semantics(
+                label: readerSummaryUrlActionSemantics(
+                  'post-menu',
+                  readerSummaryTopPostIdentity(item),
+                ),
+                child: const Text('Open post'),
+              ),
+            ),
+            PopupMenuItem<String>(
+              value: 'copy',
+              enabled: url != null,
+              child: const Text('Copy link'),
+            ),
+          ],
+        ),
       ),
-      onSelected: (action) => _handle(context, action),
-      itemBuilder: (context) => [
-        PopupMenuItem<String>(
-          value: 'open',
-          enabled: url != null,
-          child: const Text('Open post'),
-        ),
-        PopupMenuItem<String>(
-          value: 'copy',
-          enabled: url != null,
-          child: const Text('Copy link'),
-        ),
-      ],
     );
   }
 

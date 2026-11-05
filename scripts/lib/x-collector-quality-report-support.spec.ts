@@ -209,6 +209,51 @@ describe("x collector quality report support", () => {
     }
   });
 
+  it("classifies the planned Latest tuple at the exact discovery boundary", () => {
+    const directory = mkdtempSync(join(tmpdir(), "x-collector-quality-"));
+    const dbPath = join(directory, "scweet_state.db");
+
+    try {
+      createLedgerTables({ dbPath });
+      const runs = [
+        [1, "Top", 90, 10, 5],
+        [2, "Latest", 5, null, null],
+        [3, "Latest", 6, null, null],
+      ] as const;
+      for (const [id, displayType, minLikes, minRetweets, minReplies] of runs) {
+        insertRun({
+          dbPath,
+          id,
+          displayType,
+          startedAt: "2026-07-08T00:01:00Z",
+          finishedAt: "2026-07-08T00:02:00Z",
+          tweets: 10,
+          inputJson: JSON.stringify({
+            since: "2026-07-07_00:00:00_UTC",
+            until: "2026-07-07_23:59:59_UTC",
+            display_type: displayType,
+            min_likes: minLikes,
+            min_retweets: minRetweets,
+            min_replies: minReplies,
+          }),
+        });
+      }
+
+      const ledger = buildXCollectorLedgerReport({
+        ledgerPath: dbPath,
+        collectionDate: "2026-07-07",
+      });
+
+      expect(ledger).toMatchObject({
+        strictEngagementRunCount: 1,
+        discoveryRunCount: 1,
+        hasStrictAndDiscoveryLanes: true,
+      });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("uses the target UTC window instead of run execution date", () => {
     const directory = mkdtempSync(join(tmpdir(), "x-collector-quality-"));
     const dbPath = join(directory, "scweet_state.db");

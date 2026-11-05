@@ -7,7 +7,7 @@ import {
   workspaceId,
 } from "@social-monitor/shared-kernel";
 
-import type { ReaderSummaryJob } from "../../domain";
+import { ReaderSummaryJob, resolveReaderSummaryPeriod } from "../../domain";
 import type {
   EnqueueReaderSummaryJobCommand,
   ReaderSummaryJobQueuePort,
@@ -27,6 +27,147 @@ class SequenceIdGenerator implements IdGenerator {
 }
 
 describe("RequestReaderSummaryUseCase", () => {
+  it("rejects a reserved successor key already held by a legacy job", async () => {
+    const jobs = new FakeReaderSummaryJobRepository();
+    const useCase = new RequestReaderSummaryUseCase(
+      jobs,
+      new FakeReaderSummaryJobQueue(),
+      new AllowingSummaryQuota(),
+      new SequenceIdGenerator(),
+      new FixedClock(new Date("2026-06-23T08:00:00.000Z")),
+      { resolve: () => "jev_primary_v3" },
+    );
+    const command = {
+      tenantId: tenantId("tenant-1"),
+      workspaceId: workspaceId("workspace-1"),
+      scope: { type: "workspace" as const },
+      cadence: "daily" as const,
+      idempotencyKey: "v3-successor:period-key",
+      correlationId: "correlation-1",
+    };
+    const period = resolveReaderSummaryPeriod({
+      cadence: "daily",
+      now: new Date("2026-06-23T08:00:00.000Z"),
+    });
+    await jobs.save(ReaderSummaryJob.request({
+      id: "old-job",
+      tenantId: command.tenantId,
+      workspaceId: command.workspaceId,
+      scope: command.scope,
+      period,
+      idempotencyKey: command.idempotencyKey,
+      requestedAt: new Date("2026-06-23T08:00:00.000Z"),
+      selectionStrategy: "legacy_v2",
+    }));
+
+    expect(await useCase.execute(command)).toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: "operation.conflict" }),
+    });
+  });
+
+  it("reuses an already completed V3 period without creating another successor", async () => {
+    const jobs = new FakeReaderSummaryJobRepository();
+    const queue = new FakeReaderSummaryJobQueue();
+    const useCase = new RequestReaderSummaryUseCase(
+      jobs,
+      queue,
+      new AllowingSummaryQuota(),
+      new SequenceIdGenerator(),
+      new FixedClock(new Date("2026-06-23T08:00:00.000Z")),
+      { resolve: () => "jev_primary_v3" },
+    );
+    const command = {
+      tenantId: tenantId("tenant-1"),
+      workspaceId: workspaceId("workspace-1"),
+      scope: { type: "workspace" as const },
+      cadence: "daily" as const,
+      idempotencyKey: "period-key",
+      correlationId: "correlation-1",
+    };
+    await useCase.execute(command);
+    const initial = await jobs.findByIdempotencyKey(command);
+    await jobs.save(ReaderSummaryJob.rehydrate({
+      ...initial!.toSnapshot(),
+      status: "completed",
+      readerSummaryId: "v3-publication",
+      completedAt: new Date("2026-06-23T08:02:00.000Z"),
+    }));
+
+    const result = await useCase.execute({
+      ...command,
+      idempotencyKey: `v3-successor:${command.idempotencyKey}`,
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      value: expect.objectContaining({
+        readerSummaryJobId: "reader-summary-job-1",
+        created: false,
+        status: "completed",
+      }),
+    }));
+    expect(queue.all()).toHaveLength(1);
+  });
+
+  it("does not replace an in-flight legacy job with a successor", async () => {
+    const jobs = new FakeReaderSummaryJobRepository();
+    const queue = new FakeReaderSummaryJobQueue();
+    let strategy: "legacy_v2" | "jev_primary_v3" = "legacy_v2";
+    const useCase = new RequestReaderSummaryUseCase(
+      jobs, queue, new AllowingSummaryQuota(), new SequenceIdGenerator(),
+      new FixedClock(new Date("2026-06-23T08:00:00.000Z")),
+      { resolve: () => strategy },
+    );
+    const command = {
+      tenantId: tenantId("tenant-1"), workspaceId: workspaceId("workspace-1"),
+      scope: { type: "workspace" as const }, cadence: "daily" as const,
+      idempotencyKey: "legacy-period", correlationId: "correlation-1",
+    };
+    await useCase.execute(command);
+    strategy = "jev_primary_v3";
+    const result = await useCase.execute({
+      ...command, idempotencyKey: `v3-successor:${command.idempotencyKey}`,
+    });
+    expect(result).toEqual({ ok: false, error: expect.objectContaining({ code: "operation.conflict" }) });
+    expect(queue.all()).toHaveLength(1);
+  });
+  it.each(["daily", "weekly"] as const)(
+    "creates one V3 successor after a published no_signal %s job",
+    async (cadence) => {
+      const jobs = new FakeReaderSummaryJobRepository();
+      const queue = new FakeReaderSummaryJobQueue();
+      let strategy: "legacy_v2" | "jev_primary_v3" = "legacy_v2";
+      const useCase = new RequestReaderSummaryUseCase(
+        jobs, queue, new AllowingSummaryQuota(), new SequenceIdGenerator(),
+        new FixedClock(new Date("2026-06-23T08:00:00.000Z")),
+        { resolve: () => strategy },
+      );
+      const command = {
+        tenantId: tenantId("tenant-1"), workspaceId: workspaceId("workspace-1"),
+        scope: { type: "workspace" as const }, cadence,
+        idempotencyKey: `legacy-${cadence}`, correlationId: "correlation-1",
+      };
+      await useCase.execute(command);
+      const source = await jobs.findByIdempotencyKey(command);
+      await jobs.save(source!.start({ startedAt: new Date("2026-06-23T08:01:00.000Z") })
+        .markNoSignal({ completedAt: new Date("2026-06-23T08:02:00.000Z"), readerSummaryId: "published-no-signal" }));
+      const successor = { ...command, idempotencyKey: `v3-successor:${command.idempotencyKey}` };
+      strategy = "jev_primary_v3";
+
+      expect(await useCase.execute(successor)).toEqual(expect.objectContaining({
+        ok: true,
+        value: expect.objectContaining({ readerSummaryJobId: "reader-summary-job-2", created: true, status: "requested" }),
+      }));
+      expect((await jobs.findByIdempotencyKey(successor))?.toSnapshot().selectionStrategy)
+        .toBe("jev_primary_v3");
+      expect(await useCase.execute(successor)).toEqual(expect.objectContaining({
+        ok: true,
+        value: expect.objectContaining({ readerSummaryJobId: "reader-summary-job-2", created: false }),
+      }));
+      expect(queue.all()).toHaveLength(2);
+    },
+  );
   it("creates workspace reader summary jobs idempotently", async () => {
     const readerSummaryJobQueue = new FakeReaderSummaryJobQueue();
     const useCase = new RequestReaderSummaryUseCase(

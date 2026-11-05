@@ -9,6 +9,7 @@ export type PrismaCommandOutboxRecord = {
 };
 
 export type PrismaCommandOutboxTransactionClient = {
+  $executeRaw(query: TemplateStringsArray, ...values: unknown[]): Promise<number>;
   readonly outboxEvent: {
     findMany(args: {
       readonly where: {
@@ -33,6 +34,7 @@ export type PrismaCommandOutboxTransactionClient = {
         readonly messageKind?: 'COMMAND';
         readonly status: 'PENDING';
         readonly leaseOwner?: string;
+        readonly leasedUntil?: { readonly gt: Date };
         readonly availableAt?: { readonly lte: Date };
         readonly OR?: readonly [
           { readonly leasedUntil: null },
@@ -66,6 +68,7 @@ export type PrismaCommandOutboxTransactionClient = {
 };
 
 export type PrismaCommandOutboxClient = {
+  $executeRaw(query: TemplateStringsArray, ...values: unknown[]): Promise<number>;
   $transaction<TValue>(
     work: (
       transaction: PrismaCommandOutboxTransactionClient,

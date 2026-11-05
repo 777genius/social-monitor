@@ -1,4 +1,1 @@
-export type CreateInterestResult = {
-  readonly interestId: string;
-  readonly created: boolean;
-};
+export type { InterestCreationResult as CreateInterestResult } from '../../application/contracts/interest-creation-commit';

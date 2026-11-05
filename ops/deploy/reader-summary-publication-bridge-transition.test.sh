@@ -72,6 +72,8 @@ cp "$SCRIPT_DIR/reader-summary-publication-system-dsn-bootstrap-lib.sh" \
   "$SYNTHESIS_REPO/ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh"
 cp "$SCRIPT_DIR/reader-summary-publication-prebootstrap-lib.sh" \
   "$SYNTHESIS_REPO/ops/deploy/reader-summary-publication-prebootstrap-lib.sh"
+cp "$SCRIPT_DIR/reader-summary-publication-catalog-query-lib.sh" \
+  "$SYNTHESIS_REPO/ops/deploy/reader-summary-publication-catalog-query-lib.sh"
 for prebootstrap_asset in \
   daily-run.sh \
   social-monitor-reader-summary-production-day.bootstrap.timer \
@@ -83,6 +85,7 @@ done
 git -C "$SYNTHESIS_REPO" add "$PUBLICATION_LIBRARY" \
   ops/deploy/reader-summary-publication-system-dsn-bootstrap-lib.sh \
   ops/deploy/reader-summary-publication-prebootstrap-lib.sh \
+  ops/deploy/reader-summary-publication-catalog-query-lib.sh \
   ops/deploy/production-runtime
 git -C "$SYNTHESIS_REPO" commit -qm \
   'test: target missing PostgreSQL backup blob'

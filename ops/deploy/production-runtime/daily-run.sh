@@ -5,9 +5,15 @@ PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 # Canonical daily stages are owned by run-reader-summary-production-day.ts:
 # collection -> collection quality -> AI summary -> publication gates.
 
-if [[ ${SOCIAL_MONITOR_DAILY_RUN_TEST_MODE:-} == 1 ]]; then
+DAILY_TEST_MODE=${SOCIAL_MONITOR_DAILY_RUN_TEST_MODE:-0}
+if [[ $DAILY_TEST_MODE == 1 && ${BASH_SOURCE[0]} == /var/data/social-monitor/* ]]; then
+  echo 'installed daily runner cannot use test mode' >&2
+  exit 75
+fi
+if [[ $DAILY_TEST_MODE == 1 ]]; then
   ROOT=${SOCIAL_MONITOR_DAILY_RUN_TEST_ROOT:?daily-run test root is required}
-  [[ $ROOT == /tmp/* ]] || {
+  ROOT=$(realpath -e -- "$ROOT" 2>/dev/null) || exit 64
+  [[ -d $ROOT && $ROOT == /tmp/* ]] || {
     echo 'daily production-day test root must be below /tmp' >&2
     exit 64
   }
@@ -40,16 +46,24 @@ COMPOSE=(
   -f "$ROOT/control/compose.production.yml"
   -f "$ROOT/control/compose.managed-db.yml"
   -f "$ROOT/control/postgres-runtime-current/compose.postgres-runtime.yml"
-  -f "$ROOT/integration/ops/deploy/production-runtime/compose.agent-runtime-model.yml"
-  -f "$ROOT/integration/ops/deploy/production-runtime/compose.daily-artifacts.yml"
+  -f "$ROOT/control/postgres-runtime-current/compose.agent-runtime-model.yml"
+  -f "$ROOT/control/postgres-runtime-current/compose.daily-artifacts.yml"
 )
+X_LAUNCH_GUARD=$ROOT/control/postgres-runtime-current/x-launch-guard.py
+guard_owner=0
+[[ $DAILY_TEST_MODE != 1 ]] || guard_owner=$(id -u)
+[[ -f $X_LAUNCH_GUARD && ! -L $X_LAUNCH_GUARD && \
+   $(stat -c '%a:%u' "$X_LAUNCH_GUARD" 2>/dev/null) == "644:$guard_owner" ]] || {
+  echo 'X launch guard is missing or unsafe' >&2
+  exit 75
+}
 DATE_FLAG=${1:---yesterday}
 MAINTENANCE_DATE=${2:-}
 
 case "$DATE_FLAG" in
   --check-readiness|--today|--yesterday) ;;
   --maintenance-date)
-    [[ $# -eq 2 && $MAINTENANCE_DATE =~ ^2026-(07-(2[3-9]|3[01])|08-(0[1-9]|1[0-2]))$ ]] || {
+    [[ $# -eq 2 && $MAINTENANCE_DATE =~ ^2026-(07-(2[3-9]|3[01])|08-(0[1-9]|1[0-9]|2[0-9]|3[01])|09-(0[1-9]|1[0-8]))$ ]] || {
       echo "historical daily production-day date is outside the reviewed recovery bound" >&2
       exit 64
     }
@@ -80,9 +94,19 @@ check_runtime_release() {
 }
 
 if [[ $DATE_FLAG == --check-readiness ]]; then
+  python3 "$X_LAUNCH_GUARD" check || exit 75
   check_runtime_release || exit 75
   exit 0
 fi
+
+python3 "$X_LAUNCH_GUARD" check || exit 75
+
+"$ROOT/control/postgres-runtime-current/reader-summary-scheduler-hold-status.sh" \
+  >/dev/null || {
+  status=$?
+  ((status == 75)) && exit 75
+  exit 76
+}
 
 exec 9>"$ROOT/control/daily-run-singleton.lock"
 "$FLOCK_COMMAND" -n 9 || {
@@ -107,16 +131,16 @@ if [[ -f "$ROOT/runtime/auth-account-changed" ]]; then
   fi
   install -d -m 0700 -o 1000 -g 1000 \
     "$ROOT/runtime/subscription-runtime/sessions"
-  "${COMPOSE[@]}" restart agent-runtime
+  python3 "$X_LAUNCH_GUARD" run "${COMPOSE[@]}" restart agent-runtime
   rm -f "$ROOT/runtime/auth-account-changed"
   sleep 3
 fi
 
-"${COMPOSE[@]}" --profile app up -d --no-deps agent-runtime
+python3 "$X_LAUNCH_GUARD" run "${COMPOSE[@]}" --profile app up -d --no-deps agent-runtime
 
 # The quoted body expands inside the daily runner container.
 # shellcheck disable=SC2016
-"${COMPOSE[@]}" --profile daily run --rm --no-deps daily-runner sh -lc '
+python3 "$X_LAUNCH_GUARD" run "${COMPOSE[@]}" --profile daily run --rm --no-deps daily-runner sh -lc '
   set -eu
 
   timeout_ms=${READER_SUMMARY_DAILY_RUN_TIMEOUT_MS:-12300000}
@@ -204,7 +228,7 @@ fi
   historical_mode=false
   if [ '"$DATE_FLAG"' = --maintenance-date ]; then
     historical_mode=true
-    historical_args="--allow-historical --allow-historical-provider-collection"
+    historical_args="--allow-historical --allow-historical-provider-collection --bounded-historical-recovery"
     export READER_SUMMARY_PRODUCTION_HISTORY_COLLECTION_DIR=/var/lib/social-monitor/artifacts/reader-summary-production-history-collection
   fi
   if [ -z "$requested_date" ]; then
@@ -269,8 +293,25 @@ fi
     exit 0
   fi
   if [ "$historical_mode" = false ]; then
+    gap_verified=false
+    if [ -n "$cursor_date" ]; then
+      expected_next=$(node -e '\''
+        const value = new Date(`${process.argv[1]}T00:00:00.000Z`);
+        value.setUTCDate(value.getUTCDate() + 1);
+        process.stdout.write(value.toISOString().slice(0, 10));
+      '\'' -- "$cursor_date")
+      if [ "$expected_next" != "$requested_date" ]; then
+        node scripts/run-with-timeout.mjs \
+          --timeout-ms 180000 \
+          --node-options --max-old-space-size=768 \
+          -- ./node_modules/.bin/ts-node -r tsconfig-paths/register \
+          scripts/check-reader-summary-production-day-publication-gap.ts \
+          --after-date "$cursor_date" --target-date "$requested_date"
+        gap_verified=true
+      fi
+    fi
     node -e '\''
-    const [previous, expected] = process.argv.slice(1);
+    const [previous, expected, gapVerified] = process.argv.slice(1);
     const validDate = (value) =>
       typeof value === "string" &&
       /^\d{4}-\d{2}-\d{2}$/.test(value) &&
@@ -281,10 +322,12 @@ fi
     if (previous === "") process.exit(0);
     const next = new Date(`${previous}T00:00:00.000Z`);
     next.setUTCDate(next.getUTCDate() + 1);
-    if (next.toISOString().slice(0, 10) !== expected) {
+    if (next.toISOString().slice(0, 10) !== expected && gapVerified !== "true") {
       throw new Error("requested daily state transition is not consecutive");
     }
-    '\'' -- "$cursor_date" "$requested_date"
+    '\'' -- "$cursor_date" "$requested_date" "$gap_verified"
+  else
+    gap_verified=false
   fi
   export READER_SUMMARY_DAILY_RUN_EXPECTED_DATE=$requested_date
   rm -f \
@@ -306,12 +349,19 @@ fi
       --timeout-ms "$timeout_ms" \
       -- bash "$READER_SUMMARY_DAILY_RUN_PAUSE_WORKER" '"$DATE_FLAG"'
   else
-    node scripts/run-with-timeout.mjs \
-      --timeout-ms "$timeout_ms" \
-      --node-options --max-old-space-size=1024 \
-      -- ./node_modules/.bin/ts-node -r tsconfig-paths/register \
-      scripts/run-reader-summary-production-day.ts \
-      --date "$requested_date" --update $historical_args
+    bash ops/deploy/production-runtime/reader-summary-date-lock.sh \
+      --date "$requested_date" \
+      --date-lock-dir "$public_dir/.reader-summary-date-locks" \
+      --fence-dir "$public_dir/.reader-summary-date-fences" \
+      --wait-seconds 7500 \
+      --token-output "$artifact_dir/date-fence-token.txt" \
+      -- \
+      node scripts/run-with-timeout.mjs \
+        --timeout-ms "$timeout_ms" \
+        --node-options --max-old-space-size=1024 \
+        -- ./node_modules/.bin/ts-node -r tsconfig-paths/register \
+        scripts/run-reader-summary-production-day.ts \
+        --date "$requested_date" --update $historical_args
   fi
 
   expected_date=$requested_date
@@ -449,7 +499,7 @@ fi
       --state-dir "$public_dir")
   fi
   transition=$(node -e '\''
-    const [previous, expected, historicalMode] = process.argv.slice(1);
+    const [previous, expected, historicalMode, gapVerified] = process.argv.slice(1);
     const next = (date) => {
       const value = new Date(`${date}T00:00:00.000Z`);
       value.setUTCDate(value.getUTCDate() + 1);
@@ -459,8 +509,9 @@ fi
     else if (previous === expected) process.stdout.write("replay");
     else if (historicalMode === "true" && expected < previous) process.stdout.write("historical");
     else if (next(previous) === expected) process.stdout.write("advance");
+    else if (gapVerified === "true" && previous < expected) process.stdout.write("advance_verified_gap");
     else throw new Error("daily production-day state transition is not consecutive");
-  '\'' -- "$previous_state_date" "$expected_date" "$historical_mode")
+  '\'' -- "$previous_state_date" "$expected_date" "$historical_mode" "$gap_verified")
 
   if [ "$transition" = replay ]; then
     cmp -s "$staged_state" "$public_dir/latest-state.v1.json" || {

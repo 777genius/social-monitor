@@ -14,6 +14,7 @@ import {
   productionCollectionThresholds,
   providerMeetsProductionBlockingPolicy,
   recalculateProductionBlockingPolicyGates,
+  xTargetWindowAlreadyMeetsProductionPolicy,
 } from "./production-collection-quality-policy";
 
 describe("production collection quality policy", () => {
@@ -315,7 +316,46 @@ describe("production collection quality policy", () => {
     ).toBe(true);
   });
 
-  it("still blocks unavailable, stale, rate-limited or insufficient inventories", () => {
+  it("accepts a rate-limited X pass when the exact-day inventory is already sufficient", () => {
+    expect(
+      providerMeetsProductionBlockingPolicy({
+        providerKey: "x-twitter",
+        status: "succeeded",
+        observability: observation({
+          target: 100,
+          collected: 35,
+          evaluated: 137,
+          coverageRatio: 1,
+          reasons: ["rate_limited"],
+        }),
+      }),
+    ).toBe(true);
+  });
+
+  it("spends no delayed X retry budget for a sufficient fresh exact-day inventory", () => {
+    const input = {
+      visibleItemCount: 137,
+      targetItemCount: 100,
+      newestPublishedAt: "2026-08-27T23:58:00.000Z",
+      targetWindowEndedAt: new Date("2026-08-28T00:00:00.000Z"),
+    };
+
+    expect(xTargetWindowAlreadyMeetsProductionPolicy(input)).toBe(true);
+    expect(
+      xTargetWindowAlreadyMeetsProductionPolicy({
+        ...input,
+        visibleItemCount: 19,
+      }),
+    ).toBe(false);
+    expect(
+      xTargetWindowAlreadyMeetsProductionPolicy({
+        ...input,
+        newestPublishedAt: "2026-08-27T17:00:00.000Z",
+      }),
+    ).toBe(false);
+  });
+
+  it("still blocks unavailable, stale or insufficient inventories", () => {
     expect(
       providerMeetsProductionBlockingPolicy({
         providerKey: "x-twitter",

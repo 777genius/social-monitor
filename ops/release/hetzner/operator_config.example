@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "database": {
+    "service": "REPLACE_WITH_SEPARATE_OBSERVER_SERVICE",
+    "database": "REPLACE_WITH_DISCOVERED_DATABASE",
+    "role": "REPLACE_WITH_NONPRIVILEGED_READONLY_ROLE",
+    "host": "/var/run/postgresql",
+    "port": "5432"
+  },
+  "backup_config_sha256": "REPLACE_WITH_ROOT_CONFIG_PRIVATE_BYTE_SHA256",
+  "wrapper_sha256": "REPLACE_WITH_REVIEWED_CIPHER_WRAPPER_BYTE_SHA256"
+}

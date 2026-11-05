@@ -1,4 +1,4 @@
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiExtraModels, ApiProperty, getSchemaPath } from "@nestjs/swagger";
 
 import { readerSummaryWeeklyProjectionBlockingReasons } from "../../features/get-reader-summary-weekly-projection/get-reader-summary-weekly-projection.use-case";
 
@@ -166,6 +166,7 @@ export class ReaderSummaryWeeklyProjectionEvidenceLimitationDto {
   declare readonly evidenceState: "historical_unavailable";
 }
 
+@ApiExtraModels(ReaderSummaryWeeklyProjectionArtifactDto)
 export class ReaderSummaryWeeklyProjectionResponseDto {
   @ApiProperty({ enum: ["reader_summary.weekly_projection.v1"] })
   declare readonly schemaVersion: "reader_summary.weekly_projection.v1";
@@ -208,8 +209,14 @@ export class ReaderSummaryWeeklyProjectionResponseDto {
   declare readonly evidenceLimitations: readonly ReaderSummaryWeeklyProjectionEvidenceLimitationDto[];
 
   @ApiProperty({
-    type: () => ReaderSummaryWeeklyProjectionArtifactDto,
+    // The pinned Dart generator drops nullable on a single-ref allOf wrapper.
+    // An explicit null-only alternative preserves both the artifact type and
+    // OpenAPI 3.0 semantics (type: "null" is only valid in OpenAPI 3.1).
     nullable: true,
+    oneOf: [
+      { $ref: getSchemaPath(ReaderSummaryWeeklyProjectionArtifactDto) },
+      { type: "object", nullable: true, enum: [null] },
+    ],
   })
   declare readonly artifact: ReaderSummaryWeeklyProjectionArtifactDto | null;
 }

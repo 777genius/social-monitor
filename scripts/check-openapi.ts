@@ -1,3 +1,5 @@
+import { ReaderPostsController } from "@social-monitor/summary/interfaces/rest/reader-posts.controller";
+import { ListReaderPostsUseCase } from "@social-monitor/summary/features/list-reader-posts/list-reader-posts.use-case";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, relative } from "node:path";
 
@@ -77,6 +79,7 @@ import { UpdateInterestUseCase } from "@social-monitor/monitoring/features/updat
 import { ScanPolicyController } from "@social-monitor/monitoring/interfaces/rest/scan-policy.controller";
 import { ScanRequestController } from "@social-monitor/monitoring/interfaces/rest/scan-request.controller";
 import { ScanStatusController } from "@social-monitor/monitoring/interfaces/rest/scan-status.controller";
+import { SourceBindingAccessService } from "@social-monitor/monitoring/interfaces/rest/source-binding-access.service";
 import { SourceBindingController } from "@social-monitor/monitoring/interfaces/rest/source-binding.controller";
 import { SourceCredentialController } from "@social-monitor/monitoring/interfaces/rest/source-credential.controller";
 import { InterestController } from "@social-monitor/monitoring/interfaces/rest/interest.controller";
@@ -131,6 +134,9 @@ import { PublicApiAuditEventsController } from "@social-monitor/usage/interfaces
 import { RequestCorrelationIdFactory } from "@social-monitor/platform-request-context";
 import "reflect-metadata";
 
+import { AppBootstrapController } from "../apps/api-gateway/src/app-bootstrap.controller";
+import { AppBootstrapReaderSummaryQuery } from "../apps/api-gateway/src/app-bootstrap-reader-summary-query";
+import { AppBootstrapReaderSummaryCache } from "../apps/api-gateway/src/app-bootstrap-reader-summary-cache";
 import { HealthController } from "../apps/api-gateway/src/health.controller";
 import { ApiGatewayHealthReporter } from "../apps/api-gateway/src/health-reporter";
 
@@ -213,6 +219,14 @@ const noopDeliveryReadAuthorizer = {
   authorize: async () => undefined,
 };
 
+const passthroughAppBootstrapReaderSummaryCache = {
+  getOrLoad: async <T>(
+    _tenantId: string,
+    _workspaceId: string,
+    loader: () => Promise<T>,
+  ): Promise<T> => loader(),
+};
+
 const noopSocialResearchToolHandlers = {
   searchSocial: async () => ({
     plan: {
@@ -271,6 +285,7 @@ const useCaseProviders = [
   GetReaderSummaryJobStatusUseCase,
   GetReaderSummaryQualityRejectionUseCase,
   GetReaderSummaryUseCase,
+  ListReaderPostsUseCase,
   GetReaderSummaryWeeklyProjectionUseCase,
   GetWebhookEndpointUseCase,
   GetBetaLaunchSupportUseCase,
@@ -332,6 +347,7 @@ const useCaseProviders = [
 
 @Module({
   controllers: [
+    AppBootstrapController,
     HealthController,
     InterestController,
     InterestCoveragePlanController,
@@ -349,6 +365,7 @@ const useCaseProviders = [
     SummaryController,
     ReaderSummaryWeeklyProjectionController,
     ReaderSummaryController,
+    ReaderPostsController,
     ReaderSummaryJobController,
     ReaderSummaryRequestController,
     ReaderSummaryTopicRecommendationController,
@@ -371,6 +388,7 @@ const useCaseProviders = [
   ],
   providers: [
     ...useCaseProviders,
+    SourceBindingAccessService,
     {
       provide: ApiKeyRequestAuthorizer,
       useValue: noopApiKeyAuthorizer,
@@ -407,6 +425,11 @@ const useCaseProviders = [
       provide: ApiGatewayHealthReporter,
       useValue: noopHealthReporter,
     },
+    {
+      provide: AppBootstrapReaderSummaryCache,
+      useValue: passthroughAppBootstrapReaderSummaryCache,
+    },
+    AppBootstrapReaderSummaryQuery,
   ],
 })
 class OpenApiContractModule {}

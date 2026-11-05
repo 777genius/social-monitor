@@ -1,7 +1,16 @@
+import type { ReaderCapturedSource, ReaderDisplayHeadline } from
+  "../value-objects/summary-reader-headline";
+
 import type { ReaderActionKind } from "./reader-action";
 import type { ProviderMetric } from "../value-objects/provider-metric-label";
 import type { PreviewMedia } from "../value-objects/preview-media";
 import type { SignalScore } from "../value-objects/signal-score";
+import type { ReaderPromotionPolicyVersion } from "../policies/reader-promotion-policy-version";
+import type {
+  ReaderSummaryEditorialScoreComponents,
+  ReaderSummaryEditorialSlateEntry,
+} from
+  "../value-objects/reader-summary-editorial-slate";
 
 export type TopReadPrimaryActionKind = Extract<
   ReaderActionKind,
@@ -14,8 +23,50 @@ export type TopReadConfidence = {
   readonly rationale: string;
 };
 
+export const readerSummaryCardKinds = [
+  "curated_top_read",
+  "additional_notable_story",
+  "news_without_rating",
+  "related_topic",
+  "supplemental_trend",
+  "unsupported",
+] as const;
+
+export type ReaderSummaryCardKind = (typeof readerSummaryCardKinds)[number];
+
+export const readerPostPromotionCardFields = [
+  "promotionMarker",
+  "promotionPolicyVersion",
+  "promotionTier",
+  "promotionCandidateId",
+  "promotionCanonicalIdentity",
+] as const;
+
 export type TopRead = {
+  readonly capturedSource?: ReaderCapturedSource;
+  readonly displayHeadline?: ReaderDisplayHeadline;
+  readonly storyClusterId?: string;
+  readonly cardKind?: ReaderSummaryCardKind;
+  readonly promotionMarker?: "reader_post_promotion";
+  readonly promotionPolicyVersion?:
+    | "reader_post_promotion.v1"
+    | "reader_post_promotion.v2"
+    | ReaderPromotionPolicyVersion;
+  readonly promotionTier?: "top" | "additional" | "news";
+  readonly promotionCandidateId?: string;
+  readonly promotionCanonicalIdentity?: string;
+  readonly editorialPolicyVersion?: ReaderSummaryEditorialSlateEntry["policyVersion"];
+  readonly editorialPlacement?: "top" | "additional";
+  readonly editorialSlot?: number;
+  readonly editorialScoreComponents?: ReaderSummaryEditorialScoreComponents;
+  readonly editorialReasonCodes?: readonly string[];
+  readonly editorialCandidateDigestInput?: string;
+  readonly editorialDigestInput?: string;
+  readonly relationId?: string;
+  readonly targetStoryClusterId?: string;
   readonly title: string;
+  /** Grounded reader-facing model prose. Historical cards may omit it. */
+  readonly summary?: string;
   readonly providerKey: string;
   readonly providerName: string;
   readonly primaryActionKind: TopReadPrimaryActionKind;
@@ -29,6 +80,8 @@ export type TopRead = {
   readonly whyImportant: readonly string[];
   readonly whyNow: string;
   readonly publishedAt?: Date;
+  /** Exact six-digit UTC value retained for signed ordering and API transport. */
+  readonly exactPublishedAt?: string;
   readonly canonicalUrl?: string;
   readonly previewMedia?: PreviewMedia;
   readonly citationIds: readonly string[];
@@ -41,6 +94,16 @@ export type TopReadCandidate = {
   readonly interestIds: readonly string[];
   readonly providerKeys: readonly string[];
   readonly citationIds: readonly string[];
+  // Internal provenance captured before story/citation repair. Missing metadata
+  // cannot establish that a summary is an authored, correctly bound explanation.
+  readonly readerReasonProvenance?:
+    | {
+        readonly kind: "model";
+        readonly originalStoryClusterId: string;
+        readonly originalCitationIds: readonly string[];
+        readonly originalSummary: string;
+      }
+    | { readonly kind: "normalizer_fallback" };
 };
 
 export type InterestHighlight = {

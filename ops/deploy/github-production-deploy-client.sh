@@ -1,12 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+LC_ALL=C
+export LC_ALL
+
 PATH=/usr/local/bin:/usr/bin:/bin
 
 ZERO_SHA=0000000000000000000000000000000000000000
 POSTGRES_POOL_BOOTSTRAP_VERSION=postgres-pool-v1
+RELEASE_B_CONTROLLER_SHA=8b4aeb31e855ed379349a4e4827600009e174132
+RELEASE_B_CURRENT_MAIN_SHA=77313ea03a3bac7d2298f4021d58124c810d291f
+RELEASE_B_LEGACY_BACKEND_SHA=09a79687e042e36d4ec9c1f33f0367527f044181
+RELEASE_B_LEGACY_POOL_SHA=6fefa9da5446d5e467badcc7239fdc5a6170a756
+RELEASE_B_BRIDGE_SHA=b89950632b0cefa4f7b58b687cdfd6e6cd912a04
+RELEASE_B_BRIDGE_TREE=0f2edeb95bbb658cebdb1aecdcda24026eca7d19
+RELEASE_B_BRIDGE_BLOB=e02f7b7684f75121521065b43148708d545ab806
+RELEASE_B_BRIDGE_PATH=ops/deploy/deploy-control-bridge-lib.sh
+RELEASE_B_REVIEWED_TARGET_SHA=05744f99b2d13e47a64a7ff12ea2ab8893f5e88a
+RELEASE_B_REVIEWED_TARGET_TREE=237c34068c057d2dfb5efaf9d606028cdaf18525
 DAILY_C1_BRIDGE_POLICY_SHA=944fdb6da3071f70a69c7048c9fcdf1c2552603e
-SSH_DIRECTORY=${DEPLOY_SSH_DIRECTORY:-${HOME:?HOME is required}/.ssh}
+SSH_DIRECTORY=${DEPLOY_SSH_DIRECTORY:-${HOME:+$HOME/.ssh}}
 SSH_KEY_PATH=${DEPLOY_SSH_KEY_PATH:-$SSH_DIRECTORY/social-monitor-production}
 SSH_KNOWN_HOSTS_PATH=${DEPLOY_SSH_KNOWN_HOSTS_PATH:-$SSH_DIRECTORY/known_hosts}
 SSH_BIN=${DEPLOY_SSH_BIN:-ssh}
@@ -41,6 +54,10 @@ fail() {
   printf 'deploy-client-error: %s\n' "$*" >&2
   exit 1
 }
+
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+source "$SCRIPT_DIR/github-production-transition-client-lib.sh"
+source "$SCRIPT_DIR/github-production-forward-bridge-client-lib.sh"
 
 validate_client_defaults() {
   ((DEFAULT_RECONCILE_WINDOW_SECONDS >= MINIMUM_RECONCILE_WINDOW_SECONDS)) || \
@@ -77,6 +94,7 @@ validate_remote_environment() {
 }
 
 configure_ssh() {
+  [[ -n $SSH_DIRECTORY ]] || fail 'HOME or DEPLOY_SSH_DIRECTORY is required'
   [[ -n ${DEPLOY_KEY:-} ]] || fail 'DEPLOY_KEY is required'
   [[ -n ${KNOWN_HOSTS:-} ]] || fail 'KNOWN_HOSTS is required'
   install -d -m 0700 "$SSH_DIRECTORY"
@@ -545,6 +563,145 @@ plan_is_fully_reconciled() {
      $PLAN_BACKEND_BASE != "$ZERO_SHA" ]]
 }
 
+plan_is_exact_release_b_bridge_transition() {
+  [[ $PLAN_FRONTEND == false && $PLAN_BACKEND == false && \
+     $PLAN_CONTROL == true && $PLAN_X_COLLECTOR == false && \
+     $PLAN_POSTGRES_POOL_BOOTSTRAP == "$POSTGRES_POOL_BOOTSTRAP_VERSION" && \
+     $PLAN_POSTGRES_POOL_BOOTSTRAP_SHA == "$RELEASE_B_CONTROLLER_SHA" && \
+     $PLAN_BACKEND_BASE == "$RELEASE_B_CONTROLLER_SHA" ]]
+}
+
+plan_is_exact_release_b_target_transition() {
+  [[ $PLAN_FRONTEND == false && $PLAN_BACKEND == true && \
+     $PLAN_BACKEND_BASE == "$RELEASE_B_CONTROLLER_SHA" && \
+     $PLAN_CONTROL == true && $PLAN_X_COLLECTOR == false && \
+     $PLAN_POSTGRES_POOL_BOOTSTRAP == "$POSTGRES_POOL_BOOTSTRAP_VERSION" && \
+     $PLAN_POSTGRES_POOL_BOOTSTRAP_SHA == "$RELEASE_B_CONTROLLER_SHA" && \
+     $PLAN_POSTGRES_POOL_REPAIR == false ]]
+}
+
+plan_is_exact_release_b_current_main_target_transition() {
+  [[ $PLAN_FRONTEND == false && $PLAN_BACKEND == false && \
+     $PLAN_BACKEND_BASE == "$RELEASE_B_CURRENT_MAIN_SHA" && \
+     $PLAN_CONTROL == true && $PLAN_X_COLLECTOR == false && \
+     $PLAN_POSTGRES_POOL_BOOTSTRAP == "$POSTGRES_POOL_BOOTSTRAP_VERSION" && \
+     $PLAN_POSTGRES_POOL_BOOTSTRAP_SHA == "$RELEASE_B_CURRENT_MAIN_SHA" && \
+     $PLAN_POSTGRES_POOL_REPAIR == false ]]
+}
+
+plan_is_exact_release_b_legacy_transition() {
+  [[ $PLAN_FRONTEND == true && $PLAN_BACKEND == true && \
+     $PLAN_BACKEND_BASE == "$RELEASE_B_LEGACY_BACKEND_SHA" && \
+     $PLAN_CONTROL == true && $PLAN_X_COLLECTOR == true && \
+     $PLAN_POSTGRES_POOL_BOOTSTRAP == "$POSTGRES_POOL_BOOTSTRAP_VERSION" && \
+     $PLAN_POSTGRES_POOL_BOOTSTRAP_SHA == "$RELEASE_B_LEGACY_POOL_SHA" && \
+     $PLAN_POSTGRES_POOL_REPAIR == false ]]
+}
+
+plan_is_admitted_post_release_b_forward_state() {
+  local requested_target=$1 repository=${GITHUB_WORKSPACE:-.}
+  [[ $PLAN_FRONTEND =~ ^(true|false)$ && $PLAN_BACKEND == false && \
+     $PLAN_CONTROL == false && $PLAN_X_COLLECTOR == false && \
+     $PLAN_BACKEND_BASE =~ ^[0-9a-f]{40}$ && \
+     $PLAN_POSTGRES_POOL_BOOTSTRAP == "$POSTGRES_POOL_BOOTSTRAP_VERSION" && \
+     $PLAN_POSTGRES_POOL_BOOTSTRAP_SHA =~ ^[0-9a-f]{40}$ && \
+     $PLAN_POSTGRES_POOL_REPAIR == false ]] || return 1
+  # Marker ancestry proves provenance only. Skipping bridge preparation is
+  # safe solely when the plan will mutate no backend, control, or X surface;
+  # the remaining frontend-only path never enters the sealed host closure.
+  git -C "$repository" merge-base --is-ancestor \
+    "$RELEASE_B_REVIEWED_TARGET_SHA" "$PLAN_BACKEND_BASE" 2>/dev/null && \
+    git -C "$repository" merge-base --is-ancestor \
+      "$PLAN_BACKEND_BASE" "$requested_target" 2>/dev/null && \
+    git -C "$repository" merge-base --is-ancestor \
+      "$RELEASE_B_REVIEWED_TARGET_SHA" \
+      "$PLAN_POSTGRES_POOL_BOOTSTRAP_SHA" 2>/dev/null && \
+    git -C "$repository" merge-base --is-ancestor \
+      "$PLAN_POSTGRES_POOL_BOOTSTRAP_SHA" "$requested_target" 2>/dev/null
+}
+
+verify_release_b_bridge_identity() {
+  local sha=$1 repository=${GITHUB_WORKSPACE:-.}
+  local actual_tree delta entry mode type object path extra
+  local -a ancestry=()
+
+  [[ $sha == "$RELEASE_B_BRIDGE_SHA" ]] || \
+    fail 'Release B bridge SHA is not the reviewed pin'
+  read -r -a ancestry <<< "$(git -C "$repository" \
+    rev-list --parents -n 1 "$sha" 2>/dev/null)" || \
+    fail 'Release B bridge ancestry cannot be inspected'
+  [[ ${#ancestry[@]} == 2 && ${ancestry[0]} == "$sha" && \
+     ${ancestry[1]} == "$RELEASE_B_CONTROLLER_SHA" ]] || \
+    fail 'Release B bridge is not the exact controller child'
+  actual_tree=$(git -C "$repository" rev-parse "$sha^{tree}" 2>/dev/null) || \
+    fail 'Release B bridge tree cannot be inspected'
+  [[ $actual_tree == "$RELEASE_B_BRIDGE_TREE" ]] || \
+    fail 'Release B bridge tree does not match its reviewed pin'
+  delta=$(git -C "$repository" diff --name-only --no-renames \
+    "$RELEASE_B_CONTROLLER_SHA" "$sha" -- 2>/dev/null) || \
+    fail 'Release B bridge delta cannot be inspected'
+  [[ $delta == "$RELEASE_B_BRIDGE_PATH" ]] || \
+    fail 'Release B bridge changes more than its reviewed controller policy'
+  entry=$(git -C "$repository" ls-tree "$sha" -- \
+    "$RELEASE_B_BRIDGE_PATH" 2>/dev/null) || \
+    fail 'Release B bridge policy blob cannot be inspected'
+  read -r mode type object path extra <<< "$entry"
+  [[ -z ${extra:-} && $mode == 100644 && $type == blob && \
+     $object == "$RELEASE_B_BRIDGE_BLOB" && \
+     $path == "$RELEASE_B_BRIDGE_PATH" ]] || \
+    fail 'Release B bridge policy blob does not match its reviewed pin'
+}
+
+verify_release_b_reviewed_target_identity() {
+  local sha=$1 requested_target=$2 repository=${GITHUB_WORKSPACE:-.}
+  local actual_tree delta entries first_parent_history parent
+  local -a ancestry=()
+  local requested_contains_reviewed=false
+
+  [[ $sha == "$RELEASE_B_REVIEWED_TARGET_SHA" ]] || \
+    fail 'Release B reviewed target SHA is not the reviewed pin'
+  read -r -a ancestry <<< "$(git -C "$repository" \
+    rev-list --parents -n 1 "$sha" 2>/dev/null)" || \
+    fail 'Release B reviewed target ancestry cannot be inspected'
+  [[ ${#ancestry[@]} == 3 && ${ancestry[0]} == "$sha" && \
+     ${ancestry[1]} == "$RELEASE_B_CURRENT_MAIN_SHA" && \
+     ${ancestry[2]} == "$RELEASE_B_BRIDGE_SHA" ]] || \
+    fail 'Release B reviewed target does not have its exact ordered parents'
+  actual_tree=$(git -C "$repository" rev-parse "$sha^{tree}" 2>/dev/null) || \
+    fail 'Release B reviewed target tree cannot be inspected'
+  [[ $actual_tree == "$RELEASE_B_REVIEWED_TARGET_TREE" ]] || \
+    fail 'Release B reviewed target tree does not match its reviewed pin'
+  delta=$(git -C "$repository" diff --name-only --no-renames \
+    "$RELEASE_B_CURRENT_MAIN_SHA" "$sha" -- 2>/dev/null) || \
+    fail 'Release B reviewed target delta cannot be inspected'
+  [[ $delta == $'.github/workflows/production-deploy.yml\nops/deploy/deploy-control-bridge-lib.sh\nops/deploy/github-production-deploy-client.sh\nops/deploy/github-production-deploy-client.test.sh\nops/deploy/production-release-b-bridge-order.test.sh\nops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh' ]] || \
+    fail 'Release B reviewed target changes outside its exact reviewed delta'
+  entries=$(git -C "$repository" ls-tree "$sha" -- \
+    .github/workflows/production-deploy.yml \
+    ops/deploy/deploy-control-bridge-lib.sh \
+    ops/deploy/github-production-deploy-client.sh \
+    ops/deploy/github-production-deploy-client.test.sh \
+    ops/deploy/production-release-b-bridge-order.test.sh \
+    ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh 2>/dev/null) || \
+    fail 'Release B reviewed target files cannot be inspected'
+  [[ $entries == $'100644 blob 1e85c36aaeb064df3235e8093acb6124d64d0398\t.github/workflows/production-deploy.yml\n100644 blob e02f7b7684f75121521065b43148708d545ab806\tops/deploy/deploy-control-bridge-lib.sh\n100755 blob 086a7d95d2a8125cd6c8f2dd39b05fe42e4c9482\tops/deploy/github-production-deploy-client.sh\n100755 blob 8db3980a225a8222765dfa95c4fd895bfb20712a\tops/deploy/github-production-deploy-client.test.sh\n100755 blob 47f97467223fa0e7a0b779741d676ad4f19b7bea\tops/deploy/production-release-b-bridge-order.test.sh\n100644 blob ab7e2c5cb06d85dce0d3e2427d8af7e9636b32ad\tops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh' ]] || \
+    fail 'Release B reviewed target file identities do not match their pins'
+
+  git -C "$repository" cat-file -e "$requested_target^{commit}" 2>/dev/null || \
+    fail 'Release B requested target commit cannot be inspected'
+  first_parent_history=$(git -C "$repository" rev-list --first-parent \
+    "$requested_target" 2>/dev/null) || \
+    fail 'Release B requested target first-parent history cannot be inspected'
+  while IFS= read -r parent; do
+    if [[ $parent == "$sha" ]]; then
+      requested_contains_reviewed=true
+      break
+    fi
+  done <<< "$first_parent_history"
+  [[ $requested_contains_reviewed == true ]] || \
+    fail 'Release B requested target does not first-parent-contain the reviewed target'
+}
+
 reconcile_deploy_plan() {
   local sha=$1
   local attempt status
@@ -575,7 +732,7 @@ reconcile_deploy_plan() {
 }
 
 deploy_once() {
-  local sha=$1
+  local sha=$1 reconciliation_sha=${2:-$1}
   local status
   if run_remote deploy "$sha"; then
     status=0
@@ -586,7 +743,8 @@ deploy_once() {
   if ((status == 255)); then
     printf 'deploy-client: SSH disconnected after deploy; the deploy will not be rerun\n' >&2
   fi
-  reconcile_deploy_plan "$sha"
+  # A control-only bridge can require reconciliation through its main target.
+  reconcile_deploy_plan "$reconciliation_sha"
 }
 
 deploy_release() {
@@ -596,6 +754,115 @@ deploy_release() {
     status=$?
     fail "deploy command failed with non-transport status $status"
   }
+}
+
+deploy_release_b_reviewed_target() {
+  local target=$1 status
+  if capture_plan "$target"; then
+    status=0
+  else
+    status=$?
+  fi
+  ((status == 0)) || fail "Release B reviewed target plan failed with status $status"
+  print_plan
+  plan_is_fully_reconciled && return 0
+  { plan_is_exact_release_b_target_transition || \
+    plan_is_exact_release_b_current_main_target_transition; } || \
+    fail 'Release B reviewed target plan is not an exact admitted transition'
+  deploy_once "$target"
+}
+
+prepare_release_b_bridge() {
+  local sha=$1 bridge=$2 current_main=$3 bridge_target=$4 requested_target=$5 status
+  local target_plan_exact=false current_main_target_plan_exact=false
+  local legacy_target_plan_exact=false
+  [[ $sha == "$RELEASE_B_CONTROLLER_SHA" ]] || \
+    fail 'Release B controller SHA is not the reviewed pin'
+  [[ $current_main == "$RELEASE_B_CURRENT_MAIN_SHA" ]] || \
+    fail 'Release B current-main SHA is not the reviewed pin'
+  verify_release_b_bridge_identity "$bridge"
+  verify_release_b_reviewed_target_identity "$bridge_target" "$requested_target"
+
+  if capture_plan "$requested_target"; then
+    print_plan
+    plan_is_admitted_post_release_b_forward_state "$requested_target" && return 0
+  else
+    status=$?
+    ((status == 1)) || \
+      fail "Release B requested-target preflight plan failed with status $status"
+  fi
+
+  if capture_plan "$bridge_target"; then
+    print_plan
+    plan_is_fully_reconciled && return 0
+    plan_is_exact_release_b_target_transition && target_plan_exact=true
+    plan_is_exact_release_b_current_main_target_transition && \
+      current_main_target_plan_exact=true
+    plan_is_exact_release_b_legacy_transition && \
+      legacy_target_plan_exact=true
+  else
+    status=$?
+    ((status == 1)) || fail "Release B target preflight plan failed with status $status"
+  fi
+  if capture_plan "$current_main"; then
+    print_plan
+    if plan_is_fully_reconciled; then
+      [[ $current_main_target_plan_exact == true ]] || \
+        fail 'Release B reviewed target is not the exact current-main transition'
+      deploy_release_b_reviewed_target "$bridge_target"
+      return 0
+    fi
+    if ! plan_is_exact_release_b_target_transition; then
+      { plan_is_exact_release_b_legacy_transition && \
+        [[ $legacy_target_plan_exact == true ]]; } || \
+        fail 'Release B current-main plan is not an admitted exact transition'
+    fi
+  else
+    status=$?
+    ((status == 1)) || fail "Release B current-main plan failed with status $status"
+  fi
+  [[ $target_plan_exact == true || $legacy_target_plan_exact == true ]] || \
+    fail 'Release B target plan is not the exact controller transition'
+  if capture_plan "$bridge"; then
+    print_plan
+    if plan_is_fully_reconciled; then
+      deploy_release_b_reviewed_target "$bridge_target"
+      return 0
+    fi
+    if plan_is_exact_release_b_bridge_transition; then
+      deploy_once "$bridge"
+      deploy_release_b_reviewed_target "$bridge_target"
+      return 0
+    fi
+  else
+    status=$?
+    ((status == 1)) || \
+      fail "Release B bridge preflight plan failed with status $status"
+  fi
+  if capture_plan "$sha"; then
+    status=0
+  else
+    status=$?
+  fi
+  ((status == 0)) || \
+    fail "Release B controller plan failed with status $status"
+  print_plan
+  plan_is_fully_reconciled || deploy_once "$sha"
+  if capture_plan "$bridge"; then
+    status=0
+  else
+    status=$?
+  fi
+  ((status == 0)) || fail "Release B bridge plan failed with status $status"
+  print_plan
+  if plan_is_fully_reconciled; then
+    deploy_release_b_reviewed_target "$bridge_target"
+    return 0
+  fi
+  plan_is_exact_release_b_bridge_transition || \
+    fail 'Release B bridge plan is not the exact fresh control-only transition'
+  deploy_once "$bridge"
+  deploy_release_b_reviewed_target "$bridge_target"
 }
 
 install_daily_c1_bridge_policy() {
@@ -643,6 +910,17 @@ case $action in
     validate_remote_environment
     inspect_plan "$2"
     ;;
+  verify-release-b-target)
+    [[ $# == 2 ]] || fail 'verify-release-b-target requires a requested target SHA'
+    validate_sha "$2"
+    verify_release_b_reviewed_target_identity \
+      "$RELEASE_B_REVIEWED_TARGET_SHA" "$2"
+    ;;
+  verify-forward-target)
+    [[ $# == 2 ]] || fail 'verify-forward-target requires a target SHA'
+    validate_sha "$2"
+    verify_production_forward_target_identity "$2"
+    ;;
   upload)
     [[ $# == 3 ]] || fail 'upload requires a target SHA and archive'
     validate_sha "$2"
@@ -654,6 +932,27 @@ case $action in
     validate_sha "$2"
     validate_remote_environment
     deploy_release "$2"
+    ;;
+  deploy-transition)
+    [[ $# == 2 ]] || fail 'deploy-transition requires a target SHA'
+    validate_sha "$2"
+    validate_remote_environment
+    production_transition_activate_via_trusted_host "$2"
+    ;;
+  prepare-release-b-bridge)
+    [[ $# == 6 ]] || fail 'prepare-release-b-bridge requires controller, bridge, current-main, reviewed-target, and requested-target pins'
+    validate_sha "$2"
+    validate_sha "$3"
+    validate_sha "$4"
+    validate_sha "$5"
+    validate_sha "$6"
+    validate_remote_environment
+    prepare_release_b_bridge "$2" "$3" "$4" "$5" "$6"
+    ;;
+  prepare-forward-bridge)
+    [[ $# == 2 ]] || fail 'prepare-forward-bridge requires its target SHA'
+    validate_sha "$2"; validate_remote_environment
+    prepare_production_forward_bridge "$2"
     ;;
   install-daily-c1-bridge-policy)
     [[ $# == 2 ]] || fail 'install-daily-c1-bridge-policy requires its pinned SHA'

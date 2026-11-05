@@ -30,7 +30,7 @@ const child = spawn(childCommand, childArgs, {
   detached: process.platform !== 'win32',
   env: childEnv,
   shell: process.platform === 'win32',
-  stdio: 'inherit',
+  stdio: childStdio(args.slice(0, separatorIndex)),
 });
 
 let timedOut = false;
@@ -146,6 +146,26 @@ function buildChildEnv(optionArgs) {
   }
 
   return env;
+}
+
+function childStdio(optionArgs) {
+  const inheritedFds = [];
+  for (let index = 0; index < optionArgs.length; index += 1) {
+    if (optionArgs[index] === '--inherit-fd') {
+      const fd = Number(optionArgs[index + 1]);
+      if (!Number.isInteger(fd) || fd < 3) {
+        throw new Error(`Invalid inherited file descriptor: ${String(optionArgs[index + 1])}`);
+      }
+      inheritedFds.push(fd);
+      index += 1;
+    }
+  }
+  if (inheritedFds.length === 0) return 'inherit';
+  const inherited = new Set(inheritedFds);
+  return Array.from(
+    { length: Math.max(...inheritedFds) + 1 },
+    (_, fd) => fd < 3 ? 'inherit' : inherited.has(fd) ? fd : 'ignore',
+  );
 }
 
 function buildCleanEnv() {

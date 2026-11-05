@@ -1,8 +1,37 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.dart';
 import 'package:social_monitor_summaries/src/presentation/formatters/top_post_metrics.dart';
+import '../../support/top_posts_test_fixtures.dart';
 
 void main() {
+  test(
+    'shows native X likes without displaying weighted activity or reposts',
+    () {
+      final derived = topPostMetricsFor(
+        topPostFixture(
+          title: 'Synthetic weighted metric',
+          providerKey: 'x-twitter',
+          providerMetrics: const [
+            ProviderMetric(label: 'Likes + 2× reposts', value: '1250'),
+          ],
+        ),
+      );
+      expect(derived, isEmpty);
+      final native = topPostMetricsFor(
+        topPostFixture(
+          title: 'Synthetic native metrics',
+          providerKey: 'x-twitter',
+          providerMetrics: const [
+            ProviderMetric(label: 'Likes', value: '1044'),
+            ProviderMetric(label: 'Reposts', value: '103'),
+          ],
+        ),
+      );
+      expect(native.map((metric) => metric.label), ['Likes']);
+      expect(native.map((metric) => metric.value), ['1.0K']);
+    },
+  );
+
   test('preserves an exact canonical GitHub Top 10', () {
     final posts = List.generate(10, (index) => _githubTrend(index + 1));
 
@@ -133,40 +162,7 @@ void main() {
       isFalse,
     );
   });
-
-  test('changes order only for engagement and keeps source order on ties', () {
-    final first = _postWithLikes('Editorial first', 100);
-    final second = _postWithLikes('Editorial second', 100);
-    final high = _postWithLikes('Engagement winner', 500);
-    final posts = [first, second, high];
-
-    expect(orderTopPosts(posts, byEngagement: false), posts);
-    expect(orderTopPosts(posts, byEngagement: true).map((post) => post.title), [
-      'Engagement winner',
-      'Editorial first',
-      'Editorial second',
-    ]);
-  });
 }
-
-TopRead _postWithLikes(String title, int likes) => TopRead(
-  title: title,
-  providerKey: 'x-twitter',
-  reason: 'Editorial evidence.',
-  matchedInterestIds: const ['ai-developer-tools'],
-  matchedRules: const [],
-  signalScore: SignalScore.normalized(1),
-  confidence: const TopReadConfidence(
-    level: 'medium',
-    score: 0.6,
-    rationale: 'Provider evidence.',
-  ),
-  confirmedProviderKeys: const ['x-twitter'],
-  providerMetrics: [ProviderMetric(label: 'Likes', value: '$likes Likes')],
-  whyImportant: const [],
-  whyNow: 'Current window.',
-  citationIds: const [],
-);
 
 TopRead _githubTrend(
   int rank, {

@@ -5,6 +5,10 @@ import {
   parseRabbitMqQueueType,
   type RabbitMqQueueType,
 } from "@social-monitor/platform-queue/adapters/rabbitmq";
+import {
+  assertDistinctIntelligenceSummaryQueueNames,
+  resolveIntelligenceSummaryQueueNames,
+} from "./intelligence-summary-queue-names";
 
 export * from "./periodic-reader-summary-scheduler-options";
 
@@ -59,6 +63,9 @@ export const INTELLIGENCE_SUMMARY_JOB_LOOP_OPTIONS = Symbol(
 export const INTELLIGENCE_READER_SUMMARY_JOB_LOOP_OPTIONS = Symbol(
   "INTELLIGENCE_READER_SUMMARY_JOB_LOOP_OPTIONS",
 );
+export const INTELLIGENCE_READER_SUMMARY_JOB_LOOP_CLOCK = Symbol(
+  "INTELLIGENCE_READER_SUMMARY_JOB_LOOP_CLOCK",
+);
 export const INTELLIGENCE_SUMMARY_QUEUE_READER_MODE = Symbol(
   "INTELLIGENCE_SUMMARY_QUEUE_READER_MODE",
 );
@@ -90,8 +97,7 @@ export const resolveIntelligenceSummaryJobLoopOptions = (
   const defaultMode =
     env.NODE_ENV === "test" ||
     env.INTELLIGENCE_SUMMARY_QUEUE_READER === "rabbitmq"
-      ? "disabled"
-      : "enabled";
+      ? "disabled" : "enabled";
   const loopMode = env.INTELLIGENCE_SUMMARY_JOB_LOOP ?? defaultMode;
 
   if (loopMode !== "enabled" && loopMode !== "disabled") {
@@ -138,10 +144,11 @@ export const resolveIntelligenceReaderSummaryJobLoopOptions = (
   env: NodeJS.ProcessEnv,
 ): IntelligenceReaderSummaryJobLoopOptions => {
   const defaultMode =
-    env.NODE_ENV === "test" ||
-    env.INTELLIGENCE_SUMMARY_QUEUE_READER === "rabbitmq"
-      ? "disabled"
-      : "enabled";
+    (env.READER_VALUE_MODE ??
+      (env.NODE_ENV === "test" ? "legacy_v2" : "jev_primary_v3")) === "jev_primary_v3" ||
+    (env.NODE_ENV !== "test" &&
+      env.INTELLIGENCE_SUMMARY_QUEUE_READER !== "rabbitmq")
+      ? "enabled" : "disabled";
   const loopMode = env.INTELLIGENCE_READER_SUMMARY_JOB_LOOP ?? defaultMode;
 
   if (loopMode !== "enabled" && loopMode !== "disabled") {
@@ -216,6 +223,8 @@ export const resolveIntelligenceSummaryQueueReaderMode = (
       );
     }
 
+    assertDistinctIntelligenceSummaryQueueNames(env);
+
     return "rabbitmq";
   }
 
@@ -227,7 +236,7 @@ export const resolveIntelligenceSummaryQueueReaderMode = (
 export const resolveIntelligenceRabbitMqSummaryQueueReaderOptions = (
   env: NodeJS.ProcessEnv,
 ): IntelligenceRabbitMqSummaryQueueReaderOptions => ({
-  queue: nonEmptyOrFallback(env.RABBITMQ_SUMMARY_QUEUE, "jobs.summary.execute"),
+  queue: resolveIntelligenceSummaryQueueNames(env).summary,
   deadLetterExchange: parseRabbitMqDeadLetterExchange(
     env.RABBITMQ_DEAD_LETTER_EXCHANGE,
     {
@@ -242,10 +251,7 @@ export const resolveIntelligenceRabbitMqSummaryQueueReaderOptions = (
 export const resolveIntelligenceRabbitMqReaderSummaryQueueReaderOptions = (
   env: NodeJS.ProcessEnv,
 ): IntelligenceRabbitMqReaderSummaryQueueReaderOptions => ({
-  queue: nonEmptyOrFallback(
-    env.RABBITMQ_READER_SUMMARY_QUEUE ?? env.RABBITMQ_BRIEFING_QUEUE,
-    "jobs.reader-summary.execute",
-  ),
+  queue: resolveIntelligenceSummaryQueueNames(env).readerSummary,
   deadLetterExchange: parseRabbitMqDeadLetterExchange(
     env.RABBITMQ_DEAD_LETTER_EXCHANGE,
     {
@@ -443,15 +449,6 @@ const emptyToUndefined = (value: string | undefined): string | undefined => {
   const trimmed = value?.trim();
 
   return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed;
-};
-
-const nonEmptyOrFallback = (
-  value: string | undefined,
-  fallback: string,
-): string => {
-  const trimmed = value?.trim();
-
-  return trimmed === undefined || trimmed.length === 0 ? fallback : trimmed;
 };
 
 const parseBoolean = (

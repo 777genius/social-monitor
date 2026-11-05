@@ -1,5 +1,4 @@
 import {
-  FixedClock,
   ok,
   tenantId,
   type IdGenerator,
@@ -8,7 +7,7 @@ import {
 
 import {
   readerSummaryScopeKey,
-  type ReaderSummaryJob,
+  ReaderSummaryJob,
   ReaderSummaryPolicy,
   defaultReaderSummaryGenerationPolicy,
 } from "../../domain";
@@ -178,6 +177,54 @@ class FakeReaderSummaryJobRepository implements ReaderSummaryJobRepositoryPort {
 }
 
 describe("SchedulePeriodicReaderSummariesUseCase", () => {
+  it.each(["requested", "completed", "rollback"] as const)("recovers across midnight without starving current work when replacement is %s", async replacementStatus => {
+    const d = makeDependencies();
+    d.time.now = new Date("2026-07-15T23:59:00Z");
+    await d.policies.save(ReaderSummaryPolicy.create({ id: "rollover-policy",
+      tenantId: tenant, workspaceId: workspace, scope: { type: "workspace" },
+      ...defaultReaderSummaryGenerationPolicy(),
+      schedule: { enabled: true, timezone: "UTC", cadences: ["daily"] },
+      createdAt: new Date("2026-06-01T00:00:00Z"), updatedAt: new Date("2026-06-01T00:00:00Z"),
+    }));
+    const tick = () => d.useCase.execute({ tenantId: tenant, workspaceId: workspace,
+      now: d.time.now, limit: 1, correlationId: "rollover", readyAtUtc: { hour: 0, minute: 0 } });
+    const first = await tick();
+    if (!first.ok) throw first.error;
+    const original = await d.jobs.findById({ tenantId: tenant, workspaceId: workspace,
+      readerSummaryJobId: first.value.summaries[0]!.readerSummaryJobId });
+    await d.jobs.save(ReaderSummaryJob.rehydrate({ ...original!.toSnapshot(), status: "failed",
+      failedAt: d.time.now, terminalFailureCode: "presentation_dependency_unavailable",
+      failureReason: "presentation_runtime_failure_repeated:task_timeout:executions_closed" }));
+    d.time.now = new Date("2026-07-16T00:04:00Z");
+    if (replacementStatus === "rollback") {
+      d.time.strategy = "legacy_v2";
+      for (let repeat = 0; repeat < 2; repeat += 1) {
+        const current = await tick();
+        expect(current).toMatchObject({ ok: true, value: { evaluated: 1, summaries: [
+          expect.objectContaining({ period: expect.objectContaining({ startedAt: "2026-07-15T00:00:00.000Z" }) }),
+        ] } });
+      }
+      expect(d.queue.all()).toHaveLength(2);
+      return;
+    }
+    const recovered = await tick();
+    expect(recovered).toMatchObject({ ok: true, value: { scheduled: 1, summaries: [
+      expect.objectContaining({ period: expect.objectContaining({ startedAt: "2026-07-14T00:00:00.000Z" }) }),
+    ] } });
+    if (replacementStatus === "completed") {
+      if (!recovered.ok) throw recovered.error;
+      const replacement = await d.jobs.findById({ tenantId: tenant, workspaceId: workspace,
+        readerSummaryJobId: recovered.value.summaries[0]!.readerSummaryJobId });
+      await d.jobs.save(ReaderSummaryJob.rehydrate({ ...replacement!.toSnapshot(), status: "completed",
+        completedAt: d.time.now, readerSummaryId: "completed-rollover-artifact" }));
+    }
+    // Queued and completed replacements leave the next limited tick for today's work.
+    const current = await tick();
+    expect(current).toMatchObject({ ok: true, value: { scheduled: 1, summaries: [
+      expect.objectContaining({ period: expect.objectContaining({ startedAt: "2026-07-15T00:00:00.000Z" }) }),
+    ] } });
+    expect(d.queue.all()).toHaveLength(3);
+  });
   it("requests weekly and monthly closed-period reader summaries idempotently", async () => {
     const dependencies = makeDependencies();
     await dependencies.policies.save(
@@ -379,6 +426,8 @@ describe("SchedulePeriodicReaderSummariesUseCase", () => {
 });
 
 const makeDependencies = () => {
+  const time = { now: new Date("2026-07-15T12:00:00.000Z"),
+    strategy: "jev_primary_v3" as "jev_primary_v3" | "legacy_v2" };
   const policies = new FakeReaderSummaryPolicyRepository();
   const jobs = new FakeReaderSummaryJobRepository();
   const queue = new FakeReaderSummaryJobQueue();
@@ -387,15 +436,19 @@ const makeDependencies = () => {
     queue,
     new AllowAllSummaryQuota(),
     new SequenceIdGenerator(),
-    new FixedClock(new Date("2026-07-15T12:00:00.000Z")),
+    { now: () => time.now },
+    { resolve: () => time.strategy },
   );
 
   return {
     policies,
+    jobs,
+    time,
     queue,
     useCase: new SchedulePeriodicReaderSummariesUseCase(
       policies,
       requestReaderSummary,
+      jobs,
     ),
   };
 };

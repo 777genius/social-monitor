@@ -23,12 +23,17 @@ export type HackerNewsListing = 'top' | 'new' | 'best' | 'ask' | 'show' | 'job';
 export type HackerNewsSearchOptions = {
   readonly from?: Date;
   readonly to?: Date;
+  /** Exhaust the bounded Algolia window or fail closed when coverage is unknown. */
+  readonly requireComplete?: boolean;
 };
 
 export type HackerNewsListStoryCommentsRequest = {
   readonly storyId: number;
   readonly limit: number;
   readonly depth: number;
+  /** Search-hit count, when known; used to detect conflicting historical coverage. */
+  readonly expectedComments?: number;
+  readonly requireComplete?: boolean;
 };
 
 export interface HackerNewsClientPort {

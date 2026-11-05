@@ -327,11 +327,11 @@ const receiptFor = (responseBytes: Buffer) =>
     attestation: {
       schemaVersion: 1,
       requestId: "daily-recovery-request",
-      purpose: "social_monitor.reader_summary.weekly.generate",
+      purpose: "social_monitor.reader_summary.daily.canonical_recovery.v2",
       canonicalRequestSha256: "c".repeat(64),
       provider: "codex",
       model: "gpt-5.6-sol",
-      reasoningEffort: "xhigh",
+      reasoningEffort: "high",
       runtimeEngine: "subscription-runtime-cli",
       runtimePackageVersion: "0.1.0-main.2",
       launcherSha256: "d".repeat(64),

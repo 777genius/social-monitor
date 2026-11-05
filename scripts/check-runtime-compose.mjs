@@ -31,6 +31,27 @@ const runtimeServices = [
   ["event-relay", "event-relay"],
 ];
 
+const sharedAppEnvironment = compose.split("  environment: &app-env\n")[1]
+  ?.split("\n  depends_on: &app-depends")[0] ?? "";
+if (!sharedAppEnvironment.includes(
+  "    READER_VALUE_SCORING_PROVIDER: ${READER_VALUE_SCORING_PROVIDER:-openrouter-systemone}\n",
+)) {
+  violations.push("shared app environment must forward the explicit scoring provider with the Jev default");
+}
+for (const service of ["api", "intelligence-worker"]) {
+  const block = serviceBlock(service);
+  if (!block.includes("      <<: *app-env\n") || block.includes("      READER_VALUE_SCORING_PROVIDER:")) {
+    violations.push(`${service} must inherit the shared scoring provider without a process-specific override`);
+  }
+}
+
+for (const name of ["READER_VALUE_DISCOVERY_SCOPES", "READER_VALUE_BACKFILL_FROM"]) {
+  if (!compose.includes(`    ${name}:\n`) ||
+      envExample.includes(`${name}=`)) {
+    violations.push(`${name} must pass through only when explicitly set`);
+  }
+}
+
 const migrateBlock = serviceBlock("migrate");
 if (migrateBlock.length === 0) {
   violations.push("docker-compose.yml missing runtime service migrate");

@@ -155,6 +155,15 @@ export type PrismaReaderSummaryClient = {
         readonly failedAt?: Date | null;
         readonly readerSummaryArtifactId?: string | null;
         readonly failureReason?: string | null;
+        readonly terminalFailureCode?: string | null;
+        readonly selectionStrategy?: string | null;
+        readonly preparationConfig?: unknown | null;
+        readonly preparationManifest?: unknown | null;
+        readonly preparationManifestSha256?: string | null;
+        readonly preparationCutoffAt?: Date | string | null;
+        readonly preparationDeadlineAt?: Date | string | null;
+        readonly preparationNextCheckAt?: Date | null;
+        readonly preparationReadyAt?: Date | null;
       };
       readonly create: {
         readonly id: string;
@@ -178,6 +187,15 @@ export type PrismaReaderSummaryClient = {
         readonly failedAt?: Date | null;
         readonly readerSummaryArtifactId?: string | null;
         readonly failureReason?: string | null;
+        readonly terminalFailureCode?: string | null;
+        readonly selectionStrategy?: string | null;
+        readonly preparationConfig?: unknown | null;
+        readonly preparationManifest?: unknown | null;
+        readonly preparationManifestSha256?: string | null;
+        readonly preparationCutoffAt?: Date | string | null;
+        readonly preparationDeadlineAt?: Date | string | null;
+        readonly preparationNextCheckAt?: Date | null;
+        readonly preparationReadyAt?: Date | null;
       };
     }): Promise<PrismaReaderSummaryJobRecord>;
     findFirst(args: {
@@ -197,6 +215,7 @@ export type PrismaReaderSummaryClient = {
         readonly id: string;
         readonly status: PrismaSummaryStatus;
         readonly startedAt?: Date;
+        readonly terminalFailureCode?: string | null;
       };
       readonly data: {
         readonly status: PrismaSummaryStatus;
@@ -206,13 +225,28 @@ export type PrismaReaderSummaryClient = {
         readonly failedAt: Date | null;
         readonly readerSummaryArtifactId: string | null;
         readonly failureReason: string | null;
+        readonly terminalFailureCode?: string | null;
+        readonly preparationNextCheckAt?: Date | null;
+        readonly preparationReadyAt?: Date | null;
       };
     }): Promise<{ readonly count: number }>;
     findMany(args: {
       readonly where: {
         readonly tenantId?: string;
         readonly workspaceId?: string;
-        readonly status: PrismaSummaryStatus;
+        readonly status?: PrismaSummaryStatus;
+        readonly NOT?: { readonly idempotencyKey: { readonly startsWith: string } };
+        readonly OR?: readonly [
+          { readonly preparationNextCheckAt: null },
+          { readonly preparationNextCheckAt: { readonly lte: Date } },
+        ] | readonly [
+          { readonly status: "REQUESTED"; readonly OR: readonly [
+            { readonly preparationNextCheckAt: null },
+            { readonly preparationNextCheckAt: { readonly lte: Date } },
+          ] },
+          { readonly status: "RUNNING"; readonly selectionStrategy: "jev_primary_v3";
+            readonly startedAt: { readonly lt: Date } },
+        ];
       };
       readonly orderBy: readonly [
         { readonly requestedAt: "asc" },

@@ -1,3 +1,4 @@
+import { createStoryClusteringFacts } from './story-clustering-facts';
 import type { Clock } from "@social-monitor/shared-kernel";
 
 import type {
@@ -6,6 +7,8 @@ import type {
   SummarySourceWindow,
   StoryCluster,
 } from "../value-objects/summary-evidence-item";
+import { readerSummaryIndependentProviderFamilyCount } from
+  "../value-objects/reader-summary-provider-identity";
 import {
   readerSummaryScopeKey,
   type ReaderSummaryScopeIdentity,
@@ -28,23 +31,37 @@ export class StoryClusteringService {
     private readonly policy: StoryRankingPolicy = STORY_RANKING_POLICY_V1,
   ) {}
 
-  cluster(params: {
-    readonly identity: ReaderSummaryScopeIdentity;
-    readonly items: readonly SummaryEvidenceItem[];
-    readonly limit: number;
-    readonly verifiedStoryRelationPairs?: ReadonlySet<string>;
-  }): SummaryEvidenceSelection {
+  cluster(params: StoryClusteringParams): SummaryEvidenceSelection {
+    return this.build(params)!;
+  }
+
+  clusterWithinComparisonBudget(
+    params: StoryClusteringParams,
+    maxPairComparisons: number,
+  ): { readonly kind: "ready"; readonly selection: SummaryEvidenceSelection } |
+    { readonly kind: "budget_exhausted" } {
+    if (!Number.isSafeInteger(maxPairComparisons) || maxPairComparisons < 0) {
+      throw new Error("Story comparison budget must be a nonnegative safe integer");
+    }
+    const selection = this.build(params, maxPairComparisons);
+    return selection === undefined ? { kind: "budget_exhausted" } :
+      { kind: "ready", selection };
+  }
+
+  private build(params: StoryClusteringParams, maxPairComparisons?: number):
+  SummaryEvidenceSelection | undefined {
     const limit = normalizeLimit(params.limit, this.policy);
-    const clusters = [
-      ...buildClusters(
+    const now = new Date((params.now ?? this.clock.now()).getTime());
+    const built = buildClusters(
         params.items,
-        this.clock.now(),
+        now,
         this.policy,
         params.verifiedStoryRelationPairs,
-      ),
-    ]
-      .sort(compareStoryClusters)
-      .slice(0, limit);
+        params.verifiedStrictTitleRelationPairs,
+        maxPairComparisons,
+      );
+    if (built === undefined) return undefined;
+    const clusters = [...built].sort(compareStoryClusters).slice(0, limit);
     const selectedEvidence = selectedClusterEvidence(
       params.items,
       clusters,
@@ -57,7 +74,7 @@ export class StoryClusteringService {
         params.identity,
         clusters,
         selectedEvidence,
-        this.clock,
+        now,
       ),
       clusters,
       selectedEvidence,
@@ -65,30 +82,58 @@ export class StoryClusteringService {
   }
 }
 
+type StoryClusteringParams = {
+  readonly identity: ReaderSummaryScopeIdentity;
+  readonly items: readonly SummaryEvidenceItem[];
+  readonly limit: number;
+  readonly verifiedStoryRelationPairs?: ReadonlySet<string>;
+  readonly verifiedStrictTitleRelationPairs?: ReadonlySet<string>;
+  readonly now?: Date;
+};
+
 const buildClusters = (
   items: readonly SummaryEvidenceItem[],
   now: Date,
   policy: StoryRankingPolicy,
   verifiedStoryRelationPairs: ReadonlySet<string> | undefined,
-): readonly StoryCluster[] => {
+  verifiedStrictTitleRelationPairs: ReadonlySet<string> | undefined,
+  maxPairComparisons?: number,
+): readonly StoryCluster[] | undefined => {
+  const facts = createStoryClusteringFacts();
   const groups: {
     readonly key: string;
     readonly items: SummaryEvidenceItem[];
   }[] = [];
+  let pairComparisons = 0;
+  const reserveComparisonWork = (members: number): boolean => {
+    pairComparisons += members;
+    return maxPairComparisons === undefined || pairComparisons <= maxPairComparisons;
+  };
 
   for (const item of items) {
-    const key = storyKey(item, policy);
-    const group = groups.find(
-      (candidate) =>
-        (candidate.key === key &&
-          !hasCrossProviderClaimFacetConflict(item, candidate.items, policy)) ||
-        belongsToVerifiedStoryCluster(
-          item,
-          candidate.items,
-          policy,
-          verifiedStoryRelationPairs,
-        ),
-    );
+    const key = facts.storyKey(item, policy);
+    let group: (typeof groups)[number] | undefined;
+    for (const candidate of groups) {
+      // Reserve each predicate's worst-case member work only when it runs.
+      // Different keys skip the conflict scan; a compatible exact key skips
+      // verified membership. Keep that same short-circuit order and hard bound.
+      let matches = false;
+      if (candidate.key === key) {
+        if (!reserveComparisonWork(candidate.items.length)) return undefined;
+        matches = !hasCrossProviderClaimFacetConflict(item, candidate.items, policy, facts);
+      }
+      if (!matches) {
+        if (!reserveComparisonWork(candidate.items.length)) return undefined;
+        matches = belongsToVerifiedStoryCluster(
+          item, candidate.items, policy,
+          verifiedStoryRelationPairs, verifiedStrictTitleRelationPairs, facts,
+        );
+      }
+      if (matches) {
+        group = candidate;
+        break;
+      }
+    }
 
     if (group === undefined) {
       groups.push({ key, items: [item] });
@@ -98,13 +143,13 @@ const buildClusters = (
   }
 
   return groups.map((group) => {
-    const key = group.key;
     const clusterItems = group.items;
     const sorted = [...clusterItems].sort(compareRepresentativeEvidenceItems);
     const representative = sorted[0];
     if (representative === undefined) {
       throw new Error("Reader summary story cluster must contain evidence");
     }
+    const key = storyKey(representative, policy);
     const observedTimes = sorted.map((item) => item.observedAt.getTime());
     const signal = storyClusterSignal(clusterItems, now, policy);
 
@@ -223,10 +268,10 @@ const buildSourceWindow = (
   identity: ReaderSummaryScopeIdentity,
   clusters: readonly StoryCluster[],
   selectedEvidence: readonly SummaryEvidenceItem[],
-  clock: Clock,
+  now: Date,
 ): SummarySourceWindow => {
   if (clusters.length === 0 || selectedEvidence.length === 0) {
-    const endedAt = clock.now();
+    const endedAt = new Date(now.getTime());
     const startedAt = new Date(endedAt.getTime() - 1);
 
     return {
@@ -272,7 +317,8 @@ const compareStoryClusters = (
   }
 
   const providerCoverageDiff =
-    right.providerKeys.length - left.providerKeys.length;
+    readerSummaryIndependentProviderFamilyCount(right.providerKeys) -
+    readerSummaryIndependentProviderFamilyCount(left.providerKeys);
   if (providerCoverageDiff !== 0) {
     return providerCoverageDiff;
   }

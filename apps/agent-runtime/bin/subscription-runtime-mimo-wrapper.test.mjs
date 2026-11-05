@@ -1,0 +1,345 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import test from "node:test";
+
+const source = await readFile(new URL(
+  "./run-codex-subscription-runtime-agent-task.mjs", import.meta.url,
+), "utf8");
+const body = source.slice(
+  source.indexOf("function createMimoSummaryWorker("),
+  source.indexOf("function createReaderPromotionV2CanaryWorker("),
+);
+const summarySchemaName = "social_monitor_reader_summary_artifact";
+const summarySchema = { type: "object", additionalProperties: false,
+  required: ["headline"], properties: { headline: { type: "string" } } };
+const summaryAdmission = {
+  profile: { reasoningEffort: "high" },
+  canonicalRequest: { context: { purpose: "social_monitor.reader_summary.generate.v2" }, task: {
+    outputSchemaName: summarySchemaName,
+    controls: { outputSchemaName: summarySchemaName, outputSchema: summarySchema },
+  } },
+};
+
+test("MiMo summary factory uses one isolated, tool-free backend attempt", async () => {
+  const fakeKey = "synthetic-mimo-wrapper-key";
+  let options;
+  let runs = 0;
+  let executedJob;
+  const dependencies = {
+    mimoRuntime: { createOneShotExecutor: (value) => {
+      options = value;
+      return {
+        async run(job) {
+          executedJob = job;
+          runs++;
+          const completion = options.accounts[0].worker.completedGoalOutputValidator;
+          if (typeof completion !== "function" || options.accounts[0].worker.maxGoalTurns !== 1) {
+            return { status: "partial", failureReason: "goal_slice_exhausted" };
+          }
+          assert.equal(completion({ headline: "Synthetic" }), true);
+          return { status: "completed", result: { structuredOutput: { headline: "Synthetic" } } };
+        },
+        async dispose() {},
+      };
+    } },
+    mimoApiKey: fakeKey,
+    admission: summaryAdmission,
+    mimoCustody: { processFactory: () => {} },
+    codexAuthPoolExecutionPolicy: { maxAttempts: 4 },
+    codexAuthPoolTaskHash: () => "synthetic-task-hash",
+    nonEmptyRunId: (id) => id,
+    join,
+    mkdir: async () => {},
+    resolvePinnedCodexBinaryPath: () => "/synthetic/codex-not-executed",
+    subscriptionOnlyCodexEnvironment: () => ({ PATH: "/synthetic/bin" }),
+    SubscriptionWorkerError: class extends Error {
+      constructor(code, message) { super(message); this.code = code; }
+    },
+  };
+  const factory = new Function(
+    ...Object.keys(dependencies), `${body}\nreturn createMimoSummaryWorker;`,
+  )(...Object.values(dependencies));
+  const worker = factory({ input: {
+    stateRootDir: "/synthetic/state", encryptionKey: "synthetic-local-key",
+    env: { OPENAI_API_KEY: "synthetic-ignored-openai-key" },
+  }, model: "mimo-v2.6-pro" });
+  const prompt = "Synthetic evidence. ".repeat(500);
+  const systemPrompt = "Original cutoff and output constraints.";
+  const result = await worker.run({ runId: "synthetic-run", prompt, systemPrompt,
+    metadata: { fixture: "preserved", codexGoalObjective: "untrusted override" } });
+  assert.deepEqual(result, { structuredOutput: { headline: "Synthetic" } });
+  assert.equal(runs, 1);
+  assert.ok(executedJob.prompt.endsWith(prompt));
+  assert.ok(executedJob.systemPrompt.startsWith(systemPrompt));
+  assert.doesNotMatch(executedJob.prompt, /First call native get_goal/u);
+  assert.match(executedJob.prompt, /preserving every original evidence and cutoff requirement/u);
+  assert.match(executedJob.prompt, /do not call lifecycle tools/u);
+  assert.match(executedJob.systemPrompt, /completion follows strict validation/u);
+  assert.ok(executedJob.systemPrompt.endsWith(JSON.stringify(summarySchema)));
+  assert.match(executedJob.systemPrompt, /top-level property "headline" of type "string"/u);
+  assert.equal(executedJob.controls, undefined);
+  assert.equal(executedJob.originalPrompt, prompt);
+  assert.ok(prompt.length > 4_000);
+  assert.ok(executedJob.metadata.codexGoalObjective.length < 4_000);
+  assert.notEqual(executedJob.metadata.codexGoalObjective, "untrusted override");
+  assert.equal(executedJob.metadata.fixture, "preserved");
+  assert.equal(options.accounts.length, 1);
+  assert.equal(options.maxAccountCycles, 1);
+  assert.equal(options.safeExecutionPolicy.maxAttempts, 1);
+  assert.equal(options.safeExecutionPolicy.continuationMode, "disabled");
+  assert.deepEqual(options.outputSchemas, { [summarySchemaName]: summarySchema });
+  assert.equal(options.accounts[0].codexAuthJsonPath, undefined);
+  assert.equal(options.accounts[0].worker.modelBackend, "xiaomi-mimo-token-plan");
+  assert.equal(options.accounts[0].worker.model, "mimo-v2.6-pro");
+  assert.equal(options.accounts[0].worker.executionEngine, "app-server-goal");
+  const complete = options.accounts[0].worker.completedGoalOutputValidator;
+  assert.equal(typeof complete, "function");
+  assert.equal(complete({ headline: "Synthetic" }), true);
+  for (const output of [null, [], {}, { headline: " " }, { headline: 1 }]) {
+    assert.equal(complete(output), false);
+  }
+  assert.equal(options.accounts[0].worker.maxGoalTurns, 1);
+  assert.equal(typeof options.accounts[0].worker.appServerProcessFactory, "function");
+  assert.deepEqual(options.accounts[0].worker.boundedWorkspaceTools,
+    { allowedTools: [], denyProjectInstructions: true });
+  assert.deepEqual(options.accounts[0].worker.sourceEnv, {
+    PATH: "/synthetic/bin", MIMO_TOKEN_PLAN_API_KEY: fakeKey,
+  });
+  await assert.rejects(worker.run({ runId: "synthetic-run" }), /accepts one task/u);
+  await assert.rejects(worker.seedCodexAuthJsonFile("/synthetic/auth.json"), /rejects Codex auth/u);
+  await worker.dispose();
+});
+
+test("MiMo summary factory rejects a synthetic key echoed by the model", async () => {
+  const fakeKey = "synthetic-mimo-output-key";
+  const dependencies = {
+    mimoRuntime: { createOneShotExecutor: () => ({
+      async run() { return { status: "completed", result: { outputText: fakeKey } }; },
+      async dispose() { throw new Error(fakeKey); },
+    }) },
+    mimoApiKey: fakeKey,
+    admission: summaryAdmission,
+    mimoCustody: { processFactory: () => {} },
+    codexAuthPoolExecutionPolicy: {},
+    codexAuthPoolTaskHash: () => "synthetic-task-hash",
+    nonEmptyRunId: (id) => id,
+    join,
+    mkdir: async () => {},
+    resolvePinnedCodexBinaryPath: () => "/synthetic/codex-not-executed",
+    subscriptionOnlyCodexEnvironment: () => ({}),
+    SubscriptionWorkerError: class extends Error {
+      constructor(code, message) { super(message); this.code = code; }
+    },
+  };
+  const factory = new Function(
+    ...Object.keys(dependencies), `${body}\nreturn createMimoSummaryWorker;`,
+  )(...Object.values(dependencies));
+  const worker = factory({
+    input: { stateRootDir: "/synthetic/state", encryptionKey: "synthetic" },
+    model: "mimo-v2.6-pro",
+  });
+  await assert.rejects(worker.run({ runId: "synthetic-run" }), (error) =>
+    error.code === "subscription_worker_run_failed" &&
+    !String(error).includes(fakeKey));
+  await assert.rejects(worker.dispose(), (error) =>
+    error.message === "MiMo reader summary cleanup failed" &&
+    !String(error).includes(fakeKey));
+});
+
+test("MiMo worker binds each daily purpose to its schema and output family", async () => {
+  const cases = [
+    ["social_monitor.reader_summary.promotion_presentation.v3", "social_monitor_reader_post_presentation_v3", { presentations: [] }],
+    ["social_monitor.reader_summary.generate.v2", "social_monitor_reader_summary_artifact", { headline: "Synthetic" }],
+    ["social_monitor.reader_summary.repair.v2", "social_monitor_reader_summary_artifact", { headline: "Synthetic" }],
+    ["social_monitor.reader_summary.topic_map.label.v2", "social_monitor_reader_summary_topic_map_labels", { nodeLabels: [] }],
+    ["social_monitor.reader_summary.topic_map.verify_relations.v2", "social_monitor_reader_summary_topic_relations", { decisions: [] }],
+    ["social_monitor.reader_summary.verify_story_relations.v2", "social_monitor_reader_summary_story_relations", { decisions: [] }],
+    ["social_monitor.reader_summary.verify_related_topic_relations.v2", "social_monitor_reader_summary_related_topic_relations", { decisions: [] }],
+  ];
+  for (const [purpose, name, output] of cases) {
+    let schemas;
+    let workerOptions;
+    let returnedOutput = output;
+    let executedJob;
+    const rootProperty = Object.keys(output)[0];
+    const schema = { type: "object", additionalProperties: false,
+      required: [rootProperty], properties: { [rootProperty]: {
+        type: Array.isArray(output[rootProperty]) ? "array" : "string",
+        ...(Array.isArray(output[rootProperty]) ? {
+          items: { type: "object", required: ["candidateId"],
+            properties: { candidateId: { type: "string" } } },
+        } : {}),
+      } } };
+    const presentation = purpose.endsWith("promotion_presentation.v3");
+    const completionValidator = () => true;
+    let completionInput;
+    const admission = { profile: { provider: "codex", model: "mimo-v2.6-pro",
+      modelBackend: "xiaomi-mimo-token-plan", reasoningEffort: presentation ? "none" : "high" }, canonicalRequest: {
+      context: { purpose }, task: {
+        outputSchemaName: name,
+        controls: { outputSchemaName: name, outputSchema: schema },
+      },
+    } };
+    const dependencies = {
+      admission,
+      createMimoPresentationCompletionValidator: (input) => {
+        completionInput = input;
+        return completionValidator;
+      },
+      mimoRuntime: { createOneShotExecutor: (options) => {
+        schemas = options.outputSchemas;
+        workerOptions = options.accounts[0].worker;
+        return { async run(job) { executedJob = job;
+          return { status: "completed", result: { structuredOutput: returnedOutput } }; },
+          async dispose() {} };
+      } },
+      mimoApiKey: "synthetic-key",
+      mimoCustody: { processFactory: () => {} },
+      codexAuthPoolExecutionPolicy: {},
+      codexAuthPoolTaskHash: () => "synthetic-hash",
+      nonEmptyRunId: (id) => id,
+      join, mkdir: async () => {},
+      resolvePinnedCodexBinaryPath: () => "/synthetic/codex",
+      subscriptionOnlyCodexEnvironment: () => ({}),
+      SubscriptionWorkerError: class extends Error {
+        constructor(code, message) { super(message); this.code = code; }
+      },
+    };
+    const factory = new Function(
+      ...Object.keys(dependencies), `${body}\nreturn createMimoSummaryWorker;`,
+    )(...Object.values(dependencies));
+    const input = { stateRootDir: "/synthetic/state", encryptionKey: "synthetic", env: {} };
+    const worker = factory({ input, model: "mimo-v2.6-pro" });
+    const original = { runId: "synthetic-run", prompt: "Synthetic candidates input.",
+      systemPrompt: "Original qualifications and cutoff.",
+      controls: { outputSchema: { type: "object", required: ["untrustedOverride"] } } };
+    assert.deepEqual(await worker.run(original),
+      { structuredOutput: output }, purpose);
+    assert.deepEqual(schemas, { [name]: schema }, purpose);
+    assert.ok(executedJob.systemPrompt.startsWith(original.systemPrompt), purpose);
+    assert.ok(executedJob.systemPrompt.endsWith(JSON.stringify(schema)), purpose);
+    assert.ok(executedJob.systemPrompt.includes(`top-level property "${rootProperty}"`), purpose);
+    assert.ok(!executedJob.systemPrompt.includes("untrustedOverride"), purpose);
+    assert.ok(executedJob.prompt.endsWith(original.prompt), purpose);
+    assert.equal(executedJob.originalPrompt, original.prompt, purpose);
+    assert.deepEqual(executedJob.controls, original.controls, purpose);
+    assert.deepEqual(admission.canonicalRequest.task.controls.outputSchema, schema, purpose);
+    assert.equal(workerOptions.sourceEnv.MIMO_TOKEN_PLAN_API_KEY, "synthetic-key", purpose);
+    assert.equal(workerOptions.modelBackend, "xiaomi-mimo-token-plan", purpose);
+    assert.equal(workerOptions.reasoningEffort, presentation ? "none" : "high", purpose);
+    const narrative = purpose.endsWith("generate.v2") || purpose.endsWith("repair.v2");
+    if (narrative) {
+      assert.equal(typeof workerOptions.completedGoalOutputValidator, "function", purpose);
+      assert.equal(workerOptions.completedGoalOutputValidator(output), true, purpose);
+      assert.equal(workerOptions.completedGoalOutputValidator({ unrelated: true }), false, purpose);
+    } else {
+      assert.equal(workerOptions.completedGoalOutputValidator,
+        presentation ? completionValidator : undefined, purpose);
+    }
+    assert.equal(workerOptions.maxGoalTurns, presentation || narrative ? 1 : undefined, purpose);
+    if (presentation) {
+      assert.equal(completionInput.task, admission.canonicalRequest.task);
+      assert.equal(completionInput.reasoningEffort, "none");
+      assert.match(executedJob.systemPrompt, /completion follows strict validation/u);
+      assert.match(executedJob.prompt, /do not call lifecycle tools/u);
+      assert.doesNotMatch(executedJob.prompt, /First call native get_goal/u);
+    } else {
+      assert.equal(completionInput, undefined);
+      if (narrative) {
+        assert.match(executedJob.prompt, /do not call lifecycle tools/u);
+        assert.doesNotMatch(executedJob.prompt, /First call native get_goal/u);
+      } else assert.match(executedJob.prompt, /First call native get_goal/u);
+    }
+    assert.deepEqual(workerOptions.boundedWorkspaceTools,
+      { allowedTools: [], denyProjectInstructions: true }, purpose);
+    admission.canonicalRequest.task.outputSchemaName = "wrong";
+    assert.throws(() => factory({ input, model: "mimo-v2.6-pro" }), /named output schema/u);
+    admission.canonicalRequest.task.outputSchemaName = name;
+    returnedOutput = { unrelated: true };
+    const rejected = factory({ input, model: "mimo-v2.6-pro" });
+    await assert.rejects(rejected.run({ runId: "synthetic-run" }), /output was rejected/u);
+  }
+});
+
+const retryDependencies = (createOneShotExecutor) => ({
+  mimoRuntime: { createOneShotExecutor },
+  mimoApiKey: "synthetic-mimo-retry-key",
+  admission: summaryAdmission,
+  mimoCustody: { processFactory: () => {} },
+  codexAuthPoolExecutionPolicy: {},
+  codexAuthPoolTaskHash: (id) => `hash:${id}`,
+  nonEmptyRunId: (id) => id,
+  join,
+  mkdir: async () => {},
+  resolvePinnedCodexBinaryPath: () => "/synthetic/codex",
+  subscriptionOnlyCodexEnvironment: () => ({}),
+  SubscriptionWorkerError: class extends Error {
+    constructor(code, message) { super(message); this.code = code; }
+  },
+});
+
+test("MiMo summary factory retries transient failures with attempt-scoped ids", async () => {
+  const seen = [];
+  const dependencies = retryDependencies((options) => {
+    const entry = { options, jobs: [], disposed: 0 };
+    seen.push(entry);
+    return {
+      async run(job) {
+        entry.jobs.push(job);
+        if (seen.length === 1) {
+          return { status: "partial", failureReason: "goal_slice_exhausted" };
+        }
+        return { status: "completed",
+          result: { structuredOutput: { headline: "Synthetic" } } };
+      },
+      async dispose() { entry.disposed += 1; },
+    };
+  });
+  const factory = new Function(
+    ...Object.keys(dependencies), `${body}\nreturn createMimoSummaryWorker;`,
+  )(...Object.values(dependencies));
+  const worker = factory({
+    input: { stateRootDir: "/synthetic/state", encryptionKey: "synthetic",
+      timeoutMs: 60_000 },
+    model: "mimo-v2.6-pro",
+  });
+  assert.deepEqual(await worker.run({ runId: "synthetic-run",
+    prompt: "Synthetic prompt.", systemPrompt: "Synthetic system." }),
+  { structuredOutput: { headline: "Synthetic" } });
+  assert.equal(seen.length, 2);
+  assert.equal(seen[0].jobs[0].taskId, "synthetic-run");
+  assert.equal(seen[1].jobs[0].taskId, "synthetic-run:attempt-2");
+  assert.equal(seen[1].jobs[0].runId, "synthetic-run:attempt-2");
+  assert.ok(seen[1].options.executorId.endsWith("hash:synthetic-run:attempt-2"));
+  assert.equal(seen[0].disposed, 1);
+  assert.ok(seen[1].options.accounts[0].worker.taskTimeoutMs <= 51_000);
+  assert.equal(seen[1].options.safeExecutionPolicy.maxAttempts, 1);
+  assert.equal(seen[1].options.safeExecutionPolicy.continuationMode, "disabled");
+  await worker.dispose();
+});
+
+test("MiMo summary factory does not retry non-retryable failures", async () => {
+  let runs = 0;
+  let disposed = 0;
+  const dependencies = retryDependencies(() => ({
+    async run() {
+      runs += 1;
+      return { status: "partial", failureReason: "budget_exceeded" };
+    },
+    async dispose() { disposed += 1; },
+  }));
+  const factory = new Function(
+    ...Object.keys(dependencies), `${body}\nreturn createMimoSummaryWorker;`,
+  )(...Object.values(dependencies));
+  const worker = factory({
+    input: { stateRootDir: "/synthetic/state", encryptionKey: "synthetic" },
+    model: "mimo-v2.6-pro",
+  });
+  await assert.rejects(worker.run({ runId: "synthetic-run" }), (error) =>
+    error.code === "subscription_worker_run_failed" &&
+    error.message === "MiMo reader summary did not complete");
+  assert.equal(runs, 1);
+  await worker.dispose();
+  assert.equal(disposed, 1);
+});

@@ -76,31 +76,36 @@ class _CompactThemeModeMenu extends StatelessWidget {
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
-        return PopupMenuButton<ThemeMode>(
-          key: const ValueKey('app-compact-theme-mode-menu'),
-          tooltip: 'Theme',
-          icon: Icon(_themeIcon(controller.themeMode)),
-          onSelected: controller.setThemeMode,
-          itemBuilder: (context) => [
-            _themeMenuItem(
-              mode: ThemeMode.system,
-              selectedMode: controller.themeMode,
-              icon: Icons.brightness_auto_outlined,
-              label: 'System',
+        return MergeSemantics(
+          child: AppTooltip(
+            message: 'Theme',
+            child: PopupMenuButton<ThemeMode>(
+              key: const ValueKey('app-compact-theme-mode-menu'),
+              tooltip: '',
+              icon: Icon(_themeIcon(controller.themeMode)),
+              onSelected: controller.setThemeMode,
+              itemBuilder: (context) => [
+                _themeMenuItem(
+                  mode: ThemeMode.system,
+                  selectedMode: controller.themeMode,
+                  icon: Icons.brightness_auto_outlined,
+                  label: 'System',
+                ),
+                _themeMenuItem(
+                  mode: ThemeMode.light,
+                  selectedMode: controller.themeMode,
+                  icon: Icons.light_mode_outlined,
+                  label: 'Light',
+                ),
+                _themeMenuItem(
+                  mode: ThemeMode.dark,
+                  selectedMode: controller.themeMode,
+                  icon: Icons.dark_mode_outlined,
+                  label: 'Dark',
+                ),
+              ],
             ),
-            _themeMenuItem(
-              mode: ThemeMode.light,
-              selectedMode: controller.themeMode,
-              icon: Icons.light_mode_outlined,
-              label: 'Light',
-            ),
-            _themeMenuItem(
-              mode: ThemeMode.dark,
-              selectedMode: controller.themeMode,
-              icon: Icons.dark_mode_outlined,
-              label: 'Dark',
-            ),
-          ],
+          ),
         );
       },
     );

@@ -5,6 +5,7 @@ import {
   mkdtemp,
   mkdir,
   readFile,
+  readdir,
   rm,
   stat,
   writeFile,
@@ -14,8 +15,41 @@ import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+require("ts-node").register({ transpileOnly: true, compilerOptions: { rootDir: resolve(dirname(fileURLToPath(import.meta.url)), "../../..") } });
+const { promotionResponseSchema, parseReviews } = require(
+  "../../../libs/relevance/adapters/model/source-content-quality-review-wire.ts",
+);
+const { promotionWireCandidate } = require(
+  "../../../libs/relevance/adapters/model/promotion-review-wire.ts",
+);
+// Native runtime canonicalizes unordered required lists; preserve every constraint.
+const nativeAssessmentSchema = JSON.parse(JSON.stringify(promotionResponseSchema,
+  (key, value) => key === "required" ? [...value].sort() : value));
+const assessmentRequest = {
+  candidateId: "sandbox-assessment", providerKey: "reddit",
+  title: "Measured compiler diagnostics", deterministic: { flags: [] },
+  promotion: { tenantId: "sandbox-tenant", workspaceId: "sandbox-workspace",
+    interestId: "sandbox-interest", sourceBindingId: "sandbox-binding",
+    sourceItemId: "sandbox-item", trustedIntent: "compiler diagnostics",
+    availability: "title_only" },
+};
+const assessmentOutput = { reviews: [{
+  candidateId: assessmentRequest.candidateId,
+  bindingId: promotionWireCandidate(assessmentRequest).bindingId,
+  decision: "promote", confidence: 0.9, qualityScore: 0.9,
+  interestRelevanceScore: 0.9, engagementIntegrityScore: 0.9,
+  flags: [], reason: "Captured diagnostic observation",
+  readerHeadline: { status: "unavailable", reasonCode: "insufficient_support" },
+  evidence: [{ field: "title", start: 0, end: assessmentRequest.title.length,
+    quote: assessmentRequest.title }], resolvedSoftFlags: [],
+}] };
 
 import { orderCodexAuthAccountsForTask } from "./codex-auth-pool-routing.mjs";
+import "./reader-promotion-v2-canary-lane.e2e.test.mjs";
+import "./reader-promotion-v2-canary-main30-contract.test.mjs";
 
 const execFileAsync = promisify(execFile);
 const repositoryRoot = resolve(
@@ -61,11 +95,11 @@ test(
         {
           cwd: fixture.sandboxProject,
           env: {
-            PATH: process.env.PATH,
+            PATH: process.env.PATH, HOME: process.env.HOME,
             LANG: "C.UTF-8",
             AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT: fixture.poolRoot,
             AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST: "current.json",
-            AGENT_RUNTIME_REASONING_EFFORT: "xhigh",
+            AGENT_RUNTIME_REASONING_EFFORT: "high",
             SUBSCRIPTION_RUNTIME_LOCAL_ENCRYPTION_KEY:
               Buffer.alloc(32, 7).toString("base64"),
           },
@@ -95,21 +129,35 @@ test(
         ok: true,
         account: "account-b",
       });
+      const rateLimitAttempts = attempts.filter(
+        ({ command }) => command === "rate-limits",
+      );
+      assert.deepEqual(
+        rateLimitAttempts.map(({ account, usedPercent }) => ({
+          account,
+          usedPercent,
+        })),
+        [
+          { account: "account-a", usedPercent: 100 },
+          { account: "account-b", usedPercent: 20 },
+        ],
+      );
       const turnAttempts = attempts.filter(({ command }) => command === "turn");
       assert.deepEqual(
         turnAttempts.map(({ account, command }) => ({ account, command })),
-        [
-          { account: "account-a", command: "turn" },
-          { account: "account-b", command: "turn" },
-        ],
+        [{ account: "account-b", command: "turn" }],
       );
       assert.equal(
-        turnAttempts[0].promptSha256,
-        turnAttempts[1].promptSha256,
+        attempts.some(
+          ({ account, command }) =>
+            account === "account-a" &&
+            (command === "thread" || command === "turn" || command === "exec"),
+        ),
+        false,
       );
       for (const turnAttempt of turnAttempts) {
         assert.equal(turnAttempt.model, "gpt-5.6-sol");
-        assert.equal(turnAttempt.effort, "xhigh");
+        assert.equal(turnAttempt.effort, "high");
         assert.equal(turnAttempt.approvalPolicy, "never");
         assert.deepEqual(turnAttempt.environments, []);
         assert.equal(turnAttempt.materializedAuthChanged, true);
@@ -127,7 +175,7 @@ test(
         assert.equal(threadAttempt.approvalPolicy, "never");
         assert.equal(threadAttempt.sandbox, "read-only");
         assert.equal(threadAttempt.runtimeWorkspaceIsIsolated, true);
-        assert.equal(threadAttempt.modelReasoningEffort, "xhigh");
+        assert.equal(threadAttempt.modelReasoningEffort, "high");
         assert.equal(threadAttempt.sandboxMode, "read-only");
         assert.equal(threadAttempt.webSearch, "disabled");
         assert.deepEqual(threadAttempt.environments, []);
@@ -147,7 +195,7 @@ test(
         await readFile(fixture.requestPath, "utf8"),
       );
       assert.equal(canonicalRequest.task.controls.model, "gpt-5.6-sol");
-      assert.equal(canonicalRequest.task.controls.reasoningEffort, "xhigh");
+      assert.equal(canonicalRequest.task.controls.reasoningEffort, "high");
       assert.equal(canonicalRequest.task.controls.responseFormat, "json");
       assert.equal(
         canonicalRequest.task.metadata.runtimeOutput,
@@ -163,13 +211,100 @@ test(
       assert.deepEqual(afterAuth, beforeAuth);
       assert.deepEqual(beforeAuthModes, [0o400, 0o400]);
       assert.deepEqual(afterAuthModes, beforeAuthModes);
+      assert.deepEqual(
+        await readdir(join(fixture.stateRoot, "auth-materializations")),
+        [],
+      );
+      await assertOneShotHomesClean(fixture.stateRoot);
     } finally {
       await fixture.cleanup();
     }
   },
 );
 
-async function createFixture() {
+for (const [firstAccount, available] of [["account-b", false], ["account-a", false], ["account-a", true]]) {
+  test(`assessment native schema with one attempt starting on ${firstAccount}, available=${available}`, { timeout: 30_000 }, async () => {
+    const fixture = await createFixture(available);
+    try {
+      const request = agentTaskRequest(taskIdStartingWith(["account-a", "account-b"], firstAccount));
+      // Exercise schema handling after admission above the 20s cleanup reserve.
+      request.timeoutMs = 60_000;
+      request.context.purpose = "social_monitor.relevance.assess_source_content.v1";
+      request.task.outputSchemaName = "social_monitor_source_content_quality_review";
+      request.task.controls.outputSchemaName = "social_monitor_source_content_quality_review";
+      request.task.controls.outputSchema = promotionResponseSchema;
+      await writeFile(fixture.requestPath, JSON.stringify(request));
+      const execution = await execFileAsync(process.execPath, [runtimeBridgePath,
+        "--provider", "codex", "--input", fixture.requestPath, "--format", "result-json",
+        "--state-root", fixture.stateRoot, "--codex-binary", fixture.codexBinaryPath,
+        "--model", "gpt-5.6-sol", "--timeout-ms", "60000"], {
+        cwd: fixture.sandboxProject, maxBuffer: 1024 * 1024,
+        env: { PATH: process.env.PATH, HOME: process.env.HOME, LANG: "C.UTF-8",
+          AGENT_RUNTIME_CODEX_AUTH_POOL_ROOT: fixture.poolRoot,
+          AGENT_RUNTIME_CODEX_AUTH_POOL_MANIFEST: "current.json",
+          AGENT_RUNTIME_REASONING_EFFORT: "low",
+          SUBSCRIPTION_RUNTIME_LOCAL_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64") },
+      }).then(({ stdout }) => JSON.parse(stdout), (error) => JSON.parse(error.stdout));
+      const attempts = (await readFile(fixture.attemptLogPath, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+      assert.equal(attempts.some(({ command }) => command === "exec"), false);
+      assert.equal(execution.status, firstAccount === "account-b" || available ? "completed" : "failed");
+      if (firstAccount === "account-b" || available) {
+        assert.deepEqual(execution.structuredOutput, assessmentOutput);
+        assert.deepEqual(attempts.find(({ command }) => command === "turn").outputSchema, nativeAssessmentSchema);
+        assert.equal(execution.warnings?.some(({ code }) => code === "codex_app_server_output_schema_not_native") ?? false, false);
+        const [review] = parseReviews(JSON.stringify(execution.structuredOutput), [assessmentRequest]);
+        assert.equal(review.assessment.binding, assessmentRequest.promotion);
+        assert.equal(review.qualityScore, 0.9);
+        assert.equal(attempts.filter(({ command }) => command === "turn").length, 1);
+      } else {
+        assert.equal(attempts.some(({ account }) => account === "account-b"), false);
+        assert.equal(attempts.filter(({ command }) => command === "turn").length, 0);
+      }
+      assert.deepEqual(await readdir(join(fixture.stateRoot, "auth-materializations")), []);
+      await assertOneShotHomesClean(fixture.stateRoot);
+    } finally { await fixture.cleanup(); }
+  });
+}
+
+for (const invalid of ["missing-name", "wrong-name", "conflicting-name", "missing-schema", "null-schema", "array-schema"]) {
+  test(`assessment rejects ${invalid} before native startup`, async () => {
+    const fixture = await createFixture();
+    try {
+      const request = agentTaskRequest("sandbox-invalid-schema");
+      // Exercise schema handling after admission above the 20s cleanup reserve.
+      request.timeoutMs = 60_000;
+      request.context.purpose = "social_monitor.relevance.assess_source_content.v1";
+      request.task.outputSchemaName = "social_monitor_source_content_quality_review";
+      request.task.controls.outputSchema = promotionResponseSchema;
+      if (invalid === "missing-name") delete request.task.outputSchemaName;
+      if (invalid === "wrong-name") request.task.outputSchemaName = "other";
+      if (invalid === "conflicting-name") request.task.controls.outputSchemaName = "other";
+      if (invalid === "missing-schema") delete request.task.controls.outputSchema;
+      if (invalid === "null-schema") request.task.controls.outputSchema = null;
+      if (invalid === "array-schema") request.task.controls.outputSchema = [];
+      await writeFile(fixture.requestPath, JSON.stringify(request));
+      await assert.rejects(execFileAsync(process.execPath, [runtimeBridgePath,
+        "--provider", "codex", "--input", fixture.requestPath], {
+        cwd: fixture.sandboxProject,
+        env: { PATH: process.env.PATH, LANG: "C.UTF-8" },
+      }), (error) => {
+        assert.match(error.stderr, /schema|outputSchema/);
+        return true;
+      });
+      await assert.rejects(stat(fixture.attemptLogPath), { code: "ENOENT" });
+    } finally { await fixture.cleanup(); }
+  });
+}
+
+async function assertOneShotHomesClean(stateRoot) {
+  try {
+    assert.deepEqual(await readdir(join(stateRoot, "codex-session-cache")), []);
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+}
+
+async function createFixture(available = false) {
   const root = await mkdtemp(
     join(tmpdir(), "social-monitor-subscription-runtime-e2e-"),
   );
@@ -225,7 +360,7 @@ async function createFixture() {
   const codexBinaryPath = join(root, "fake-codex.mjs");
   await writeFile(
     codexBinaryPath,
-    fakeCodexBinarySource(attemptLogPath, stateRoot),
+    fakeCodexBinarySource(attemptLogPath, stateRoot, available),
     "utf8",
   );
   await chmod(codexBinaryPath, 0o755);
@@ -292,7 +427,7 @@ function agentTaskRequest(runId) {
     },
     context: {
       application: "social-monitor",
-      purpose: "social_monitor.summary.generate",
+      purpose: "social_monitor.reader_summary.generate.v2",
       correlationId: "sandbox-auth-pool-e2e",
     },
   };
@@ -312,7 +447,7 @@ function fakeCodexAuth(accountId) {
   };
 }
 
-function fakeCodexBinarySource(attemptLogPath, stateRoot) {
+function fakeCodexBinarySource(attemptLogPath, stateRoot, available) {
   return `#!/usr/bin/env node
 import { createHash } from "node:crypto";
 import { appendFile, readFile, writeFile } from "node:fs/promises";
@@ -331,6 +466,25 @@ if (command === "app-server") {
     const request = JSON.parse(line);
     if (request.method === "initialize") {
       send({ id: request.id, result: {} });
+      continue;
+    }
+    if (request.method === "account/rateLimits/read") {
+      const usedPercent = account === "account-a" && !${available} ? 100 : 20;
+      await recordAttempt({ account, command: "rate-limits", usedPercent });
+      send({
+        id: request.id,
+        result: {
+          rateLimits: {
+            primary: {
+              usedPercent,
+              windowDurationMins: 300,
+              resetsAt: Math.floor(Date.now() / 1000) + 3600,
+            },
+            rateLimitReachedType:
+              account === "account-a" && !${available} ? "usage_limit_reached" : null,
+          },
+        },
+      });
       continue;
     }
     if (request.method === "thread/start") {
@@ -377,7 +531,7 @@ if (command === "app-server") {
         materializedAuthChanged,
       });
       send({ id: request.id, result: { turn: { id: turnId } } });
-      if (account === "account-a") {
+      if (account === "account-a" && !${available}) {
         send({
           method: "turn/completed",
           params: {
@@ -395,7 +549,7 @@ if (command === "app-server") {
             turnId,
             item: {
               type: "agentMessage",
-              text: JSON.stringify({ ok: true, account }),
+              text: JSON.stringify(request.params.outputSchema?.properties?.reviews ? ${JSON.stringify(assessmentOutput)} : { ok: true, account }),
             },
           },
         });
@@ -414,7 +568,7 @@ if (command === "app-server") {
     });
   }
 } else if (command === "exec") {
-  const prompt = await readFile(0, "utf8");
+  const prompt = await readStdin();
   await recordAttempt({
     account,
     command: "exec",
@@ -440,6 +594,13 @@ if (command === "app-server") {
 
 function send(message) {
   process.stdout.write(JSON.stringify(message) + "\\n");
+}
+
+async function readStdin() {
+  process.stdin.setEncoding("utf8");
+  let value = "";
+  for await (const chunk of process.stdin) value += chunk;
+  return value;
 }
 
 async function refreshMaterializedAuth() {

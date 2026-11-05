@@ -1,9 +1,24 @@
+import { requireNativeV3ModelPreparationBudget } from "./lib/reader-summary-native-v3-budget";
+import { resolveReaderSummarySelectionStrategy } from "@social-monitor/summary/interfaces/rest/reader-summary-selection-strategy.resolver";
+import { RelevanceReaderSummaryEvidenceSelector } from "@social-monitor/summary/adapters/evidence/relevance-reader-summary-evidence.selector";
+import { ReaderSummaryExecutionLeasePolicy, DEFAULT_READER_SUMMARY_EXECUTION_LEASE_MS } from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-execution-lease.policy";
+import { nativeV3Owner, executeNativeReaderSummary, validateNativeV3Budget } from "./lib/reader-summary-native-v3-owner";
+import { createReaderSummaryV3Preflight, createReaderSummaryV3Promotion } from "@social-monitor/summary/adapters/composition/reader-summary-v3-composition";
+import { resolveAgentRuntimePromotionPresentationV3BuilderOptions } from "@social-monitor/summary/adapters/model/agent-runtime-promotion-presentation-v3.builder";
+import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
+import { resolveFirstPublicationMode, readFirstPublicationOperation, assertFirstPublicationServingAuthority } from "./lib/reader-summary-first-publication";
+import { createDailyJevCaptureQualification } from "./lib/reader-summary-daily-jev-qualification";
+import { resolveReaderValueScoringProvider } from "@social-monitor/relevance/interfaces/rest/reader-value-scoring-provider-tokens";
+import { ConservativeReaderValueInputBuilder } from "@social-monitor/relevance/infrastructure/reader-value/reader-value-input-builder";
+import { SourceContentSafetyPolicy } from "@social-monitor/relevance/domain/source-content-safety";
+import { PrismaMonitoringConnection } from "@social-monitor/monitoring/adapters/persistence/prisma/prisma-monitoring-connection";
+import { PrismaInterestRepository } from "@social-monitor/monitoring/adapters/persistence/prisma/prisma-interest.repository";
+import { MonitoringConfiguredInterestReader } from "@social-monitor/relevance/adapters/monitoring/monitoring-configured-interest.reader";
 import { createHash } from "node:crypto";
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
 
 import { PrismaFeedConnection } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-connection";
-import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
+import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
+import { resolvePostgresRuntimePoolConfig } from "@social-monitor/platform-persistence";
 import { PrismaFeedItemReadRepository } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-item-read.repository";
 import { PrismaSummaryConnection } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-connection";
 import { PrismaReaderSummaryPublication } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-publication";
@@ -20,7 +35,10 @@ import {
   resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions,
 } from "@social-monitor/summary/adapters/model/agent-runtime-reader-summary-topic-relation-verifier.adapter";
 import { DeterministicReaderSummaryModelAdapter } from "@social-monitor/summary/adapters/model/deterministic-reader-summary-model.adapter";
-import { GrpcAgentRuntimeClient } from "@social-monitor/summary/adapters/model/grpc-agent-runtime-client";
+import { ReaderSummaryPromotionMetricsRecorder } from "@social-monitor/summary/adapters/metrics/reader-summary-promotion-metrics.recorder";
+import { GrpcAgentRuntimeClient, validateAgentRuntimeDefaultCwd } from "@social-monitor/summary/adapters/model/grpc-agent-runtime-client";
+import { createReaderSummaryAgentRuntimeClient } from "@social-monitor/summary/adapters/composition/reader-summary-agent-runtime-transport";
+import { resolveReaderSummaryAgentRuntimeTransport } from "@social-monitor/summary/interfaces/rest/summary-agent-runtime-provider-tokens";
 import {
   OpenAiResponsesReaderSummaryModelAdapter,
   resolveOpenAiResponsesReaderSummaryModelOptions,
@@ -28,34 +46,25 @@ import {
 import { PrismaReaderSummaryArtifactRepository } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-artifact.repository";
 import { PrismaReaderSummaryJobRepository } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-job.repository";
 import { PrismaReaderSummaryPolicyRepository } from "@social-monitor/summary/adapters/persistence/prisma/prisma-reader-summary-policy.repository";
-import {
-  buildReaderSummaryPeriod,
-  ReaderSummaryPolicy,
-} from "@social-monitor/summary/domain";
-import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
+import { buildReaderSummaryPeriod } from "@social-monitor/summary/domain";
+import { createReaderSummaryCaptureExecution } from "./lib/reader-summary-capture-execution";
+import { readerSummaryPromotionControl } from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-promotion-control";
 import { BuildReaderSummaryTopicMapUseCase } from "@social-monitor/summary/features/build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
 import { presentReaderSummaryArtifact } from "@social-monitor/summary/features/shared/reader-summary-artifact-presenter";
 import { RequestReaderSummaryUseCase } from "@social-monitor/summary/features/request-reader-summary/request-reader-summary.use-case";
 import type {
-  EnqueueReaderSummaryJobCommand,
+  AgentRuntimeClientPort,
+  ReaderSummaryEvidenceSelectorPort,
   ReaderSummaryTimestampPolicy,
-  ReaderSummaryJobQueuePort,
   ReaderSummaryModelPort,
   ReaderSummaryTopicMapPublicationAuditPort,
   ReaderSummaryTopicMapPublicationRejection,
-  ReserveSummaryJobQuotaCommand,
-  ReserveSummaryJobQuotaResult,
-  SummaryQuotaPort,
 } from "@social-monitor/summary/ports";
 import {
   CryptoIdGenerator,
-  ok,
   SystemClock,
   tenantId,
   workspaceId,
-  type DomainError,
-  type Result,
-  type Clock,
 } from "@social-monitor/shared-kernel";
 
 import { loadDotenvIfPresent } from "./lib/env-file";
@@ -67,19 +76,17 @@ import {
 } from "./lib/reader-summary-historical-github-omission";
 import {
   DatasetGuardedReaderSummaryEvidenceSelector,
-  ReaderSummaryDayDatasetGuard,
-  readReaderSummaryDayDatasetManifest,
 } from "./lib/reader-summary-day-dataset-guard";
-import { assertImmutableRecoveryInputs } from "./lib/reader-summary-recovery-files";
+import { buildDatasetGuard, CapturingReaderSummaryJobQueue, AllowingSummaryQuota } from "./lib/reader-summary-durable-capture-support";
 import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import {
   createReaderSummaryDailyCaptureContext,
-  createReaderSummaryDailyPublicationExecutionWiring,
 } from "./lib/reader-summary-daily-publication-finalizer";
+import { createReaderSummaryDailyCapturePublicationWiring } from
+  "./lib/reader-summary-daily-story-relation-verifier";
 import {
   readerSummaryProductionDayAttemptIdentity,
   readerSummaryProductionDayIdempotencyKey,
-  type ReaderSummaryProductionDayAttemptIdentityInput,
 } from "./lib/reader-summary-production-day-attempt-identity";
 import {
   readerSummaryServingAuthorityRequiresAgentRuntime,
@@ -88,7 +95,6 @@ import {
 import {
   addUtcDays,
   liveObservationCutoffEnv,
-  resolveLiveObservationCutoff,
   resolveRecoveryTimestampPolicy,
   startOfUtcDay,
 } from "./lib/reader-summary-capture-period-policy";
@@ -96,6 +102,28 @@ import {
   assertReaderSummaryDbPublicationFailpointInactive,
   createRecoverableReaderSummaryPublication,
 } from "./lib/reader-summary-db-publication-reconciliation";
+import {
+  assertProductionDayPromotionRetrySafe,
+} from "./lib/reader-summary-production-day-promotion-rebuild";
+import { ensureReaderSummaryProductionDayPolicy } from
+  "./lib/reader-summary-production-day-policy-bootstrap";
+import {
+  resolveProductionDayPromotionInput,
+  revalidateProductionDayPromotionInput,
+} from
+  "./lib/reader-summary-production-day-promotion-input";
+import { historicalPromotionRevalidationFailurePathEnv } from
+  "./lib/reader-summary-promotion-v2-input-guard";
+import {
+  historicalPromotionGenerationAuthorityJsonEnv,
+  historicalPromotionGenerationAuthoritySha256Env,
+  parseHistoricalPromotionGenerationAuthority,
+} from "./lib/reader-summary-promotion-v2-historical-generation-authority";
+import {
+  HistoricalPromotionPolicyGuard,
+  HistoricalPromotionPolicyGuardedEvidenceSelector,
+} from
+  "./lib/reader-summary-promotion-v2-policy-guard";
 
 const databaseUrlEnv = "DATABASE_URL";
 const evidencePathEnv = "DURABLE_READER_SUMMARY_EVIDENCE_PATH";
@@ -109,16 +137,6 @@ const periodEndedAtEnv = "DURABLE_READER_SUMMARY_PERIOD_ENDED_AT";
 const cadenceEnv = "DURABLE_READER_SUMMARY_CADENCE";
 const historicalGitHubOmissionReasonEnv =
   "DURABLE_READER_SUMMARY_HISTORICAL_GITHUB_OMISSION_REASON";
-const datasetManifestPathEnv = "DURABLE_READER_SUMMARY_DATASET_MANIFEST_PATH";
-const datasetManifestSha256Env =
-  "DURABLE_READER_SUMMARY_DATASET_MANIFEST_SHA256";
-const sourceReportSha256Env =
-  "DURABLE_READER_SUMMARY_SOURCE_REPORT_SHA256";
-const collectionArtifactSha256Env =
-  "DURABLE_READER_SUMMARY_COLLECTION_ARTIFACT_SHA256";
-const collectionQualityReportSha256Env =
-  "DURABLE_READER_SUMMARY_COLLECTION_QUALITY_REPORT_SHA256";
-const datasetRecoveryRootEnv = "DURABLE_READER_SUMMARY_RECOVERY_ROOT";
 const recoveryTimestampPolicyEnv =
   "DURABLE_READER_SUMMARY_RECOVERY_TIMESTAMP_POLICY";
 const publicationRecoveryDirectoryEnv =
@@ -136,6 +154,7 @@ type FeedInventoryRow = {
 };
 
 async function main(): Promise<void> {
+  const scoringProvider = resolveReaderValueScoringProvider(process.env);
   const databaseUrl = requiredEnv(databaseUrlEnv);
   const { dailyReplay, operationalClock: clock } =
     createReaderSummaryDailyCaptureContext({
@@ -170,6 +189,9 @@ async function main(): Promise<void> {
     periodEndedAt,
     now,
   });
+  const firstPublicationActive = resolveFirstPublicationMode({ argv: process.argv.slice(2), environment: process.env,
+    cadence, timezone, startedAt: periodStartedAt, endedAt: periodEndedAt, now,
+    replayActive: dailyReplay !== null, recoveryActive: recoveryTimestampPolicy.active });
   const historicalGitHubOmission = resolveHistoricalGitHubOmission({
     argv: process.argv.slice(2),
     reason: readEnv(historicalGitHubOmissionReasonEnv),
@@ -187,7 +209,7 @@ async function main(): Promise<void> {
       "Historical GitHub omission requires explicit historical recovery mode",
     );
   }
-  const liveObservationCutoff = resolveLiveObservationCutoff({
+  const captureExecution = createReaderSummaryCaptureExecution({
     value: readDateEnv(liveObservationCutoffEnv),
     dailyReplayActive: dailyReplay !== null,
     recoveryActive: recoveryTimestampPolicy.active,
@@ -197,37 +219,23 @@ async function main(): Promise<void> {
     periodEndedAt,
     now,
   });
-  const sourceProvenance: ReaderSummaryProductionDayAttemptIdentityInput["sourceProvenance"] =
-    dailyReplay !== null
-      ? {
-          kind: "persisted-daily-replay",
-          sourceAuthoritySha256: dailyReplay.authoritySha256,
-          originalModelJobIdentity: dailyReplay.modelJobIdentity,
-          originalReceiptSha256: sha256Bytes(dailyReplay.receiptBytes),
-        }
-      : recoveryTimestampPolicy.active
-        ? {
-            kind: "historical-regeneration",
-            sourceReportSha256: requiredEnv(sourceReportSha256Env),
-            collectionArtifactSha256: requiredEnv(collectionArtifactSha256Env),
-            collectionQualityReportSha256: requiredEnv(
-              collectionQualityReportSha256Env,
-            ),
-            datasetManifestSha256: requiredEnv(datasetManifestSha256Env),
-            timestampPolicy: recoveryTimestampPolicy.policy,
-            ...(historicalGitHubOmission === undefined
-              ? {}
-              : {
-                  historicalGitHubOmissionReason:
-                    historicalGitHubOmission.reason,
-                }),
-          }
-        : {
-            kind: "live-production",
-            ...(liveObservationCutoff === undefined
-              ? {}
-              : { observationCutoff: liveObservationCutoff.toISOString() }),
-          };
+  const { liveObservationCutoff } = captureExecution;
+  validateNativeV3Budget(process.argv.slice(2), readEnv("DURABLE_READER_SUMMARY_NATIVE_V3_BUDGET_MS"));
+  if (process.argv.includes("--native-jev-v3") && resolveReaderSummarySelectionStrategy(process.env)
+    .resolve({ tenantId: tenant, workspaceId: workspace }) !== "jev_primary_v3") {
+    throw new Error("Native V3 is outside the configured durable Jev workspace scope");
+  }
+
+  const { promotionRebuild, sourceProvenance } =
+    firstPublicationActive ? { promotionRebuild: undefined, sourceProvenance: undefined } : resolveProductionDayPromotionInput({
+      environment: process.env,
+      recoveryActive: recoveryTimestampPolicy.active,
+      date: periodStartedAt.toISOString().slice(0, 10),
+      timestampPolicy: recoveryTimestampPolicy.policy,
+      historicalGitHubOmissionReason: historicalGitHubOmission?.reason,
+      liveObservationCutoff: liveObservationCutoff?.toISOString(),
+      dailyReplay,
+    });
   const maxEvidenceItems = readIntegerEnv(
     "DURABLE_READER_SUMMARY_MAX_EVIDENCE_ITEMS",
     200,
@@ -249,19 +257,43 @@ async function main(): Promise<void> {
     })
       ? buildAgentRuntimeClient()
       : null;
+  if (process.argv.includes("--native-jev-v3")) {
+    if (modelMode !== "agent-runtime" || agentRuntimeClient === null) throw new Error("Native V3 requires configured agent-runtime narrative");
+    requireNativeV3ModelPreparationBudget(Number(readEnv("DURABLE_READER_SUMMARY_NATIVE_V3_BUDGET_MS")), {
+      presentation: resolveAgentRuntimePromotionPresentationV3BuilderOptions(process.env, agentRuntimeClient),
+      narrative: resolveAgentRuntimeReaderSummaryModelOptions(process.env, agentRuntimeClient),
+      ...(topicLabelerMode !== "agent-runtime" ? {} : { topics: {
+        label: resolveAgentRuntimeReaderSummaryTopicLabelerOptions(process.env, agentRuntimeClient),
+        relation: resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions(process.env, agentRuntimeClient) } }) });
+  }
   const executionAttestations =
     new DurableReaderSummaryExecutionAttestationCapture();
 
-  const runtimePoolConfig = defaultPostgresRuntimePoolConfig(
-    databaseUrl,
-    "daily-runner",
-  );
+  const runtimePoolConfig = resolvePostgresRuntimePoolConfig({
+    ...process.env,
+    DATABASE_URL: databaseUrl,
+    POSTGRES_RUNTIME_PROCESS: "daily-runner",
+    POSTGRES_RUNTIME_POOL_MIN: process.env.POSTGRES_RUNTIME_POOL_MIN ?? "0",
+    POSTGRES_RUNTIME_POOL_MAX: process.env.POSTGRES_RUNTIME_POOL_MAX ?? "2",
+  });
   const feedConnection = await PrismaFeedConnection.create(runtimePoolConfig);
   const summaryConnection =
     await PrismaSummaryConnection.create(runtimePoolConfig);
 
+  let monitoringConnection: PrismaMonitoringConnection | undefined;
   try {
-    const datasetGuard = recoveryTimestampPolicy.active
+    monitoringConnection = dailyReplay === null
+      ? await PrismaMonitoringConnection.create(runtimePoolConfig) : undefined;
+    const firstPublication = firstPublicationActive ? readFirstPublicationOperation({
+      client: summaryConnection, clock, tenantId: tenant, workspaceId: workspace,
+      startedAt: periodStartedAt, endedAt: periodEndedAt,
+      manifestPath: requiredEnv("DURABLE_READER_SUMMARY_DATASET_MANIFEST_PATH"),
+      manifestSha256: requiredEnv("DURABLE_READER_SUMMARY_DATASET_MANIFEST_SHA256"),
+      privateRoot: requiredEnv("DURABLE_READER_SUMMARY_RECOVERY_ROOT"),
+      forbiddenOutputPaths: [readEnv(evidencePathEnv), readEnv(frontendFixturePathEnv), readEnv(rejectedTopicMapPathEnv)]
+        .filter((path): path is string => path !== undefined),
+    }) : undefined;
+    const datasetGuard = firstPublication?.guard ?? (recoveryTimestampPolicy.active
       ? buildDatasetGuard({
           client: summaryConnection,
           clock,
@@ -272,7 +304,42 @@ async function main(): Promise<void> {
           now,
           timestampPolicy: recoveryTimestampPolicy.policy,
         })
-      : null;
+      : null);
+    // Serving health/configuration and canonical identity are read-only. Pin
+    // them before consuming the finite day; keep policy writes and dataset
+    // revalidation behind reservation. Other modes retain their original timing.
+    const resolveServingPreflight = async () => {
+      const servingAuthority = await resolveReaderSummaryServingAuthority({
+        summaryModelMode: modelMode,
+        topicLabelerMode,
+        env: process.env,
+        agentRuntimeClient,
+        checkedAt: clock.now().toISOString(),
+      });
+      if (firstPublication !== undefined) assertFirstPublicationServingAuthority(servingAuthority);
+      const attemptIdentity = readerSummaryProductionDayAttemptIdentity({
+        tenantId: tenant,
+        workspaceId: workspace,
+        periodKey: period.periodKey,
+        servingAuthority,
+        sourceProvenance: firstPublication?.sourceProvenance ?? sourceProvenance!,
+      });
+      return { servingAuthority, attemptIdentity };
+    };
+    const firstPublicationPreflight = firstPublication === undefined
+      ? undefined : await resolveServingPreflight();
+    await firstPublication?.reserve();
+    await revalidateProductionDayPromotionInput({
+      promotionRebuild,
+      datasetGuard,
+      client: summaryConnection,
+      tenantId: tenant,
+      workspaceId: workspace,
+      date: periodStartedAt.toISOString().slice(0, 10),
+      failureMarkerPath: readEnv(
+        historicalPromotionRevalidationFailurePathEnv,
+      ),
+    });
     const feedItems = new PrismaFeedItemReadRepository(feedConnection);
     const readerSummaryJobs = new PrismaReaderSummaryJobRepository(
       summaryConnection,
@@ -280,43 +347,55 @@ async function main(): Promise<void> {
     const readerSummaryArtifacts = new PrismaReaderSummaryArtifactRepository(
       summaryConnection,
     );
-    const readerSummaryPolicies = new PrismaReaderSummaryPolicyRepository(
+    const baseReaderSummaryPolicies = new PrismaReaderSummaryPolicyRepository(
       summaryConnection,
     );
+    const promotionGenerationAuthority = promotionRebuild === undefined
+      ? null
+      : parseHistoricalPromotionGenerationAuthority(
+            readEnv(historicalPromotionGenerationAuthorityJsonEnv),
+            readEnv(historicalPromotionGenerationAuthoritySha256Env),
+          );
+    const promotionPolicyGuard = promotionGenerationAuthority === null
+      ? null
+      : new HistoricalPromotionPolicyGuard(
+          baseReaderSummaryPolicies,
+          promotionGenerationAuthority.policy,
+        );
+    const readerSummaryPolicies = promotionPolicyGuard ??
+      baseReaderSummaryPolicies;
+    const configuredInterests = monitoringConnection === undefined ? undefined
+      : new MonitoringConfiguredInterestReader(new PrismaInterestRepository(monitoringConnection));
+    const qualification = createDailyJevCaptureQualification({
+      fresh: dailyReplay === null, mode: process.env.READER_VALUE_MODE,
+      client: summaryConnection, interests: configuredInterests, clock, scoringProvider,
+    });
     const publicationWiring =
-      createReaderSummaryDailyPublicationExecutionWiring({
+      createReaderSummaryDailyCapturePublicationWiring({
         replay: dailyReplay,
+        configuredInterests,
+        candidateQualification: qualification.selector,
         feedItems,
         summaryClient: summaryConnection,
         clock,
         attestationSink: executionAttestations,
+        summaryModelMode: modelMode,
+        env: process.env,
+        agentRuntimeClient,
       });
     const queue = new CapturingReaderSummaryJobQueue();
     const ids = new CryptoIdGenerator();
     const scope = { type: "workspace" } as const;
 
-    await readerSummaryPolicies.save(
-      ReaderSummaryPolicy.create({
-        id: deterministicUuid(
-          ["reader-summary-policy", tenant, workspace, scope.type].join(":"),
-        ),
+    if (promotionRebuild === undefined) {
+      await ensureReaderSummaryProductionDayPolicy({
+        repository: baseReaderSummaryPolicies,
         tenantId: tenant,
         workspaceId: workspace,
-        scope,
-        language: "auto",
-        format: "executive_brief",
-        tone: "analytical",
         maxStories,
-        includeRisks: true,
-        includeInterestHighlights: true,
-        includeRepeatedSignals: true,
-        dedupeStrategy: "canonical_url_then_title",
-        customInstructions:
-          "Build a practical daily reader summary for AI/product/social monitoring. Prefer fresh, cited, high-signal items and clearly separate facts from risks.",
-        createdAt: now,
-        updatedAt: now,
-      }),
-    );
+        now,
+      });
+    }
 
     const inventoryBefore = dailyReplay === null
       ? await loadFeedInventory(summaryConnection, {
@@ -328,27 +407,28 @@ async function main(): Promise<void> {
         })
       : publicationWiring.inventory!;
 
-    const servingAuthority = await resolveReaderSummaryServingAuthority({
-      summaryModelMode: modelMode,
-      topicLabelerMode,
-      env: process.env,
-      agentRuntimeClient,
-      checkedAt: clock.now().toISOString(),
-    });
-    const attemptIdentity = readerSummaryProductionDayAttemptIdentity({
-      tenantId: tenant,
-      workspaceId: workspace,
-      periodKey: period.periodKey,
-      servingAuthority,
-      sourceProvenance,
-    });
+    const { servingAuthority, attemptIdentity } = firstPublicationPreflight ??
+      await resolveServingPreflight();
 
+    const legacyKey = firstPublication?.idempotencyKey ?? readerSummaryProductionDayIdempotencyKey(
+      attemptIdentity, promotionRebuild?.rebuildIdentity);
+    const nativeOwner = nativeV3Owner({ argv: process.argv.slice(2), legacyKey,
+      tenantId: tenant, workspaceId: workspace, cutoff: liveObservationCutoff, exactCutoffAt: readEnv(liveObservationCutoffEnv), now,
+      specialMode: firstPublicationActive || promotionRebuild !== undefined ||
+        dailyReplay !== null || recoveryTimestampPolicy.active,
+      budget: readEnv("DURABLE_READER_SUMMARY_NATIVE_V3_BUDGET_MS") });
+    if (nativeOwner !== undefined && await readerSummaryJobs.findByIdempotencyKey({
+      tenantId: tenant, workspaceId: workspace, idempotencyKey: legacyKey }) !== null) {
+      throw new Error("Legacy native attempt exists; never reinterpret or replay it as V3");
+    }
     const requestReaderSummary = new RequestReaderSummaryUseCase(
       readerSummaryJobs,
       queue,
       new AllowingSummaryQuota(clock),
       ids,
       clock,
+      undefined,
+      nativeOwner,
     );
     const request = await requestReaderSummary.execute({
       tenantId: tenant,
@@ -360,11 +440,14 @@ async function main(): Promise<void> {
         endedAt: periodEndedAt,
         timezone,
       },
-      idempotencyKey: readerSummaryProductionDayIdempotencyKey(attemptIdentity),
+      idempotencyKey: nativeOwner?.idempotencyKey ?? legacyKey,
       correlationId: `corr-durable-reader-summary-${now.getTime()}`,
     });
     if (!request.ok) {
       throw request.error;
+    }
+    if (promotionRebuild !== undefined) {
+      assertProductionDayPromotionRetrySafe(request.value);
     }
 
     const relevanceEvidenceSelector = publicationWiring.evidenceSelector;
@@ -374,12 +457,20 @@ async function main(): Promise<void> {
         : new HistoricalGitHubOmissionEvidenceSelector(
             relevanceEvidenceSelector,
           );
-    const evidenceSelector =
+    const baseEvidenceSelector =
       datasetGuard === null
         ? omissionAwareEvidenceSelector
         : new DatasetGuardedReaderSummaryEvidenceSelector(
             omissionAwareEvidenceSelector,
             datasetGuard,
+            promotionRebuild !== undefined,
+          );
+    const evidenceSelector = promotionPolicyGuard === null
+      ? baseEvidenceSelector
+        : new HistoricalPromotionPolicyGuardedEvidenceSelector(
+            baseEvidenceSelector,
+            promotionPolicyGuard,
+            promotionGenerationAuthority!.execution.rankingPolicyVersion,
           );
     const durablePublication = new PrismaReaderSummaryPublication(
       summaryConnection,
@@ -389,6 +480,7 @@ async function main(): Promise<void> {
             datasetGuard.assertCurrentForPublicationTransaction(
               transactionClient,
             ),
+      firstPublication === undefined ? undefined : "first_publication_sep29",
     );
     const { publication, recovery: publicationRecovery } =
       createRecoverableReaderSummaryPublication({
@@ -397,7 +489,18 @@ async function main(): Promise<void> {
         attemptIdentity,
         attestations: () => executionAttestations.all(),
       });
-    const executeReaderSummary = new ExecuteReaderSummaryJobUseCase(
+    const metrics = new InMemoryMetricsRecorder();
+    if (nativeOwner !== undefined && (agentRuntimeClient === null || configuredInterests === undefined ||
+        !(relevanceEvidenceSelector instanceof RelevanceReaderSummaryEvidenceSelector))) {
+      throw new Error("Native V3 requires the real configured agent runtime");
+    }
+    const nativeLease = nativeOwner === undefined ? undefined : new ReaderSummaryExecutionLeasePolicy(Math.max(DEFAULT_READER_SUMMARY_EXECUTION_LEASE_MS, Number(readEnv("DURABLE_READER_SUMMARY_NATIVE_V3_BUDGET_MS"))));
+    const v3Preflight = nativeOwner === undefined ? undefined : createReaderSummaryV3Preflight(
+      summaryConnection, readerSummaryJobs, configuredInterests!, clock, ids, new ConservativeReaderValueInputBuilder(new SourceContentSafetyPolicy(), scoringProvider), nativeLease);
+    const v3Promotion = nativeOwner === undefined ? undefined : createReaderSummaryV3Promotion(
+      summaryConnection, resolveAgentRuntimePromotionPresentationV3BuilderOptions(process.env, agentRuntimeClient!),
+      agentRuntimeClient!, requireNativeSupplemental(relevanceEvidenceSelector));
+    const dependencies: ConstructorParameters<typeof ExecuteReaderSummaryJobUseCase> = [
       readerSummaryJobs,
       readerSummaryArtifacts,
       readerSummaryPolicies,
@@ -410,6 +513,9 @@ async function main(): Promise<void> {
       publication,
       ids,
       clock,
+      readerSummaryPromotionControl(
+        new ReaderSummaryPromotionMetricsRecorder(metrics),
+      ),
       undefined,
       undefined,
       publicationWiring.topicMapBuilder ?? buildTopicMapBuilder(
@@ -420,13 +526,19 @@ async function main(): Promise<void> {
       undefined,
       publicationWiring.githubProjectionReader,
       historicalGitHubOmission,
-    );
-    const execution = await executeReaderSummary.execute({
+      undefined, nativeLease, undefined, v3Preflight, v3Promotion, firstPublication, nativeOwner,
+    ];
+    const command = {
       tenantId: tenant,
       workspaceId: workspace,
       readerSummaryJobId: request.value.readerSummaryJobId,
       maxEvidenceItems,
-    });
+    };
+    const execution = nativeOwner === undefined
+      ? await captureExecution.execute(dependencies, command)
+      : await executeNativeReaderSummary({ owner: nativeOwner, jobs: readerSummaryJobs,
+        execute: new ExecuteReaderSummaryJobUseCase(...dependencies),
+        command, clock });
     if (!execution.ok) {
       throw execution.error;
     }
@@ -497,6 +609,10 @@ async function main(): Promise<void> {
             readerSummaryArtifactId: execution.value.readerSummaryId,
           });
     const durableReadback = {
+      ...(qualification.audit() === undefined ? {} : {
+        jevCaptureQualification: qualification.audit(),
+        jevCaptureQualificationSha256: canonicalJsonSha256(qualification.audit()),
+      }),
       summaryContentSha256: canonicalJsonSha256(frontendArtifact.content),
       topicMapSha256: canonicalJsonSha256(frontendArtifact.content.topicMap),
       executionAttestationSetSha256: canonicalJsonSha256(
@@ -519,6 +635,14 @@ async function main(): Promise<void> {
           identity: attemptIdentity,
           requestCreated: request.value.created,
           reconciledFromDbPublication: !request.value.created,
+          ...(promotionRebuild === undefined
+            ? {}
+            : {
+                promotionRebuildIdentity: promotionRebuild.rebuildIdentity,
+                authoritativeInputDigest:
+                  promotionRebuild.authoritativeInputDigest,
+                promotionPolicyVersion: promotionRebuild.policyVersion,
+              }),
         },
         historicalGitHubOmission:
           historicalGitHubOmission === undefined
@@ -530,6 +654,7 @@ async function main(): Promise<void> {
                   historicalGitHubOmission.authorizedAt.toISOString(),
               },
         datasetManifest: datasetGuard?.evidence(),
+        historicalFirstPublication: firstPublication?.evidence(),
         dailySourceAuthority:
           dailyReplay === null
             ? undefined
@@ -537,6 +662,8 @@ async function main(): Promise<void> {
                 schemaVersion: 1,
                 canonicalSha256: dailyReplay.authoritySha256,
                 modelJobIdentity: dailyReplay.modelJobIdentity,
+                receiptSha256: sha256Bytes(dailyReplay.receiptBytes),
+                modelExecution: dailyReplay.modelTelemetry,
               },
       },
       scope: {
@@ -563,6 +690,7 @@ async function main(): Promise<void> {
         qualityFlags: frontendArtifact.qualityFlags,
       },
       executionAttestations: executionAttestationRecords,
+      dailyEditorOutputSha256: artifact.toSnapshot().dailyEditorialPlan?.editorOutputSha256,
       durableReadback,
       redaction: {
         secretsIncluded: false,
@@ -570,7 +698,6 @@ async function main(): Promise<void> {
         tokenValuesIncluded: false,
       },
     };
-
     writeOptionalJsonArtifact(evidencePathEnv, evidence);
     writeOptionalJsonArtifact(frontendFixturePathEnv, {
       schemaVersion: 1,
@@ -583,7 +710,6 @@ async function main(): Promise<void> {
       evidence: evidence.result,
       redaction: evidence.redaction,
     });
-
     console.log(
       [
         "Durable reader summary capture OK",
@@ -597,80 +723,13 @@ async function main(): Promise<void> {
       ].join("\n"),
     );
   } finally {
-    await Promise.all([feedConnection.close(), summaryConnection.close()]);
-  }
-}
-
-function buildDatasetGuard(params: {
-  readonly client: PrismaSummaryConnection;
-  readonly clock: Clock;
-  readonly tenantId: string;
-  readonly workspaceId: string;
-  readonly periodStartedAt: Date;
-  readonly periodEndedAt: Date;
-  readonly now: Date;
-  readonly timestampPolicy: ReaderSummaryTimestampPolicy;
-}): ReaderSummaryDayDatasetGuard {
-  const manifestPath = requiredEnv(datasetManifestPathEnv);
-  assertImmutableRecoveryInputs({
-    recoveryRoot: requiredEnv(datasetRecoveryRootEnv),
-    inputPaths: [manifestPath],
-    forbiddenOutputPaths: [],
-  });
-  const { manifest, fileSha256 } = readReaderSummaryDayDatasetManifest({
-    path: manifestPath,
-    expectedFileSha256: requiredEnv(datasetManifestSha256Env),
-    tenantId: params.tenantId,
-    workspaceId: params.workspaceId,
-    startedAt: params.periodStartedAt,
-    endedAt: params.periodEndedAt,
-    now: params.now,
-    expectedTimestampPolicy: params.timestampPolicy,
-  });
-  return new ReaderSummaryDayDatasetGuard(
-    params.client,
-    manifest,
-    fileSha256,
-    () => params.clock.now(),
-  );
-}
-
-class CapturingReaderSummaryJobQueue implements ReaderSummaryJobQueuePort {
-  private readonly commands: EnqueueReaderSummaryJobCommand[] = [];
-
-  async canAccept(): Promise<boolean> {
-    return true;
-  }
-
-  async enqueue(command: EnqueueReaderSummaryJobCommand): Promise<void> {
-    this.commands.push(command);
-  }
-
-  all(): readonly EnqueueReaderSummaryJobCommand[] {
-    return [...this.commands];
-  }
-}
-
-class AllowingSummaryQuota implements SummaryQuotaPort {
-  constructor(private readonly clock: Clock) {}
-
-  async reserveSummaryJob(
-    _command: ReserveSummaryJobQuotaCommand,
-  ): Promise<Result<ReserveSummaryJobQuotaResult, DomainError>> {
-    void _command;
-
-    return ok({
-      remaining: 999,
-      resetAt: new Date(
-        this.clock.now().getTime() + 24 * 60 * 60 * 1000,
-      ).toISOString(),
-    });
+    await Promise.all([feedConnection.close(), summaryConnection.close(), monitoringConnection?.close()]);
   }
 }
 
 const buildReaderSummaryModel = (
   mode: DurableReaderSummaryModelMode,
-  agentRuntimeClient: GrpcAgentRuntimeClient | null,
+  agentRuntimeClient: AgentRuntimeClientPort | null,
   executionAttestations: DurableReaderSummaryExecutionAttestationCapture,
 ): ReaderSummaryModelPort => {
   if (mode === "deterministic") {
@@ -696,7 +755,7 @@ const buildReaderSummaryModel = (
 
 const buildTopicMapBuilder = (
   mode: DurableReaderSummaryTopicLabelerMode,
-  agentRuntimeClient: GrpcAgentRuntimeClient | null,
+  agentRuntimeClient: AgentRuntimeClientPort | null,
   executionAttestations: DurableReaderSummaryExecutionAttestationCapture,
 ): BuildReaderSummaryTopicMapUseCase => {
   const publicationAudit = buildTopicMapPublicationAudit();
@@ -764,24 +823,26 @@ class FileTopicMapPublicationAudit implements ReaderSummaryTopicMapPublicationAu
   }
 }
 
-const buildAgentRuntimeClient = (): GrpcAgentRuntimeClient =>
-  GrpcAgentRuntimeClient.connect({
+// Reader-summary tasks run on the transport AGENT_RUNTIME_TRANSPORT selects.
+const buildAgentRuntimeClient = (): AgentRuntimeClientPort => createReaderSummaryAgentRuntimeClient({
+  transport: resolveReaderSummaryAgentRuntimeTransport(process.env), env: process.env,
+  clock: new SystemClock(), runId: new CryptoIdGenerator().generate(),
+  agentRuntime: () => GrpcAgentRuntimeClient.connect({
     address: requiredEnv("AGENT_RUNTIME_GRPC_ADDRESS"),
     clock: new SystemClock(),
     options: {
-      timeoutMs: readIntegerEnv(
-        "AGENT_RUNTIME_GRPC_TIMEOUT_MS",
-        5_000,
-        1,
-        600_000,
-      ),
+      timeoutMs: readIntegerEnv("AGENT_RUNTIME_GRPC_TIMEOUT_MS", 5_000, 1, 600_000),
       serviceToken: readEnv("AGENT_RUNTIME_SERVICE_TOKEN"),
+      defaultCwd: process.env.AGENT_RUNTIME_TASK_CWD === undefined
+        ? undefined
+        : validateAgentRuntimeDefaultCwd(process.env.AGENT_RUNTIME_TASK_CWD),
     },
-  });
+  }),
+});
 
 const requireAgentRuntimeClient = (
-  client: GrpcAgentRuntimeClient | null,
-): GrpcAgentRuntimeClient => {
+  client: AgentRuntimeClientPort | null,
+): AgentRuntimeClientPort => {
   if (client === null) {
     throw new Error("AGENT_RUNTIME_GRPC_ADDRESS is required for agent-runtime");
   }
@@ -833,17 +894,8 @@ const loadFeedInventory = async (
 };
 
 const writeOptionalJsonArtifact = (envName: string, value: unknown): void => {
-  const artifactPath = readEnv(envName);
-  if (artifactPath === undefined) {
-    return;
-  }
-
-  mkdirSync(dirname(artifactPath), { recursive: true });
-  writeLiveEvidenceArtifactAtomically(
-    artifactPath,
-    `${JSON.stringify(value, null, 2)}\n`,
-    envName,
-  );
+  const path = readEnv(envName);
+  if (path !== undefined) writeLiveEvidenceArtifactAtomically(path, `${JSON.stringify(value, null, 2)}\n`, envName);
 };
 
 const readCadence = (): DurableReaderSummaryCadence => {
@@ -932,28 +984,16 @@ const readEnv = (name: string): string | undefined => {
   return value === undefined || value.length === 0 ? undefined : value;
 };
 
-const deterministicUuid = (value: string): string => {
-  const bytes = Buffer.from(
-    createHash("sha256").update(value).digest(),
-  ).subarray(0, 16);
-  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
-  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
-  const hex = bytes.toString("hex");
-
-  return [
-    hex.slice(0, 8),
-    hex.slice(8, 12),
-    hex.slice(12, 16),
-    hex.slice(16, 20),
-    hex.slice(20),
-  ].join("-");
-};
-
 const sha256Bytes = (value: Buffer): string =>
   createHash("sha256").update(value).digest("hex");
 
 void main().catch((error) => {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = error instanceof Error ? (error.stack || error.message) : String(error);
   console.error(`Durable reader summary capture failed: ${message}`);
   process.exitCode = 1;
 });
+
+function requireNativeSupplemental(selector: ReaderSummaryEvidenceSelectorPort): RelevanceReaderSummaryEvidenceSelector {
+  if (!(selector instanceof RelevanceReaderSummaryEvidenceSelector)) throw new Error("Native V3 requires real relevance supplemental selector");
+  return selector;
+}

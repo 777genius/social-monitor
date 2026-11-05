@@ -5,12 +5,10 @@ import { OAuth2SourceCredentialRefresher } from './oauth2-source-credential-refr
 
 describe('OAuth2SourceCredentialRefresher', () => {
   it('rejects private token URLs before making outbound refresh requests', async () => {
-    const fetchSpy = jest
-      .spyOn(globalThis, 'fetch')
-      .mockImplementation(async () => {
-        throw new Error('fetch must not be called for rejected token URLs');
-      });
-    const refresher = new OAuth2SourceCredentialRefresher({ refreshSkewMs: 60_000 });
+    const httpPost = jest.fn().mockRejectedValue(new Error('HTTP transport must not be used for rejected token URLs'));
+    const refresher = new OAuth2SourceCredentialRefresher({
+      refreshSkewMs: 60_000, httpClient: { post: httpPost },
+    });
 
     await expect(refresher.refreshIfNeeded({
       credential: makeExpiredCredential(),
@@ -22,16 +20,17 @@ describe('OAuth2SourceCredentialRefresher', () => {
       now: new Date('2026-06-21T10:00:00.000Z'),
     })).rejects.toThrow('OAuth2 source credential token URL rejected');
 
-    expect(fetchSpy).not.toHaveBeenCalled();
-    fetchSpy.mockRestore();
+    expect(httpPost).not.toHaveBeenCalled();
   });
 
   it('redacts JSON and plain token-like fields from failed token responses', async () => {
-    const fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(
-      '{"error":"invalid_grant","access_token":"json-access"} refresh_token=plain-refresh Bearer token-value',
-      { status: 401 },
-    ));
-    const refresher = new OAuth2SourceCredentialRefresher({ refreshSkewMs: 60_000 });
+    const httpPost = jest.fn().mockResolvedValueOnce({
+      status: 401,
+      body: '{"error":"invalid_grant","access_token":"json-access"} refresh_token=plain-refresh Bearer token-value',
+    });
+    const refresher = new OAuth2SourceCredentialRefresher({
+      refreshSkewMs: 60_000, httpClient: { post: httpPost },
+    });
 
     let message = '';
     try {
@@ -53,7 +52,9 @@ describe('OAuth2SourceCredentialRefresher', () => {
     expect(message).not.toContain('plain-refresh');
     expect(message).not.toContain('token-value');
 
-    fetchSpy.mockRestore();
+    expect(httpPost).toHaveBeenCalledWith(expect.objectContaining({
+      url: 'https://oauth.example.test/token', timeoutMs: 10_000,
+    }));
   });
 });
 

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "bindingSha256": "7f16836be3241663ea0bf00e46e11883d8956785b52e2f2e17c3c919cd9e644f",
+  "days": [
+    {
+      "day": "2026-09-28",
+      "directory": "sep28-final-r1",
+      "manifestSha256": "9c56ae5b071e0c98a249719bff0f68b3c9e29765cd8d397d3f47d94b0aa13ec8"
+    }
+  ]
+}

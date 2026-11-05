@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.dart';
 import 'package:social_monitor_summaries/src/infrastructure/api/summary_api_dto.dart';
 import 'package:social_monitor_summaries/src/infrastructure/mappers/summary_mapper.dart';
-import 'package:social_monitor_summaries/src/presentation/components/reader_summary_brief_surface.dart';
 
 import '../../support/summaries_test_fixtures.dart';
+import 'support/reader_summary_brief_test_app.dart';
 
 const _redditUrl = 'https://reddit.test/r/ai/comments/apple-openai';
 const _hackerNewsUrl = 'https://news.ycombinator.test/item?id=42';
@@ -19,7 +18,7 @@ void main() {
   ) async {
     final summary = _clusteredSummary(secondaryUrl: _redditUrl);
 
-    await _pumpSummary(tester, summary);
+    await pumpReaderSummaryBrief(tester, summary);
     final citationChip = find.byKey(
       const ValueKey('reader-summary-lede-citation-bc-1'),
     );
@@ -33,15 +32,21 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.byKey(const ValueKey('reader-summary-citation-source-bc-1')),
+      find.byKey(
+        const ValueKey('reader-summary-url-action-citation-source-bc-1'),
+      ),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey('reader-summary-citation-source-bc-2')),
+      find.byKey(
+        const ValueKey('reader-summary-url-action-citation-source-bc-2'),
+      ),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey('reader-summary-citation-source-bc-3')),
+      find.byKey(
+        const ValueKey('reader-summary-url-action-citation-source-bc-3'),
+      ),
       findsNothing,
     );
     expect(find.byType(MenuItemButton), findsNWidgets(2));
@@ -52,7 +57,7 @@ void main() {
   ) async {
     final summary = _clusteredSummary(secondaryUrl: _rssUrl);
 
-    await _pumpSummary(tester, summary);
+    await pumpReaderSummaryBrief(tester, summary);
     final citationChip = find.byKey(
       const ValueKey('reader-summary-lede-citation-bc-1'),
     );
@@ -74,26 +79,6 @@ void main() {
     expect(find.text('[2] Hacker News'), findsOneWidget);
     expect(find.text('[3] RSS article'), findsOneWidget);
   });
-}
-
-Future<void> _pumpSummary(WidgetTester tester, ReaderSummary summary) async {
-  await tester.pumpWidget(
-    MaterialApp(
-      theme: AppTheme.dark(),
-      home: Scaffold(
-        body: SingleChildScrollView(
-          child: ReaderSummaryBriefSurface(
-            summary: summary,
-            citationsById: {
-              for (final citation in summary.citations) citation.id: citation,
-            },
-            isRefreshing: false,
-            onOpenUrl: (_) {},
-          ),
-        ),
-      ),
-    ),
-  );
 }
 
 ReaderSummary _clusteredSummary({required String secondaryUrl}) {
@@ -126,6 +111,8 @@ ReaderSummary _clusteredSummary({required String secondaryUrl}) {
         ],
         topReads: [
           TopReadApiDto(
+            storyClusterId: 'story:representative-legal-claim',
+            cardKind: 'curated_top_read',
             title: _representativeTitle,
             providerKey: 'reddit',
             reason: 'The discussion adds context to the reported legal claim.',

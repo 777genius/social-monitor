@@ -1,20 +1,23 @@
 import '../../domain/aggregates/reader_summary.dart';
+import 'reader_summary_source_text.dart';
 
 String readerSummaryDisplayReason(TopRead item) {
   for (final value in [item.reason, ...item.whyImportant]) {
     if (_isReaderFacingReason(value)) {
-      return _stripTrailingPeriod(value);
+      return _reasonCopy(item, value);
     }
   }
 
-  return 'Source-reported: ${item.title}';
+  return readerSummaryNeedsSourceDisclosure(item.title)
+      ? 'See source text for full context.'
+      : 'Source-reported: ${item.title}';
 }
 
 List<String> readerSummaryDisplayWhyImportant(TopRead item) {
   final values = <String>[];
   for (final value in item.whyImportant) {
     if (_isReaderFacingReason(value)) {
-      values.add(_stripTrailingPeriod(value));
+      values.add(_reasonCopy(item, value));
     }
   }
 
@@ -45,4 +48,12 @@ String _stripTrailingPeriod(String value) {
   return trimmed.endsWith('.')
       ? trimmed.substring(0, trimmed.length - 1)
       : trimmed;
+}
+
+String _reasonCopy(TopRead item, String value) {
+  if (readerSummaryNeedsSourceDisclosure(item.title) &&
+      value.contains(item.title)) {
+    return 'See source text for full context.';
+  }
+  return _stripTrailingPeriod(value);
 }

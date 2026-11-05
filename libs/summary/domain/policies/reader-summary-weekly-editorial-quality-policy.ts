@@ -7,6 +7,11 @@ import {
   type ReaderSummaryWeeklyModelOutput,
 } from "../../ports/reader-summary-weekly-model.port";
 import { assessReaderSummaryWeeklyStorySynthesis } from "./reader-summary-story-identity-policy";
+import {
+  countReaderSummaryWeeklyCitationsBy as countBy,
+  readerSummaryWeeklyCitationDominanceIsControlled as dominanceIsControlled,
+  readerSummaryWeeklyDominantCitationShare as dominantShare,
+} from "./reader-summary-weekly-editorial-citation-metrics";
 
 export const readerSummaryWeeklyEditorialQualityPolicyVersion =
   "reader_summary.weekly_editorial_quality.v2" as const;
@@ -62,9 +67,6 @@ type CitedTextUnit = Readonly<{
   citationIds: readonly string[];
   requiredClaimType?: ReaderSummaryWeeklyClaimType;
 }>;
-
-const maximumDominantCitationNumerator = 2;
-const maximumDominantCitationDenominator = 3;
 
 const weekdayHeading =
   /(?:^|\n)\s*(?:(?:#{1,6}|[-*+])\s*)?(?:mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?|day\s*[1-7]|\d{4}-\d{2}-\d{2}|(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?)(?:\s*(?:[:\-–—]|\n|$))/gimu;
@@ -459,41 +461,6 @@ const citedSingleDaySectionDates = (
     )
     .filter((dates) => dates.length === 1)
     .map((dates) => dates[0]!);
-
-const countBy = <T>(
-  values: readonly T[],
-  keyOf: (value: T) => string,
-): ReadonlyMap<string, number> => {
-  const counts = new Map<string, number>();
-  for (const value of values) {
-    const key = keyOf(value);
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  return counts;
-};
-
-const dominanceIsControlled = (
-  counts: ReadonlyMap<string, number>,
-): boolean => {
-  const total = [...counts.values()].reduce((sum, count) => sum + count, 0);
-  const dominant = Math.max(0, ...counts.values());
-  return (
-    total > 0 &&
-    dominant * maximumDominantCitationDenominator <=
-      total * maximumDominantCitationNumerator
-  );
-};
-
-const dominantShare = (
-  counts: ReadonlyMap<string, number>,
-  total: number,
-): number => {
-  if (total === 0) {
-    return 0;
-  }
-  const dominant = Math.max(0, ...counts.values());
-  return Math.round((dominant / total) * 1_000) / 1_000;
-};
 
 const distinct = <T>(values: readonly T[]): readonly T[] => [
   ...new Set(values),

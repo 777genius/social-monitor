@@ -29,6 +29,8 @@ import { RedditSourceProvider } from '../../adapters/source/reddit/reddit-source
 import { StaticRedditTokenProvider } from '../../adapters/source/reddit/static-reddit-token-provider';
 import { FixtureRssClient } from '../../adapters/source/rss/fixture-rss-client';
 import { RssSourceProvider } from '../../adapters/source/rss/rss-source.provider';
+import { FixtureTelegramPreviewClient } from '../../adapters/source/telegram/fixture-telegram-preview-client';
+import { TelegramSourceProvider } from '../../adapters/source/telegram/telegram-source.provider';
 import { sourceReadinessProfilesForRuntime } from '../../adapters/source/source-readiness-profiles';
 import {
   resolveSourceProviderRuntimeScope,
@@ -154,6 +156,13 @@ import { SourceProfileController } from './source-profile.controller';
       inject: [FixtureRedditClient, StaticRedditTokenProvider],
     },
     {
+      provide: TelegramSourceProvider,
+      useFactory: () => {
+        const clock = new SystemClock();
+        return new TelegramSourceProvider(new FixtureTelegramPreviewClient(clock), clock);
+      },
+    },
+    {
       provide: InMemorySourceProviderRegistry,
       useFactory: (
         fakeProvider: FakeSourceProvider,
@@ -163,6 +172,7 @@ import { SourceProfileController } from './source-profile.controller';
         hackerNewsProvider: HackerNewsSourceProvider,
         redditProvider: RedditSourceProvider,
         rssProvider: RssSourceProvider,
+        telegramProvider: TelegramSourceProvider,
       ) => {
         const runtimeScope = resolveSourceProviderRuntimeScope(process.env);
 
@@ -176,6 +186,7 @@ import { SourceProfileController } from './source-profile.controller';
               hackerNewsProvider,
               redditProvider,
               rssProvider,
+              telegramProvider,
             ],
             runtimeScope,
           ),
@@ -199,6 +210,7 @@ import { SourceProfileController } from './source-profile.controller';
         HackerNewsSourceProvider,
         RedditSourceProvider,
         RssSourceProvider,
+        TelegramSourceProvider,
       ],
     },
     {

@@ -76,13 +76,14 @@
     "enumStrings": "preserve_raw_value_and_map_to_unknown_in_ui_layer",
     "additionalJsonProperties": "ignore_for_strong_models_preserve_in_raw_payload_when_available"
   },
-  "operationCount": 90,
-  "mobileReadyOperationCount": 90,
+  "operationCount": 92,
+  "mobileReadyOperationCount": 92,
   "devOnlyWorkspaceRoleOperations": [],
   "mobileReadyOperations": [
     "ApiKeysController_create",
     "ApiKeysController_list",
     "ApiKeysController_revoke",
+    "AppBootstrapController_get",
     "AuthSessionController_get",
     "BetaLaunchSupportController_getSnapshot",
     "BetaLaunchSupportController_listKnownLimitations",
@@ -108,6 +109,7 @@
     "NotificationPreferencesController_get",
     "NotificationPreferencesController_set",
     "PublicApiAuditEventsController_list",
+    "ReaderPostsController_list",
     "ReaderSummaryController_get",
     "ReaderSummaryController_list",
     "ReaderSummaryController_listPeriods",
@@ -172,6 +174,30 @@
     "WorkspaceSettingsController_updateTelemetry"
   ],
   "operations": [
+    {
+      "operationId": "AppBootstrapController_get",
+      "clientName": "AppBootstrapController_get",
+      "method": "GET",
+      "path": "/app/bootstrap",
+      "tags": [
+        "app-bootstrap"
+      ],
+      "summary": "Restore the session and initial daily reader-summary data in one request.",
+      "pathParameters": [],
+      "queryParameters": [],
+      "requiredHeaders": [],
+      "optionalHeaders": [
+        "authorization"
+      ],
+      "requiresTenantWorkspace": false,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": false,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": [
+        "#/components/schemas/AppBootstrapResponseDto"
+      ]
+    },
     {
       "operationId": "AuthSessionController_get",
       "clientName": "AuthSessionController_get",
@@ -1346,6 +1372,42 @@
       "requestBodySchemaRef": "#/components/schemas/UpsertInterestUserSummaryPreferenceRequestDto",
       "successResponseSchemaRefs": [
         "#/components/schemas/UpsertUserSummaryPreferenceResponseDto"
+      ]
+    },
+    {
+      "operationId": "ReaderPostsController_list",
+      "clientName": "ReaderPostsController_list",
+      "method": "GET",
+      "path": "/reader-posts",
+      "tags": [
+        "reader-summaries"
+      ],
+      "summary": "Browse all collected posts in a period using saved assessments; no model calls.",
+      "pathParameters": [],
+      "queryParameters": [
+        "cursor",
+        "endedAt",
+        "excludedProviders",
+        "interestId",
+        "limit",
+        "order",
+        "startedAt"
+      ],
+      "requiredHeaders": [
+        "x-tenant-id",
+        "x-workspace-id"
+      ],
+      "optionalHeaders": [
+        "authorization",
+        "x-workspace-role"
+      ],
+      "requiresTenantWorkspace": true,
+      "supportsBearerApiKey": true,
+      "usesDevOnlyWorkspaceRoleHeader": true,
+      "devOnlyWorkspaceRoleRequired": false,
+      "requestBodySchemaRef": null,
+      "successResponseSchemaRefs": [
+        "#/components/schemas/ReaderPostsPageDto"
       ]
     },
     {

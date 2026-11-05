@@ -70,13 +70,19 @@ class SourceProfileCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                IconButton(
-                  tooltip: isExpanded ? 'Hide limitations' : 'Show limitations',
-                  onPressed: onToggleLimitations,
-                  icon: Icon(
-                    isExpanded
-                        ? Icons.keyboard_arrow_up
-                        : Icons.keyboard_arrow_down,
+                MergeSemantics(
+                  child: AppTooltip(
+                    message: isExpanded
+                        ? 'Hide limitations'
+                        : 'Show limitations',
+                    child: IconButton(
+                      onPressed: onToggleLimitations,
+                      icon: Icon(
+                        isExpanded
+                            ? Icons.keyboard_arrow_up
+                            : Icons.keyboard_arrow_down,
+                      ),
+                    ),
                   ),
                 ),
               ],

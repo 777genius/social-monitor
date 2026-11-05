@@ -6,7 +6,9 @@ import '../stores/feed_items_store.dart';
 import 'feed_feature_module.dart';
 
 class FeedFeatureModuleHost extends StatefulWidget {
-  const FeedFeatureModuleHost({super.key});
+  const FeedFeatureModuleHost({super.key, this.onOpenSource});
+
+  final Future<bool> Function(Uri)? onOpenSource;
 
   @override
   State<FeedFeatureModuleHost> createState() => _FeedFeatureModuleHostState();
@@ -43,6 +45,7 @@ class _FeedFeatureModuleHostState extends State<FeedFeatureModuleHost> {
     }
     return FeedFeaturePage(
       store: store,
+      onOpenSource: widget.onOpenSource,
       interestTitle: _module?.initialInterestTitle,
     );
   }

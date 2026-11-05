@@ -127,7 +127,7 @@ daily_service=$FIXTURE_REAL/daily.service
 daily_runner=$FIXTURE_REAL/daily-run.sh
 printf '%s\n' \
   '[Service]' \
-  'ExecStart=/var/data/social-monitor/control/daily-run.sh --yesterday' \
+  'ExecStart=/var/data/social-monitor/control/postgres-runtime-current/reader-summary-one-shot.sh daily' \
   'TimeoutStartSec=19800' 'Restart=no' > "$daily_service"
 cat > "$daily_runner" <<'SH'
 #!/usr/bin/env bash
@@ -139,7 +139,8 @@ COMPOSE=(
   -f "$ROOT/control/compose.production.yml"
   -f "$ROOT/control/compose.managed-db.yml"
   -f "$ROOT/control/postgres-runtime-current/compose.postgres-runtime.yml"
-  -f "$ROOT/integration/ops/deploy/production-runtime/compose.agent-runtime-model.yml"
+  -f "$ROOT/control/postgres-runtime-current/compose.agent-runtime-model.yml"
+  -f "$ROOT/control/postgres-runtime-current/compose.daily-artifacts.yml"
 )
 exec 9>"$ROOT/control/daily-run-singleton.lock"
 flock -n 9

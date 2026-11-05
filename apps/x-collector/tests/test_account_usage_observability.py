@@ -726,3 +726,52 @@ def account_usage_event_rows(db_path: Path) -> list[sqlite3.Row]:
                 """,
             ),
         )
+
+
+def test_reloading_lookup_persists_real_sqlite_success_and_failure_events(tmp_path: Path) -> None:
+    from typing import cast
+    from x_collector.config import XCollectorSettings
+    from x_collector.domain import PostLookupRequest, XCollectorUnavailableError
+    from x_collector.reloading_scweet_collector import ReloadingScweetDailySearchCollector
+
+    db_path = tmp_path / "lookup.db"
+    create_scweet_accounts_table(db_path)
+    insert_scweet_account(db_path, daily_requests=0, daily_tweets=0)
+    clock = FixedClock(datetime(2026, 11, 1, 12, tzinfo=UTC))
+    calls = []
+
+    class LookupSdk:
+        def get_tweet_info(self, ids, *, save):
+            calls.append((ids, save))
+            if len(calls) == 2:
+                raise RuntimeError("synthetic lookup unavailable")
+            return []
+
+    sdk = LookupSdk()
+    def build(_settings):
+        ledger = ScweetAccountPoolLedger(str(db_path), AccountPoolLimits(30, 600))
+        observer = AccountUsageObserver(ledger, SqliteAccountUsageEventRepository(str(db_path)), clock)
+        return ScweetDailySearchCollector(lambda: sdk, clock, str(db_path), ledger,
+                                          account_usage_observer=observer)
+
+    collector = ReloadingScweetDailySearchCollector(cast(XCollectorSettings, object()), build)
+    for index in range(2):
+        request = PostLookupRequest(f"lookup-{index}", "tenant", "workspace", "binding",
+                                   f"scan-{index}", "correlation", ("200",))
+        if index == 0:
+            assert collector.lookup_posts(request).posts == ()
+        else:
+            try:
+                collector.lookup_posts(request)
+            except XCollectorUnavailableError:
+                pass
+            else:
+                raise AssertionError("failed lookup must propagate")
+    events = account_usage_event_rows(db_path)
+    assert [(row["event_type"], row["request_id"]) for row in events] == [
+        ("pass_started", "lookup-0"), ("pass_succeeded", "lookup-0"),
+        ("pass_started", "lookup-1"), ("pass_failed", "lookup-1")]
+    assert all(row["query"] == "known_post_id_lookup" for row in events)
+    assert all(row["pass_label"] == "post_id_lookup" and row["product"] == "id_lookup" for row in events)
+    assert events[-1]["failure_kind"] == "RuntimeError"
+    assert calls == [(["200"], False), (["200"], False)]

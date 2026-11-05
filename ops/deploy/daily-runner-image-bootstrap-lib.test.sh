@@ -124,7 +124,7 @@ backend_image_rescue_image_id() {
 }
 
 backend_image_rescue_image_config() {
-  local image=$1
+  local image=$1 read_count
 
   printf 'config-id\t%s\n' "$image" >> "$EVENTS"
   case $image in
@@ -139,9 +139,18 @@ backend_image_rescue_image_config() {
       ;;
     *)
       [[ -n $(lookup_id "$image") ]] || return 1
-      printf '%s\n' "$BUILT_CONFIG"
+      read_count=$(grep -Fc $'config-id\t'"$image" "$EVENTS")
+      if ((read_count <= BUILT_CONFIG_UNSTABLE_READS)); then
+        printf '%s\n' "$BUILT_CONFIG_TRANSIENT"
+      else
+        printf '%s\n' "$BUILT_CONFIG"
+      fi
       ;;
   esac
+}
+
+sleep() {
+  printf 'sleep\t%s\n' "$*" >> "$EVENTS"
 }
 
 fake_compose() {
@@ -165,7 +174,7 @@ assert_compose_sentinel_fails_fast() {
 
 docker() {
   local source destination image_id revision
-  local tag='' label='' context='' argument=''
+  local tag='' label='' context='' argument='' provenance='' loaded=false
   printf 'docker\t%s\n' "$*" >> "$EVENTS"
   case ${1:-}:${2:-} in
     container:ls)
@@ -242,6 +251,7 @@ docker() {
         "$LEGACY_RUNTIME_CONTAINER_NUMBER"
       ;;
     build:*)
+      [[ ${BUILDX_NO_DEFAULT_ATTESTATIONS:-} == 1 ]] || return 73
       [[ -n $(lookup_id "$BASE_TAG") ]] || return 72
       shift
       while (($# > 0)); do
@@ -249,6 +259,8 @@ docker() {
         shift
         case $argument in
           --pull=false) ;;
+          --provenance=false) provenance=false ;;
+          --load) loaded=true ;;
           --file)
             [[ ${1:-} == "$CONTROL/daily-runner.Dockerfile" ]]
             shift
@@ -265,6 +277,8 @@ docker() {
         esac
       done
       [[ $label == "org.opencontainers.image.revision=$PREVIOUS_SHA" ]]
+      [[ $provenance == false ]]
+      [[ $loaded == true ]]
       [[ -f $context/release-content.txt ]]
       [[ $(<"$context/release-content.txt") == historical ]]
       [[ ! -e $context/target-only.txt && ! -L $context/target-only.txt ]]
@@ -327,7 +341,7 @@ docker() {
 # shellcheck source=ops/deploy/daily-runner-image-bootstrap-lib.sh
 source "$LIBRARY"
 assert_compose_sentinel_fails_fast
-EXPECTED_CONFIG=$DAILY_RUNNER_BOOTSTRAP_IMAGE_CONFIG
+EXPECTED_CONFIG=$DAILY_RUNNER_BOOTSTRAP_LEGACY_IMAGE_CONFIG
 BASE_TAG=$(compose_image_name intelligence-worker)
 FALLBACK_BASE_TAG=$(compose_image_name api)
 COMPOSE_TAG=$(compose_image_name daily-runner)
@@ -357,6 +371,8 @@ reset_case() {
   BASE_TAG_CONFIG='["must-not-use"]|["config"]|"/app"|"node"|null'
   MUTATED_BASE_CONFIG=$EXPECTED_CONFIG
   BUILT_CONFIG=$EXPECTED_CONFIG
+  BUILT_CONFIG_TRANSIENT='["transient"]|["config"]|"/app"|"node"|null'
+  BUILT_CONFIG_UNSTABLE_READS=0
   BUILT_IMAGE_ID=$CANDIDATE_ID
   BUILT_REVISION_OVERRIDE=
   : > "$CONTAINERS"
@@ -612,6 +628,15 @@ assert_events_exclude $'docker\tcontainer ls'
 assert_events_exclude $'docker\tinspect'
 assert_events_exclude $'config-id\tsocial-monitor-prod-intelligence-worker:latest'
 
+# Current releases use dedicated service entrypoints rather than the legacy
+# SERVICE switch. The rebuilt daily-runner must inherit that exact base config.
+reset_case
+BASE_CONFIG=$DAILY_RUNNER_BOOTSTRAP_INTELLIGENCE_IMAGE_CONFIG
+BUILT_CONFIG=$BASE_CONFIG
+daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
+[[ $(lookup_id "$COMPOSE_TAG") == "$CANDIDATE_ID" ]]
+assert_no_temporary_state
+
 # A missing intelligence-worker tag falls back to the same reviewed runtime
 # image contract under the always-on API service. This is the production
 # recovery path when an interrupted backend replacement removed only the
@@ -619,6 +644,7 @@ assert_events_exclude $'config-id\tsocial-monitor-prod-intelligence-worker:lates
 reset_case
 remove_ref "$BASE_TAG"
 set_ref "$FALLBACK_BASE_TAG" "$BASE_ID" "$PREVIOUS_SHA"
+BASE_CONFIG=$DAILY_RUNNER_BOOTSTRAP_API_IMAGE_CONFIG
 [[ $(daily_runner_bootstrap_base_image_id "$PREVIOUS_SHA") == "$BASE_ID" ]]
 grep -F $'docker\timage inspect social-monitor-prod-intelligence-worker:latest' \
   "$EVENTS" >/dev/null
@@ -629,6 +655,8 @@ assert_events_exclude $'config-id\tsocial-monitor-prod-api:latest'
 reset_case
 remove_ref "$BASE_TAG"
 set_ref "$FALLBACK_BASE_TAG" "$BASE_ID" ''
+BASE_CONFIG=$DAILY_RUNNER_BOOTSTRAP_API_IMAGE_CONFIG
+BUILT_CONFIG=$BASE_CONFIG
 configure_legacy_runtime_stable
 LEGACY_RUNTIME_SERVICE=api
 daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
@@ -641,6 +669,8 @@ assert_no_temporary_state
 reset_case
 remove_ref "$BASE_TAG"
 set_ref "$FALLBACK_BASE_TAG" "$BASE_ID" "$PREVIOUS_SHA"
+BASE_CONFIG=$DAILY_RUNNER_BOOTSTRAP_API_IMAGE_CONFIG
+BUILT_CONFIG=$BASE_CONFIG
 BUILD_FAILURE=true
 assert_fails_with 'historical daily-runner image build failed' \
   daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
@@ -748,13 +778,13 @@ for legacy_state in status running paused restarting dead oom-killed error \
   assert_events_exclude $'config-id\t'
 done
 
-# Configuration must be inspected by the immutable ID before and after the
-# historical build, never through the mutable Compose tag.
+# Configuration must be inspected by immutable ID for admission, immediately
+# around exact inheritance, and post-build revalidation, never by mutable tag.
 reset_case
 configure_unlabelled_base
 daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
 [[ $(lookup_id "$COMPOSE_TAG") == "$CANDIDATE_ID" ]]
-[[ $(grep -cF -- $'config-id\t'"$BASE_ID" "$EVENTS") == 2 ]]
+[[ $(grep -cF -- $'config-id\t'"$BASE_ID" "$EVENTS") == 4 ]]
 assert_events_exclude $'config-id\tsocial-monitor-prod-intelligence-worker:latest'
 
 # Archive traversal and symlink entries never reach Docker.
@@ -815,6 +845,13 @@ BUILT_CONFIG='["unexpected"]|["config"]|"/app"|"node"|null'
 assert_fails_with 'historical daily-runner image config is unexpected' \
   daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
 [[ -z $(lookup_id "$COMPOSE_TAG") ]]
+assert_no_temporary_state
+
+reset_case
+BUILT_CONFIG_UNSTABLE_READS=1
+daily_runner_image_bootstrap_before_rescue "$PREVIOUS_SHA" "$TARGET_SHA"
+[[ $(lookup_id "$COMPOSE_TAG") == "$CANDIDATE_ID" ]]
+[[ $(grep -Fc $'sleep\t1' "$EVENTS") == 1 ]]
 assert_no_temporary_state
 
 reset_case

@@ -1,5 +1,6 @@
 import { resolveRuntimeProfile } from '@social-monitor/platform-config';
 import { validateOutboundUrl } from '@social-monitor/shared-kernel';
+import { validateTelegramSourceBindingConfig } from './telegram-source-binding-config';
 
 import type {
   SourceBindingConfig,
@@ -65,6 +66,7 @@ const xTwitterProfile: SourceCapabilityProfile = {
 };
 
 const sourceProfiles = new Map([
+  ['telegram', { providerKey: 'telegram', version: 1, productionSafe: true, supportsCursor: true }],
   [fakeSourceProfile.providerKey, fakeSourceProfile],
   [hackerNewsProfile.providerKey, hackerNewsProfile],
   [rssProfile.providerKey, rssProfile],
@@ -153,6 +155,10 @@ export class FakeSourceCatalogAdapter implements SourceCatalogPort {
       }
 
       return validateFeedUrl(feedUrl);
+    }
+
+    if (canonicalKey === 'telegram') {
+      return validateTelegramSourceBindingConfig(config);
     }
 
     if (canonicalKey === 'hacker-news') {
@@ -331,6 +337,13 @@ export class FakeSourceCatalogAdapter implements SourceCatalogPort {
         return {
           ok: false,
           reason: `Unsupported X/Twitter search product: ${unsupportedProduct}`,
+        };
+      }
+
+      if (config.promotionAuthorityHandles !== undefined) {
+        return {
+          ok: false,
+          reason: 'X/Twitter promotion authority is platform-controlled and cannot be configured by a workspace.',
         };
       }
 

@@ -131,6 +131,7 @@ export const searchOptionsForTargetWindow = (
     : {
         from: window.startInclusive,
         to: window.endExclusive,
+        requireComplete: true,
       };
 
 type TargetPublishedWindow = {

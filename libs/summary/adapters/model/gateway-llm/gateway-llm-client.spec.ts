@@ -1,0 +1,492 @@
+import type { Prepare, SafeError } from "@agent-teams/account-gateway/contracts";
+import { GatewayError } from "@agent-teams/account-gateway/http";
+import type { NativeResponse } from "@agent-teams/account-gateway/http";
+import { createLlmClient, LLM_DEFAULT_OUTPUT_BYTES, LLM_MAX_OUTPUT_BYTES } from "@agent-teams/account-gateway/llm";
+import type { ConsumerControlPort, ExecutionPort } from "@agent-teams/account-gateway/llm";
+import { isAttestedRuntimeIdentity } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
+import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
+
+import type { AgentRuntimeTaskCommand, ReaderSummaryTopicLabelerInput } from "../../../ports";
+import { activeReaderSummaryPurposes } from "../active-reader-summary-generation-profile";
+import { readAgentRuntimeObjectOutput } from "../agent-runtime-model-support";
+import {
+  AgentRuntimeReaderSummaryTopicLabeler,
+  resolveAgentRuntimeReaderSummaryTopicLabelerOptions,
+} from "../agent-runtime-reader-summary-topic-labeler.adapter";
+import { verifyAndRecordReaderSummaryExecution } from "../reader-summary-execution-attestation";
+import { CooldownRotatingAccountSelector } from "./gateway-llm-account-selector";
+import { RunScopedGatewayLlmAttempts } from "./gateway-llm-attempts";
+import { GatewayLlmClient, type GatewayLlmRoute } from "./gateway-llm-client";
+import { approvedGatewayLlmSdkIdentity } from "./gateway-llm-sdk-identity";
+import { gatewayLlmDeadline, gatewayLlmSettlementGraceMs } from "./gateway-llm-deadline";
+
+type Access = Awaited<ReturnType<ConsumerControlPort["runAccess"]>>;
+type Script = {
+  readonly access?: (intent: Prepare) => Promise<Access>;
+  readonly request?: (call: number) => Promise<NativeResponse>;
+};
+
+const accountA = "00000000-0000-4000-8000-00000000000a";
+const accountB = "00000000-0000-4000-8000-00000000000b";
+// One required and one optional property: strict mode must make both required.
+const schema = { type: "object", properties: { label: { type: "string" },
+  note: { type: "string" } }, required: ["label"], additionalProperties: false };
+const kimiRoute: GatewayLlmRoute = { profileId: "kimi-code-global-responses-apikey-v1",
+  modelBackend: "kimi-code", model: "k3-256k", accountRefs: [accountA, accountB],
+  minOutputTokens: 32_768 };
+
+const grant = (intent: Prepare, accountRef = intent.accountRefs[0]!): Access => ({
+  operation: { operationRef: intent.operationId, state: "applied", result: {
+    kind: "execution", executionRef: `execution-${intent.attemptRef}`, accountRef,
+    authorizationEpoch: 3, deadline: intent.deadline, state: "active" } },
+  bearer: "fixture-execution-bearer",
+  admission: { invocationRef: intent.invocationRef, attemptRef: intent.attemptRef, accountRef,
+    authorizationEpoch: 3, subjectRef: intent.subjectRef, policyRevision: intent.policyRevision,
+    bindingRevision: intent.bindingRevision, profileId: intent.profileId, limits: intent.limits,
+    expiresAt: intent.deadline },
+});
+
+const completedStream = (text: string, model = "k3-256k"): NativeResponse => {
+  const bytes = new TextEncoder().encode(`data: ${JSON.stringify({ type: "response.completed",
+    response: { id: "resp-1", model, status: "completed",
+      output: [{ type: "message", content: [{ type: "output_text", text }] }],
+      usage: { input_tokens: 40, output_tokens: 9 } } })}\n\n`);
+  const body = new ReadableStream<Uint8Array>({ start(controller) {
+    controller.enqueue(bytes);
+    controller.close();
+  } });
+  return { kind: "stream", requestRef: "fixture", body, cancel: async () => {} };
+};
+
+const safe = (effect: SafeError["effect"], code: SafeError["code"],
+  retry: SafeError["retry"] = { kind: "never" }): GatewayError =>
+  new GatewayError("safe_error", effect, undefined, undefined,
+    { code, traceRef: "trace-fixture", effect, retry });
+
+const harness = (script: Script = {}, runId = "run-1", route: GatewayLlmRoute = kimiRoute) => {
+  const prepares: Prepare[] = [];
+  const bodies: Record<string, unknown>[] = [];
+  const sleeps: number[] = [];
+  let requests = 0;
+  const execution: ExecutionPort = {
+    request: async (_ref, input) => {
+      requests += 1;
+      bodies.push(JSON.parse(new TextDecoder().decode(input.body)) as Record<string, unknown>);
+      return script.request ? script.request(requests) : completedStream('{"label":"AI agents","note":null}');
+    },
+    status: async () => { throw new GatewayError("transport", "effect_unknown"); },
+    close: async (_ref, input) => ({ operationRef: input.operationId, state: "applied" }),
+  };
+  const llm = createLlmClient({
+    control: { runAccess: async (intent) => {
+      prepares.push(intent);
+      return script.access ? script.access(intent) : grant(intent);
+    } },
+    connectExecution: () => execution,
+  });
+  const client = new GatewayLlmClient({
+    llm,
+    policy: { subjectRef: "social-monitor", policyRevision: 1, bindingRevision: 1 },
+    route,
+    attempts: new RunScopedGatewayLlmAttempts(runId),
+    accounts: new CooldownRotatingAccountSelector({ busyCooldownMs: 30_000,
+      unauthorizedCooldownMs: 3_600_000 }),
+    sdk: approvedGatewayLlmSdkIdentity,
+    clock: { now: () => new Date() },
+    sleep: async (ms) => { sleeps.push(ms); },
+  });
+  return { client, prepares, bodies, sleeps, requests: () => requests };
+};
+
+const command = (overrides: Partial<AgentRuntimeTaskCommand> = {}): AgentRuntimeTaskCommand => ({
+  requestId: "social_monitor.reader_summary.topic_map.label.v2:t:w:digest:1970-01-01T00:00:00.000Z",
+  tenantId: tenantId("00000000-0000-7000-8000-000000000901"),
+  workspaceId: workspaceId("00000000-0000-7000-8000-000000000902"),
+  correlationId: "correlation-1",
+  provider: "codex",
+  purpose: activeReaderSummaryPurposes.topicLabel,
+  systemPrompt: "Label the topic.",
+  prompt: '{"posts":["agents"]}',
+  outputSchema: schema,
+  controls: { model: "k3-256k", modelBackend: "kimi-code", maxOutputTokens: 6_000 },
+  timeoutMs: 60_000,
+  ...overrides,
+});
+
+describe("purpose-scoped SSE output budgets", () => {
+  it.each([
+    [activeReaderSummaryPurposes.generate, LLM_MAX_OUTPUT_BYTES],
+    [activeReaderSummaryPurposes.repair, LLM_MAX_OUTPUT_BYTES],
+    [activeReaderSummaryPurposes.dailyEditorial, LLM_DEFAULT_OUTPUT_BYTES],
+    [activeReaderSummaryPurposes.promotionPresentation, LLM_DEFAULT_OUTPUT_BYTES],
+    [activeReaderSummaryPurposes.topicLabel, LLM_DEFAULT_OUTPUT_BYTES],
+    ["social_monitor.reader_summary.generate.v2.extra", LLM_DEFAULT_OUTPUT_BYTES],
+    ["social_monitor.reader_summary.generate", LLM_DEFAULT_OUTPUT_BYTES],
+  ] as const)("signs the finite transport budget for %s without changing model output controls", async (purpose, outputBytes) => {
+    const h = harness();
+    const result = await h.client.runTask(command({ purpose }));
+    expect(result.status).toBe("completed");
+    expect(h.prepares[0]).toMatchObject({ limits: { outputBytes, tokens: 32_768 } });
+    expect(h.bodies[0]).toMatchObject({ model: "k3-256k", max_output_tokens: 32_768,
+      text: { format: { type: "json_schema", strict: true } } });
+    expect(h.requests()).toBe(1);
+  });
+
+  it("still rejects a writer answer beyond the final JSON field bound without a retry", async () => {
+    const h = harness({ request: async () => completedStream('{"label":"too long","note":null}') });
+    const result = await h.client.runTask(command({ purpose: activeReaderSummaryPurposes.generate,
+      outputSchema: { ...schema, properties: { ...schema.properties,
+        label: { type: "string", maxLength: 3 } } } }));
+    expect(h.prepares[0]).toMatchObject({ limits: { outputBytes: LLM_MAX_OUTPUT_BYTES } });
+    expect(result.failure).toMatchObject({ code: "provider_output_invalid", details: {
+      outputValidationViolations: "$.label:maxLength=3" } });
+    expect(h.requests()).toBe(1);
+  });
+});
+
+describe("gateway settlement grace", () => {
+  afterEach(() => jest.useRealTimers());
+
+  it("keeps the same admitted request open for a late valid response", async () => {
+    jest.useFakeTimers();
+    const h = harness({ request: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 60_500));
+      return completedStream('{"label":"late valid response","note":null}');
+    } });
+    const started = Date.now();
+    const pending = h.client.runTask(command());
+    await jest.advanceTimersByTimeAsync(60_500);
+    const result = await pending;
+    expect(result.status).toBe("completed");
+    expect(result.warnings).toContainEqual(expect.objectContaining({
+      code: "gateway_settlement_grace_used" }));
+    expect(h.requests()).toBe(1);
+    expect(h.prepares).toHaveLength(1);
+    expect(Date.parse(h.prepares[0]!.deadline)).toBe(started + 60_000 + gatewayLlmSettlementGraceMs);
+  });
+
+  it("does not extend the gateway admission ceiling", () => {
+    expect(gatewayLlmDeadline(0, 3_600_000).getTime()).toBe(3_600_000);
+  });
+
+  it("reports a hard deadline with effect and timing without dispatching a replacement", async () => {
+    jest.useFakeTimers();
+    const h = harness({ request: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 90_001));
+      throw new GatewayError("cancelled", "response_started");
+    } });
+    const pending = h.client.runTask(command());
+    await jest.advanceTimersByTimeAsync(90_001);
+    const result = await pending;
+    expect(result).toMatchObject({ status: "failed", failure: {
+      code: "task_timeout", details: { gatewayElapsedMs: "90001",
+        gatewaySoftTimeoutMs: "60000", gatewayHardTimeoutMs: "90000",
+        gatewayCleanup: "closed" } } });
+    expect(h.requests()).toBe(1);
+  });
+
+  it("keeps cancellation authoritative during the grace period", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const h = harness();
+    const result = await h.client.runTask(command(), { signal: controller.signal });
+    expect(result.failure?.code).toBe("task_cancelled");
+    expect(h.requests()).toBe(0);
+  });
+});
+
+const labelInput = {
+  tenantId: tenantId("tenant-topic-labeler"),
+  workspaceId: workspaceId("workspace-topic-labeler"),
+  scope: { type: "workspace" },
+  period: { cadence: "daily", startedAt: new Date("2026-06-01T00:00:00.000Z"),
+    endedAt: new Date("2026-06-02T00:00:00.000Z"), timezone: "UTC", periodKey: "2026-06-01" },
+  requestedAt: new Date("2026-06-02T01:00:00.000Z"),
+  clusters: [{ id: "story:codex", storyKey: "codex-agents",
+    representativeFeedItemId: "feed-codex-1", duplicateFeedItemIds: [],
+    interestIds: ["ai-agents"], providerKeys: ["hacker-news"], score: 0.8,
+    observedAtRange: { startedAt: new Date("2026-06-01T00:00:00.000Z"),
+      endedAt: new Date("2026-06-01T01:00:00.000Z") },
+    whyImportant: ["Developer tooling signal"] }],
+  selectedEvidence: [{ feedItemId: "feed-codex-1", sourceItemId: "source-codex-1",
+    sourceBindingId: "binding-codex", interestId: "ai-agents", providerKey: "hacker-news",
+    canonicalUrl: "https://example.test/codex", title: "Codex adds local agent workflows",
+    bodyPreview: "Developers discuss local agent usage.",
+    publishedAt: new Date("2026-06-01T00:00:00.000Z"),
+    observedAt: new Date("2026-06-01T00:10:00.000Z"), score: 0.8, whyImportant: [] }],
+  topStories: [],
+  candidates: [{ nodeId: "topic:story:codex", storyClusterId: "story:codex",
+    fallbackLabel: "Codex", score: 80, evidenceCount: 1, providerKeys: ["hacker-news"],
+    interestIds: ["ai-agents"], keywords: ["codex"], labelCandidates: [] }],
+} satisfies ReaderSummaryTopicLabelerInput;
+
+describe("GatewayLlmClient", () => {
+  it("serves a Kimi topic label task configured from env end to end", async () => {
+    // A strict provider returns every property, with null for the optional ones.
+    const output = { nodeLabels: [{ nodeId: "topic:story:codex", topicId: null,
+      subject: "Codex", parentSubject: "OpenAI", claimType: "other", qualifier: null,
+      confidenceScore: 0.92, groupId: "group:agent-tools", keywords: ["codex"],
+      rationale: null }], groups: [{ id: "group:agent-tools", label: "Agent tools",
+      semanticAnchors: ["Codex"], nodeIds: ["topic:story:codex"], confidenceScore: 0.92,
+      rationale: null }], warnings: null };
+    const fake = harness({ request: async () => completedStream(JSON.stringify(output)) });
+    const recorded: unknown[] = [];
+    const labeler = new AgentRuntimeReaderSummaryTopicLabeler({
+      ...resolveAgentRuntimeReaderSummaryTopicLabelerOptions({
+        AGENT_RUNTIME_READER_SUMMARY_BACKEND: "kimi-code",
+        AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.6-sol",
+        AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "high",
+      }, fake.client),
+      verifiedAttestationSink: { record: (value) => { recorded.push(value); } },
+    });
+
+    await expect(labeler.label(labelInput)).resolves.toMatchObject({
+      nodeLabels: [expect.objectContaining({ nodeId: "topic:story:codex" })] });
+    expect(fake.bodies[0]).toMatchObject({ model: "k3-256k", max_output_tokens: 32_768 });
+    expect(fake.bodies[0]).not.toHaveProperty("reasoning");
+    expect(recorded).toEqual([expect.objectContaining({ taskRole: "topic_label",
+      attestation: expect.objectContaining({ model: "k3-256k", reasoningEffort: "default",
+        runtimeEngine: "gateway-llm" }) })]);
+  });
+
+  it("runs a Kimi task without reasoning and with an attestation the verifier accepts", async () => {
+    const fake = harness();
+    const task = command();
+    const result = await fake.client.runTask(task);
+
+    // decode removed the null the strict schema added for the optional field
+    expect(result).toMatchObject({ status: "completed", structuredOutput: { label: "AI agents" },
+      usage: { inputTokens: 40, outputTokens: 9, totalTokens: 49, estimatedCostUsd: 0 } });
+    expect(result.structuredOutput).not.toHaveProperty("note");
+    const body = fake.bodies[0]!;
+    expect(body).not.toHaveProperty("reasoning");
+    expect(body).toMatchObject({ model: "k3-256k", max_output_tokens: 32_768, stream: true,
+      text: { format: { type: "json_schema", strict: true, schema: {
+        required: ["label", "note"], additionalProperties: false,
+        properties: { note: { anyOf: [{ type: "string" }, { type: "null" }] } } } } } });
+    const attestation = result.executionAttestation!;
+    expect(attestation).toMatchObject({ runtimeEngine: "gateway-llm", model: "k3-256k",
+      reasoningEffort: "default", launcherSha256: approvedGatewayLlmSdkIdentity.archiveSha256,
+      gateway: { attempt: 1, observedModel: "k3-256k",
+        profileId: "kimi-code-global-responses-apikey-v1",
+        requestRef: `${fake.prepares[0]!.invocationRef}-a1-r` } });
+    expect(isAttestedRuntimeIdentity(attestation)).toBe(true);
+    expect(fake.prepares[0]).toMatchObject({ profileId: "kimi-code-global-responses-apikey-v1",
+      subjectRef: "social-monitor", limits: { tokens: 32_768 } });
+    const recorded: unknown[] = [];
+    await verifyAndRecordReaderSummaryExecution({ command: task, result, taskRole: "topic_label",
+      attempt: "1", normalizedOutput: result.structuredOutput,
+      sink: { record: (value) => { recorded.push(value); } } });
+    expect(recorded).toHaveLength(1);
+  });
+
+  it("sends an OpenRouter route effort and keeps a larger product budget", async () => {
+    const fake = harness({ request: async () => completedStream('{"label":"x","note":"y"}',
+      "openai/gpt-oss-120b") }, "run-1", { profileId: "openrouter-openai-responses-apikey-v1",
+      modelBackend: "openrouter", model: "openai/gpt-oss-120b", reasoningEffort: "medium",
+      accountRefs: [accountA], minOutputTokens: 4_096 });
+    const task = command({ controls: { model: "openai/gpt-oss-120b", modelBackend: "openrouter",
+      reasoningEffort: "medium", maxOutputTokens: 6_000 } });
+    const result = await fake.client.runTask(task);
+
+    expect(fake.bodies[0]).toMatchObject({ reasoning: { effort: "medium" }, max_output_tokens: 6_000 });
+    expect(result.executionAttestation).toMatchObject({ model: "openai/gpt-oss-120b",
+      reasoningEffort: "medium" });
+    await expect(verifyAndRecordReaderSummaryExecution({ command: task, result,
+      taskRole: "topic_label", attempt: "1", normalizedOutput: result.structuredOutput }))
+      .resolves.toBeUndefined();
+  });
+
+  it("runs a Codex task through the gateway at effort high with an attestation the verifiers accept", async () => {
+    const codexRoute: GatewayLlmRoute = { profileId: "openai-codex-oauth-responses-v1",
+      modelBackend: "openai-chatgpt", model: "gpt-5.6-sol", reasoningEffort: "high",
+      accountRefs: [accountA, accountB], minOutputTokens: 16_384 };
+    const fake = harness({ request: async () => completedStream('{"label":"x","note":null}', "gpt-5.6-sol") },
+      "run-1", codexRoute);
+    // Exactly what the Codex adapters send: no modelBackend, the CLI effort.
+    const task = command({ purpose: activeReaderSummaryPurposes.generate,
+      controls: { model: "gpt-5.6-sol", reasoningEffort: "high", maxOutputTokens: 16_000 } });
+    const result = await fake.client.runTask(task);
+
+    expect(fake.prepares[0]).toMatchObject({ profileId: "openai-codex-oauth-responses-v1",
+      accountRefs: expect.arrayContaining([accountA, accountB]), limits: { tokens: 16_384 } });
+    expect(fake.bodies[0]).toMatchObject({ model: "gpt-5.6-sol", reasoning: { effort: "high" },
+      max_output_tokens: 16_384, text: { format: { type: "json_schema", strict: true } } });
+    expect(result.executionAttestation).toMatchObject({ provider: "codex", model: "gpt-5.6-sol",
+      reasoningEffort: "high", runtimeEngine: "gateway-llm",
+      runtimePackageVersion: approvedGatewayLlmSdkIdentity.packageVersion,
+      gateway: { profileId: "openai-codex-oauth-responses-v1", observedModel: "gpt-5.6-sol" } });
+    await expect(verifyAndRecordReaderSummaryExecution({ command: task, result, taskRole: "summary",
+      attempt: "primary", normalizedOutput: result.structuredOutput })).resolves.toBeUndefined();
+    // Gateway-only and MiMo tasks never run on the Codex route.
+    for (const controls of [{ model: "k3-256k", modelBackend: "kimi-code" },
+      { model: "gpt-5.6-sol", modelBackend: "xiaomi-mimo-token-plan", reasoningEffort: "high" },
+      { model: "gpt-5.6-sol", reasoningEffort: "medium" }]) {
+      expect((await fake.client.runTask(command({ controls }))).failure)
+        .toMatchObject({ retryable: false, details: { gatewayEffect: "not_dispatched" } });
+    }
+    expect(fake.requests()).toBe(1);
+  });
+
+  it("serves a Codex topic label configured from env at gpt-6.1-sol/low end to end", async () => {
+    const env: NodeJS.ProcessEnv = { AGENT_RUNTIME_TRANSPORT: "gateway-llm",
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
+      AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.6-sol",
+      AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "high" };
+    const output = { nodeLabels: [{ nodeId: "topic:story:codex", topicId: null,
+      subject: "Codex", parentSubject: "OpenAI", claimType: "other", qualifier: null,
+      confidenceScore: 0.92, groupId: "group:agent-tools", keywords: ["codex"],
+      rationale: null }], groups: [{ id: "group:agent-tools", label: "Agent tools",
+      semanticAnchors: ["Codex"], nodeIds: ["topic:story:codex"], confidenceScore: 0.92,
+      rationale: null }], warnings: null };
+    const fake = harness({ request: async () => completedStream(JSON.stringify(output), "gpt-6.1-sol") },
+      "run-1", { profileId: "openai-codex-oauth-responses-v1", modelBackend: "openai-chatgpt",
+        model: "gpt-6.1-sol", reasoningEffort: "low", accountRefs: [accountA], minOutputTokens: 16_384 });
+    const recorded: unknown[] = [];
+    const labeler = new AgentRuntimeReaderSummaryTopicLabeler({
+      ...resolveAgentRuntimeReaderSummaryTopicLabelerOptions(env, fake.client),
+      verifiedAttestationSink: { record: (value) => { recorded.push(value); } },
+    });
+
+    await expect(labeler.label(labelInput)).resolves.toMatchObject({
+      nodeLabels: [expect.objectContaining({ nodeId: "topic:story:codex" })] });
+    // The wire body the SDK sent carries the route model and its low effort.
+    expect(fake.bodies[0]).toMatchObject({ model: "gpt-6.1-sol", reasoning: { effort: "low" },
+      max_output_tokens: 16_384, text: { format: { type: "json_schema", strict: true } } });
+    expect(fake.prepares[0]).toMatchObject({ profileId: "openai-codex-oauth-responses-v1" });
+    expect(recorded).toEqual([expect.objectContaining({ taskRole: "topic_label",
+      attestation: expect.objectContaining({ provider: "codex", model: "gpt-6.1-sol",
+        reasoningEffort: "low", runtimeEngine: "gateway-llm",
+        gateway: expect.objectContaining({ profileId: "openai-codex-oauth-responses-v1" }) }) })]);
+  });
+
+  it("verifies gpt-6.1-sol only from the gateway engine at its allowed effort", async () => {
+    const fake = harness({ request: async () => completedStream('{"label":"x","note":null}', "gpt-6.1-sol") },
+      "run-1", { profileId: "openai-codex-oauth-responses-v1", modelBackend: "openai-chatgpt",
+        model: "gpt-6.1-sol", reasoningEffort: "low", accountRefs: [accountA], minOutputTokens: 16_384 });
+    const task = command({ purpose: activeReaderSummaryPurposes.generate,
+      controls: { model: "gpt-6.1-sol", reasoningEffort: "low", maxOutputTokens: 16_000 } });
+    const result = await fake.client.runTask(task);
+    const verify = (patch: Record<string, unknown>, controls = task.controls) =>
+      verifyAndRecordReaderSummaryExecution({ command: { ...task, controls },
+        result: { ...result, executionAttestation: { ...result.executionAttestation!, ...patch } as never },
+        taskRole: "summary", attempt: "primary", normalizedOutput: result.structuredOutput });
+
+    await expect(verify({})).resolves.toBeUndefined();
+    await expect(verify({ reasoningEffort: "high" }, { ...task.controls, reasoningEffort: "high" }))
+      .rejects.toThrow("attestation is invalid");
+    await expect(verify({ runtimeEngine: "subscription-runtime-cli", gateway: undefined }))
+      .rejects.toThrow("attestation is invalid");
+    await expect(verify({ model: "gpt-5.6-sol" })).rejects.toThrow("attestation is invalid");
+  });
+
+  it("refuses tasks outside the route before any gateway call", async () => {
+    const fake = harness();
+    const codex = await fake.client.runTask(command({ controls: { model: "gpt-5.6-sol",
+      reasoningEffort: "high" } }));
+    const mimo = await fake.client.runTask(command({ controls: { model: "mimo-v2.6-pro",
+      modelBackend: "xiaomi-mimo-token-plan", reasoningEffort: "high" } }));
+    const effort = await fake.client.runTask(command({ controls: { model: "k3-256k",
+      modelBackend: "kimi-code", reasoningEffort: "high" } }));
+    const unsupportedSchema = await fake.client.runTask(command({
+      outputSchema: { type: "object", properties: {}, patternProperties: {} } }));
+
+    expect(codex.failure).toMatchObject({ code: "unsupported_route", retryable: false });
+    expect(mimo.failure).toMatchObject({ code: "unsupported_route", retryable: false });
+    expect(effort.failure).toMatchObject({ code: "invalid_request", retryable: false });
+    expect(unsupportedSchema.failure).toMatchObject({ code: "invalid_schema",
+      details: { gatewayEffect: "not_dispatched" } });
+    expect(fake.prepares).toHaveLength(0);
+  });
+
+  it("sends every enum typed, because Kimi rejects an untyped schema node", async () => {
+    // The reader summary schema has bare enums; Kimi answered them with HTTP 400
+    // "type is not defined" and the gateway reported effect_unknown.
+    const enumSchema = { type: "object", additionalProperties: false, required: ["level", "flags"],
+      properties: { level: { $ref: "#/$defs/level" },
+        flags: { type: "array", items: { enum: ["stale", "weak"] } } },
+      $defs: { level: { enum: ["low", "high"] } } };
+    const fake = harness({ request: async () => completedStream('{"level":"low","flags":["stale"]}') });
+    const result = await fake.client.runTask(command({ outputSchema: enumSchema }));
+
+    expect(result).toMatchObject({ status: "completed",
+      structuredOutput: { level: "low", flags: ["stale"] } });
+    expect(fake.bodies[0]).toMatchObject({ text: { format: { schema: {
+      $defs: { level: { type: "string", enum: ["low", "high"] } },
+      properties: { flags: { items: { type: "string", enum: ["stale", "weak"] } } } } } } });
+    // The added type accepts nothing the enum did not already accept.
+    const outside = harness({ request: async () => completedStream('{"level":"mid","flags":[]}') });
+    expect((await outside.client.runTask(command({ outputSchema: enumSchema }))).failure)
+      .toMatchObject({ code: "provider_output_invalid" });
+  });
+
+  it("degrades output outside the product schema like a CLI schema normalization failure", async () => {
+    for (const [text, path, all] of [["not json", "json_parse_or_empty", ""],
+      ['{"label":7,"note":null}', "$.label:type", "$.label:type"],
+      ['{"label":"x","note":null,"invented key":1}', "unclassified", "$:additionalProperties"]] as const) {
+      const fake = harness({ request: async () => completedStream(text) });
+      const result = await fake.client.runTask(command());
+
+      expect(result.failure).toMatchObject({ code: "provider_output_invalid", details: {
+        outputValidationStage: "schema_normalization", outputValidationCode: "schema_normalization_failed",
+        outputValidationPath: path, outputValidationViolations: all } });
+      expect(fake.requests()).toBe(1);
+      // The job failure reason names the broken field, never the output.
+      expect(() => readAgentRuntimeObjectOutput(result, JSON.parse, "Reader summary"))
+        .toThrow(`Provider output failed structured output validation at ${path}`);
+    }
+  });
+
+  it("never reuses an attempt identity across calls or runs", async () => {
+    const first = harness({}, "run-1");
+    await first.client.runTask(command());
+    await first.client.runTask(command());
+    const second = harness({}, "run-2");
+    await second.client.runTask(command());
+
+    expect(first.prepares.map((value) => value.attemptRef)).toEqual(["a1", "a2"]);
+    expect(first.prepares[0]!.invocationRef).toBe(first.prepares[1]!.invocationRef);
+    expect(second.prepares[0]!.invocationRef).not.toBe(first.prepares[0]!.invocationRef);
+  });
+
+  it("moves to the next account after a capacity refusal that cost nothing", async () => {
+    const fake = harness({ request: async (call) => {
+      if (call === 1) {
+        throw safe("not_dispatched", "admission_limited", { kind: "after", milliseconds: 1_500 });
+      }
+      return completedStream('{"label":"AI agents","note":null}');
+    } });
+    const result = await fake.client.runTask(command());
+
+    expect(result.status).toBe("completed");
+    expect(fake.sleeps).toEqual([1_500]);
+    const [firstPrepare, secondPrepare] = fake.prepares;
+    expect(secondPrepare!.attemptRef).toBe("a2");
+    expect(secondPrepare!.accountRefs[0]).not.toBe(firstPrepare!.accountRefs[0]);
+    expect(result.executionAttestation?.gateway?.accountRef).toBe(secondPrepare!.accountRefs[0]);
+  });
+
+  it("leaves a possibly paid failure to the caller", async () => {
+    const fake = harness({ request: async () => { throw safe("dispatch_started", "upstream_failure"); } });
+    const result = await fake.client.runTask(command());
+
+    expect(fake.requests()).toBe(1);
+    expect(fake.sleeps).toEqual([]);
+    expect(result).toMatchObject({ status: "failed", failure: { code: "provider_failed",
+      retryable: true, details: { gatewayMayDuplicateCost: "true", gatewayAttempt: "1" } } });
+  });
+
+  it("discards output from a model other than the requested one", async () => {
+    const fake = harness({ request: async () => completedStream('{"label":"x"}', "kimi-k2") });
+    const result = await fake.client.runTask(command());
+
+    expect(result).toMatchObject({ status: "failed", failure: { code: "provider_model_mismatch" } });
+    expect(result.executionAttestation).toBeUndefined();
+  });
+
+  it("reports the vendored SDK as the runtime identity", async () => {
+    await expect(harness().client.checkHealth()).resolves.toEqual({ status: "serving",
+      runtimeEngine: "gateway-llm", runtimeVersion: approvedGatewayLlmSdkIdentity.packageVersion,
+      launcherSha256: approvedGatewayLlmSdkIdentity.archiveSha256, warnings: [] });
+  });
+});

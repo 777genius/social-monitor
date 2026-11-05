@@ -1,5 +1,6 @@
 import type {
   RedditClientPort,
+  RedditPostsByIdsClient,
   RedditComment,
   RedditCommentPage,
   RedditListingPage,
@@ -22,11 +23,38 @@ type RedditApiListingResponse = {
 
 type RedditApiThreadResponse = readonly RedditApiListingResponse[];
 
-export class HttpRedditClient implements RedditClientPort {
+export class HttpRedditClient implements RedditClientPort, RedditPostsByIdsClient {
   constructor(
     private readonly baseUrl = 'https://oauth.reddit.com',
     private readonly timeoutMs = 10_000,
   ) {}
+
+  async getPostsByIds(request: Parameters<RedditPostsByIdsClient["getPostsByIds"]>[0]) {
+    const ids = request.ids.map((id) => id.startsWith("t3_") ? id : `t3_${id}`);
+    if (!ids.length || ids.length > 100 || new Set(ids).size !== ids.length ||
+        ids.some((id) => !/^t3_[a-z0-9]+$/u.test(id))) throw new Error("Invalid Reddit lookup IDs");
+    const response = await this.fetchJson<RedditApiListingResponse>(
+      this.url("/api/info", { id: ids.join(","), raw_json: "1" }), request.accessToken, request.userAgent,
+    );
+    const children = response.value?.data?.children;
+    if (!Array.isArray(children)) throw new Error("Invalid Reddit lookup listing");
+    const seen = new Set<string>();
+    const posts = children.map((child: { kind?: string; data?: Readonly<Record<string, unknown>> }) => {
+      const data = child.data;
+      const post = normalizePost(data)[0];
+      if (child.kind !== "t3" || !post || post.name !== `t3_${post.id}` ||
+          !ids.includes(post.name) || seen.has(post.name)) throw new Error("Reddit lookup identity mismatch");
+      seen.add(post.name);
+      // The ordinary mapper discards malformed fields; lookup must fail closed instead.
+      if (!Number.isSafeInteger(data?.score) || !Number.isSafeInteger(data?.num_comments) ||
+          Number(data?.num_comments) < 0 || (data?.upvote_ratio !== undefined &&
+          (typeof data.upvote_ratio !== "number" || !Number.isFinite(data.upvote_ratio) || data.upvote_ratio < 0 || data.upvote_ratio > 1))) {
+        throw new Error("Invalid Reddit lookup metrics");
+      }
+      return post;
+    });
+    return { posts, omittedIds: ids.filter((id) => !seen.has(id)) };
+  }
 
   async listSubredditPosts(
     request: RedditListSubredditPostsRequest,

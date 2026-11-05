@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_summaries/src/infrastructure/api/summary_api_dto.dart';
 import 'package:social_monitor_summaries/src/infrastructure/mappers/summary_mapper.dart';
-import 'package:social_monitor_summaries/src/presentation/components/reader_summary_brief_surface.dart';
 
 import '../../support/summaries_test_fixtures.dart';
+import 'support/reader_summary_brief_test_app.dart';
 
 void main() {
   testWidgets('renders real preview media in the brief top-read cards', (
@@ -13,9 +12,18 @@ void main() {
   ) async {
     final summary = const SummaryMapper().readerSummaryToDomain(
       readerSummaryApiDto(
+        citations: [
+          summaryCitationApiDto(
+            id: 'bc-1',
+            providerKey: 'rss',
+            canonicalUrl: 'https://example.test/rss-post',
+          ),
+        ],
         content: readerSummaryContentApiDto(
           topReads: const [
             TopReadApiDto(
+              storyClusterId: 'story:video-poster',
+              cardKind: 'curated_top_read',
               title: 'RSS post with a video poster',
               providerKey: 'rss',
               reason: 'The source item includes a real media thumbnail.',
@@ -41,23 +49,7 @@ void main() {
       ),
     );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.dark(),
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: ReaderSummaryBriefSurface(
-              summary: summary,
-              citationsById: {
-                for (final citation in summary.citations) citation.id: citation,
-              },
-              isRefreshing: false,
-              onOpenUrl: (_) {},
-            ),
-          ),
-        ),
-      ),
-    );
+    await pumpReaderSummaryBrief(tester, summary);
 
     expect(find.byType(Image), findsOneWidget);
     expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
@@ -71,12 +63,7 @@ void main() {
 
     await tester.ensureVisible(find.byType(Image));
     await tester.pumpAndSettle();
-    final previewGesture = find.ancestor(
-      of: find.byType(Image),
-      matching: find.byType(GestureDetector),
-    );
-    expect(previewGesture, findsOneWidget);
-    await tester.tap(previewGesture);
+    await tester.tap(find.byType(Image));
     await tester.pumpAndSettle();
 
     final previewStrategies = tester

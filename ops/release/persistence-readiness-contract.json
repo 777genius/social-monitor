@@ -17,8 +17,20 @@
       "moduleFile": "libs/monitoring/interfaces/rest/monitoring-rest.module.ts",
       "context": "monitoring-api",
       "owner": "monitoring-owner",
+      "adapterSourceFiles": [
+        "libs/monitoring/interfaces/rest/monitoring-persistence.providers.ts",
+        "libs/monitoring/interfaces/rest/monitoring-scan-dispatch.providers.ts",
+        "libs/monitoring/interfaces/rest/monitoring-scan-queue.providers.ts",
+        "libs/monitoring/interfaces/rest/monitoring-scheduler.providers.ts",
+        "libs/monitoring/interfaces/rest/monitoring-source-credential.providers.ts"
+      ],
       "inMemoryStateAdapters": [
+        "InMemoryInterestCreationState",
         "InMemoryInterestRepository",
+        "InMemoryOutboxAdapter",
+        "InMemoryScanExecutionAttemptReadModel",
+        "InMemoryScanQueueAdapter",
+        "InMemoryScanSchedulerDecisionHistoryRepository",
         "InMemorySourceBindingRepository",
         "InMemorySourceCredentialRepository",
         "InMemorySourceCredentialSecretVault",
@@ -27,7 +39,7 @@
         "InMemoryQueuePublisher",
         "InMemoryIdempotencyAdapter"
       ],
-      "risk": "interests, source bindings, credentials, scan policies, scan jobs and idempotency records can opt into durable adapters, but default local mode is still process-local",
+      "risk": "interests, source bindings, credentials, scan policies, scan jobs, execution-attempt read models, scheduler decisions, queued scan commands, outbox events and idempotency records can opt into durable adapters, but default local mode is still process-local. InMemoryInterestCreationState is shared backing state for the already listed repositories, outbox and idempotency records, not an additional independent store",
       "durableReplacementPlan": "Monitoring repositories, outbox events and idempotency records can opt into Prisma with MONITORING_PERSISTENCE=prisma; scan command publishing can opt into RabbitMQ with MONITORING_SCAN_QUEUE=rabbitmq; event-relay can dispatch Prisma outbox events to RabbitMQ with start:event-relay; remaining blocker is deployment evidence with shared DATABASE_URL/RABBITMQ_URL"
     },
     {
@@ -52,10 +64,14 @@
     },
     {
       "moduleFile": "libs/summary/interfaces/rest/summary-rest-infrastructure.module.ts",
+      "adapterSourceFiles": [
+        "libs/summary/interfaces/rest/summary-conversation-persistence.providers.ts"
+      ],
       "context": "summary-api",
       "owner": "summary-owner",
       "inMemoryStateAdapters": [
         "InMemoryAutoSummaryCandidateRepository",
+        "InMemoryConversationUnitRepository",
         "InMemoryFeedItemReadRepository",
         "InMemorySummaryJobRepository",
         "InMemorySummaryArtifactRepository",
@@ -65,25 +81,52 @@
         "InMemorySummaryJobQueueAdapter",
         "InMemorySummaryEventPublisher"
       ],
-      "risk": "summary jobs, artifacts, feedback, policies and events can opt into Prisma, and summary job publishing can opt into RabbitMQ, but default local mode is still process-local",
+      "risk": "summary jobs, artifacts, feedback, policies, conversation units and events can opt into Prisma, and summary job publishing can opt into RabbitMQ, but default local mode is still process-local",
       "durableReplacementPlan": "SummaryRestModule can opt into Prisma job/artifact/feedback/policy persistence and durable outbox events with SUMMARY_PERSISTENCE=prisma; summary job publishing can opt into RabbitMQ with SUMMARY_JOB_QUEUE_MODE=rabbitmq; event-relay can dispatch Prisma outbox events to RabbitMQ with start:event-relay; remaining blocker is deployment evidence with shared DATABASE_URL/RABBITMQ_URL"
+    },
+    {
+      "moduleFile": "libs/summary/interfaces/rest/summary-rest.module.ts",
+      "adapterSourceFiles": [
+        "libs/summary/interfaces/rest/summary-reader-summary-persistence.providers.ts",
+        "libs/summary/interfaces/rest/summary-reader-summary-publication.provider.ts",
+        "libs/summary/interfaces/rest/summary-reader-summary.providers.ts"
+      ],
+      "context": "reader-summary-api",
+      "owner": "summary-owner",
+      "inMemoryStateAdapters": [
+        "InMemoryQueuePublisher",
+        "InMemoryReaderSummaryArtifactRepository",
+        "InMemoryReaderSummaryJobRepository",
+        "InMemoryReaderSummaryPolicyRepository",
+        "InMemoryReaderSummaryPublication",
+        "InMemoryReaderSummaryTopicRecommendationDecisionRepository"
+      ],
+      "risk": "reader-summary jobs, artifacts, policies, publication replay proofs and current-slot state, recommendation decisions and default queue publishing use process-local state in local mode; the extracted provider composition must remain covered by the durability inventory",
+      "durableReplacementPlan": "Reader-summary repositories and publication use SUMMARY_PERSISTENCE=prisma; queue publishing uses SUMMARY_JOB_QUEUE_MODE=rabbitmq. Beta runtime requires these durable selectors and shared DATABASE_URL/RABBITMQ_URL, with deployed cross-process publication and delivery evidence."
     },
     {
       "moduleFile": "libs/delivery/interfaces/rest/delivery-rest.module.ts",
       "context": "delivery-api",
       "owner": "delivery-owner",
+      "adapterSourceFiles": [
+        "libs/delivery/interfaces/rest/delivery-application.providers.ts",
+        "libs/delivery/interfaces/rest/delivery-storage.providers.ts",
+        "libs/delivery/interfaces/rest/delivery-workflow.providers.ts"
+      ],
       "inMemoryStateAdapters": [
         "InMemoryDeliveryAttemptRepository",
         "InMemoryDigestScheduleRepository",
         "InMemoryDigestRepository",
         "InMemoryDigestSourceReader",
         "InMemoryNotificationPreferenceReader",
+        "InMemoryReaderSummaryReadyProjectionStore",
         "InMemoryRealtimeEventRepository",
+        "InMemorySummaryReadyProjectionStore",
         "InMemoryWebhookEndpointRepository",
         "InMemoryWebhookReplayStore",
         "InMemoryWebhookSecretVault"
       ],
-      "risk": "delivery attempts, digests, digest schedules, realtime replay events, webhook endpoints, encrypted webhook secrets, webhook replay nonce state, notification preferences and digest source reads can opt into Prisma but default local mode",
+      "risk": "delivery attempts, digests, digest schedules, realtime replay events, summary-ready projection deduplication inboxes, webhook endpoints, encrypted webhook secrets, webhook replay nonce state, notification preferences and digest source reads can opt into Prisma but default local mode remains process-local",
       "durableReplacementPlan": "Delivery persistence can opt into Prisma with DELIVERY_PERSISTENCE=prisma; webhook secret durability additionally requires DELIVERY_WEBHOOK_SECRET_ENCRYPTION_KEY. Prisma digest assembly reads persisted summary artifacts and feed items. Delivery attempt dispatch can opt into RabbitMQ command transport in delivery-service with DELIVERY_ATTEMPT_DISPATCH_TARGET=queue and DELIVERY_ATTEMPT_DISPATCH_QUEUE=rabbitmq. Webhook delivery can opt into signed HTTP POST transport with DELIVERY_WEBHOOK_PROVIDER=http, and beta runtime must use DELIVERY_ENABLED_CHANNELS=webhook so in-memory email/in_app delivery cannot look successful. Remaining blocker is real email transport and deployed shared-infra evidence."
     },
     {
@@ -103,7 +146,11 @@
       "moduleFile": "apps/delivery-service/src/delivery-service.module.ts",
       "context": "delivery-worker",
       "owner": "delivery-owner",
-      "inMemoryStateAdapters": ["InMemoryDeliveryAttemptQueueReader", "InMemoryQueuePublisher"],
+      "inMemoryStateAdapters": [
+        "InMemoryDeliveryAttemptRepository",
+        "InMemoryDeliveryAttemptQueueReader",
+        "InMemoryQueuePublisher"
+      ],
       "risk": "delivery attempt dispatch commands can use the local in-memory queue in deterministic smoke mode, so API and worker replicas do not share queued commands unless RabbitMQ mode is selected",
       "durableReplacementPlan": "Delivery service can publish delivery.attempt.send commands through RabbitMQ with DELIVERY_ATTEMPT_DISPATCH_QUEUE=rabbitmq and consume them with DELIVERY_ATTEMPT_QUEUE_READER=rabbitmq; check:delivery-attempt-queue-drain-loop proves the queue boundary and worker drain path in deterministic mode"
     },
@@ -137,6 +184,10 @@
     },
     {
       "moduleFile": "apps/ingestion-worker/src/ingestion-worker.module.ts",
+      "adapterSourceFiles": [
+        "apps/ingestion-worker/src/adapters/composition/ingestion-worker-runtime.providers.ts",
+        "apps/ingestion-worker/src/adapters/composition/ingestion-worker-storage.providers.ts"
+      ],
       "context": "ingestion-worker",
       "owner": "ingestion-owner",
       "inMemoryStateAdapters": [

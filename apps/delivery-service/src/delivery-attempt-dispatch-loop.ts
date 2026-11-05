@@ -1,12 +1,14 @@
 import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { NestStructuredLogger, type StructuredLogger } from '@social-monitor/platform-logging';
 import { WorkerCommandIdFactory } from '@social-monitor/platform-worker';
+import type { CommandOutboxDispatcher } from '@social-monitor/platform-queue';
+import type { DeliveryWorkflowTiming } from '@social-monitor/delivery/application/contracts/delivery-attempt-workflow';
 import type { DeliveryAttemptProps } from '@social-monitor/delivery/domain';
 import { EnqueueDeliveryAttemptDispatchUseCase } from '@social-monitor/delivery/features/enqueue-delivery-attempt-dispatch/enqueue-delivery-attempt-dispatch.use-case';
 import { SendDeliveryAttemptCommandHandler } from '@social-monitor/delivery/interfaces/queue/send-delivery-attempt-command.handler';
 import { DELIVERY_ATTEMPT_REPOSITORY } from '@social-monitor/delivery/interfaces/rest/delivery-provider-tokens';
 import type { DeliveryAttemptRepositoryPort } from '@social-monitor/delivery/ports';
-import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { tenantId, workspaceId, type Clock } from '@social-monitor/shared-kernel';
 
 import {
   DELIVERY_ATTEMPT_DISPATCH_LOOP_OPTIONS,
@@ -28,6 +30,11 @@ export class DeliveryAttemptDispatchLoop implements OnModuleInit, OnModuleDestro
     private readonly options: DeliveryAttemptDispatchLoopOptions,
     private readonly enqueueDispatch?: EnqueueDeliveryAttemptDispatchUseCase,
     private readonly commandIds: WorkerCommandIdFactory = WorkerCommandIdFactory.system(),
+    private readonly workflow?: {
+      readonly clock: Clock;
+      readonly timing: DeliveryWorkflowTiming;
+      readonly relay?: CommandOutboxDispatcher;
+    },
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -87,8 +94,12 @@ export class DeliveryAttemptDispatchLoop implements OnModuleInit, OnModuleDestro
 
   private async executeTick(trigger: 'startup' | 'interval'): Promise<void> {
     try {
+      const now = this.workflow?.clock.now();
       const attempts = await this.deliveryAttempts.findQueued({
         limit: this.options.limit,
+        ...(now === undefined ? {} : { recovery: {
+          now, recoverBefore: new Date(now.getTime() - (this.workflow?.timing.dispatchRecoveryMs ?? 0)),
+        } }),
         ...(this.options.tenantId === undefined
           ? {}
           : {
@@ -106,7 +117,7 @@ export class DeliveryAttemptDispatchLoop implements OnModuleInit, OnModuleDestro
           if ((this.options.target ?? 'direct') === 'queue') {
             await this.enqueueQueuedAttempt(snapshot, trigger);
           } else {
-            await this.handler.handle({
+            await this.handler.handleDirect({
               commandId: this.commandIds.next('delivery-attempt-dispatch', [snapshot.id]),
               commandType: 'delivery.attempt.send',
               schemaVersion: 1,
@@ -133,6 +144,8 @@ export class DeliveryAttemptDispatchLoop implements OnModuleInit, OnModuleDestro
           });
         }
       }
+
+      await this.workflow?.relay?.dispatchBatch(this.options.limit);
 
       this.logger.info('delivery attempt dispatch loop tick completed', {
         trigger,

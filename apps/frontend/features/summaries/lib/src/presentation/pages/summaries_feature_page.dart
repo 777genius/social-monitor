@@ -12,17 +12,23 @@ import '../components/reader_summary_top_posts_section_sliver.dart';
 import '../components/summary_detail_panel.dart';
 import '../components/summary_generation_status_presenter.dart';
 import '../components/workspace_summary_panel.dart';
+import '../stores/reader_posts_browse_store.dart';
 import '../stores/summaries_review_store.dart';
+import '../stores/top_posts_sort_store.dart';
 
 class SummariesFeaturePage extends StatefulWidget {
   const SummariesFeaturePage({
     super.key,
     required this.store,
     this.autoload = true,
+    this.topPostsSortStore,
+    this.readerPostsBrowseStore,
   });
 
   final SummariesReviewStore store;
   final bool autoload;
+  final TopPostsSortStore? topPostsSortStore;
+  final ReaderPostsBrowseStore? readerPostsBrowseStore;
 
   @override
   State<SummariesFeaturePage> createState() => _SummariesFeaturePageState();
@@ -47,7 +53,13 @@ class _SummariesFeaturePageState extends State<SummariesFeaturePage> {
           removeTop: true,
           child: CustomScrollView(
             key: const PageStorageKey<String>('summaries-feature-scroll-view'),
-            slivers: [_SummariesBody(store: widget.store)],
+            slivers: [
+              _SummariesBody(
+                store: widget.store,
+                topPostsSortStore: widget.topPostsSortStore,
+                readerPostsBrowseStore: widget.readerPostsBrowseStore,
+              ),
+            ],
           ),
         );
       },
@@ -57,9 +69,15 @@ class _SummariesFeaturePageState extends State<SummariesFeaturePage> {
 }
 
 class _SummariesBody extends StatelessWidget {
-  const _SummariesBody({required this.store});
+  const _SummariesBody({
+    required this.store,
+    required this.topPostsSortStore,
+    required this.readerPostsBrowseStore,
+  });
 
   final SummariesReviewStore store;
+  final TopPostsSortStore? topPostsSortStore;
+  final ReaderPostsBrowseStore? readerPostsBrowseStore;
 
   @override
   Widget build(BuildContext context) {
@@ -204,6 +222,8 @@ class _SummariesBody extends StatelessWidget {
           ReaderSummaryTopPostsSectionSliver(
             summary: topPostsSummary,
             contentPadding: horizontalPadding,
+            sortStore: topPostsSortStore,
+            browseStore: readerPostsBrowseStore,
             ratingFor: (item) =>
                 reviewStore.topPostRatingFor(topPostsSummary, item),
             onRated: (item, rating, reason) => reviewStore.submitTopPostRating(

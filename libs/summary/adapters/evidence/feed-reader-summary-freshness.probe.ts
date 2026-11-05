@@ -15,7 +15,7 @@ export class FeedReaderSummaryFreshnessProbe implements ReaderSummaryFreshnessPr
   async evaluate(
     params: Parameters<ReaderSummaryFreshnessProbePort["evaluate"]>[0],
   ): Promise<ReaderSummaryFreshness> {
-    const result = await this.feedItems.list({
+    const query = {
       tenantId: params.tenantId,
       workspaceId: params.workspaceId,
       interestId:
@@ -23,9 +23,10 @@ export class FeedReaderSummaryFreshnessProbe implements ReaderSummaryFreshnessPr
       publishedAtOrAfter: params.period?.startedAt,
       publishedBefore: params.period?.endedAt,
       observedAfter: params.observedThrough ?? params.sourceWindow.endedAt,
-      limit: 1,
-    });
-    const newest = result.items[0];
+    };
+    const newest = this.feedItems.findLatestSignalCandidate === undefined
+      ? (await this.feedItems.list({ ...query, limit: 1 })).items[0]
+      : await this.feedItems.findLatestSignalCandidate(query) ?? undefined;
     const checkedAt = this.clock.now();
 
     if (newest === undefined) {

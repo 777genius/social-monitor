@@ -2,7 +2,7 @@
 set -euo pipefail
 
 readonly FIRST_RECOVERY_DATE=2026-07-23
-readonly LAST_REVIEWED_DATE=2026-08-12
+readonly LAST_REVIEWED_DATE=2026-08-20
 readonly DAILY_RUN=/var/data/social-monitor/control/daily-run.sh
 
 through=${1:-}

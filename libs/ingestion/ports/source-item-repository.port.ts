@@ -1,3 +1,4 @@
+import type { ArticleCaptureRepository } from './article-capture-repository';
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
 import type { SourceItem } from '../domain';
@@ -7,6 +8,8 @@ export type SaveSourceItemsCommand = {
   readonly workspaceId: WorkspaceId;
   readonly providerKey: string;
   readonly items: readonly SourceItem[];
+  /** Reliable candidate memory proved unchanged provider-native input in this binding. */
+  readonly unchangedNativeExternalIds?: readonly string[];
 };
 
 export type SavedSourceItemRef = {
@@ -30,6 +33,6 @@ export class SourceItemPersistenceContractError extends Error {
   override readonly name = 'SourceItemPersistenceContractError';
 }
 
-export interface SourceItemRepositoryPort {
+export interface SourceItemRepositoryPort extends Partial<ArticleCaptureRepository> {
   saveBatch(command: SaveSourceItemsCommand): Promise<SaveSourceItemsResult>;
 }

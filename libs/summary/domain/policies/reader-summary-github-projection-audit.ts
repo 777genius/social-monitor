@@ -1,7 +1,17 @@
+import type { ReaderSummaryGitHubProjectionAudit } from "./reader-summary-github-projection-audit-types";
+export type {
+  ReaderSummaryGitHubProjectionViolationCode,
+  ReaderSummaryGitHubProjectionItem,
+  ReaderSummaryGitHubProjectionBinding,
+  ReaderSummaryGitHubProjectionAudit,
+  ReaderSummaryGitHubProjectionEvaluation,
+} from "./reader-summary-github-projection-audit-types";
+
 import type {
   ReaderSummaryArtifact,
   ReaderSummaryItem,
 } from "../entities/reader-summary-artifact";
+import { hasVerifiedArchivedGitHubProjection } from "./reader-summary-github-archived-projection";
 import type { ReaderSummaryCitation } from "../entities/citation";
 import { normalizeGitHubRepositoryFullName } from "../value-objects/github-repository-identity";
 import {
@@ -13,6 +23,8 @@ import {
   buildReaderSummaryGitHubProjectionCollectionTelemetry,
   exactUtcDay,
   githubProjectionTimesAreBounded,
+  readerSummaryGitHubProjectionCollectionGraceMs,
+  readerSummaryGitHubProjectionCollectionWarningThresholdMs,
   type ReaderSummaryGitHubProjectionCollectionTelemetry,
 } from "./reader-summary-github-projection-collection-window";
 import { verifiedGitHubWatchFollowsBindings } from "./reader-summary-github-projection-verification";
@@ -25,90 +37,6 @@ export {
   readerSummaryGitHubProjectionCollectionWarningThresholdMs,
 } from "./reader-summary-github-projection-collection-window";
 export type { ReaderSummaryGitHubProjectionCollectionTelemetry } from "./reader-summary-github-projection-collection-window";
-export type ReaderSummaryGitHubProjectionViolationCode =
-  | "github_projection_unavailable"
-  | "github_projection_day_invalid"
-  | "github_projection_missing"
-  | "github_projection_duplicate"
-  | "github_projection_gapped"
-  | "github_projection_ambiguous"
-  | "github_projection_mixed"
-  | "github_projection_stale"
-  | "github_projection_identity_invalid";
-
-export type ReaderSummaryGitHubProjectionItem = {
-  readonly feedItemId: string;
-  readonly sourceItemId: string;
-  readonly sourceBindingId: string;
-  readonly providerKey: string;
-  readonly metadataKind?: string;
-  readonly scanJobId?: string;
-  readonly canonicalUrl: string;
-  readonly repositoryFullName?: string;
-  readonly rank?: number;
-  readonly starsGained?: number;
-  readonly window?: string;
-  readonly fetchStartedAt?: Date;
-  readonly checkedAt?: Date;
-  readonly publishedAt: Date;
-  readonly observedAt: Date;
-  readonly sourceContentHash: string;
-  readonly sourceProviderContentHash: string;
-};
-
-export type ReaderSummaryGitHubProjectionBinding = {
-  readonly selectedPostIndex: number;
-  readonly rank: number;
-  readonly citationId: string;
-  readonly feedItemId: string;
-  readonly sourceItemId: string;
-  readonly sourceBindingId: string;
-  readonly providerKey: string;
-  readonly metadataKind: string;
-  readonly scanJobId: string;
-  readonly repositoryIdentity: string;
-  readonly canonicalUrl: string;
-  readonly starsGained: number;
-  readonly fetchStartedAt: string;
-  readonly publishedAt: string;
-  readonly checkedAt: string;
-  readonly observedAt: string;
-  readonly sourceContentHash: string;
-  readonly sourceProviderContentHash: string;
-};
-
-export type ReaderSummaryGitHubProjectionAudit = {
-  readonly schemaVersion: "reader_summary.github_projection.v1";
-  readonly status:
-    | "not_applicable"
-    | "not_required"
-    | "verified"
-    | "rejected";
-  readonly requestedUtcDay: string;
-  readonly pageCount: number;
-  readonly scannedItemCount: number;
-  readonly eligibleBindingIds: readonly string[];
-  readonly observedThrough?: string;
-  readonly projectionCheckedAt?: string;
-  readonly telemetry?: ReaderSummaryGitHubProjectionCollectionTelemetry;
-  readonly historicalOmission?: {
-    readonly mode: "github_projection_unavailable_historical";
-    readonly reason: string;
-    readonly authorizedAt: string;
-  };
-  readonly bindings: readonly ReaderSummaryGitHubProjectionBinding[];
-  readonly violationCodes: readonly ReaderSummaryGitHubProjectionViolationCode[];
-  readonly reasons: readonly string[];
-};
-
-export type ReaderSummaryGitHubProjectionEvaluation = {
-  readonly audit: ReaderSummaryGitHubProjectionAudit;
-  readonly findings: readonly {
-    readonly code: ReaderSummaryGitHubProjectionViolationCode;
-    readonly reason: string;
-  }[];
-};
-
 export const readerSummaryRequiresGitHubProjection = (
   artifact: ReaderSummaryArtifact,
 ): boolean => {
@@ -258,6 +186,12 @@ export const readerSummaryHasVerifiedGitHubProjection = (params: {
     return false;
   }
 
+  if (params.audit.archivedProjection !== undefined) {
+    return day !== undefined && hasVerifiedArchivedGitHubProjection({
+      artifact: params.artifact, audit: params.audit, day,
+    });
+  }
+
   if (params.audit.status === "not_applicable") {
     return (
       day === undefined &&
@@ -327,14 +261,6 @@ export const readerSummaryHasVerifiedGitHubProjection = (params: {
   ) {
     return false;
   }
-  const selectedPosts = (snapshot.content?.selectedPosts ?? []).filter(
-    isGitHubReaderItem,
-  );
-  if (
-    selectedPosts.length !== maxGitHubTrendingDisplayRepositories
-  ) {
-    return false;
-  }
   const bindings = params.audit.bindings;
   const expectedTelemetry = buildReaderSummaryGitHubProjectionCollectionTelemetry({
     dayEndedAt: day.endedAt,
@@ -352,11 +278,13 @@ export const readerSummaryHasVerifiedGitHubProjection = (params: {
     hasDuplicates(bindings.map((binding) => binding.feedItemId)) ||
     hasDuplicates(bindings.map((binding) => binding.sourceItemId)) ||
     hasDuplicates(bindings.map((binding) => binding.repositoryIdentity)) ||
-    new Set(bindings.map((binding) => binding.scanJobId)).size !== 1 ||
-    new Set(bindings.map((binding) => binding.fetchStartedAt)).size !== 1 ||
-    new Set(bindings.map((binding) => binding.publishedAt)).size !== 1 ||
-    new Set(bindings.map((binding) => binding.checkedAt)).size !== 1 ||
-    new Set(bindings.map((binding) => binding.observedAt)).size !== 1 ||
+    (bindings.length > 0 && (
+      new Set(bindings.map((binding) => binding.scanJobId)).size !== 1 ||
+      new Set(bindings.map((binding) => binding.fetchStartedAt)).size !== 1 ||
+      new Set(bindings.map((binding) => binding.publishedAt)).size !== 1 ||
+      new Set(bindings.map((binding) => binding.checkedAt)).size !== 1 ||
+      new Set(bindings.map((binding) => binding.observedAt)).size !== 1
+    )) ||
     bindings.some((binding) => binding.sourceBindingId !== eligibleBindingId) ||
     bindings.some(
       (binding) =>
@@ -372,28 +300,19 @@ export const readerSummaryHasVerifiedGitHubProjection = (params: {
       artifact: params.artifact,
       bindings,
     }) ||
-    !sameCollectionTelemetry(params.audit.telemetry, expectedTelemetry)
+    !(bindings.length === 0
+      ? validCollectionTelemetry(params.audit.telemetry)
+      : sameCollectionTelemetry(params.audit.telemetry, expectedTelemetry))
   ) {
     return false;
   }
 
-  return selectedPosts.every((post, index) => {
-    const binding = bindings[index];
-    const identity = canonicalGitHubRepositoryIdentity(post.canonicalUrl);
-    const citation =
-      post.citationIds.length === 1
-        ? citationById.get(post.citationIds[0]!)
-        : undefined;
+  return bindings.every((binding, index) => {
+    const citation = citationById.get(binding.citationId);
     return (
-      binding !== undefined &&
       citation !== undefined &&
       isGitHubCitation(citation) &&
       binding.selectedPostIndex === index &&
-      binding.rank === index + 1 &&
-      binding.repositoryIdentity === identity &&
-      binding.canonicalUrl === post.canonicalUrl &&
-      post.citationIds.length === 1 &&
-      binding.citationId === post.citationIds[0] &&
       binding.feedItemId === citation.feedItemId &&
       binding.sourceItemId === citation.sourceItemId &&
       binding.canonicalUrl === citation.canonicalUrl &&
@@ -407,8 +326,6 @@ export const readerSummaryHasVerifiedGitHubProjection = (params: {
         checkedAt: new Date(binding.checkedAt),
         observedAt: new Date(binding.observedAt),
       }) &&
-      selectedPostGitHubMetric(post, "rank") === binding.rank &&
-      selectedPostGitHubMetric(post, "stars") === binding.starsGained &&
       nonEmpty(binding.feedItemId) &&
       nonEmpty(binding.sourceItemId) &&
       nonEmpty(binding.sourceBindingId) &&
@@ -486,6 +403,20 @@ const sameCollectionTelemetry = (
   actual.collectionGraceMs === expected.collectionGraceMs &&
   actual.warningThresholdMs === expected.warningThresholdMs &&
   actual.qualitySignal === expected.qualitySignal;
+
+const validCollectionTelemetry = (
+  value: ReaderSummaryGitHubProjectionCollectionTelemetry | undefined,
+): boolean => value !== undefined &&
+  Number.isSafeInteger(value.github_projection_collection_delay_ms) &&
+  value.github_projection_collection_delay_ms >= 0 &&
+  value.collectionGraceMs === readerSummaryGitHubProjectionCollectionGraceMs &&
+  value.warningThresholdMs ===
+    readerSummaryGitHubProjectionCollectionWarningThresholdMs &&
+  value.qualitySignal ===
+    (value.github_projection_collection_delay_ms >= value.warningThresholdMs
+      ? "github_projection_collection_delay_warning"
+      : "within_grace");
+
 
 export const hasDuplicates = <TValue>(values: readonly TValue[]): boolean =>
   new Set(values).size !== values.length;

@@ -93,6 +93,7 @@
       "operations": [
         { "method": "GET", "path": "/feed/items", "action": "feed.read", "apiKeyScope": "read:feed", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "GET", "path": "/feed/items/{feedItemId}", "action": "feed.read", "apiKeyScope": "read:feed", "roles": ["owner", "admin", "member", "viewer"] },
+        { "method": "GET", "path": "/reader-posts", "action": "feed.read", "apiKeyScope": "read:feed", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "GET", "path": "/relevance/users/{userId}/digest", "action": "feed.read", "apiKeyScope": "read:feed", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "GET", "path": "/relevance/users/{userId}/feed", "action": "feed.read", "apiKeyScope": "read:feed", "roles": ["owner", "admin", "member", "viewer"] },
         { "method": "POST", "path": "/social-research/explain-plan", "action": "social_research.read", "apiKeyScope": "read:feed", "roles": ["owner", "admin", "member", "viewer"] },

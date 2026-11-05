@@ -1,4 +1,9 @@
-import { credentials, type ChannelCredentials } from "@grpc/grpc-js";
+import {
+  credentials,
+  type ChannelCredentials,
+  type ClientUnaryCall,
+} from "@grpc/grpc-js";
+import { isAbsolute, normalize } from "node:path";
 import {
   AgentRuntimeHealthStatus as GrpcAgentRuntimeHealthStatus,
   AgentRuntimeProvider as GrpcAgentRuntimeProvider,
@@ -33,6 +38,18 @@ import type {
 export type GrpcAgentRuntimeClientOptions = {
   readonly timeoutMs: number;
   readonly serviceToken?: string;
+  readonly defaultCwd?: string;
+};
+
+export const validateAgentRuntimeDefaultCwd = (value: string): string => {
+  if (
+    value.length === 0 || value !== value.trim() ||
+    value.includes("\0") || !isAbsolute(value) || normalize(value) !== value ||
+    (value !== "/" && value.endsWith("/"))
+  ) {
+    throw new Error("Agent runtime default cwd must be a lexical absolute path");
+  }
+  return value;
 };
 
 const schemaVersion = 1;
@@ -67,11 +84,18 @@ export class GrpcAgentRuntimeClient implements AgentRuntimeClientPort {
     if (!Number.isInteger(options.timeoutMs) || options.timeoutMs < 1) {
       throw new Error("Agent runtime gRPC timeout must be a positive integer");
     }
+    if (options.defaultCwd !== undefined) {
+      validateAgentRuntimeDefaultCwd(options.defaultCwd);
+    }
   }
 
   async runTask(
     command: AgentRuntimeTaskCommand,
+    options?: { readonly signal?: AbortSignal },
   ): Promise<AgentRuntimeTaskResult> {
+    if (options?.signal?.aborted === true) {
+      throw new Error("Agent runtime gRPC task was cancelled");
+    }
     const metadata = createGrpcRequestMetadata({
       correlationId: command.correlationId,
       serviceToken: this.options.serviceToken,
@@ -82,7 +106,22 @@ export class GrpcAgentRuntimeClient implements AgentRuntimeClientPort {
     );
 
     return new Promise((resolve, reject) => {
-      this.client.runAgentTask(
+      const callState: { value?: ClientUnaryCall } = {};
+      let settled = false;
+      const finish = (complete: () => void): void => {
+        if (settled) return;
+        settled = true;
+        if (options?.signal !== undefined) {
+          options.signal.removeEventListener("abort", abort);
+        }
+        complete();
+      };
+      const abort = (): void => {
+        callState.value?.cancel();
+        finish(() => reject(new Error("Agent runtime gRPC task was cancelled")));
+      };
+      options?.signal?.addEventListener("abort", abort, { once: true });
+      callState.value = this.client.runAgentTask(
         {
           schemaVersion,
           requestId: command.requestId,
@@ -97,24 +136,26 @@ export class GrpcAgentRuntimeClient implements AgentRuntimeClientPort {
           outputSchemaJson: JSON.stringify(command.outputSchema),
           controlsJson: JSON.stringify(command.controls),
           timeoutMs: command.timeoutMs,
-          cwd: command.cwd ?? "",
+          cwd: command.cwd ?? this.options.defaultCwd ?? "",
           metadata: command.metadata ?? {},
         },
         metadata,
         { deadline },
         (error, response) => {
           if (error !== null) {
-            reject(error);
+            finish(() => reject(error));
             return;
           }
 
           try {
-            resolve(fromGrpcTaskResponse(response, command));
+            const result = fromGrpcTaskResponse(response, command);
+            finish(() => resolve(result));
           } catch (parseError) {
-            reject(parseError);
+            finish(() => reject(parseError));
           }
         },
       );
+      if (options?.signal?.aborted === true) abort();
     });
   }
 
@@ -177,6 +218,8 @@ const fromGrpcTaskResponse = (
   if (response.schemaVersion !== schemaVersion) {
     throw new Error("Unsupported agent runtime response schema version");
   }
+  const usage = readGrpcUsage(response.usage);
+  const durationMs = readOptionalDurationMs(response.durationMs);
   const result: AgentRuntimeTaskResult = {
     status: fromGrpcTaskStatus(response.status),
     outputText: optionalOutputText(response.outputText),
@@ -185,15 +228,8 @@ const fromGrpcTaskResponse = (
       code: warning.code,
       message: warning.message,
     })),
-    usage:
-      response.usage === undefined
-        ? undefined
-        : {
-            inputTokens: response.usage.inputTokens,
-            outputTokens: response.usage.outputTokens,
-            totalTokens: response.usage.totalTokens,
-            estimatedCostUsd: response.usage.estimatedCostUsd,
-          },
+    usage,
+    durationMs,
     failure:
       response.failure === undefined
         ? undefined
@@ -226,6 +262,41 @@ const fromGrpcTaskResponse = (
   }
   return result;
 };
+
+const readGrpcUsage = (
+  value: AgentRuntimeTaskResponse["usage"],
+): AgentRuntimeTaskResult["usage"] => {
+  if (value === undefined) return undefined;
+  if (
+    !nonNegativeSafeInteger(value.inputTokens) ||
+    !nonNegativeSafeInteger(value.outputTokens) ||
+    !nonNegativeSafeInteger(value.totalTokens) ||
+    value.totalTokens !== value.inputTokens + value.outputTokens ||
+    !nonNegativeFiniteNumber(value.estimatedCostUsd)
+  ) {
+    throw new Error("Agent runtime usage is malformed");
+  }
+  return {
+    inputTokens: value.inputTokens,
+    outputTokens: value.outputTokens,
+    totalTokens: value.totalTokens,
+    estimatedCostUsd: value.estimatedCostUsd,
+  };
+};
+
+const readOptionalDurationMs = (value: number | undefined): number | undefined => {
+  if (value === undefined) return undefined;
+  if (!nonNegativeSafeInteger(value)) {
+    throw new Error("Agent runtime duration is malformed");
+  }
+  return value;
+};
+
+const nonNegativeSafeInteger = (value: unknown): value is number =>
+  Number.isSafeInteger(value) && (value as number) >= 0;
+
+const nonNegativeFiniteNumber = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0;
 
 const readExecutionAttestation = (
   response: AgentRuntimeTaskResponse,

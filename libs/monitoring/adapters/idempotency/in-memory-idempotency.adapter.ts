@@ -1,9 +1,12 @@
 import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
 import type { IdempotencyPort, IdempotencyRecord } from '../../ports';
+import { InMemoryInterestCreationState, monitoringReceiptKey } from '../persistence/in-memory-interest-creation-state';
 
 export class InMemoryIdempotencyAdapter implements IdempotencyPort {
-  private readonly records = new Map<string, unknown>();
+  constructor(private readonly state = new InMemoryInterestCreationState()) {}
+
+  private get records() { return this.state.receipts; }
 
   async get<TValue>(params: {
     tenantId: TenantId;
@@ -12,7 +15,7 @@ export class InMemoryIdempotencyAdapter implements IdempotencyPort {
     key: string;
   }): Promise<IdempotencyRecord<TValue> | null> {
     const value = this.records.get(this.key(params));
-    return value === undefined ? null : { value: value as TValue };
+    return value === undefined || value === null ? null : { value: value as TValue };
   }
 
   async set<TValue>(params: {
@@ -31,6 +34,6 @@ export class InMemoryIdempotencyAdapter implements IdempotencyPort {
     scope: string;
     key: string;
   }): string {
-    return `${params.tenantId}:${params.workspaceId}:${params.scope}:${params.key}`;
+    return monitoringReceiptKey(params);
   }
 }

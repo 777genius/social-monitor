@@ -64,10 +64,12 @@ void main() {
     );
   });
 
-  test('loads selected post ratings in API-sized batches', () async {
+  test('loads every bounded promotion-board rating in one request', () async {
     final topReads = List<TopReadApiDto>.generate(
-      101,
+      8,
       (index) => TopReadApiDto(
+        storyClusterId: 'story:post-$index',
+        cardKind: 'curated_top_read',
         title: 'Post $index',
         providerKey: 'reddit',
         reason: 'Relevant post $index',
@@ -76,7 +78,7 @@ void main() {
         canonicalUrl: 'https://reddit.com/comments/$index',
       ),
     );
-    final ratings = [0, 100]
+    final ratings = [0, 7]
         .map(
           (index) => PostRatingApiDto(
             feedbackId: 'rating-$index',
@@ -95,11 +97,13 @@ void main() {
       workspaceSummary: readerSummaryApiDto(
         content: readerSummaryContentApiDto(topReads: topReads),
         citations: List.generate(
-          101,
+          8,
           (index) => summaryCitationApiDto(
             id: 'citation-$index',
             feedItemId: 'feed-$index',
             sourceItemId: 'source-$index',
+            providerKey: 'reddit',
+            canonicalUrl: 'https://reddit.com/comments/$index',
           ),
         ),
       ),
@@ -120,7 +124,7 @@ void main() {
       apiClient.loadPostRatingsRequests.map(
         (request) => request.targets.length,
       ),
-      [100, 1],
+      [8],
     );
     expect(store.topPostRatingFor(summary, summary.content.topReads.first), 4);
     expect(store.topPostRatingFor(summary, summary.content.topReads.last), 5);

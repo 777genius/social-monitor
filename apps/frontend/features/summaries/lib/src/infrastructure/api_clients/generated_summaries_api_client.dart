@@ -11,6 +11,7 @@ import '../api/topic_recommendation_api_dto.dart';
 import '../mappers/generated_summary_rest_mapper.dart';
 import 'generated_post_rating_writer.dart';
 import 'generated_post_ratings_reader.dart';
+import 'generated_summary_list_reader.dart';
 import 'generated_topic_recommendation_reader.dart';
 import 'generated_workspace_summary_reader.dart';
 import 'summaries_api_client.dart';
@@ -19,12 +20,19 @@ final class GeneratedSummariesApiClient implements SummariesApiClient {
   GeneratedSummariesApiClient({
     required generated.GeneratedApiRuntime runtime,
     GeneratedSummaryRestMapper mapper = const GeneratedSummaryRestMapper(),
+    generated.ReaderSummaryBootstrapResponseDto? initialBootstrap,
   }) : _runtime = runtime,
-       _mapper = mapper;
+       _mapper = mapper,
+       _workspaceSummaryReader = GeneratedWorkspaceSummaryReader(
+         runtime: runtime,
+         mapper: mapper,
+         initialBootstrap: initialBootstrap,
+       );
 
   factory GeneratedSummariesApiClient.fromRuntime({
     required Object runtime,
     GeneratedSummaryRestMapper mapper = const GeneratedSummaryRestMapper(),
+    Object? initialBootstrap,
   }) {
     if (runtime is! generated.GeneratedApiRuntime) {
       throw ArgumentError.value(
@@ -33,31 +41,25 @@ final class GeneratedSummariesApiClient implements SummariesApiClient {
         'Expected GeneratedApiRuntime from packages/generated_api',
       );
     }
-    return GeneratedSummariesApiClient(runtime: runtime, mapper: mapper);
+    return GeneratedSummariesApiClient(
+      runtime: runtime,
+      mapper: mapper,
+      initialBootstrap:
+          initialBootstrap as generated.ReaderSummaryBootstrapResponseDto?,
+    );
   }
 
   final generated.GeneratedApiRuntime _runtime;
   final GeneratedSummaryRestMapper _mapper;
+  final GeneratedWorkspaceSummaryReader _workspaceSummaryReader;
 
   @override
   Future<Result<SummaryPageApiDto>> listSummaries(
     ListSummariesApiRequest request,
-  ) async {
-    final result = await _runtime.client
-        .send<generated.ListSummariesResponseDto>(
-          generated.WorkspaceRequest(scope: request.scope),
-          () => _runtime.rest.summaries.summaryControllerList(
-            xWorkspaceId: request.scope.workspaceId,
-            xTenantId: request.scope.tenantId,
-            cursor: request.cursor,
-            limit: request.limit,
-          ),
-        );
-    return result.fold(
-      onSuccess: (dto) => Result.success(_mapper.list(dto)),
-      onFailure: Result<SummaryPageApiDto>.failure,
-    );
-  }
+  ) => GeneratedSummaryListReader(
+    runtime: _runtime,
+    mapper: _mapper,
+  ).load(request);
 
   @override
   Future<Result<SummaryApiDto>> loadSummaryDetail(
@@ -72,26 +74,17 @@ final class GeneratedSummariesApiClient implements SummariesApiClient {
   @override
   Future<Result<WorkspaceSummaryApiDto>> loadWorkspaceSummary(
     LoadWorkspaceSummaryApiRequest request,
-  ) => GeneratedWorkspaceSummaryReader(
-    runtime: _runtime,
-    mapper: _mapper,
-  ).load(request);
+  ) => _workspaceSummaryReader.load(request);
 
   @override
   Future<Result<WorkspaceSummaryApiDto>> loadPublishedSummary(
     LoadPublishedSummaryApiRequest request,
-  ) => GeneratedWorkspaceSummaryReader(
-    runtime: _runtime,
-    mapper: _mapper,
-  ).loadById(request);
+  ) => _workspaceSummaryReader.loadById(request);
 
   @override
   Future<Result<WorkspaceSummaryApiDto>> loadWorkspaceSummaryHistory(
     LoadWorkspaceSummaryApiRequest request,
-  ) => GeneratedWorkspaceSummaryReader(
-    runtime: _runtime,
-    mapper: _mapper,
-  ).loadHistory(request);
+  ) => _workspaceSummaryReader.loadHistory(request);
 
   @override
   Future<Result<TopicRecommendationQueueApiDto>> loadTopicRecommendations(

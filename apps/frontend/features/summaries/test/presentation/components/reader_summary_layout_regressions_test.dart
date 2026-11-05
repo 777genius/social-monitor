@@ -7,11 +7,13 @@ import 'package:social_monitor_summaries/src/domain/entities/reader_summary_topi
 import 'package:social_monitor_summaries/src/domain/value_objects/reader_action_target.dart';
 import 'package:social_monitor_summaries/src/infrastructure/api/summary_api_dto.dart';
 import 'package:social_monitor_summaries/src/infrastructure/mappers/summary_mapper.dart';
+import 'package:social_monitor_summaries/src/presentation/components/reader_summary_brief_surface.dart';
 import 'package:social_monitor_summaries/src/presentation/components/reader_summary_view.dart';
 import 'package:social_monitor_summaries/src/presentation/components/workspace_summary_period_shell.dart';
 
 import '../../support/mixed_source_summaries_test_fixtures.dart';
 import '../../support/summaries_test_fixtures.dart';
+import '../../support/top_posts_test_fixtures.dart';
 
 void main() {
   testWidgets('lays top post preview beside the full text body on desktop', (
@@ -29,7 +31,9 @@ void main() {
     await tester.pumpWidget(_TestApp(summary: summary));
     await tester.pumpAndSettle();
 
-    final rowFinder = find.byKey(const ValueKey('reader-summary-top-post-0'));
+    final rowFinder = find.byKey(
+      const ValueKey('reader-summary-top-post-cluster:story:launch-screenshot'),
+    );
     expect(rowFinder, findsOneWidget);
     expect(
       find.descendant(of: rowFinder, matching: find.byType(Image)),
@@ -53,7 +57,7 @@ void main() {
     final reasonTopLeft = tester.getTopLeft(
       find.descendant(
         of: inlineFinder,
-        matching: find.text('The original source includes a real post image'),
+        matching: find.text('Summary unavailable.'),
       ),
     );
     expect(imageTopLeft.dx, lessThan(titleTopLeft.dx));
@@ -85,7 +89,7 @@ void main() {
     final reasonBottom = tester.getBottomLeft(
       find.descendant(
         of: stackedFinder,
-        matching: find.text('The original source includes a real post image'),
+        matching: find.text('Summary unavailable.'),
       ),
     );
     final imageTop = tester.getTopLeft(
@@ -109,7 +113,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.byKey(const ValueKey('reader-summary-top-post-0')),
+      find.byKey(
+        const ValueKey(
+          'reader-summary-top-post-cluster:story:launch-screenshot',
+        ),
+      ),
       findsOneWidget,
     );
     expect(find.byType(Image), findsOneWidget);
@@ -161,9 +169,7 @@ void main() {
     );
   });
 
-  testWidgets('shows up to six lines of a top post description', (
-    tester,
-  ) async {
+  testWidgets('shows up to four lines of a top post summary', (tester) async {
     tester.view.physicalSize = const Size(1280, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(() {
@@ -173,27 +179,16 @@ void main() {
 
     const description =
         'The release introduces a work agent that can continue multi-step projects across connected apps and files. It matters because the workflow moves beyond isolated coding tasks into longer operational work. Teams may be able to delegate research, document updates and follow-up actions without rebuilding context for every step. Access scope and real-world reliability still need careful evaluation.';
-    final summary = const SummaryMapper().readerSummaryToDomain(
-      readerSummaryApiDto(
-        content: readerSummaryContentApiDto(
-          topReads: const [
-            TopReadApiDto(
-              title: 'A work agent for longer operational projects',
-              providerKey: 'x-twitter',
-              reason: description,
-              matchedInterestIds: ['ai-developer-tools'],
-              signalScore: 3.2,
-              citationIds: ['long-description-citation'],
-            ),
-          ],
+    final summary = topPostsSummaryFixture(
+      topReads: [
+        topPostFixture(
+          title: 'A work agent for longer operational projects',
+          summary: description,
+          storyClusterId: 'story:work-agent',
+          cardKind: ReaderSummaryCardKind.curatedTopRead,
+          providerKey: 'x-twitter',
         ),
-        citations: [
-          summaryCitationApiDto(
-            id: 'long-description-citation',
-            providerKey: 'x-twitter',
-          ),
-        ],
-      ),
+      ],
     );
 
     await tester.pumpWidget(_TestApp(summary: summary));
@@ -209,65 +204,69 @@ void main() {
                 false),
       ),
     );
-    expect(
-      descriptionText.data,
-      description.substring(0, description.length - 1),
-    );
-    expect(descriptionText.maxLines, 6);
+    expect(descriptionText.data, description);
+    expect(descriptionText.maxLines, 4);
   });
 
-  testWidgets('lays provider coverage out across the expanded summary width', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1280, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(() {
-      tester.view.resetPhysicalSize();
-      tester.view.resetDevicePixelRatio();
-    });
+  testWidgets(
+    'places full-width provider coverage below the article and tags',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
 
-    final summary = const SummaryMapper().readerSummaryToDomain(
-      mixedSourceReaderSummaryApiDto(),
-    );
+      final summary = const SummaryMapper().readerSummaryToDomain(
+        mixedSourceReaderSummaryApiDto(),
+      );
 
-    await tester.pumpWidget(_TestApp(summary: summary));
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(_TestApp(summary: summary));
+      await tester.pumpAndSettle();
 
-    final section = find.byKey(
-      const ValueKey('reader-summary-coverage-by-source'),
-    );
-    final hackerNews = find.byKey(
-      const ValueKey('reader-summary-provider-coverage-hacker-news'),
-    );
-    final rss = find.byKey(
-      const ValueKey('reader-summary-provider-coverage-rss'),
-    );
-    final reddit = find.byKey(
-      const ValueKey('reader-summary-provider-coverage-reddit'),
-    );
-    final github = find.byKey(
-      const ValueKey('reader-summary-provider-coverage-github-trending-page'),
-    );
+      final section = find.byKey(
+        const ValueKey('reader-summary-coverage-by-source'),
+      );
+      final hackerNews = find.byKey(
+        const ValueKey('reader-summary-provider-coverage-hacker-news'),
+      );
+      final rss = find.byKey(
+        const ValueKey('reader-summary-provider-coverage-rss'),
+      );
+      final reddit = find.byKey(
+        const ValueKey('reader-summary-provider-coverage-reddit'),
+      );
+      final github = find.byKey(
+        const ValueKey('reader-summary-provider-coverage-github-trending-page'),
+      );
 
-    expect(section, findsOneWidget);
-    expect(tester.getSize(section).width, greaterThan(900));
-    expect(hackerNews, findsOneWidget);
-    expect(rss, findsOneWidget);
-    expect(reddit, findsOneWidget);
-    expect(github, findsNothing);
+      expect(section, findsOneWidget);
+      expect(tester.getSize(section).width, greaterThan(900));
+      expect(
+        tester.getTopLeft(section).dy,
+        greaterThan(
+          tester.getBottomLeft(find.byType(ReaderSummaryExecutiveBrief)).dy,
+        ),
+      );
+      expect(hackerNews, findsOneWidget);
+      expect(rss, findsOneWidget);
+      expect(reddit, findsOneWidget);
+      expect(github, findsNothing);
 
-    final firstTop = tester.getTopLeft(hackerNews).dy;
-    expect((tester.getTopLeft(rss).dy - firstTop).abs(), lessThan(1));
-    expect((tester.getTopLeft(reddit).dy - firstTop).abs(), lessThan(1));
-    expect(
-      tester.getTopLeft(rss).dx,
-      greaterThan(tester.getTopLeft(hackerNews).dx),
-    );
-    expect(
-      tester.getTopLeft(reddit).dx,
-      greaterThan(tester.getTopLeft(rss).dx),
-    );
-  });
+      final firstTop = tester.getTopLeft(hackerNews).dy;
+      expect((tester.getTopLeft(rss).dy - firstTop).abs(), lessThan(1));
+      expect((tester.getTopLeft(reddit).dy - firstTop).abs(), lessThan(1));
+      expect(
+        tester.getTopLeft(rss).dx,
+        greaterThan(tester.getTopLeft(hackerNews).dx),
+      );
+      expect(
+        tester.getTopLeft(reddit).dx,
+        greaterThan(tester.getTopLeft(rss).dx),
+      );
+    },
+  );
 }
 
 ReaderSummary _summaryWithPreview() {
@@ -276,9 +275,12 @@ ReaderSummary _summaryWithPreview() {
       content: readerSummaryContentApiDto(
         topReads: const [
           TopReadApiDto(
+            storyClusterId: 'story:launch-screenshot',
+            cardKind: 'curated_top_read',
             title: 'X post with launch screenshot',
             providerKey: 'x-twitter',
-            reason: 'The original source includes a real post image.',
+            summary: 'The original source includes a real post image.',
+            reason: 'Selected by the reader promotion policy.',
             matchedInterestIds: ['ai-developer-tools'],
             signalScore: 3.2,
             confidence: TopReadConfidenceApiDto(
@@ -301,7 +303,11 @@ ReaderSummary _summaryWithPreview() {
         ],
       ),
       citations: [
-        summaryCitationApiDto(id: 'media-citation', providerKey: 'x-twitter'),
+        summaryCitationApiDto(
+          id: 'media-citation',
+          providerKey: 'x-twitter',
+          canonicalUrl: 'https://x.com/example/status/123',
+        ),
       ],
     ),
   );

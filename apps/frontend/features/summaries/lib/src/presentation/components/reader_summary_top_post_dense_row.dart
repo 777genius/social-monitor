@@ -13,11 +13,16 @@ Widget _denseTopPostRow(
   double width,
   Widget rating,
   Widget menu,
-  _TopPostSupportSignal supportSignal,
-) {
-  final textTheme = Theme.of(context).textTheme;
+  _TopPostSupportSignal supportSignal, {
+  required bool showOriginal,
+  required bool showOriginalControl,
+  required bool originalExpanded,
+  required ValueChanged<bool> onOriginalChanged,
+  required ValueChanged<bool> onOriginalExpandedChanged,
+}) {
   final showMetric = width >= 680 && metrics.isNotEmpty;
-  final showChip = width >= 520;
+  final showChip =
+      width >= 520 || item.cardKind == ReaderSummaryCardKind.relatedTopic;
   final primaryMetric = metrics.isEmpty
       ? null
       : metrics.firstWhere(
@@ -31,16 +36,13 @@ Widget _denseTopPostRow(
       _TopPostProviderTile(providerKey: item.providerKey),
       const SizedBox(width: AppSpacing.sm + 4),
       Expanded(
-        child: Text(
-          _shortTitle(item.title),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: textTheme.bodyMedium?.copyWith(
-            fontWeight: isGitHubTrendingBreakout(item)
-                ? FontWeight.w900
-                : FontWeight.w700,
-            letterSpacing: 0,
-          ),
+        child: _TopPostTextBody(
+          item: item,
+          showOriginal: showOriginal,
+          showOriginalControl: showOriginalControl,
+          originalExpanded: originalExpanded,
+          onOriginalChanged: onOriginalChanged,
+          onOriginalExpandedChanged: onOriginalExpandedChanged,
         ),
       ),
       if (showMetric && primaryMetric != null) ...[
@@ -49,7 +51,7 @@ Widget _denseTopPostRow(
       ],
       if (showChip) ...[
         const SizedBox(width: AppSpacing.md),
-        _DenseRelevanceChip(supportSignal: supportSignal),
+        _DenseRelevanceChip(item: item, supportSignal: supportSignal),
       ],
       const SizedBox(width: AppSpacing.sm),
       rating,
@@ -68,7 +70,7 @@ class _DensePrimaryMetric extends StatelessWidget {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
-    return Tooltip(
+    return AppTooltip(
       message: metric.label,
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -97,15 +99,18 @@ class _DensePrimaryMetric extends StatelessWidget {
 
 /// Single-line relevance chip reusing the shared relevance badge.
 class _DenseRelevanceChip extends StatelessWidget {
-  const _DenseRelevanceChip({required this.supportSignal});
+  const _DenseRelevanceChip({required this.item, required this.supportSignal});
 
+  final TopRead item;
   final _TopPostSupportSignal supportSignal;
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    final badge = _topPostSupportStyle(context, supportSignal);
-    return Tooltip(
+    final badge = item.cardKind == ReaderSummaryCardKind.relatedTopic
+        ? _relatedTopicBadge(context)
+        : _topPostSupportStyle(context, supportSignal);
+    return AppTooltip(
       message: badge.tooltip,
       child: DecoratedBox(
         decoration: BoxDecoration(

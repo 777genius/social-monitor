@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "status": "SOURCE_ONLY_REQUIRES_ACTUAL_IMAGE_INPUT_AND_ADDITIVE_ADMISSION",
+  "mode": "import-reddit-archive-missing",
+  "providerKey": "reddit",
+  "claimFields": ["mode", "inputRoot", "day", "journalDir", "semanticKey", "planSha256", "packetSha256", "correlationId"],
+  "cli": {
+    "script": "/app/dist/scripts/import-reddit-archive-missing.js",
+    "arguments": ["--native-write", "inputRoot", "day", "journalDir", "semanticKey", "planSha256", "packetSha256", "correlationId", "claimSha256"]
+  },
+  "assets": {
+    "current_reddit_archive_import_admission.py": "/usr/local/lib/social-monitor/current-source-guard/current_reddit_archive_import_admission.py",
+    "social-monitor-posts-reddit-archive-import.sh": "/usr/local/sbin/social-monitor-posts-reddit-archive-import.sh",
+    "entrypoint.sh": "/usr/local/lib/social-monitor/current-source-guard/reddit-archive-qualified-import-entrypoint.sh"
+  },
+  "futureRequiredPrivateProfile": "/usr/local/lib/social-monitor/current-source-guard/reddit-archive-qualified-partitions.json",
+  "existingRouterAdditions": [
+    "Custody-check and SHA-pin the new sourced action module alongside existing provider modules",
+    "Dispatch exact import-reddit-archive-missing key to reddit_archive_import_init, then reddit_archive_import_run",
+    "Recognize only its exact mode in native import slot selection without changing any existing mode predicate",
+    "For a Reddit previous terminal state call reddit_archive_previous_valid; leave every existing UNKNOWN and recovery branch unchanged"
+  ],
+  "existingGuardAdditions": [
+    "Pin the new recognizer bytes in the existing physical/module source closure",
+    "Dispatch only exact Reddit mode to validate_attempt and open_claim using current custody reader",
+    "Render PROFILE_SHA and FROZEN_PROFILE only from separately reviewed actual immutable Reddit scope/config/policy/archive plan",
+    "Preserve original cef UNKNOWN claim, old provider profiles, journal bytes and all prior closure proofs"
+  ],
+  "providerNeutralExistingKernels": ["check-lock", "admit", "open-attempt", "revoke_role", "role_closed", "remove_container", "container_absent", "watchdog_inactive", "stop_watchdog", "psql_data"],
+  "notAuthorizedByThisSource": ["profile issuance", "grant", "publisher", "deployment", "native import invocation", "claim replay", "image build"]
+}

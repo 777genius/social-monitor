@@ -44,10 +44,10 @@ export const feedItemFromPrisma = (record: PrismaFeedItemRecord): FeedItem =>
     providerMetadata: emptyJsonObjectAsUndefined(normalizeJsonObject(record.providerMetadata)),
   } satisfies FeedItemProps);
 
-export const encodeFeedCursor = (offset: number): string =>
+export const encodeFeedOffsetCursor = (offset: number): string =>
   Buffer.from(JSON.stringify({ offset })).toString('base64url');
 
-export const parseFeedCursor = (cursor: string | undefined): number => {
+export const parseFeedOffsetCursor = (cursor: string | undefined): number => {
   if (cursor === undefined) {
     return 0;
   }
@@ -59,8 +59,8 @@ export const parseFeedCursor = (cursor: string | undefined): number => {
       return parsed.offset;
     }
   } catch {
-    return 0;
+    throw new Error('Invalid feed item cursor');
   }
 
-  return 0;
+  throw new Error('Invalid feed item cursor');
 };

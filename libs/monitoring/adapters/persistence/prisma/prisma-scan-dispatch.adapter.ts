@@ -4,10 +4,14 @@ import type { ScanJobStatus } from '../../../domain';
 import type { ScanDispatchPort } from '../../../ports';
 import type { PrismaMonitoringClient } from './prisma-monitoring-client';
 
-type PrismaScanDispatchClient = Pick<
+type PrismaScanDispatchTransaction = Pick<
   PrismaMonitoringClient,
-  '$transaction' | 'scanJob' | 'outboxEvent'
+  'scanJob' | 'outboxEvent'
 >;
+type PrismaScanDispatchClient = PrismaScanDispatchTransaction & {
+  $transaction<T>(work: (transaction: PrismaScanDispatchTransaction) => Promise<T>,
+    options: { readonly isolationLevel: 'Serializable' }): Promise<T>;
+};
 
 export class PrismaScanDispatchAdapter implements ScanDispatchPort {
   constructor(private readonly prisma: PrismaScanDispatchClient) {}

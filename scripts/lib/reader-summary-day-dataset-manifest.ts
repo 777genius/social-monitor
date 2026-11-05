@@ -4,6 +4,9 @@ import { runWithTenantDatabaseAccess } from "@social-monitor/platform-persistenc
 import type { PrismaSummaryClient } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-client";
 import type { ReaderSummaryTimestampPolicy } from "@social-monitor/summary/ports";
 
+import { captureRetainedEngagementAuthority, assertRetainedEngagementAuthority,
+  type HistoricalRetainedEngagementAuthority } from "./reader-summary-retained-engagement-authority";
+
 export const readerSummaryDayDatasetManifestFormat =
   "reader-summary-day-dataset-manifest-v1";
 
@@ -17,6 +20,7 @@ type EligibilityRow = {
 };
 
 export type ReaderSummaryDayDatasetManifest = {
+  readonly retainedEngagementAuthority?: HistoricalRetainedEngagementAuthority;
   readonly schemaVersion: 1;
   readonly format: typeof readerSummaryDayDatasetManifestFormat;
   readonly generatedAt: string;
@@ -51,6 +55,7 @@ export type ReaderSummaryDayDatasetManifest = {
 };
 
 export async function captureReaderSummaryDayDatasetManifest(params: {
+  readonly retainedAuthorityBoundThrough?: Date;
   readonly client: Pick<PrismaSummaryClient, "$queryRaw">;
   readonly tenantId: string;
   readonly workspaceId: string;
@@ -61,12 +66,18 @@ export async function captureReaderSummaryDayDatasetManifest(params: {
 }): Promise<ReaderSummaryDayDatasetManifest> {
   assertExactUtcDay(params.startedAt, params.endedAt);
   const timestampPolicy = params.timestampPolicy ?? "published_at";
-  const { feedRows, eligibilityRows } = await runWithTenantDatabaseAccess(
+  if (params.retainedAuthorityBoundThrough !== undefined && timestampPolicy !== "published_at") {
+    throw new Error("Retained historical authority requires published_at");
+  }
+  const { feedRows, eligibilityRows, retainedEngagementAuthority } = await runWithTenantDatabaseAccess(
     {
       tenantId: params.tenantId,
       workspaceId: params.workspaceId,
     },
     async () => ({
+      retainedEngagementAuthority: params.retainedAuthorityBoundThrough === undefined ? undefined
+        : await captureRetainedEngagementAuthority({ ...params,
+          boundThrough: params.retainedAuthorityBoundThrough }),
       feedRows: await readFeedRows({ ...params, timestampPolicy }),
       eligibilityRows: await readGitHubEligibilityRows(params),
     }),
@@ -80,10 +91,12 @@ export async function captureReaderSummaryDayDatasetManifest(params: {
     timestampPolicy,
     feedRows,
     eligibilityRows,
+    retainedEngagementAuthority,
   });
 }
 
 export function buildReaderSummaryDayDatasetManifest(params: {
+  readonly retainedEngagementAuthority?: HistoricalRetainedEngagementAuthority;
   readonly tenantId: string;
   readonly workspaceId: string;
   readonly startedAt: Date;
@@ -112,7 +125,13 @@ export function buildReaderSummaryDayDatasetManifest(params: {
     JSON.stringify(sortedRecord(providerCounts)),
     timestampPolicy,
   ]);
+  if (params.retainedEngagementAuthority !== undefined) {
+    assertRetainedEngagementAuthority(params.retainedEngagementAuthority);
+  }
   return {
+    ...(params.retainedEngagementAuthority === undefined ? {} : {
+      retainedEngagementAuthority: params.retainedEngagementAuthority,
+    }),
     schemaVersion: 1,
     format: readerSummaryDayDatasetManifestFormat,
     generatedAt: params.generatedAt.toISOString(),
@@ -152,6 +171,8 @@ export function manifestsMatch(
   actual: ReaderSummaryDayDatasetManifest,
 ): boolean {
   return (
+    JSON.stringify(expected.retainedEngagementAuthority) ===
+      JSON.stringify(actual.retainedEngagementAuthority) &&
     expected.scope.tenantId === actual.scope.tenantId &&
     expected.scope.workspaceId === actual.scope.workspaceId &&
     expected.period.startedAt === actual.period.startedAt &&
@@ -164,6 +185,54 @@ export function manifestsMatch(
     JSON.stringify(expected.dataset.providerCounts) ===
       JSON.stringify(actual.dataset.providerCounts)
   );
+}
+
+export function parseReaderSummaryDayDatasetManifest(
+  bytes: Uint8Array,
+): ReaderSummaryDayDatasetManifest {
+  let value: unknown;
+  try {
+    value = JSON.parse(Buffer.from(bytes).toString("utf8")) as unknown;
+  } catch {
+    throw new Error("Dataset manifest is not valid JSON");
+  }
+  if (
+    !isRecord(value) ||
+    value.schemaVersion !== 1 ||
+    value.format !== readerSummaryDayDatasetManifestFormat ||
+    typeof value.generatedAt !== "string" ||
+    !isRecord(value.scope) ||
+    typeof value.scope.tenantId !== "string" ||
+    typeof value.scope.workspaceId !== "string" ||
+    !isRecord(value.period) ||
+    typeof value.period.startedAt !== "string" ||
+    typeof value.period.endedAt !== "string" ||
+    value.period.timezone !== "UTC" ||
+    !isRecord(value.dataset) ||
+    !isExactCount(value.dataset.feedRowCount) ||
+    !isCountRecord(value.dataset.providerCounts) ||
+    !isSha256(value.dataset.feedRowsSha256) ||
+    !isExactCount(value.dataset.githubEligibilityRowCount) ||
+    !isSha256(value.dataset.githubEligibilitySha256) ||
+    !isSha256(value.dataset.aggregateSha256) ||
+    !isRecord(value.policy) ||
+    value.policy.status !== "VISIBLE" ||
+    (value.policy.timestampPolicy !== "published_at" &&
+      value.policy.timestampPolicy !== "observed_at") ||
+    value.policy.githubRowsIncluded !== true ||
+    value.policy.githubEligibilityIncluded !== true ||
+    !isRecord(value.redaction) ||
+    Object.values(value.redaction).some((item) => item !== false)
+  ) {
+    throw new Error("Dataset manifest contract is invalid");
+  }
+  if (value.retainedEngagementAuthority !== undefined) {
+    assertRetainedEngagementAuthority(value.retainedEngagementAuthority as HistoricalRetainedEngagementAuthority);
+    if (value.policy.timestampPolicy !== "published_at") {
+      throw new Error("Retained historical authority requires published_at");
+    }
+  }
+  return value as unknown as ReaderSummaryDayDatasetManifest;
 }
 
 async function readFeedRows(params: {
@@ -286,5 +355,35 @@ function assertExactUtcDay(startedAt: Date, endedAt: Date): void {
     endedAt.getTime() - startedAt.getTime() !== 86_400_000
   ) {
     throw new Error("Dataset manifest requires one exact UTC day");
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isSha256(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{64}$/u.test(value);
+}
+
+function isExactCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isCountRecord(value: unknown): value is Record<string, number> {
+  return isRecord(value) && Object.values(value).every(isExactCount);
+}
+
+/** Inventory admission checks the manifest's declared sub-digests and counts,
+ * as well as the canonical rows re-read by the guard. Ordinary capture modes
+ * retain their existing validation behavior. */
+export function assertReaderSummaryDatasetManifestDigest(manifest: ReaderSummaryDayDatasetManifest): void {
+  const dataset = manifest.dataset;
+  const expected = digestRows([dataset.feedRowsSha256, dataset.githubEligibilitySha256,
+    String(dataset.feedRowCount), String(dataset.githubEligibilityRowCount),
+    JSON.stringify(sortedRecord(dataset.providerCounts)), manifest.policy.timestampPolicy]);
+  if (expected !== dataset.aggregateSha256 ||
+      Object.values(dataset.providerCounts).reduce((sum, count) => sum + count, 0) !== dataset.feedRowCount) {
+    throw new Error("First publication manifest counts/sub-digests are inconsistent");
   }
 }

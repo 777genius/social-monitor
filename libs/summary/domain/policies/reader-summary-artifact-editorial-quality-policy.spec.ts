@@ -1,3 +1,4 @@
+import { READER_SUMMARY_DAILY_INPUT_POLICY } from "../value-objects/reader-summary-daily-generation-input";
 import {
   evaluateReaderSummaryArtifactEditorialQuality,
   type ReaderSummaryArtifactEditorialQualityInput,
@@ -5,6 +6,15 @@ import {
 } from "./reader-summary-artifact-editorial-quality-policy";
 
 describe("evaluateReaderSummaryArtifactEditorialQuality", () => {
+  it("does not classify empty normalized titles as headline copies", () => {
+    const result = evaluateReaderSummaryArtifactEditorialQuality({
+      ...dailySynthesis(),
+      headline: "!!!",
+      topPostTitles: ["!!!", "", "   "],
+    });
+    expect(result.qualityGates.headlineIsNotCopiedFromTopPost).toBe(true);
+  });
+
   it("accepts a balanced multi-cluster daily synthesis", () => {
     const result =
       evaluateReaderSummaryArtifactEditorialQuality(dailySynthesis());
@@ -210,6 +220,37 @@ describe("evaluateReaderSummaryArtifactEditorialQuality", () => {
   });
 });
 
+describe("native likes input editorial grounding", () => {
+  const sameProvider = (): ReaderSummaryArtifactEditorialQualityInput => ({
+    ...dailySynthesis(), coveragePolicyVersion: READER_SUMMARY_DAILY_INPUT_POLICY,
+    citations: dailySynthesis().citations.map(item => ({ ...item, providerKey: "reddit" })),
+  });
+  it("accepts distinct grounded events without a provider diversity or dominance quota", () => {
+    const result = evaluateReaderSummaryArtifactEditorialQuality(sameProvider());
+    expect(result.blockingPassed).toBe(true);
+    expect(result.metrics).toMatchObject({ leadClusterCount: 2, leadProviderCount: 1, dominantProviderShare: 1 });
+    const legacy = evaluateReaderSummaryArtifactEditorialQuality({ ...sameProvider(), coveragePolicyVersion: undefined });
+    expect(legacy.qualityGates.dailySynthesisLeadHasMultipleProviders).toBe(false);
+    expect(legacy.qualityGates.mainNarrativeProviderDominanceControlled).toBe(false);
+  });
+  it("still rejects a one-event daily synthesis", () => {
+    const input = sameProvider();
+    const result = evaluateReaderSummaryArtifactEditorialQuality({ ...input,
+      narrativeSections: input.narrativeSections.map(item => item.kind === "lead" ? { ...item, citationIds: ["c1"] } : item) });
+    expect(result.blockingPassed).toBe(false);
+    expect(result.qualityGates.dailySynthesisLeadHasMultipleClusters).toBe(false);
+  });
+  it("retains citation, headline and markdown protections", () => {
+    const input = sameProvider();
+    const result = evaluateReaderSummaryArtifactEditorialQuality({ ...input,
+      headline: input.topPostTitles[0]!, renderedMarkdown: "<table>unsafe</table>",
+      narrativeSections: [...input.narrativeSections, section({ kind: "secondary_signal", citationIds: ["missing"] })] });
+    expect(result.blockingPassed).toBe(false);
+    expect(result.qualityGates).toMatchObject({ narrativeCitationsResolve: false,
+      headlineIsNotCopiedFromTopPost: false, renderedMarkdownIsWellFormed: false });
+  });
+});
+
 const dailySynthesis = (): ReaderSummaryArtifactEditorialQualityInput => ({
   headline: "AI coding workflows widen as cost and isolation shape adoption",
   coverageMode: "daily_synthesis",
@@ -265,4 +306,23 @@ const section = (
   ...(params.storyClusterId === undefined
     ? {}
     : { storyClusterId: params.storyClusterId }),
+});
+
+it("uses the shared v2 synthesis proof while retaining the legacy single-story and cluster gates", () => {
+  const sections = [{kind:"lead" as const,title:"Today's picture",text:"Several reports expose complementary capabilities and constraints.",citationIds:["c1","c2"]},
+    ...Array.from({length:4},(_,index)=>({kind:"secondary_signal" as const,title:`Takeaway ${index}`,text:"These reports support a bounded practical comparison with explicit uncertainty.",citationIds:["c1","c2"]}))];
+  const selected=[{feedItemId:"f1",storyId:"s1"},{feedItemId:"f2",storyId:"s2"}];
+  const citations=selected.map((post,index)=>({citationId:`c${index+1}`,feedItemId:post.feedItemId,sourceItemId:`source${index}`,providerKey:"reddit",field:"bodyPreview" as const}));
+  const plan={version:"reader_summary.daily_editorial.v2" as const,topics:selected.map((post,index)=>({title:`Event ${index}`,why:"Supported event",depth:index===0?"detailed" as const:"brief" as const,feedItemIds:[post.feedItemId]}))};
+  const input:ReaderSummaryArtifactEditorialQualityInput={headline:"Tools expose practical capabilities and constraints",coverageMode:"single_story",dailyEditorialPlan:true,
+    coveragePolicyVersion:READER_SUMMARY_DAILY_INPUT_POLICY,topPostTitles:[],narrativeSections:sections,renderedMarkdown:"Grounded complete paragraphs.",
+    citations:citations.map((citation,index)=>({...citation,storyClusterId:`s${index+1}`})),synthesisProof:{plan,selected,citations}};
+  expect(evaluateReaderSummaryArtifactEditorialQuality(input).blockingPassed).toBe(true);
+  const legacy=evaluateReaderSummaryArtifactEditorialQuality({...input,synthesisProof:undefined});
+  expect(legacy.qualityGates.secondarySignalsUseUniqueClusters).toBe(false);
+  expect(legacy.qualityGates.singleStoryLeadIsHonestlyClusterBound).toBe(false);
+  for(const ids of [["c1"],["c1","missing"],["c1","c1"]]) {
+    const invalid=evaluateReaderSummaryArtifactEditorialQuality({...input,narrativeSections:[{...sections[0]!,citationIds:ids},...sections.slice(1)]});
+    expect(invalid.blockingPassed).toBe(false);
+  }
 });

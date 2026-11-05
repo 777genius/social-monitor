@@ -1,20 +1,10 @@
 import { ProjectSummaryReadyEventHandler } from '@social-monitor/delivery/interfaces/events/project-summary-ready-event.handler';
 import { InMemoryRealtimeEventRepository } from '@social-monitor/delivery/adapters/persistence/in-memory-realtime-event.repository';
+import { InMemorySummaryReadyProjectionStore } from '@social-monitor/delivery/adapters/persistence/in-memory-summary-ready-projection.store';
 import { ProjectSummaryReadyEventUseCase } from '@social-monitor/delivery/features/project-summary-ready-event/project-summary-ready-event.use-case';
-import { RecordRealtimeEventUseCase } from '@social-monitor/delivery/features/record-realtime-event/record-realtime-event.use-case';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { WorkerRuntime } from '@social-monitor/platform-worker';
-import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
-
-class SequenceIdGenerator implements IdGenerator {
-  private nextId = 1;
-
-  generate(): string {
-    const id = `summary-ready-projection-smoke-${this.nextId}`;
-    this.nextId += 1;
-    return id;
-  }
-}
+import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 const assert: (condition: unknown, message: string) => asserts condition = (condition, message) => {
   if (!condition) {
@@ -23,8 +13,8 @@ const assert: (condition: unknown, message: string) => asserts condition = (cond
 };
 
 async function main(): Promise<void> {
-  const tenant = tenantId('tenant-summary-ready-projection-smoke');
-  const workspace = workspaceId('workspace-summary-ready-projection-smoke');
+  const tenant = tenantId('00000000-0000-4000-8000-000000009101');
+  const workspace = workspaceId('00000000-0000-4000-8000-000000009102');
   const realtimeEvents = new InMemoryRealtimeEventRepository();
   const metrics = new InMemoryMetricsRecorder();
   const runtime = new WorkerRuntime({ serviceName: 'delivery-service' });
@@ -32,11 +22,8 @@ async function main(): Promise<void> {
 
   const handler = new ProjectSummaryReadyEventHandler(
     new ProjectSummaryReadyEventUseCase(
-      new RecordRealtimeEventUseCase(
-        realtimeEvents,
-        new SequenceIdGenerator(),
-        new FixedClock(new Date('2026-06-06T00:02:00.000Z')),
-      ),
+      new InMemorySummaryReadyProjectionStore(realtimeEvents),
+      { publish: async () => undefined },
     ),
     metrics,
     runtime,

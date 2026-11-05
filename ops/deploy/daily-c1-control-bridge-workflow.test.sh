@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
+SHELLCHECK_VERIFIER=$SCRIPT_DIR/verify-production-shellcheck-baseline.sh
 FIXTURE=$(mktemp -d "${TMPDIR:-/tmp}/daily-c1-control-bridge.XXXXXX")
 trap 'rm -rf "$FIXTURE"' EXIT
 REPO=$FIXTURE/repo
@@ -17,6 +18,7 @@ source "$SCRIPT_DIR/deploy-control-bridge-lib.sh"
 
 expected_sealed_paths=$(cat <<'PATHS'
 ops/deploy/backend-image-rescue-lib.sh
+ops/deploy/backend-image-rescue-pin-cleanup-lib.sh
 ops/deploy/deploy-control-bridge-lib.sh
 ops/deploy/deploy-control-lib.sh
 ops/deploy/postgres-runtime-activation-boundary-lib.sh
@@ -85,6 +87,7 @@ if deploy_control_is_exact_daily_c1_bridge_release "$base" "$missing_target"; th
 fi
 
 workflow=$PROJECT_ROOT/.github/workflows/production-deploy.yml
+release_preflight=$SCRIPT_DIR/production-release-preflight.sh
 grep -F 'daily_c1_bridge_base=e3b5b5d89b3586668e36f987f03672415b5a0f37' \
   "$workflow" >/dev/null
 grep -F 'daily_c1_bridge_expected=$(cat' "$workflow" >/dev/null || \
@@ -110,10 +113,31 @@ grep -F 'transition_state=repair-required' "$workflow" >/dev/null || \
   fail 'bridge cannot schedule bounded repair for a missing PostgreSQL bootstrap'
 grep -F 'daily_c1_atomic_repair=61018b1d' "$workflow" >/dev/null || \
   fail 'bridge does not pin the descendant atomic PostgreSQL repair commit'
-grep -F 'backend-gate=postgres-pool-release deferred-to-bounded-B2-repair' \
+grep -F 'backend-gate=postgres-pool-release deferred-to-bounded-repair' \
   "$workflow" >/dev/null || fail 'bridge CI blocks the reviewed bounded bootstrap repair'
-grep -F 'shellcheck -S warning -x "${deploy_shell_files[@]}"' \
-  "$workflow" >/dev/null || fail 'workflow treats informational shellcheck findings as release failures'
+grep -F -A3 'bash ops/deploy/verify-production-shellcheck-baseline.sh \' "$workflow" | \
+  grep -F '"${deploy_shell_files[@]}"' >/dev/null || \
+  fail 'workflow ShellCheck verifier does not cover the full deploy closure'
+! grep -F '2034:PUBLIC_LINK' "$SHELLCHECK_VERIFIER" >/dev/null || \
+  fail 'verifier still allows the removed PUBLIC_LINK warning'
+! grep -F '2034:ADMIN_LINK' "$SHELLCHECK_VERIFIER" >/dev/null || \
+  fail 'verifier still allows the removed ADMIN_LINK warning'
+grep -F 'actual.size !== findings.length' "$SHELLCHECK_VERIFIER" >/dev/null || \
+  fail 'verifier does not reject duplicate warnings'
+grep -F '[...actual].some((finding) => !expected.has(finding))' \
+  "$SHELLCHECK_VERIFIER" >/dev/null || fail 'verifier does not reject new warnings'
+! grep -F 'shellcheck -S warning -x -e' "$SHELLCHECK_VERIFIER" >/dev/null || \
+  fail 'verifier still relies on a non-portable broad warning exclusion'
+grep -F -A1 'bash ops/deploy/verify-production-shellcheck-baseline.sh \' \
+  "$release_preflight" | grep -F '"${deploy_shell_files[@]}"' >/dev/null || \
+  fail 'release preflight bypasses the canonical ShellCheck verifier'
+shellcheck_bypass_pattern='(^|[^[:alnum:]_.-])shellcheck([[:space:]]|$)'
+! grep -E "$shellcheck_bypass_pattern" "$release_preflight" >/dev/null || \
+  fail 'release preflight still invokes ShellCheck outside the canonical verifier'
+for bypass in 'command shellcheck -x target.sh' 'result=$(shellcheck -x target.sh)'; do
+  printf '%s\n' "$bypass" | grep -E "$shellcheck_bypass_pattern" >/dev/null || \
+    fail 'release preflight ShellCheck bypass detector is incomplete'
+done
 grep -F "needs.plan.outputs.daily_c1_bridge != 'true'" \
   "$workflow" >/dev/null || fail 'bridge does not defer final-only legacy transition fixtures'
 [[ $(grep -Fc "needs.plan.outputs.daily_c1_bridge != 'true'" "$workflow") == 9 ]] || \

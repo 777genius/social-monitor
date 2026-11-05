@@ -25,7 +25,7 @@ class ReaderSummaryWeeklyProjectionEvidenceLimitationDto {
   evidenceState;
   final ReaderSummaryWeeklyProjectionEvidenceLimitationDtoProviderKeyProviderKey
   providerKey;
-  final String requestedUtcDate;
+  final DateTime requestedUtcDate;
 
   Map<String, Object?> toJson() =>
       _$ReaderSummaryWeeklyProjectionEvidenceLimitationDtoToJson(this);

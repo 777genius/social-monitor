@@ -10,5 +10,18 @@
     "requiresExpiryDate": true,
     "requiresMitigation": true
   },
-  "allowedExceptions": []
+  "allowedExceptions": [
+    {
+      "packageName": "zod",
+      "owner": "iliya",
+      "expiresAt": "2026-11-07",
+      "mitigation": "memory exhaustion on oversized constrained collections; all zod inputs are bounded by edge request limits and upstream schema caps; no RCE/data exposure; @vioxen/subscription-runtime upgrade tracked"
+    },
+    {
+      "packageName": "@vioxen/subscription-runtime",
+      "owner": "iliya",
+      "expiresAt": "2026-11-07",
+      "mitigation": "inherits zod advisory only; same input-bound mitigation; upgrade tracked"
+    }
+  ]
 }

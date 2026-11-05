@@ -21,6 +21,32 @@ List<SummaryPeriod> _snapshotSummaryPeriods(WorkspaceSummarySnapshot snapshot) {
   return periodsByKey.values.toList(growable: false);
 }
 
+List<SummaryPeriod> _mergeSummarySnapshotPeriods(
+  WorkspaceSummarySnapshot? previous,
+  WorkspaceSummarySnapshot next,
+) {
+  return mergeSummaryPeriods(
+    previous == null ? const [] : _snapshotSummaryPeriods(previous),
+    _snapshotSummaryPeriods(next),
+  );
+}
+
+WorkspaceSummarySnapshot? _summarySnapshotForSelectedPreset(
+  WorkspaceSummarySnapshot? snapshot,
+  SummaryPeriodPreset preset,
+) {
+  final current = snapshot?.current;
+  if (snapshot == null ||
+      current == null ||
+      summaryPeriodPresetFor(current.period) == preset) {
+    return snapshot;
+  }
+  return WorkspaceSummarySnapshot(
+    availablePeriods: _snapshotSummaryPeriods(snapshot),
+    availablePeriodsAreComplete: snapshot.availablePeriodsAreComplete,
+  );
+}
+
 bool _sameSummaryPeriodWindow(SummaryPeriod left, SummaryPeriod right) {
   return sameSummaryPeriodWindow(left, right);
 }

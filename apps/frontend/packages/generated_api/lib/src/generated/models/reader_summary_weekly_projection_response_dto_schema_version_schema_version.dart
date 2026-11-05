@@ -29,6 +29,8 @@ enum ReaderSummaryWeeklyProjectionResponseDtoSchemaVersionSchemaVersion {
   String toString() => json ?? super.toString();
 
   /// Returns all defined enum values excluding the $unknown value.
-  static List<ReaderSummaryWeeklyProjectionResponseDtoSchemaVersionSchemaVersion>
+  static List<
+    ReaderSummaryWeeklyProjectionResponseDtoSchemaVersionSchemaVersion
+  >
   get $valuesDefined => values.where((value) => value != $unknown).toList();
 }

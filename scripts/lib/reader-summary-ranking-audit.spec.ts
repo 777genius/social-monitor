@@ -7,6 +7,7 @@ import { publicReaderSummaryMatchedRules } from "@social-monitor/summary/feature
 import {
   type AtomicTopReadRankingReportOperations,
   failTopReadRankingReport,
+  rankingCitationProviderFamily,
   writeTopReadRankingReportAtomically,
 } from "../check-reader-summary-top-read-ranking";
 
@@ -248,6 +249,15 @@ describe("reader summary ranking audit", () => {
 });
 
 describe("reader summary top-read ranking failed-report CLI", () => {
+  it("compares X citations using the independent provider family", () => {
+    expect(
+      rankingCitationProviderFamily({
+        providerKey: "x-twitter",
+        canonicalUrl: "https://x.com/example/status/123",
+      }),
+    ).toBe("x");
+  });
+
   it.each([
     { label: "neither flag", update: false, writeFailedReport: false },
     { label: "--update only", update: true, writeFailedReport: false },

@@ -10,6 +10,7 @@ import '../entities/summary_claim.dart';
 import '../entities/summary_reliability.dart';
 import '../entities/summary_story.dart';
 import '../entities/top_read.dart';
+import '../value_objects/published_summary_reference.dart';
 import '../value_objects/reader_summary_coverage.dart';
 import '../value_objects/summary_period.dart';
 import '../value_objects/summary_quality.dart';
@@ -28,6 +29,8 @@ export '../entities/summary_story.dart';
 export '../entities/top_read.dart';
 export '../value_objects/preview_media.dart';
 export '../value_objects/provider_metric_label.dart';
+export '../value_objects/published_summary_reference.dart';
+export '../value_objects/reader_post_promotion_attestation.dart';
 export '../value_objects/reader_summary_coverage.dart';
 export '../value_objects/signal_score.dart';
 export '../value_objects/summary_period.dart';
@@ -38,11 +41,13 @@ final class WorkspaceSummarySnapshot {
   const WorkspaceSummarySnapshot({
     this.current,
     this.availablePeriods = const [],
+    this.availableSummaryReferences = const [],
     this.availablePeriodsAreComplete = false,
   });
 
   final ReaderSummary? current;
   final List<SummaryPeriod> availablePeriods;
+  final List<PublishedSummaryReference> availableSummaryReferences;
   final bool availablePeriodsAreComplete;
 }
 
@@ -93,12 +98,15 @@ final class ReaderSummaryContent {
     required this.sourceMix,
     required this.topReads,
     this.selectedPosts = const [],
+    this.newsWithoutRatingPosts = const [],
     this.claimBoard = const [],
     this.reliabilityReport = emptySummaryReliabilityReport,
     required this.trendDelta,
     required this.openQuestions,
     required this.risks,
     required this.nextActions,
+    this.promotionBoardAvailability =
+        ReaderSummaryPromotionBoardAvailability.available,
   });
 
   final String headline;
@@ -110,12 +118,30 @@ final class ReaderSummaryContent {
   final ReaderSummaryQualityState qualityState;
   final List<ReaderInterestSection> interestSections;
   final List<SourceMixEntry> sourceMix;
+
+  /// "Top posts": the first ranked posts of the promotion board.
   final List<TopRead> topReads;
+
+  /// "Show more": the ranked sequence continued after [topReads].
   final List<TopRead> selectedPosts;
+
+  /// "News without rating": posts from sources without a popularity rating,
+  /// never part of the ranked sequence.
+  final List<TopRead> newsWithoutRatingPosts;
   final List<SummaryClaim> claimBoard;
   final SummaryReliabilityReport reliabilityReport;
   final ReaderTrendDelta trendDelta;
   final List<String> openQuestions;
   final List<String> risks;
   final List<ReaderAction> nextActions;
+  final ReaderSummaryPromotionBoardAvailability promotionBoardAvailability;
+}
+
+enum ReaderSummaryPromotionBoardAvailability {
+  available,
+  unavailable,
+
+  /// The day was ranked under an earlier promotion policy. Its narrative and
+  /// citations stay readable, while the boards are withheld until a rebuild.
+  rebuildRequired,
 }

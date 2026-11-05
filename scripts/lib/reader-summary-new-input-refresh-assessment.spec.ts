@@ -1,0 +1,463 @@
+import { reconciliationFixture } from "./reader-summary-refresh-reconciliation.spec-support";
+import { RankFeedItemsUseCase } from "@social-monitor/relevance/features/rank-feed-items/rank-feed-items.use-case";
+import { FeedItem } from "@social-monitor/feed/domain";
+import { activeReaderSummaryPurposes } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
+import { FixedClock } from "@social-monitor/shared-kernel";
+import { sourceContentAssessmentPurpose as purpose } from "./reader-summary-new-input-refresh-assessment-runtime";
+import {
+  createRefreshAssessmentReviewer,
+  hasRefreshSelectableEvidence,
+  refreshAssessmentScheduling,
+} from "./reader-summary-new-input-refresh-assessment";
+import type { guardedRefreshRuntime } from "./reader-summary-new-input-refresh-model";
+import { selectorOutput, selectorWiring } from "./reader-summary-new-input-refresh-selector-composition.spec-support";
+import { publicationProbe } from "./reader-summary-new-input-refresh-model-composition.spec-support";
+import { refreshManifest, refreshNow } from "./reader-summary-new-input-refresh.spec-support";
+import { xEvidence } from "@social-monitor/summary/adapters/evidence/reader-summary-editorial-slate.spec-support";
+import { SourceContentQualityPolicy } from "@social-monitor/relevance/domain";
+import type { SourceContentQualityReviewRequest } from "@social-monitor/relevance/ports";
+import { completedRefreshModelRequest } from "./reader-summary-new-input-refresh-model.spec-support";
+import type { GuardedRefreshRuntime } from "./reader-summary-new-input-refresh-model";
+
+describe("refresh preflight persisted primary evidence", () => {
+  const source = xEvidence("synthetic-primary", 0);
+  const primary = { ...source, contentQuality: { ...source.contentQuality!,
+    decision: "promote", reason: "promotion_assessment:promote" } };
+  const supplemental = { ...primary, feedItemId: "synthetic-trending", providerKey: "github-trending-page",
+    promotionFacts: { ...primary.promotionFacts!, contentKind: "github_trending" as const } };
+  const hardGated = { ...primary, contentQuality: { ...primary.contentQuality!,
+    eligibleForSummary: false, needsLlmReview: false, decision: "reject",
+    reason: "promotion_assessment_not_requested:hard_gate" } };
+
+  it("rejects persisted selectable supplemental-only evidence", () => {
+    expect(supplemental.contentQuality).toMatchObject({ eligibleForSummary: true, needsLlmReview: false });
+    expect(hasRefreshSelectableEvidence([supplemental])).toBe(false);
+    expect(hasRefreshSelectableEvidence([...Array.from({ length: 430 }, () => hardGated),
+      ...Array.from({ length: 50 }, () => supplemental)])).toBe(false);
+    expect(hasRefreshSelectableEvidence([])).toBe(false);
+  });
+
+  it.each(["primary", "mixed"])("admits %s persisted selectable evidence", (kind) => {
+    expect(hasRefreshSelectableEvidence(kind === "primary" ? [primary] : [supplemental, primary])).toBe(true);
+  });
+});
+
+afterEach(() => jest.restoreAllMocks());
+
+describe("historical unpaid preflight to guarded pool assessment to canonical selection", () => {
+  it("reserves runtime capacity for fallback without shortening the refresh deadline", async () => {
+    let elapsedMs = 0;
+    const assessmentPhases: string[] = [];
+    const manifest = refreshManifest();
+    const request = (candidateId: string): SourceContentQualityReviewRequest => ({
+      candidateId,
+      providerKey: "hacker-news",
+      title: "TypeScript compiler release improves AI coding agents",
+      bodyPreview: "The TypeScript compiler release improves AI coding agents with a documented sandbox interface.",
+      deterministic: new SourceContentQualityPolicy().evaluate({ providerKey: "hacker-news",
+        title: "TypeScript compiler release improves AI coding agents",
+        providerMetadata: { query: "AI developer tools" } }),
+      promotion: { tenantId: manifest.tenantId, workspaceId: manifest.workspaceId,
+        interestId: "interest-ai", sourceItemId: `source-${candidateId}`,
+        sourceBindingId: `binding-${candidateId}`, trustedIntent: "AI developer tools",
+        availability: "body_present" },
+    });
+    const runtime = {
+      checkHealth: jest.fn(),
+      assertUsable: jest.fn(),
+      invalidateAdapter: jest.fn(),
+      runTask: jest.fn(async (command) => {
+        elapsedMs += 250_000;
+        return completedRefreshModelRequest(command, selectorOutput(command));
+      }),
+    } as GuardedRefreshRuntime;
+    const assessment = createRefreshAssessmentReviewer({ env: {}, runtime,
+      clock: { now: () => new Date(refreshNow.getTime() + elapsedMs) },
+      capture: (event) => assessmentPhases.push(event.phase) });
+    expect(assessment.promotionTiming).toMatchObject(refreshAssessmentScheduling);
+    expect(assessment.promotionTiming!.batchConcurrency).toBe(1);
+    expect(assessment.promotionTiming!.totalTimeoutMs).toBe(3_600_000);
+    for (const candidateId of ["synthetic-extra-0", "synthetic-extra-1", "synthetic-extra-2"]) {
+      await expect(assessment.reviewBatch([request(candidateId)])).resolves.toHaveLength(1);
+    }
+    expect(assessmentPhases).toEqual([
+      "attempt", "completed", "attempt", "completed", "attempt", "completed",
+    ]);
+  });
+
+  it("finds unassessed social input, spends once and binds selected evidence to intent", async () => {
+    const test = await selectorWiring();
+    expect(test.preflight.assessmentCandidateCount).toBe(2);
+    expect(test.preflight.canonicalEvidence.map((item) => item.feedItemId).sort())
+      .toEqual(["synthetic-reddit", "synthetic-x"]);
+    expect(test.commands).toEqual([]);
+    const selection = await test.selectComplete();
+    expect(selection.selectedEvidence.map((e) => e.feedItemId).sort()).toEqual(["synthetic-reddit", "synthetic-x"]);
+    expect(selection.selectedEvidence.every((e) => e.contentQuality?.reason === "promotion_assessment:promote")).toBe(true);
+    test.assessment.assertComplete(test.preflight.assessmentCandidateCount);
+    const calls = test.commands.filter((c) => c.purpose === purpose);
+    expect(calls).toHaveLength(1);
+    expect(JSON.parse(calls[0]!.prompt).candidates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ candidateId: "synthetic-x", trustedIntent: "AI developer tools" }),
+      expect.objectContaining({ candidateId: "synthetic-reddit", trustedIntent: "AI developer tools" }),
+    ]));
+    expect(test.events).toContainEqual(expect.objectContaining({ status: "invocation_consumed", purpose,
+      assessmentAttempts: 1, assessmentCandidates: 2, assessmentBytes: Buffer.byteLength(calls[0]!.prompt) }));
+    const publication = publicationProbe(test.runtime, selection);
+    await publication.attempt();
+    expect(publication.publish).toHaveBeenCalledTimes(1);
+    // Reconstructing a reviewer does not buy another runtime attempt.
+    await test.select();
+    expect(test.commands.filter((c) => c.purpose === purpose)).toHaveLength(1);
+    expect(() => test.runtime.assertUsable()).toThrow(/reconciliation/u);
+  });
+
+  it("reuses exact persisted selectable assessments without another assessment call", async () => {
+    const test = await selectorWiring();
+    const selection = await test.selectComplete();
+    const assessmentCalls = test.commands.filter((command) => command.purpose === purpose).length;
+    const persisted = createRefreshAssessmentReviewer({ env: {}, runtime: test.runtime,
+      clock: new FixedClock(refreshNow), canonicalEvidence: selection.selectedEvidence });
+
+    expect(hasRefreshSelectableEvidence(selection.selectedEvidence)).toBe(true);
+    expect(() => persisted.assertComplete(0, selection)).not.toThrow();
+    expect(test.commands.filter((command) => command.purpose === purpose)).toHaveLength(assessmentCalls);
+
+    const first = selection.selectedEvidence[0]!;
+    const forged = { ...selection, selectedEvidence: [{ ...first,
+      contentQuality: { ...first.contentQuality!, qualityScore: first.contentQuality!.qualityScore + 0.01 } },
+      ...selection.selectedEvidence.slice(1)] };
+    expect(() => persisted.assertComplete(0, forged)).toThrow(/reconciliation/u);
+    expect(hasRefreshSelectableEvidence(selection.selectedEvidence.map((item) => ({ ...item,
+      contentQuality: { ...item.contentQuality!, eligibleForSummary: false,
+        reason: "promotion_assessment_not_requested:hard_gate" } })))).toBe(false);
+  });
+
+  it("rejects nonempty partial coverage within the configured candidate cap", async () => {
+    const fixture = await selectorWiring();
+    const selection = await fixture.selectComplete();
+    expect(selection.selectedEvidence).not.toHaveLength(0);
+    expect(() => fixture.assessment.assertComplete(3, selection)).toThrow(/reconciliation/u);
+    expect(() => fixture.runtime.assertUsable()).toThrow(/reconciliation/u);
+  });
+
+  it.each([
+    ["missing", "binding"], ["one missing", "binding"],
+    ["wrong quote", "verdict"], ["duplicate", "binding"],
+  ] as const)(
+    // "wrong binding" (a drifted bindingId echo) is deliberately not in this
+    // table anymore: the agent-runtime adapter now trusts the already-
+    // attested request binding over that echo, so it is accepted, not
+    // rejected - see "accepts a legitimate response ... bindingId echo is
+    // imperfect" in agent-runtime-source-content-quality-reviewer.adapter.spec.ts
+    // and the "legacy dialect with drifted bindingId" case in
+    // assessment-schema-protocol.spec.ts.
+    "keeps %s assessment pending, prevents publication/subsequent spend, and journals failureStage=%s", async (kind, expectedStage) => {
+      const test = await selectorWiring({ output: (command) => {
+        const output = selectorOutput(command);
+        if (command.purpose !== purpose) return output;
+        const reviews = output.reviews as Record<string, unknown>[];
+        switch (kind) {
+          case "missing": return { reviews: [] };
+          case "one missing": return { reviews: reviews.slice(1) };
+          case "wrong quote": reviews[0]!.evidence = [{ field: "title", start: 0, end: 5, quote: "wrong" }]; break;
+          case "duplicate": return { reviews: [reviews[0], reviews[0]] };
+        }
+        return output;
+      } });
+      expect(test.preflight.assessmentCandidateCount).toBe(2);
+      await expect(test.selectComplete()).rejects.toThrow(/reconciliation/u);
+      expect(() => test.assessment.assertComplete(2)).toThrow(/reconciliation/u);
+      expect(test.commands.map((c) => c.purpose)).toEqual([purpose]);
+      // The mandatory (non-optional) journal record - not the optional paired
+      // capture - must carry the precise, whitelisted failure stage.
+      expect(test.events).toContainEqual(expect.objectContaining({ status: "requires_reconciliation",
+        phase: "adapter_validation", taskRole: "source_content_assessment", failureStage: expectedStage }));
+      const publication = publicationProbe(test.runtime);
+      await expect(publication.attempt()).rejects.toThrow(/reconciliation/u);
+      expect(publication.publish).not.toHaveBeenCalled();
+      await test.select();
+      expect(test.commands).toHaveLength(1);
+    },
+  );
+
+  it("accepts an assessed rejection as a decision, without promoting its evidence", async () => {
+    const test = await selectorWiring({ output: (command) => {
+      const output = selectorOutput(command);
+      if (command.purpose === purpose) {
+        for (const review of output.reviews as Record<string, unknown>[]) review.decision = "reject";
+      }
+      return output;
+    } });
+    expect((await test.selectComplete()).selectedEvidence).toEqual([]);
+    test.assessment.assertComplete(2);
+    expect(() => test.runtime.assertUsable()).not.toThrow();
+    expect(test.commands.map((c) => c.purpose)).toEqual([purpose, activeReaderSummaryPurposes.storyRelations]);
+  });
+
+  it.each(["promote", "needs context", "low confidence"])(
+    "publishes bounded selected assessments with 201 candidates and %s", async (kind) => {
+      const rank = jest.spyOn(RankFeedItemsUseCase.prototype, "execute");
+      let abstainingId: string | undefined;
+      const test = await selectorWiring({ extraCandidates: 199, output: (command) => {
+        const output = selectorOutput(command);
+        if (command.purpose === purpose && kind !== "promote" && abstainingId === undefined) {
+          const review = (output.reviews as Record<string, unknown>[])[0]!;
+          abstainingId = review.candidateId as string;
+          if (kind === "needs context") review.decision = "needs_context";
+          else review.confidence = 0.1;
+        }
+        return output;
+      } });
+      expect(test.preflight.assessmentCandidateCount).toBe(201);
+      expect(test.commands).toEqual([]);
+      const selection = await test.selectComplete();
+      const calls = test.commands.filter((c) => c.purpose === purpose);
+      expect(calls).toHaveLength(25);
+      const reviewedIds = calls.flatMap((call) =>
+        (JSON.parse(call.prompt).candidates as { candidateId: string }[]).map((c) => c.candidateId));
+      expect(reviewedIds).toHaveLength(200);
+      expect(new Set(reviewedIds).size).toBe(200);
+      expect(selection.selectedEvidence.length).toBeGreaterThan(0);
+      const ranked = await rank.mock.results[1]!.value;
+      expect(ranked.ok).toBe(true);
+      expect(ranked.value.items).toHaveLength(201);
+      const pending = ranked.value.items.filter((item: { feedItemId: string }) => !reviewedIds.includes(item.feedItemId));
+      expect(pending).toHaveLength(1);
+      expect(pending[0].contentQuality.reason).not.toContain("budget_exhausted");
+      expect(pending[0].contentQuality).toMatchObject({
+        eligibleForSummary: true, needsLlmReview: false,
+      });
+      for (const item of selection.selectedEvidence) {
+        expect(item.feedItemId).not.toBe(abstainingId);
+        if (item.feedItemId === pending[0].feedItemId) {
+          expect(item.contentQuality).toMatchObject({
+            eligibleForSummary: true, needsLlmReview: false,
+          });
+          continue;
+        }
+        expect(reviewedIds).toContain(item.feedItemId);
+        expect(item.contentQuality).toMatchObject({ reason: "promotion_assessment:promote",
+          eligibleForSummary: true, needsLlmReview: false });
+      }
+      if (abstainingId) expect(ranked.value.items.find((item: { feedItemId: string }) => item.feedItemId === abstainingId)
+        .contentQuality).toMatchObject({ reason: `promotion_assessment_pending:${kind === "needs context" ? "needs_context" : "low_confidence"}`,
+        eligibleForSummary: false, needsLlmReview: true });
+      const publication = publicationProbe(test.runtime, selection);
+      await publication.attempt();
+      expect(publication.publish).toHaveBeenCalledTimes(1);
+      const published = publication.publish.mock.calls[0]![0].artifact.toSnapshot();
+      expect(published.selectedEvidence).toEqual(selection.selectedEvidence);
+      expect(published.sourceWindow).toEqual(selection.sourceWindow);
+      expect(publication.assertProtected).toHaveBeenCalledTimes(1);
+      expect(publication.assertCurrent).toHaveBeenCalledTimes(1);
+      expect(test.events.filter((e) => e.status === "requires_reconciliation")).toEqual([]);
+    },
+  );
+
+  it.each(["needs_context", "low_confidence"])("keeps a timely %s abstention local", async (kind) => {
+    let abstainingId: string | undefined;
+    const test = await selectorWiring({ output: (command) => {
+      const output = selectorOutput(command);
+      if (command.purpose === purpose) {
+        const review = (output.reviews as Record<string, unknown>[])[0]!;
+        abstainingId = review.candidateId as string;
+        if (kind === "needs_context") review.decision = kind;
+        else review.confidence = 0.1;
+      }
+      return output;
+    } });
+    const selection = await test.selectComplete();
+    expect(selection.selectedEvidence).toHaveLength(1);
+    expect(selection.selectedEvidence[0]!.feedItemId).not.toBe(abstainingId);
+    expect(selection.selectedEvidence[0]!.contentQuality?.reason).toBe("promotion_assessment:promote");
+    const publication = publicationProbe(test.runtime, selection);
+    await publication.attempt();
+    expect(publication.publish).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not turn needs_context into exhaustive no-signal", async () => {
+    const test = await selectorWiring({ output: (command) => {
+      const output = selectorOutput(command);
+      if (command.purpose === purpose) for (const review of output.reviews as Record<string, unknown>[]) {
+        review.decision = "needs_context";
+      }
+      return output;
+    } });
+    const publication = publicationProbe(test.runtime);
+    await expect(test.selectComplete().then(() => publication.attempt())).rejects.toThrow(/remains pending/u);
+    expect(publication.publish).not.toHaveBeenCalled();
+    expect(() => test.runtime.assertUsable()).not.toThrow();
+    expect(test.events.filter((e) => e.status === "requires_reconciliation")).toEqual([]);
+  });
+
+  it("does not turn bounded rejection into exhaustive no-signal", async () => {
+    const test = await selectorWiring({ extraCandidates: 199, output: (command) => {
+      const output = selectorOutput(command);
+      if (command.purpose === purpose) for (const review of output.reviews as Record<string, unknown>[]) {
+        review.decision = "reject";
+      }
+      return output;
+    } });
+    const selection = await test.selectComplete();
+    expect(selection.selectedEvidence.length).toBeGreaterThan(0);
+    expect(selection.selectedEvidence.every((item) =>
+      item.contentQuality?.reason !== "promotion_assessment:reject")).toBe(true);
+    const publication = publicationProbe(test.runtime, selection);
+    await publication.attempt();
+    expect(publication.publish).toHaveBeenCalledTimes(1);
+    expect(() => test.runtime.assertUsable()).not.toThrow();
+  });
+
+  it.each(["identity", "text", "pending"])("rejects %s drift in admitted assessment evidence", async (kind) => {
+    const test = await selectorWiring();
+    const selection = await test.selectComplete();
+    const item = selection.selectedEvidence[0]!;
+    const changed = { ...selection, selectedEvidence: [{ ...item,
+      ...(kind === "identity" ? { sourceItemId: "unreviewed-source" } :
+        kind === "text" ? { bodyPreview: "Unreviewed replacement text" } :
+          { contentQuality: { ...item.contentQuality!, needsLlmReview: true, eligibleForSummary: false } }),
+    }] };
+    expect(() => test.assessment.assertComplete(2, changed)).toThrow(/reconciliation/u);
+    await expect(publicationProbe(test.runtime, changed).attempt()).rejects.toThrow(/reconciliation/u);
+  });
+
+  it.each(["disabled", "openai-responses"])("cannot route %s outside the guarded pool", (mode) => {
+    const runtime = {} as ReturnType<typeof guardedRefreshRuntime>;
+    expect(() => createRefreshAssessmentReviewer({ env: { RELEVANCE_CONTENT_QUALITY_REVIEWER: mode },
+      clock: new FixedClock(refreshNow), runtime })).toThrow(/guarded subscription/u);
+  });
+
+  it.each(["promotion_assessment_pending:needs_context", "promotion_assessment_not_requested:hard_gate",
+    "promotion_assessment:reject", "High-context source", ""])(
+    "rejects forged selected identity and body despite reason %j", async (reason) => {
+      const test = await selectorWiring();
+      const selection = await test.selectComplete();
+      const item = selection.selectedEvidence[0]!;
+      const forged = { ...selection, selectedEvidence: [{ ...item,
+        feedItemId: "never-reviewed", sourceItemId: "never-reviewed-source",
+        bodyPreview: "An unreviewed replacement claim.",
+        contentQuality: { ...item.contentQuality!, reason },
+      }] };
+      expect(() => test.assessment.assertComplete(2, forged)).toThrow(/reconciliation/u);
+      const publication = publicationProbe(test.runtime, forged);
+      await expect(publication.attempt()).rejects.toThrow(/reconciliation/u);
+      expect(publication.publish).not.toHaveBeenCalled();
+      const spent = test.commands.length;
+      await test.select();
+      expect(test.commands).toHaveLength(spent);
+    });
+
+  it.each(["promotion_assessment_pending:needs_context", "promotion_assessment:reject", "ordinary reason"])(
+    "rejects an inconsistent reason %j even with reviewed identity and text", async (reason) => {
+      const test = await selectorWiring();
+      const selection = await test.selectComplete();
+      const item = selection.selectedEvidence[0]!;
+      expect(() => test.assessment.assertComplete(2, { ...selection, selectedEvidence: [{ ...item,
+        contentQuality: { ...item.contentQuality!, reason },
+      }] })).toThrow(/reconciliation/u);
+    });
+
+  it.each(["reject", "needs_context"])("rejects a forged eligible %s decision", async (decision) => {
+    const test = await selectorWiring();
+    const selection = await test.selectComplete();
+    const item = selection.selectedEvidence[0]!;
+    expect(() => test.assessment.assertComplete(2, { ...selection, selectedEvidence: [{ ...item,
+      contentQuality: { ...item.contentQuality!, decision },
+    }] })).toThrow(/reconciliation/u);
+  });
+
+  it.each(["github-repo-radar", "github-trending-page", "rss"])(
+    "does not exempt an unknown identity just because its provider claims %s", async (providerKey) => {
+      const test = await selectorWiring();
+      const selection = await test.selectComplete();
+      const item = selection.selectedEvidence[0]!;
+      expect(() => test.assessment.assertComplete(2, { ...selection, selectedEvidence: [{ ...item,
+        feedItemId: "never-reviewed", sourceItemId: "never-reviewed-source", providerKey,
+        bodyPreview: "An unreviewed replacement claim.", promotionFacts: undefined,
+        contentQuality: { ...item.contentQuality!, reason: "ordinary reason" },
+      }] })).toThrow(/reconciliation/u);
+    });
+
+  it.each(["sanitized", "truncated"])("accepts legitimate canonical %s text binding", async (kind) => {
+    const publish = FeedItem.publish.bind(FeedItem);
+    jest.spyOn(FeedItem, "publish").mockImplementation((input) => publish(input.id.startsWith("synthetic-extra-") ? input : { ...input,
+      title: kind === "sanitized" ? `  ${input.title}  ` : input.title,
+      bodyPreview: kind === "sanitized" ? `${input.bodyPreview}\n token=synthetic-redaction-fixture`
+        : `${input.bodyPreview} `.repeat(160),
+    }));
+    const test = kind === "truncated" ? await reconciliationFixture() : await selectorWiring();
+    const selection = kind === "truncated"
+      ? await (test as Awaited<ReturnType<typeof reconciliationFixture>>).reconciliationSelection()
+      : await test.selectComplete();
+    expect(selection.selectedEvidence.length).toBeGreaterThan(0);
+    if (kind === "sanitized") expect(selection.selectedEvidence.every((item) =>
+      !item.bodyPreview?.includes("synthetic-redaction-fixture"))).toBe(true);
+    else expect(selection.selectedEvidence.some((item) => item.bodyPreview!.length > 12_000)).toBe(true);
+    const publication = publicationProbe(test.runtime, selection);
+    await publication.attempt();
+    expect(publication.publish).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["github-repo-radar", "feed"], ["github-repo-radar", "source"],
+    ["github-trending-page", "feed"], ["github-trending-page", "source"],
+    ["github-repo-radar", "pending"], ["github-trending-page", "rejected"],
+    ...["github-repo-radar", "github-trending-page"].flatMap((provider) =>
+      ["unknown", "text", "provenance", "snapshot mutation"].map((kind) => [provider, kind])),
+  ])(
+    "retains genuine canonical %s exemption and rejects %s inconsistency", async (providerKey, identity) => {
+      const publish = FeedItem.publish.bind(FeedItem);
+      jest.spyOn(FeedItem, "publish").mockImplementation((input) => publish(input.id !== "synthetic-reddit"
+        ? input : { ...input, id: "synthetic-github", sourceItemId: "source-github", sourceBindingId: "binding-github",
+          providerKey, canonicalUrl: "https://github.com/synthetic/compiler-tools",
+          title: "Synthetic compiler tools for AI coding agents",
+          bodyPreview: "A TypeScript compiler toolkit with documented interfaces for AI developer tools.",
+          providerMetadata: providerKey === "github-repo-radar"
+            ? { kind: "github_repository_trend", contentKind: "repository",
+                repository: { fullName: "synthetic/compiler-tools", forksCount: 500 },
+                trend: { primaryWindow: "24h", checkedAt: "2026-09-05T21:55:00.000Z",
+                  totalStars: 20_000, stars24h: 2_000, forks24h: 200 } }
+            : { kind: "github_trending_page_repository",
+                repository: { fullName: "synthetic/compiler-tools", totalStars: 20_000, forksCount: 500 },
+                trending: { rank: 1, starsGained: 2_000, window: "daily" } },
+        }));
+      const test = await reconciliationFixture();
+      expect(test.preflight.assessmentCandidateCount).toBe(2);
+      const selection = await test.reconciliationSelection();
+      const github = selection.selectedEvidence.find((item) => item.feedItemId === "synthetic-github")!;
+      expect(github).toBeDefined();
+      expect(github.contentQuality!.reason).not.toMatch(/^promotion_assessment/u);
+      const calls = test.commands.filter((command) => command.purpose === purpose);
+      expect(calls).toHaveLength(1);
+      expect(JSON.parse(calls[0]!.prompt).candidates.map((item: { candidateId: string }) => item.candidateId).sort())
+        .toEqual(["synthetic-extra-0", "synthetic-x"]);
+      const publication = publicationProbe(test.runtime, selection);
+      await publication.attempt();
+      expect(publication.publish).toHaveBeenCalledTimes(1);
+      const social = selection.selectedEvidence.find((item) => item.feedItemId === "synthetic-x")!;
+      expect(social).toBeDefined();
+      // Copying the full exemption classification cannot override a recorded identity.
+      if (identity === "snapshot mutation") {
+        const trusted = test.preflight.canonicalEvidence.find((item) => item.feedItemId === github.feedItemId)!;
+        Object.assign(trusted, { title: "Replacement title after reviewer creation" });
+      }
+      const changed = identity === "unknown"
+        ? { ...github, feedItemId: "unknown-feed", sourceItemId: "unknown-source",
+            sourceBindingId: "unknown-binding", interestId: "unknown-interest" }
+        : identity === "text" || identity === "snapshot mutation"
+          ? { ...github, title: "Replacement title after reviewer creation" }
+        : identity === "provenance"
+          ? { ...github, promotionFacts: { ...github.promotionFacts!, metricsState: "conflict" as const } }
+        : identity === "pending" || identity === "rejected"
+        ? { ...github, contentQuality: { ...github.contentQuality!,
+            reason: identity === "pending" ? "promotion_assessment_pending:needs_context" : "promotion_assessment:reject" } }
+        : { ...github,
+        feedItemId: identity === "feed" ? social.feedItemId : "never-reviewed", sourceItemId: social.sourceItemId,
+        sourceBindingId: social.sourceBindingId, interestId: social.interestId,
+      };
+      expect(() => test.assessment.assertComplete(2, { ...selection, selectedEvidence: [changed] }))
+        .toThrow(/reconciliation/u);
+      expect(() => test.runtime.assertUsable()).toThrow(/reconciliation/u);
+    });
+});

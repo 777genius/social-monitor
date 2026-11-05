@@ -3,10 +3,10 @@ import { SystemClock } from '@social-monitor/shared-kernel';
 
 import { CircuitBreakerDeliveryProvider } from '../../adapters/notification/circuit-breaker-delivery.provider';
 import {
-  FetchWebhookHttpClient,
   type HttpWebhookDeliveryProviderOptions,
   HttpWebhookDeliveryProvider,
 } from '../../adapters/notification/http-webhook-delivery.provider';
+import { GuardedWebhookHttpClient } from '../../adapters/notification/guarded-webhook-http-client';
 import { InMemoryDeliveryProvider } from '../../adapters/notification/in-memory-delivery.provider';
 import { MeteredDeliveryProvider } from '../../adapters/notification/metered-delivery.provider';
 import { SignWebhookPayloadUseCase } from '../../features/sign-webhook-payload/sign-webhook-payload.use-case';
@@ -67,7 +67,7 @@ const createWebhookDeliveryProvider = (
     ? new HttpWebhookDeliveryProvider(
         endpoints,
         new SignWebhookPayloadUseCase(endpoints, secrets, eventCatalog),
-        new FetchWebhookHttpClient(),
+        new GuardedWebhookHttpClient(),
         new SystemClock(),
         options,
       )

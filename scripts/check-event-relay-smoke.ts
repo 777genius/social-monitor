@@ -158,6 +158,10 @@ class FakeCommandOutbox implements CommandOutboxStorePort {
     }];
   }
 
+  async renewClaims(): Promise<boolean> {
+    return true;
+  }
+
   async markPublished(): Promise<void> {
     this.published = true;
   }
@@ -204,6 +208,12 @@ class FakeRabbitMqEventChannel implements RabbitMqQueueChannelPort {
     this.published.push({ exchange, routingKey, content, options });
 
     return true;
+  }
+
+  async publishAndConfirm(...args: Parameters<RabbitMqQueueChannelPort['publishAndConfirm']>): Promise<boolean> {
+    const accepted = this.publish(...args);
+    if (accepted) await this.waitForConfirms();
+    return accepted;
   }
 
   async waitForConfirms(): Promise<void> {

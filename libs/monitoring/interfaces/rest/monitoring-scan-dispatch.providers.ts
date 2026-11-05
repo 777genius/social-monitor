@@ -1,6 +1,7 @@
 import type { Provider } from '@nestjs/common';
 
 import { InMemoryOutboxAdapter } from '../../adapters/messaging/in-memory-outbox.adapter';
+import { InMemoryInterestCreationState } from '../../adapters/persistence/in-memory-interest-creation-state';
 import { DirectScanDispatchAdapter } from '../../adapters/queue/direct-scan-dispatch.adapter';
 import type { PrismaMonitoringClient } from '../../adapters/persistence/prisma/prisma-monitoring-client';
 import { PrismaMonitoringOutboxAdapter } from '../../adapters/persistence/prisma/prisma-monitoring-outbox.adapter';
@@ -31,13 +32,14 @@ export const monitoringScanDispatchProviders: Provider[] = [
     useFactory: (
       mode: MonitoringPersistenceMode,
       prisma: PrismaMonitoringClient | null,
+      state: InMemoryInterestCreationState,
     ): OutboxPort =>
       mode === 'prisma'
         ? new PrismaMonitoringOutboxAdapter(
             requirePrismaMonitoringClient(prisma),
           )
-        : new InMemoryOutboxAdapter(),
-    inject: [MONITORING_PERSISTENCE_MODE, MONITORING_PRISMA_CLIENT],
+        : new InMemoryOutboxAdapter(state),
+    inject: [MONITORING_PERSISTENCE_MODE, MONITORING_PRISMA_CLIENT, InMemoryInterestCreationState],
   },
   {
     provide: MONITORING_SCAN_DISPATCH,

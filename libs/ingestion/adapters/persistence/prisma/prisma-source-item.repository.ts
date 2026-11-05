@@ -1,3 +1,9 @@
+import { preserveVerifiedLegacyCapture } from '../../../domain/value-objects/legacy-source-capture';
+import { assertRedditArchiveInsert, type RedditArchiveInsertCommand } from './reddit-archive-persistence-contract';
+import { PrismaArticleCaptureRepository } from './prisma-article-capture.repository';
+import type { ArticleCaptureRepository } from '../../../ports/article-capture-repository';
+import { prepareArticleCaptureAttempt } from '../../../domain/value-objects/article-capture-attempt';
+import { captureNativeText, preserveNativeCaptureAvailability, preserveSourceCapture } from '../../../domain/value-objects/source-content-capture';
 import { withPrismaWriteRetry } from "@social-monitor/platform-persistence";
 import {
   assertGitHubTrendingDurableObservationCoherence,
@@ -27,11 +33,50 @@ type TransactionalPrismaIngestionClient = PrismaIngestionClient & {
 };
 
 export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
-  constructor(private readonly prisma: PrismaIngestionClient) {}
+  private archiveOnly = false;
+  private readonly articleCaptures: PrismaArticleCaptureRepository;
+  constructor(
+    private readonly prisma: PrismaIngestionClient,
+    private readonly writeMode: "update-existing" | "insert-only" = "update-existing",
+  ) {
+    this.articleCaptures = new PrismaArticleCaptureRepository(prisma);
+  }
+
+  findDueArticleCaptures(command: Parameters<ArticleCaptureRepository['findDueArticleCaptures']>[0]) {
+    return this.articleCaptures.findDueArticleCaptures(command);
+  }
+  reserveArticleCapture(command: Parameters<ArticleCaptureRepository['reserveArticleCapture']>[0]) {
+    return this.articleCaptures.reserveArticleCapture(command);
+  }
+  completeArticleCapture(command: Parameters<ArticleCaptureRepository['completeArticleCapture']>[0]) {
+    return this.articleCaptures.completeArticleCapture(command);
+  }
+
+  /** Historical imports must call this explicit entrypoint, never ordinary saveBatch. */
+  saveBatchInsertOnly(command: SaveSourceItemsCommand): Promise<SaveSourceItemsResult> {
+    return new PrismaSourceItemRepository(this.prisma, "insert-only").saveBatch(command);
+  }
+
+  /** Retained archive text is not a live provider fetch or article capture. */
+  saveRedditArchiveBatchInsertOnly(command: RedditArchiveInsertCommand): Promise<SaveSourceItemsResult> {
+    assertRedditArchiveInsert(command);
+    const repository = new PrismaSourceItemRepository(this.prisma, 'insert-only');
+    repository.archiveOnly = true;
+    return repository.saveBatch(command);
+  }
 
   async saveBatch(
     command: SaveSourceItemsCommand,
   ): Promise<SaveSourceItemsResult> {
+    if (this.writeMode === "insert-only") {
+      if (this.transaction() === undefined) {
+        throw new Error("Insert-only source item writes require a Serializable transaction");
+      }
+      const externalIds = command.items.map((item) => item.toSnapshot().externalId);
+      if (new Set(externalIds).size !== externalIds.length) {
+        throw new Error("Insert-only source item batch contains a duplicate ID");
+      }
+    }
     const githubObservedAt = githubTrendingSnapshotBatchObservedAt({
       providerKey: command.providerKey,
       items: command.items.map((item) => item.toSnapshot()),
@@ -40,7 +85,7 @@ export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
     try {
       return await this.saveBatchAtomically(command, githubObservedAt);
     } catch (error) {
-      if (!supportsTransactions || !isUniqueSourceItemConflict(error)) {
+      if (this.writeMode === "insert-only" || !supportsTransactions || !isUniqueSourceItemConflict(error)) {
         throw error;
       }
       return this.saveBatchAtomically(command, githubObservedAt);
@@ -75,6 +120,9 @@ export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
       transaction,
       command,
     );
+    if (this.writeMode === "insert-only" && existingByProviderItemId.size > 0) {
+      throw new Error("Insert-only source item batch conflicts with an existing ID");
+    }
     if (githubObservedAt !== undefined) {
       for (const existing of existingByProviderItemId.values()) {
         assertGitHubTrendingDurableObservationCoherence({
@@ -86,17 +134,28 @@ export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
     }
 
     for (const item of command.items) {
-      const snapshot = item.toSnapshot();
+      const raw = item.toSnapshot();
+      let snapshot = this.archiveOnly || command.providerKey === GITHUB_TRENDING_PAGE_PROVIDER_KEY ? raw : captureNativeText(raw, command.providerKey, raw.ingestedAt);
       const existing = existingByProviderItemId.get(snapshot.externalId);
+      if (existing !== undefined && existing.sourceBindingId === snapshot.sourceBindingId) {
+        snapshot = preserveSourceCapture(snapshot, sourceItemFromPrisma(existing).toSnapshot());
+        snapshot = preserveVerifiedLegacyCapture(snapshot, sourceItemFromPrisma(existing).toSnapshot(), command.providerKey,
+          command.unchangedNativeExternalIds?.includes(snapshot.externalId) ?? false);
+      }
+      if (!this.archiveOnly) snapshot = prepareArticleCaptureAttempt(snapshot, raw.ingestedAt);
       const providerContentHash = sourceItemProviderContentHash({
         providerKey: command.providerKey,
         snapshot,
       });
       if (existing !== undefined) {
+        if (this.writeMode === "insert-only") {
+          throw new Error("Insert-only source item batch conflicts with an existing ID");
+        }
         const update = await this.updateExisting(transaction, {
           existing,
           snapshot,
           providerContentHash,
+          providerKey: command.providerKey,
           immutable:
             command.providerKey === GITHUB_TRENDING_PAGE_PROVIDER_KEY,
         });
@@ -150,6 +209,7 @@ export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
       readonly existing: PrismaSourceItemRecord;
       readonly snapshot: SourceItemProps;
       readonly providerContentHash: string;
+      readonly providerKey: string;
       readonly immutable: boolean;
     },
   ): Promise<{
@@ -159,6 +219,23 @@ export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
     const contentChanged =
       params.existing.providerContentHash === null ||
       params.existing.providerContentHash !== params.providerContentHash;
+    // The provider fingerprint includes binding provenance. A shared item
+    // observed through another binding still needs that provenance persisted,
+    // but must retain its existing assessment revision and cutoff clock when
+    // every other fingerprint input is unchanged. This also preserves legacy
+    // binding-inclusive content hashes until a real content revision occurs.
+    const bindingOnlyChange = contentChanged &&
+      params.existing.sourceBindingId !== params.snapshot.sourceBindingId &&
+      sourceItemProviderContentHash({
+        providerKey: params.providerKey,
+        snapshot: sourceItemFromPrisma(params.existing).toSnapshot(),
+      }) === sourceItemProviderContentHash({
+        providerKey: params.providerKey,
+        snapshot: { ...params.snapshot, sourceBindingId: params.existing.sourceBindingId },
+      });
+    const snapshot = bindingOnlyChange
+      ? preserveNativeCaptureAvailability(params.snapshot, sourceItemFromPrisma(params.existing).toSnapshot())
+      : params.snapshot;
     if (params.immutable) {
       return { record: params.existing, contentChanged: false };
     }
@@ -175,15 +252,16 @@ export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
             body: params.snapshot.body,
             authorHandle: params.snapshot.authorHandle ?? null,
             publishedAt: params.snapshot.publishedAt,
-            contentHash: contentHashForSourceItem(params.snapshot),
+            contentHash: bindingOnlyChange ? params.existing.contentHash : contentHashForSourceItem(params.snapshot),
             providerContentHash: params.providerContentHash,
             lastObservedAt: params.snapshot.ingestedAt,
-            contentUpdatedAt: params.snapshot.ingestedAt,
-            metadata: params.snapshot.metadata ?? {},
+            ...(bindingOnlyChange ? {} : { contentUpdatedAt: params.snapshot.ingestedAt }),
+            metadata: snapshot.metadata ?? {},
           }
         : {
             providerContentHash: params.providerContentHash,
             lastObservedAt: params.snapshot.ingestedAt,
+            metadata: params.snapshot.metadata ?? {},
           },
     });
     return { record, contentChanged };
@@ -239,6 +317,9 @@ export class PrismaSourceItemRepository implements SourceItemRepositoryPort {
     operation: (transaction: PrismaIngestionClient) => Promise<Result>,
   ): Promise<Result> {
     const transaction = this.transaction();
+    if (transaction === undefined && this.writeMode === "insert-only") {
+      throw new Error("Insert-only source item writes require a Serializable transaction");
+    }
     return transaction === undefined
       ? operation(this.prisma)
       : (transaction.call(this.prisma, operation, {

@@ -60,6 +60,22 @@ describe("reader summary source lineage", () => {
     expect(independentEvidenceItems(items)).toHaveLength(2);
     expect(independentEvidenceProviderKeys(items)).toEqual(["reddit"]);
   });
+
+  it("counts X aliases as one independent provider family", () => {
+    expect(independentEvidenceProviderKeys([
+      evidence({ providerKey: "x", canonicalUrl: "https://x.test/1" }),
+      evidence({
+        feedItemId: "x-twitter",
+        providerKey: "x-twitter",
+        canonicalUrl: "https://x.test/2",
+      }),
+      evidence({
+        feedItemId: "twitter",
+        providerKey: "twitter",
+        canonicalUrl: "https://x.test/3",
+      }),
+    ])).toEqual(["x"]);
+  });
 });
 
 const evidence = (

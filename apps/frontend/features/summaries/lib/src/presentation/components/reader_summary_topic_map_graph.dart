@@ -225,7 +225,7 @@ class _TopicMapBubbleNode extends StatelessWidget {
       maxLines: maxLines,
     );
 
-    return Tooltip(
+    return AppTooltip(
       key: ValueKey('topic-map-bubble-${bubble.node.id}'),
       message: _topicMapBubbleTooltip(bubble),
       waitDuration: const Duration(milliseconds: 350),

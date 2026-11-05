@@ -7,18 +7,90 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates openssl \
   && rm -rf /var/lib/apt/lists/*
 
-COPY package.json package-lock.json ./
+COPY --chmod=0644 package.json package-lock.json ./
 COPY vendor ./vendor
 RUN npm ci
 
 COPY tsconfig.json tsconfig.build.json ./
 COPY prisma.config.ts ./
+COPY scripts/rewrite-build-aliases.mjs ./scripts/
+COPY scripts/quickstart/local-config.ts scripts/quickstart/setup.ts \
+  scripts/quickstart/seed-workspace.ts scripts/quickstart/bootstrap-state.ts \
+  scripts/quickstart/bootstrap.ts ./scripts/quickstart/
+COPY scripts/quickstart/migrate.ts scripts/quickstart/prisma-migration.config.ts \
+  scripts/quickstart/verify-stack.ts ./scripts/quickstart/
+COPY scripts/lib/reader-summary-publication-bootstrap-sql.ts ./scripts/lib/
+COPY scripts/sql/reader-summary-publication-tenant-ownership.sql ./scripts/sql/
+COPY ops/deploy/reader-summary-publication-pre-migration.sql \
+  ops/deploy/reader-summary-publication-post-migration.sql ./ops/deploy/
+COPY ops/quickstart/frontend-defines.json ./ops/quickstart/
 COPY prisma ./prisma
+COPY scripts/check-feed-promotion-index-recovery.ts ./scripts/
+COPY scripts/materialize-retained-source-captures.ts ./scripts/
+COPY scripts/recover-hn-verified-remainder.ts scripts/import-hn-verified-remainder.ts scripts/import-hn-verified-sep28.ts ./scripts/
+COPY scripts/import-rss-sep24-verified.ts scripts/recover-rss-sep24-verified.ts ./scripts/
+# Missing-only HN/RSS archive import entrypoints, planners and their typed closure.
+COPY scripts/import-hn-archive-missing.ts scripts/import-rss-archive-missing.ts \
+  scripts/plan-hn-archive-missing-packets.ts scripts/plan-rss-archive-missing-packets.ts ./scripts/
+COPY scripts/lib/hn-archive-missing-policy.ts scripts/lib/hn-archive-missing-normalizer.ts \
+  scripts/lib/hn-archive-comment-association.ts \
+  scripts/lib/rss-archive-missing-policy.ts scripts/lib/rss-archive-missing-normalizer.ts \
+  scripts/lib/github-archive-finite-journal.ts scripts/lib/github-archive-finite-role-policy.ts ./scripts/lib/
+# Sep24 source entrypoints and their script closure. Publication grants no capture authority.
+COPY scripts/materialize-social-sep24-private-inputs.ts \
+  scripts/export-reddit-sep24-public.ts scripts/export-rss-sep24-selected.ts \
+  scripts/diagnose-rss-sep24-source-only.ts ./scripts/
+COPY scripts/lib/social-source-private-input-contract.ts \
+  scripts/lib/social-source-private-input-database.ts \
+  scripts/lib/social-source-private-input-files.ts \
+  scripts/lib/social-source-private-input-materializer.ts ./scripts/lib/
+# Public closure of npm run run:reader-summary-clean-real-day-collection.
+# Keep this positive list scoped to that consumer; never copy all of scripts.
+COPY scripts/run-with-timeout.mjs scripts/run-reader-summary-clean-real-day-collection.ts ./scripts/
+COPY scripts/lib/clean-real-day-collection-report.ts \
+  scripts/lib/clean-real-day-provider-acquisition.ts \
+  scripts/lib/clean-real-day-scan-policy-targets.ts \
+  scripts/lib/clean-real-day-source-config-reader.ts \
+  scripts/lib/clean-real-day-source-providers.ts \
+  scripts/lib/clean-real-day-target-discovery.ts \
+  scripts/lib/collection-scan-execution.ts \
+  scripts/lib/env-file.ts \
+  scripts/lib/github-trending-durable-snapshot-candidate-budget.ts \
+  scripts/lib/github-trending-durable-snapshot-reuse.ts \
+  scripts/lib/private-evaluation-file.ts \
+  scripts/lib/production-collection-quality-policy.ts \
+  scripts/lib/production-collection-scan-job-reporter.ts \
+  scripts/lib/provider-collection-observability.ts \
+  scripts/lib/provider-scan-result-selection.ts \
+  scripts/lib/quality-gates.ts \
+  scripts/lib/reader-summary-clean-real-day-collection-artifact.ts \
+  scripts/lib/reader-summary-clean-real-day-collection-cli.ts \
+  scripts/lib/reader-summary-daily-maintenance-bounds.ts \
+  scripts/lib/reader-summary-daily-maintenance-scope.ts \
+  scripts/lib/reader-summary-daily-provider-catch-up.ts \
+  scripts/lib/reader-summary-multi-day-corpus-security.ts \
+  scripts/lib/reader-summary-quality-eval-support.ts \
+  scripts/lib/targeted-provider-collection.ts \
+  scripts/lib/x-collection-retry-policy.ts \
+  scripts/lib/yesterday-social-replay-support.ts ./scripts/lib/
+# Finite Telegram-only collection entrypoint and its reviewed script closure.
+COPY scripts/run-telegram-channel-collection.ts ./scripts/
+COPY scripts/lib/telegram-channel-collection-bootstrap.ts \
+  scripts/lib/telegram-channel-collection-contract.ts \
+  scripts/lib/telegram-channel-collection-database.ts \
+  scripts/lib/telegram-channel-collection-runtime.ts \
+  scripts/lib/telegram-channel-collection-scan.ts ./scripts/lib/
 COPY apps ./apps
 COPY libs ./libs
 
 ARG PRISMA_GENERATE_DATABASE_URL=postgresql://social_monitor:social_monitor_local_password@localhost:5432/social_monitor
 RUN DATABASE_URL="${PRISMA_GENERATE_DATABASE_URL}" npm run prisma:generate && npm run build
+
+# Host checkouts may use umask 077. Keep public image assets root-owned and
+# readable by node, preserving executable tools and directory traversal.
+RUN chmod -R u=rwX,go=rX \
+  apps libs prisma scripts vendor dist ops \
+  tsconfig.json tsconfig.build.json prisma.config.ts
 
 ARG SERVICE=api
 ENV NODE_ENV=production

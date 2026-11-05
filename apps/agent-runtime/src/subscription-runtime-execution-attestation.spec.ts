@@ -23,26 +23,26 @@ describe("executor-owned subscription runtime attestation", () => {
     expect(result.status).toBe("completed");
     expect(result.executionAttestation).toMatchObject({
       requestId: "request-1",
-      purpose: "social_monitor.reader_summary.generate",
+      purpose: "social_monitor.reader_summary.generate.v2",
       canonicalRequestSha256: canonicalJsonSha256(canonicalRequest),
       provider: "codex",
       selectedOutputSha256: canonicalJsonSha256(structuredOutput),
     });
   });
 
-  it("binds the weekly purpose to its exact text profile", async () => {
+  it("binds canonical recovery to its exact text profile", async () => {
     const result = await attach({
-      purpose: "social_monitor.reader_summary.weekly.generate",
+      purpose: "social_monitor.reader_summary.daily.canonical_recovery.v2",
       controlsJson: '{"model":"gpt-5.6-sol"}',
       metadata: { runtimeOutput: "output_text" },
       outputText: '{"headline":"weekly"}',
     });
 
     expect(result.executionAttestation).toMatchObject({
-      purpose: "social_monitor.reader_summary.weekly.generate",
+      purpose: "social_monitor.reader_summary.daily.canonical_recovery.v2",
       provider: "codex",
       model: "gpt-5.6-sol",
-      reasoningEffort: "xhigh",
+      reasoningEffort: "high",
       selectedOutputKind: "output_text",
     });
   });
@@ -148,7 +148,7 @@ const request = (options: {
   workspaceId: "workspace-1",
   correlationId: "correlation-1",
   provider: options.provider ?? "codex",
-  purpose: options.purpose ?? "social_monitor.reader_summary.generate",
+  purpose: options.purpose ?? "social_monitor.reader_summary.generate.v2",
   systemPrompt: "Return JSON.",
   prompt: "Summarize.",
   outputSchemaJson: "{}",

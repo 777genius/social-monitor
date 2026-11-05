@@ -32,7 +32,7 @@ export const buildReaderSummaryWeeklyReviewPrompt = (params: Readonly<{
 }>): ReaderSummaryWeeklyReviewPrompt => {
   const promptBody = deepFreezeReaderSummaryWeekly({
     schemaVersion: "reader_summary.weekly_review_prompt.v1",
-    purpose: "social_monitor.reader_summary.weekly.review",
+    purpose: "social_monitor.reader_summary.weekly.review.v2",
     responseSchemaVersion: readerSummaryWeeklyReviewResponseSchemaVersion,
     sealId: params.authority.sealId,
     sealSha256: params.authority.sealSha256,

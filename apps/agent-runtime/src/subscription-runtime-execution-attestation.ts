@@ -16,11 +16,14 @@ import type {
   SubscriptionRuntimeInstallationIdentity,
   SubscriptionRuntimeInstallationInspector,
 } from "./subscription-runtime-installation";
+import type { readerPromotionV2CanaryActivationCapability } from "./subscription-runtime-purpose-model-policy";
 import {
   admitSubscriptionRuntimeRequest,
   parseSubscriptionRuntimeJsonObject,
   productionAgentRuntimeModel,
   productionAgentRuntimeReasoningEffort,
+  mimoSummaryBackend,
+  mimoSummaryModel,
   type SubscriptionRuntimePurposeProfile,
 } from "./subscription-runtime-purpose-model-policy";
 
@@ -38,6 +41,8 @@ export const attachExecutorOwnedExecutionAttestation = async (params: {
   readonly profile: SubscriptionRuntimePurposeProfile;
   readonly installationInspector: SubscriptionRuntimeInstallationInspector;
   readonly admittedInstallation: SubscriptionRuntimeInstallationIdentity;
+  readonly activationCapability?:
+    typeof readerPromotionV2CanaryActivationCapability;
 }): Promise<AgentRuntimeExecutionResult> => {
   if (params.result.status !== "completed") {
     return params.result;
@@ -59,8 +64,13 @@ const createExecutionAttestation = async (params: {
   readonly profile: SubscriptionRuntimePurposeProfile;
   readonly installationInspector: SubscriptionRuntimeInstallationInspector;
   readonly admittedInstallation: SubscriptionRuntimeInstallationIdentity;
+  readonly activationCapability?:
+    typeof readerPromotionV2CanaryActivationCapability;
 }): Promise<AgentRuntimeExecutionAttestation> => {
-  const exactAdmission = admitSubscriptionRuntimeRequest(params.request);
+  const exactAdmission = admitSubscriptionRuntimeRequest(
+    params.request,
+    params.activationCapability,
+  );
   if (
     params.request.provider !== params.profile.provider ||
     canonicalJsonSha256(params.canonicalRequest) !==
@@ -71,20 +81,26 @@ const createExecutionAttestation = async (params: {
       exactAdmission.profile.reasoningEffort ||
     params.profile.outputKind !== exactAdmission.profile.outputKind ||
     params.profile.responseFormat !== exactAdmission.profile.responseFormat ||
-    params.profile.reasoningEffort !== productionAgentRuntimeReasoningEffort ||
-    (params.profile.model !== productionAgentRuntimeModel &&
-      params.profile.model !== "gpt-5.6-sol")
+    params.profile.retryMode !== exactAdmission.profile.retryMode ||
+    params.profile.modelBackend !== exactAdmission.profile.modelBackend ||
+    (params.profile.modelBackend === mimoSummaryBackend
+      ? params.profile.model !== mimoSummaryModel
+      : params.profile.model !== productionAgentRuntimeModel)
   ) {
     throw new Error("Agent runtime execution identity is not production-safe");
   }
   const installation = await params.installationInspector.inspect(
     params.command,
+    params.profile.modelBackend,
   );
   if (!installationIdentityEqual(params.admittedInstallation, installation)) {
     throw new Error("Agent runtime installation changed during execution");
   }
+  const selectedRuntimeVersion = params.profile.modelBackend === mimoSummaryBackend
+    ? installation.mimoRuntimePackageVersion
+    : installation.runtimePackageVersion;
   if (
-    !isConcreteRuntimePackageVersion(installation.runtimePackageVersion) ||
+    !isConcreteRuntimePackageVersion(selectedRuntimeVersion ?? "") ||
     !isSha256Hex(installation.launcherSha256)
   ) {
     throw new Error("Agent runtime installation identity is malformed");
@@ -103,7 +119,7 @@ const createExecutionAttestation = async (params: {
     model: params.profile.model,
     reasoningEffort: params.profile.reasoningEffort,
     runtimeEngine: subscriptionRuntimeEngine,
-    runtimePackageVersion: installation.runtimePackageVersion,
+    runtimePackageVersion: selectedRuntimeVersion!,
     launcherSha256: installation.launcherSha256,
     selectedOutputKind: output.kind,
     selectedOutputSha256: output.sha256,
@@ -117,6 +133,7 @@ const installationIdentityEqual = (
   admitted.executablePath === completed.executablePath &&
   admitted.packageRootRealpath === completed.packageRootRealpath &&
   admitted.runtimePackageVersion === completed.runtimePackageVersion &&
+  admitted.mimoRuntimePackageVersion === completed.mimoRuntimePackageVersion &&
   admitted.launcherSha256 === completed.launcherSha256;
 
 export const invalidAttestationResult = (): AgentRuntimeExecutionResult => ({

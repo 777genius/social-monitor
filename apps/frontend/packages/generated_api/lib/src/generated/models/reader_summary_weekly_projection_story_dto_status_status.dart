@@ -6,9 +6,9 @@ import 'package:json_annotation/json_annotation.dart';
 
 @JsonEnum()
 enum ReaderSummaryWeeklyProjectionStoryDtoStatusStatus {
-  /// Incorrect name has been replaced. Original name: `new`.
+  /// The name has been replaced because it contains a keyword. Original name: `new`.
   @JsonValue('new')
-  undefined0('new'),
+  valueNew('new'),
   @JsonValue('developing')
   developing('developing'),
   @JsonValue('resolved')

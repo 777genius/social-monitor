@@ -36,6 +36,18 @@ else
 fi
 unset DATABASE_URL
 
+# A target activation can reconcile this timer before the authenticated host
+# commits its terminal receipt. The durable scheduler hold stays authoritative
+# across that interval.
+# shellcheck source=ops/deploy/production-runtime/reader-summary-scheduler-hold-common.sh
+source "$ROOT/control/postgres-runtime-current/reader-summary-scheduler-hold-common.sh"
+scheduler_lock=$(reader_summary_hold_lock_path)
+exec 7>"$scheduler_lock"
+flock -s 7
+SOCIAL_MONITOR_READER_SUMMARY_DISPATCH_LOCK_FD=7
+export SOCIAL_MONITOR_READER_SUMMARY_DISPATCH_LOCK_FD
+reader_summary_require_scheduler_clear
+
 readonly FINALIZATION_GUARD_SECONDS=10
 readonly MAX_COLLECTION_SECONDS=540
 COMPOSE=(

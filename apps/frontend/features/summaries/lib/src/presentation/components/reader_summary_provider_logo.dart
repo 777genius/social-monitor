@@ -35,7 +35,7 @@ class ReaderSummaryProviderLogoChip extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     return Semantics(
       label: count == null ? label : '$label $count',
-      child: Tooltip(
+      child: AppTooltip(
         message: label,
         child: DecoratedBox(
           decoration: BoxDecoration(

@@ -1,3 +1,7 @@
+import { DirectScanDispatchAdapter } from '@social-monitor/monitoring/adapters/queue/direct-scan-dispatch.adapter';
+import { InMemoryInterestCreationState } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation-state';
+import { InMemoryInterestCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation.store';
+import { InMemorySourceBindingCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-source-binding-creation.store';
 import type { DomainError } from '@social-monitor/shared-kernel';
 import {
   FixedClock,
@@ -50,17 +54,18 @@ async function main(): Promise<void> {
 
 async function proveMonitoringWriteIdempotency(): Promise<void> {
   const ids = new SequenceIdGenerator('write-idempotency-monitoring');
-  const topics = new InMemoryInterestRepository();
-  const bindings = new InMemorySourceBindingRepository();
+  const interestCreationState = new InMemoryInterestCreationState();
+  const topics = new InMemoryInterestRepository(interestCreationState);
+  const bindings = new InMemorySourceBindingRepository(interestCreationState);
   const scanPolicies = new InMemoryScanPolicyRepository();
   const scanJobs = new InMemoryScanJobRepository();
-  const idempotency = new InMemoryIdempotencyAdapter();
-  const outbox = new InMemoryOutboxAdapter();
+  const idempotency = new InMemoryIdempotencyAdapter(interestCreationState);
+  const outbox = new InMemoryOutboxAdapter(interestCreationState);
   const queuePublisher = new InMemoryQueuePublisher();
   const scanQueue = new InMemoryScanQueueAdapter(queuePublisher, new InMemoryMetricsRecorder());
   const quota = new CountingScanQuota();
 
-  const createInterest = new CreateInterestUseCase(topics, outbox, idempotency, ids, clock);
+  const createInterest = new CreateInterestUseCase(new InMemoryInterestCreationStore(interestCreationState), idempotency, ids, clock);
   const firstTopic = unwrap(await createInterest.execute({
     tenantId: tenant,
     workspaceId: workspace,
@@ -84,9 +89,8 @@ async function proveMonitoringWriteIdempotency(): Promise<void> {
 
   const bindSource = new BindSourceUseCase(
     topics,
-    bindings,
+    new InMemorySourceBindingCreationStore(interestCreationState),
     new FakeSourceCatalogAdapter(),
-    outbox,
     idempotency,
     new PassThroughConfigProtector(),
     ids,
@@ -145,15 +149,16 @@ async function proveMonitoringWriteIdempotency(): Promise<void> {
   assert(outbox.all().length === 3, 'duplicate scan policy command must not append another outbox event');
 
   const requestScan = new RequestScanUseCase(
-    bindings,
-    scanPolicies,
-    scanJobs,
-    scanQueue,
-    outbox,
-    idempotency,
-    quota,
-    ids,
-    clock,
+      bindings,
+      scanPolicies,
+      scanJobs,
+      scanQueue,
+      new DirectScanDispatchAdapter(scanJobs, scanQueue, outbox),
+      idempotency,
+      quota,
+      ids,
+      clock
+
   );
   const firstScan = unwrap(await requestScan.execute({
     tenantId: tenant,

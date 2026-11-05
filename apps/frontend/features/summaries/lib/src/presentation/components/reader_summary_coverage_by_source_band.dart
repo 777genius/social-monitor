@@ -153,7 +153,7 @@ class _ProviderCoverageRow extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.xs),
-          Tooltip(
+          AppTooltip(
             message: row.detailTooltipText,
             child: Semantics(
               label: row.detailTooltipText,
@@ -217,7 +217,7 @@ class _ProviderCollectionHealthIndicator extends StatelessWidget {
       ),
     };
 
-    return Tooltip(
+    return AppTooltip(
       message: _providerCollectionHealthTooltip(health),
       child: SizedBox.square(
         dimension: 18,

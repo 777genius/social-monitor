@@ -60,6 +60,7 @@ message AgentRuntimeTaskResponse {
   AgentRuntimeUsage usage = 6;
   AgentRuntimeFailure failure = 7;
   AgentRuntimeExecutionAttestation execution_attestation = 8;
+  optional uint32 duration_ms = 9;
 }
 
 message AgentRuntimeExecutionAttestation {

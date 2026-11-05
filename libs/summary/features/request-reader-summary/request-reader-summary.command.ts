@@ -17,4 +17,6 @@ export type RequestReaderSummaryCommand = {
   readonly subscriptionId?: string;
   readonly idempotencyKey: string;
   readonly correlationId: string;
+  /** Internal periodic scheduler authority; never mapped from REST input. */
+  readonly recoverTransientFailure?: true;
 };

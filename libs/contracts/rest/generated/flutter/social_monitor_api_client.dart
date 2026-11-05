@@ -68,6 +68,30 @@ const socialMonitorApiErrorModel = <String, Object?>{
 
 const socialMonitorApiOperations = <Map<String, Object?>>[
   {
+    'operationId': 'AppBootstrapController_get',
+    'clientName': 'AppBootstrapController_get',
+    'method': 'GET',
+    'path': '/app/bootstrap',
+    'tags': [
+      'app-bootstrap',
+    ],
+    'summary': 'Restore the session and initial daily reader-summary data in one request.',
+    'pathParameters': [],
+    'queryParameters': [],
+    'requiredHeaders': [],
+    'optionalHeaders': [
+      'authorization',
+    ],
+    'requiresTenantWorkspace': false,
+    'supportsBearerApiKey': true,
+    'usesDevOnlyWorkspaceRoleHeader': false,
+    'devOnlyWorkspaceRoleRequired': false,
+    'requestBodySchemaRef': null,
+    'successResponseSchemaRefs': [
+      '#/components/schemas/AppBootstrapResponseDto',
+    ],
+  },
+  {
     'operationId': 'AuthSessionController_get',
     'clientName': 'AuthSessionController_get',
     'method': 'GET',
@@ -1241,6 +1265,42 @@ const socialMonitorApiOperations = <Map<String, Object?>>[
     'requestBodySchemaRef': '#/components/schemas/UpsertInterestUserSummaryPreferenceRequestDto',
     'successResponseSchemaRefs': [
       '#/components/schemas/UpsertUserSummaryPreferenceResponseDto',
+    ],
+  },
+  {
+    'operationId': 'ReaderPostsController_list',
+    'clientName': 'ReaderPostsController_list',
+    'method': 'GET',
+    'path': '/reader-posts',
+    'tags': [
+      'reader-summaries',
+    ],
+    'summary': 'Browse all collected posts in a period using saved assessments; no model calls.',
+    'pathParameters': [],
+    'queryParameters': [
+      'cursor',
+      'endedAt',
+      'excludedProviders',
+      'interestId',
+      'limit',
+      'order',
+      'startedAt',
+    ],
+    'requiredHeaders': [
+      'x-tenant-id',
+      'x-workspace-id',
+    ],
+    'optionalHeaders': [
+      'authorization',
+      'x-workspace-role',
+    ],
+    'requiresTenantWorkspace': true,
+    'supportsBearerApiKey': true,
+    'usesDevOnlyWorkspaceRoleHeader': true,
+    'devOnlyWorkspaceRoleRequired': false,
+    'requestBodySchemaRef': null,
+    'successResponseSchemaRefs': [
+      '#/components/schemas/ReaderPostsPageDto',
     ],
   },
   {

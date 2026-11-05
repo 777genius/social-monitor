@@ -143,6 +143,56 @@ describe("ExecuteReaderSummaryJobCommandHandler", () => {
     ).toBe(0);
   });
 
+  it.each([
+    ["requested", "deferred"],
+    ["running", "in_progress"],
+  ] as const)(
+    "records %s results as %s without recording success",
+    async (status, metricStatus) => {
+      const executeReaderSummaryJob = new FakeExecuteReaderSummaryJobUseCase({
+        readerSummaryJobId: "readerSummary-job-1",
+        status,
+      });
+      const metrics = new InMemoryMetricsRecorder();
+      const runtime = new WorkerRuntime({ serviceName: "intelligence-worker" });
+      runtime.onModuleInit();
+      const handler = new ExecuteReaderSummaryJobCommandHandler(
+        executeReaderSummaryJob as unknown as ExecuteReaderSummaryJobUseCase,
+        metrics,
+        runtime,
+      );
+      const command = {
+        commandId: "command-1",
+        commandType: EXECUTE_READER_SUMMARY_JOB_COMMAND_TYPE,
+        schemaVersion: 1,
+        correlationId: "correlation-1",
+        payload: {
+          tenantId: TEST_TENANT_ID,
+          workspaceId: TEST_WORKSPACE_ID,
+          readerSummaryJobId: "reader-summary-job-1",
+        },
+      };
+
+      await handler.handle(command);
+      await handler.handle({ ...command, commandId: "command-2" });
+
+      expect(
+        metrics.counterValue("summary_jobs_total", {
+          job_type: "readerSummary",
+          status: metricStatus,
+          worker: "intelligence-worker",
+        }),
+      ).toBe(2);
+      expect(
+        metrics.counterValue("summary_jobs_total", {
+          job_type: "readerSummary",
+          status: "succeeded",
+          worker: "intelligence-worker",
+        }),
+      ).toBe(0);
+    },
+  );
+
   it("records quality rejected reader summary jobs as controlled non-provider outcomes", async () => {
     const executeReaderSummaryJob = new FakeExecuteReaderSummaryJobUseCase({
       readerSummaryJobId: "readerSummary-job-1",

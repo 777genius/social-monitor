@@ -66,6 +66,7 @@ export class ListSourceBindingScansUseCase {
         status: snapshot.status,
         failureReason: snapshot.failureReason,
         failureMetadata: snapshot.failureMetadata,
+        executionMetadata: snapshot.executionMetadata,
       });
 
       return {

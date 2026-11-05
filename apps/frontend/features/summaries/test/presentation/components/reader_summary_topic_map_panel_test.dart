@@ -163,7 +163,7 @@ void main() {
       _bubbleLabelFor(tester, 'topic:desktop-commander'),
       'Desktop Commander MCP',
     );
-    final technicalBubble = tester.widget<Tooltip>(
+    final technicalBubble = tester.widget<AppTooltip>(
       find.byKey(const ValueKey('topic-map-bubble-topic:desktop-commander')),
     );
     expect(technicalBubble.message, contains('Desktop Commander MCP Server'));

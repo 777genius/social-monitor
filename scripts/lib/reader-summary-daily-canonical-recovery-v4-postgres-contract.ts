@@ -398,7 +398,7 @@ export const assertReaderSummaryDailyCanonicalRecoveryV4PostgresContract = async
     `v4 did not persist exactly two matching plans and eight immutable rows: ${JSON.stringify(count)}`,
   );
   assert(
-    count.forcedRls === "4" && count.unsafeFunctions === "0",
+    count.forcedRls === "5" && count.unsafeFunctions === "0",
     `v4 RLS or SECURITY DEFINER hardening diverged: ${JSON.stringify(count)}`,
   );
 

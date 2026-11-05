@@ -11,11 +11,13 @@ class FeedItemDetailDialog extends StatelessWidget {
     required this.item,
     required this.isLoading,
     required this.failure,
+    this.onOpenSource,
   });
 
   final FeedItem item;
   final bool isLoading;
   final AppFailure? failure;
+  final Future<bool> Function(Uri)? onOpenSource;
 
   @override
   Widget build(BuildContext context) {
@@ -44,10 +46,14 @@ class FeedItemDetailDialog extends StatelessWidget {
                       ),
                     ),
                   ),
-                  IconButton(
-                    tooltip: 'Close post detail',
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
+                  MergeSemantics(
+                    child: AppTooltip(
+                      message: 'Close post detail',
+                      child: IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -58,6 +64,7 @@ class FeedItemDetailDialog extends StatelessWidget {
                     item: item,
                     isLoading: isLoading,
                     failure: failure,
+                    onOpenSource: onOpenSource,
                   ),
                 ),
               ),

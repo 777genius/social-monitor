@@ -21,35 +21,41 @@ export const isTopReadEligibleEvidence = (
   return hasProviderTopReadSignal(evidence);
 };
 
-const hasProviderTopReadSignal = (evidence: SummaryEvidenceItem): boolean => {
+export const hasProviderTopReadSignal = (
+  evidence: SummaryEvidenceItem,
+  options: {
+    readonly missingMetricsQualify: boolean;
+    readonly unlistedProvidersQualify: boolean;
+  } = {
+    missingMetricsQualify: true,
+    unlistedProvidersQualify: true,
+  },
+): boolean => {
   const labels = evidence.providerMetricLabels ?? [];
   const family = providerFamilyKey(evidence.providerKey);
 
   if (labels.length === 0) {
-    return true;
+    return options.missingMetricsQualify;
   }
 
   if (family === "x-twitter") {
     const likes = metricValue(labels, "likes") ?? 0;
     const reposts = metricValue(labels, "reposts") ?? 0;
-    const replies = metricValue(labels, "replies") ?? 0;
-    const weighted = likes + reposts * 2 + replies * 0.5;
+    const weighted = likes + reposts * 2;
 
-    return likes >= 25 || reposts >= 8 || replies >= 12 || weighted >= 50;
+    return likes >= 25 || reposts >= 8 || weighted >= 50;
   }
 
   if (family === "reddit") {
     const score = metricValue(labels, "score") ?? 0;
-    const comments = metricValue(labels, "comments") ?? 0;
 
-    return score >= 20 || comments >= 5 || score + comments * 2 >= 35;
+    return score >= 20;
   }
 
   if (family === "hacker-news") {
     const points = metricValue(labels, "points") ?? 0;
-    const comments = metricValue(labels, "comments") ?? 0;
 
-    return points >= 20 || comments >= 8 || points + comments * 2 >= 35;
+    return points >= 20;
   }
 
   if (family === "github") {
@@ -64,7 +70,7 @@ const hasProviderTopReadSignal = (evidence: SummaryEvidenceItem): boolean => {
     return trend >= 50 || (rank !== undefined && rank <= 10);
   }
 
-  return true;
+  return options.unlistedProvidersQualify;
 };
 
 const metricValue = (

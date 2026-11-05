@@ -6,7 +6,7 @@ import {
   type ProductionDayUtcPeriod,
 } from "./reader-summary-production-day-provenance";
 import type { HistoricalRegenerationSourceProvenance } from "./reader-summary-production-day-regeneration";
-import { completeDatasetGuardPhases } from "./reader-summary-day-dataset-guard";
+import { completeDatasetGuardPhases, datasetManifestLifetimePolicy } from "./reader-summary-day-dataset-guard";
 
 type DurableEvidenceWithProvenance = {
   readonly provenance?: unknown;
@@ -41,6 +41,14 @@ export function validHistoricalRegenerationProvenance(params: {
     return false;
   }
   const priorCollectionProof = params.value.priorCollectionProof;
+  const activeSourcePublicationProof =
+    params.value.activeSourcePublicationProof;
+  const legacyFreshness = isRecord(params.value.freshnessOverride) &&
+    params.value.freshnessOverride.maxManifestAgeSeconds === 1800 &&
+    params.value.freshnessOverride.lifetimePolicy === undefined;
+  const currentFreshness = isRecord(params.value.freshnessOverride) &&
+    params.value.freshnessOverride.maxManifestAgeSeconds === undefined &&
+    validLifetimePolicy(params.value.freshnessOverride.lifetimePolicy);
   return (
     params.value.mode === "historical-regeneration" &&
     params.value.nonLive === false &&
@@ -52,37 +60,74 @@ export function validHistoricalRegenerationProvenance(params: {
       params.value.sourceEvidence,
       params.evidenceBinding,
     ) &&
-    isRecord(priorCollectionProof) &&
-    hashBoundArtifactMatches(
-      priorCollectionProof.sourceAttempt,
-      "reader-summary-production-day-run-v1",
-    ) &&
-    hashBoundArtifactMatches(
-      priorCollectionProof.collectionArtifact,
-      "reader-summary-clean-real-day-collection-v1",
-    ) &&
-    hashBoundArtifactMatches(
-      priorCollectionProof.collectionQualityReport,
-      "yesterday-social-collection-quality-report-v1",
-    ) &&
+    validRegenerationSourceAuthority({
+      priorCollectionProof,
+      activeSourcePublicationProof,
+      promotionRebuild: params.value.promotionRebuild,
+    }) &&
     isRecord(params.value.regenerationInputManifest) &&
     params.value.regenerationInputManifest.timestampPolicy ===
       params.value.timestampPolicy &&
     datasetGuardMatchesManifest(
       params.value.datasetGuardEvidence,
       params.value.regenerationInputManifest,
+      legacyFreshness,
     ) &&
     isRecord(params.value.freshnessOverride) &&
     params.value.freshnessOverride.mode ===
       "historical_regeneration_current_snapshot" &&
     params.value.freshnessOverride.generalAllowHistorical === false &&
-    params.value.freshnessOverride.maxManifestAgeSeconds === 1800 &&
+    (legacyFreshness || currentFreshness) &&
     validHistoricalGitHubPolicy(
       params.value.githubPolicy,
       params.value.regenerationInputManifest,
     )
   );
 }
+
+const validRegenerationSourceAuthority = (input: {
+  readonly priorCollectionProof: unknown;
+  readonly activeSourcePublicationProof: unknown;
+  readonly promotionRebuild: unknown;
+}): boolean => {
+  if (isRecord(input.priorCollectionProof)) {
+    return input.activeSourcePublicationProof === null &&
+      hashBoundArtifactMatches(
+        input.priorCollectionProof.sourceAttempt,
+        "reader-summary-production-day-run-v1",
+      ) &&
+      hashBoundArtifactMatches(
+        input.priorCollectionProof.collectionArtifact,
+        "reader-summary-clean-real-day-collection-v1",
+      ) &&
+      hashBoundArtifactMatches(
+        input.priorCollectionProof.collectionQualityReport,
+        "yesterday-social-collection-quality-report-v1",
+      );
+  }
+  if (!isRecord(input.activeSourcePublicationProof) ||
+      !isRecord(input.promotionRebuild)) {
+    return false;
+  }
+  return input.priorCollectionProof === null &&
+    input.activeSourcePublicationProof.artifactFormat ===
+      "reader-summary-active-database-publication-v1" &&
+    input.promotionRebuild.sourceAuthorityKind ===
+      "active-database-publication" &&
+    input.activeSourcePublicationProof.publicationId ===
+      input.promotionRebuild.sourcePublicationId &&
+    input.activeSourcePublicationProof.artifactId ===
+      input.promotionRebuild.sourceArtifactId &&
+    input.activeSourcePublicationProof.reportSha256 ===
+      input.promotionRebuild.sourcePublicationReportSha256 &&
+    input.activeSourcePublicationProof.proofSha256 ===
+      input.promotionRebuild.sourcePublicationProofSha256 &&
+    [
+      input.activeSourcePublicationProof.reportSha256,
+      input.activeSourcePublicationProof.proofSha256,
+    ].every((value) =>
+      typeof value === "string" && /^[0-9a-f]{64}$/u.test(value));
+};
 
 export function regenerationDatasetGuardMatches(params: {
   readonly evidence: DurableEvidenceWithProvenance | null;
@@ -113,9 +158,13 @@ function datasetGuardEvidence(
 function datasetGuardMatchesManifest(
   guard: unknown,
   manifest: Record<string, unknown>,
+  allowLegacyLifetime = false,
 ): boolean {
   return (
     isRecord(guard) &&
+    (validGuardLifetime(guard) ||
+      (allowLegacyLifetime && guard.lifetimePolicy === undefined &&
+        guard.admittedAt === undefined && guard.validatedAt === undefined)) &&
     guard.manifestFormat === manifest.artifactFormat &&
     guard.manifestFileSha256 === manifest.sha256 &&
     guard.manifestGeneratedAt === manifest.generatedAt &&
@@ -168,4 +217,26 @@ function hashBoundArtifactMatches(
     typeof value.sha256 === "string" &&
     /^[0-9a-f]{64}$/u.test(value.sha256)
   );
+}
+
+function validLifetimePolicy(value: unknown): boolean {
+  return isRecord(value) &&
+    Object.keys(value).length === Object.keys(datasetManifestLifetimePolicy).length &&
+    Object.entries(datasetManifestLifetimePolicy).every(
+      ([key, expected]) => value[key] === expected,
+    );
+}
+
+function validGuardLifetime(guard: Record<string, unknown>): boolean {
+  if (!validLifetimePolicy(guard.lifetimePolicy) ||
+      typeof guard.manifestGeneratedAt !== "string" ||
+      typeof guard.admittedAt !== "string" ||
+      typeof guard.validatedAt !== "string") return false;
+  const generated = Date.parse(guard.manifestGeneratedAt);
+  const admitted = Date.parse(guard.admittedAt);
+  const validated = Date.parse(guard.validatedAt);
+  return [generated, admitted, validated].every(Number.isFinite) &&
+    generated <= admitted && admitted <= validated &&
+    admitted - generated <= datasetManifestLifetimePolicy.maxAdmissionAgeSeconds * 1000 &&
+    validated - admitted <= datasetManifestLifetimePolicy.maxOperationAgeSeconds * 1000;
 }

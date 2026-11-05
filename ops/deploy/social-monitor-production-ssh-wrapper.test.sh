@@ -43,9 +43,13 @@ import pathlib
 import sys
 
 source = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
-load = 'source "$REPO/ops/deploy/deploy-control-lib.sh"'
+load = (
+    "production_transition_host_source_authorized_prelude \\\n"
+    "    ops/deploy/deploy-control-lib.sh 'deploy control library'"
+)
+legacy_load = 'source "$REPO/ops/deploy/deploy-control-lib.sh"'
 dispatch = "case ${action:-} in"
-if source.count(load) != 1 or source.count(dispatch) != 1:
+if source.count(load) != 1 or legacy_load in source or source.count(dispatch) != 1:
     raise SystemExit("deploy entrypoint source/dispatch contract is not exact")
 if source.index(load) >= source.index(dispatch):
     raise SystemExit("deploy entrypoint does not source current control before dispatch")
@@ -244,6 +248,19 @@ for wrapper in "$FIXTURE/current-wrapper.sh" "$FIXTURE/legacy-wrapper.sh"; do
     [[ ! -s $EVENT_LOG ]]
   done
 done
+
+: > "$EVENT_LOG"
+SSH_ORIGINAL_COMMAND="deploy-transition $SHA" EVENT_LOG=$EVENT_LOG \
+  CONTROL_LIB=$CONTROL_LIB EXACT_SHA=$SHA EXPECT_ORDINARY_PROBE_STDIN_EOF=1 \
+  bash "$FIXTURE/current-wrapper.sh" <<< 'candidate-controlled-input'
+grep -Fx 'sudo-clean' "$EVENT_LOG" >/dev/null
+grep -Fx 'ordinary-probe-stdin-eof:deploy-transition' "$EVENT_LOG" >/dev/null
+[[ $(wc -l < "$EVENT_LOG") == 2 ]]
+assert_rejected "$FIXTURE/legacy-wrapper.sh" "deploy-transition $SHA"
+assert_rejected "$FIXTURE/current-wrapper.sh" \
+  "deploy-transition $SHA 0000000000000000000000000000000000000000"
+assert_rejected "$FIXTURE/current-wrapper.sh" \
+  "deploy-transition $SHA 777genius/social-monitor"
 
 for command in \
   "deploy $SHA"$'\n'"plan $SHA" \

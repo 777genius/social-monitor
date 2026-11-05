@@ -4,9 +4,10 @@ import type {
   SummaryEvidenceItem,
 } from "../value-objects/summary-evidence-item";
 import { buildReaderSummaryTopicMap } from "./reader-summary-topic-map-builder";
+import { reconcileVerifiedReaderSummaryTopicRelations } from "./reader-summary-topic-relation-reconciliation";
 
 describe("reader summary topic map label deduplication", () => {
-  it("merges identical labels returned with different topic ids", () => {
+  it.each([false, true])("honors verified sameTopic=%s for identical labels and different topic ids", (sameTopic) => {
     const map = buildReaderSummaryTopicMap({
       clusters: [
         cluster("grok-cursor", "feed-cursor", "x-twitter"),
@@ -21,7 +22,8 @@ describe("reader summary topic map label deduplication", () => {
         citation("c1", "feed-cursor", "x-twitter"),
         citation("c2", "feed-claude", "reddit"),
       ],
-      labelPlan: {
+      labelPlan: reconcileVerifiedReaderSummaryTopicRelations({
+        labelPlan: {
         nodeLabels: ["grok-cursor", "grok-claude"].map((id) => ({
           nodeId: `topic:story:${id}`,
           topicId: `topic:${id}`,
@@ -34,10 +36,20 @@ describe("reader summary topic map label deduplication", () => {
           groupId: "group:grok",
         })),
         groups: [{ id: "group:grok", label: "Grok" }],
-      },
+        },
+        candidates: [{ sourceNodeId: "topic:story:grok-cursor", targetNodeId: "topic:story:grok-claude", sharedTerms: ["grok"] }],
+        decisions: [{ sourceNodeId: "topic:story:grok-cursor", targetNodeId: "topic:story:grok-claude", sameTopic, confidenceScore: 0.99 }],
+      }),
       generatedBy: "agent-runtime",
     });
 
+    if (!sameTopic) {
+      expect(map.nodes).toHaveLength(2);
+      expect(map.nodes.map((node) => node.label)).toEqual(["Grok 4.5", "Grok 4.5"]);
+      expect(map.nodes.map((node) => node.storyClusterIds)).toEqual([["story:grok-cursor"], ["story:grok-claude"]]);
+      expect(map.nodes.map((node) => node.citationIds)).toEqual([["c1"], ["c2"]]);
+      return;
+    }
     expect(map.nodes).toHaveLength(1);
     expect(map.nodes[0]).toMatchObject({
       label: "Grok 4.5",

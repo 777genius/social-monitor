@@ -12,6 +12,7 @@ final class ReaderSummaryContentApiDto {
     required this.sourceMix,
     required this.topReads,
     this.selectedPosts = const [],
+    this.newsWithoutRatingPosts = const [],
     this.claimBoard = const [],
     this.reliabilityReport = emptySummaryReliabilityReportApiDto,
     required this.trendDelta,
@@ -37,6 +38,7 @@ final class ReaderSummaryContentApiDto {
   final List<SourceMixEntryApiDto> sourceMix;
   final List<TopReadApiDto> topReads;
   final List<TopReadApiDto> selectedPosts;
+  final List<TopReadApiDto> newsWithoutRatingPosts;
   final List<SummaryClaimApiDto> claimBoard;
   final SummaryReliabilityReportApiDto reliabilityReport;
   final ReaderTrendDeltaApiDto trendDelta;

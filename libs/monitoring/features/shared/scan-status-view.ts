@@ -1,3 +1,4 @@
+import { classifyScanFailure, type ScanFailureClass } from '../../domain/policies/scan-failure-classification';
 import type { JsonObject } from '@social-monitor/shared-kernel';
 
 import type { ScanJobStatus } from '../../domain';
@@ -8,12 +9,7 @@ export type ScanStatusUserState =
   | 'content_current'
   | 'scan_degraded';
 
-export type ScanStatusFailureClass =
-  | 'provider_unavailable'
-  | 'provider_auth_failed'
-  | 'provider_rate_limited'
-  | 'worker_conflict'
-  | 'system_failure';
+export type ScanStatusFailureClass = ScanFailureClass;
 
 export type ScanStatusView = {
   readonly userState: ScanStatusUserState;
@@ -25,6 +21,7 @@ export const buildScanStatusView = (params: {
   readonly status: ScanJobStatus;
   readonly failureReason?: string;
   readonly failureMetadata?: JsonObject;
+  readonly executionMetadata?: JsonObject;
 }): ScanStatusView => {
   if (params.status === 'requested') {
     return {
@@ -41,13 +38,21 @@ export const buildScanStatusView = (params: {
   }
 
   if (params.status === 'succeeded') {
+    if (params.executionMetadata?.collectionComplete === false) {
+      return {
+        userState: 'scan_degraded',
+        operatorAction: params.executionMetadata.backfillPending === true
+          ? 'wait_for_collection_backfill'
+          : 'inspect_incomplete_source_content',
+      };
+    }
     return {
       userState: 'content_current',
       operatorAction: 'no_action_required',
     };
   }
 
-  const failureClass = classifyFailure(
+  const failureClass = classifyScanFailure(
     params.failureReason,
     params.failureMetadata,
   );
@@ -57,67 +62,6 @@ export const buildScanStatusView = (params: {
     failureClass,
     operatorAction: operatorActionFor(failureClass),
   };
-};
-
-const classifyFailure = (
-  failureReason: string | undefined,
-  failureMetadata: JsonObject | undefined,
-): ScanStatusFailureClass => {
-  const failureKind = readMetadataString(failureMetadata, 'kind');
-  if (failureKind === 'rate_limited') {
-    return 'provider_rate_limited';
-  }
-  if (failureKind === 'auth_failed') {
-    return 'provider_auth_failed';
-  }
-  if (failureKind === 'unavailable' || failureKind === 'invalid_query') {
-    return 'provider_unavailable';
-  }
-
-  const normalized = failureReason?.toLowerCase() ?? '';
-
-  if (
-    normalized.includes('rate limit') ||
-    normalized.includes('rate_limited') ||
-    normalized.includes('429')
-  ) {
-    return 'provider_rate_limited';
-  }
-
-  if (
-    normalized.includes('auth_failed') ||
-    normalized.includes('unauthorized') ||
-    normalized.includes('forbidden') ||
-    normalized.includes('credential') ||
-    normalized.includes('invalid_token') ||
-    normalized.includes('token expired') ||
-    normalized.includes('401') ||
-    normalized.includes('403')
-  ) {
-    return 'provider_auth_failed';
-  }
-
-  if (
-    normalized.includes('provider') ||
-    normalized.includes('unavailable')
-  ) {
-    return 'provider_unavailable';
-  }
-
-  if (normalized.includes('lease') || normalized.includes('already')) {
-    return 'worker_conflict';
-  }
-
-  return 'system_failure';
-};
-
-const readMetadataString = (
-  metadata: JsonObject | undefined,
-  key: string,
-): string | undefined => {
-  const value = metadata?.[key];
-
-  return typeof value === 'string' ? value : undefined;
 };
 
 const operatorActionFor = (failureClass: ScanStatusFailureClass): string => {

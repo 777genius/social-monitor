@@ -24,8 +24,8 @@ deploy_shell_files=(
   ops/deploy/production-release-preflight.sh
   ops/deploy/social-monitor-production-forced-wrapper-cross-version.test.sh
 )
-bash -n "${deploy_shell_files[@]}"
-shellcheck -x "${deploy_shell_files[@]}"
+bash ops/deploy/verify-production-shellcheck-baseline.sh \
+  "${deploy_shell_files[@]}"
 bash ops/deploy/social-monitor-production-deploy.test.sh
 bash ops/deploy/github-production-deploy-client.test.sh
 bash ops/deploy/social-monitor-production-ssh-wrapper.test.sh

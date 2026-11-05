@@ -35,10 +35,13 @@ import { RedditRefreshTokenProvider } from '../../adapters/source/reddit/refresh
 import { RedditSourceProvider } from '../../adapters/source/reddit/reddit-source.provider';
 import { HttpRssClient } from '../../adapters/source/rss/http-rss-client';
 import { RssSourceProvider } from '../../adapters/source/rss/rss-source.provider';
+import { HttpTelegramPreviewClient } from '../../adapters/source/telegram/http-telegram-preview-client';
+import { TelegramSourceProvider } from '../../adapters/source/telegram/telegram-source.provider';
 import { SocialResearchSourceQueryPlannerAdapter } from '../../adapters/source/social-research-source-query-planner.adapter';
 import { sourceReadinessProfilesForRuntime } from '../../adapters/source/source-readiness-profiles';
 import { selectRuntimeSourceProviders } from '../../adapters/source/source-provider-runtime-scope';
 import { GrpcXDailyCollectorClient } from '../../adapters/source/x-twitter-experimental-daily/grpc-x-daily-collector-client';
+import { StaticXPromotionAuthorityRegistry } from '../../adapters/source/x-twitter-experimental-daily/static-x-promotion-authority-registry';
 import {
   X_TWITTER_EXPERIMENTAL_DAILY_PROVIDER_KEY,
   X_TWITTER_PROVIDER_KEY,
@@ -168,6 +171,15 @@ export const sourceProviderRegistryProviders: readonly Provider[] = [
     ],
   },
   {
+    provide: HttpTelegramPreviewClient,
+    useFactory: () => new HttpTelegramPreviewClient(),
+  },
+  {
+    provide: TelegramSourceProvider,
+    useFactory: (client: HttpTelegramPreviewClient) => new TelegramSourceProvider(client, new SystemClock()),
+    inject: [HttpTelegramPreviewClient],
+  },
+  {
     provide: X_TWITTER_EXPERIMENTAL_DAILY_PROVIDER,
     useFactory: (
       settings: SourceProviderRuntimeSettings,
@@ -187,7 +199,13 @@ export const sourceProviderRegistryProviders: readonly Provider[] = [
         },
       });
 
-      return new XTwitterSourceProvider(collectorClient, clock);
+      return new XTwitterSourceProvider(
+        collectorClient,
+        clock,
+        new StaticXPromotionAuthorityRegistry(
+          settings.xPromotionAuthorityHandles,
+        ),
+      );
     },
     inject: [INGESTION_SOURCE_PROVIDER_RUNTIME_SETTINGS],
   },
@@ -201,6 +219,7 @@ export const sourceProviderRegistryProviders: readonly Provider[] = [
       hackerNewsProvider: HackerNewsSourceProvider,
       redditProvider: RedditSourceProvider,
       rssProvider: RssSourceProvider,
+      telegramProvider: TelegramSourceProvider,
       xTwitterExperimentalDailyProvider: SourceProviderPort | null,
       settings: SourceProviderRuntimeSettings,
     ) =>
@@ -214,6 +233,7 @@ export const sourceProviderRegistryProviders: readonly Provider[] = [
             hackerNewsProvider,
             redditProvider,
             rssProvider,
+            telegramProvider,
             ...(xTwitterExperimentalDailyProvider === null
               ? []
               : [xTwitterExperimentalDailyProvider]),
@@ -240,6 +260,7 @@ export const sourceProviderRegistryProviders: readonly Provider[] = [
       HackerNewsSourceProvider,
       RedditSourceProvider,
       RssSourceProvider,
+      TelegramSourceProvider,
       X_TWITTER_EXPERIMENTAL_DAILY_PROVIDER,
       INGESTION_SOURCE_PROVIDER_RUNTIME_SETTINGS,
     ],

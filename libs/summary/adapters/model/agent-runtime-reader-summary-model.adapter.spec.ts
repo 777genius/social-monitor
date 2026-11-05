@@ -1,19 +1,107 @@
-import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
-
-import { buildReaderSummaryCoveragePlan } from "../../domain";
-import type {
-  AgentRuntimeClientPort,
-  AgentRuntimeHealthResult,
-  AgentRuntimeTaskCommand,
-  AgentRuntimeTaskResult,
-  ReaderSummaryModelInput,
-} from "../../ports";
-import { AgentRuntimeReaderSummaryModelAdapter } from "./agent-runtime-reader-summary-model.adapter";
-import { withTestExecutionAttestation } from "./reader-summary-execution-attestation.spec-support";
+import {
+  AgentRuntimeReaderSummaryModelAdapter,
+  resolveAgentRuntimeReaderSummaryModelOptions,
+} from "./agent-runtime-reader-summary-model.adapter";
+import {
+  CapturingAgentRuntimeClient,
+  readerSummaryInput,
+  validReaderProviderDraft,
+} from "./agent-runtime-reader-summary-model.spec-support";
+import { resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions } from
+  "./agent-runtime-reader-summary-story-relation-verifier.adapter";
+import { frozenLegacyReaderSummaryRecoveryContract } from "./active-reader-summary-generation-profile";
 import type { VerifiedReaderSummaryExecutionAttestation } from "./reader-summary-execution-attestation";
 import { currentReaderSummaryPromptRelease } from "./openai-responses-reader-summary-prompt";
 
 describe("AgentRuntimeReaderSummaryModelAdapter", () => {
+  it("selects MiMo daily work through the explicit reader summary backend", async () => {
+    const client = new CapturingAgentRuntimeClient({
+      status: "completed",
+      structuredOutput: validReaderProviderDraft(),
+      warnings: [],
+    });
+    const options = resolveAgentRuntimeReaderSummaryModelOptions({
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "xiaomi-mimo-token-plan",
+      AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.6-sol",
+      AGENT_RUNTIME_READER_SUMMARY_GENERATION_MODEL: "mimo-v2.6-pro",
+    }, client);
+    const adapter = new AgentRuntimeReaderSummaryModelAdapter(options);
+    const input = readerSummaryInput();
+    const route = adapter.route(input, {
+      preferredProvider: "agent-runtime",
+      maxInputTokens: 24_000,
+      maxOutputTokens: 16_000,
+      maxEstimatedCostUsd: 1,
+    }, { remainingTokens: 40_000, remainingCostUsd: 1 });
+
+    await adapter.generate(input, route);
+
+    expect(route.model).toBe("codex:mimo-v2.6-pro:high");
+    expect(client.commands[0]).toMatchObject({
+      provider: "codex",
+      purpose: "social_monitor.reader_summary.generate.v2",
+      controls: { model: "mimo-v2.6-pro", modelBackend: "xiaomi-mimo-token-plan", reasoningEffort: "high" },
+    });
+    const sharedEnv = {
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "xiaomi-mimo-token-plan",
+      AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.6-sol",
+    };
+    expect(resolveAgentRuntimeReaderSummaryModelOptions(sharedEnv, client).model)
+      .toBe("mimo-v2.6-pro");
+    expect(resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions(
+      sharedEnv, client,
+    ).model).toBe("mimo-v2.6-pro");
+    expect(() => resolveAgentRuntimeReaderSummaryModelOptions({
+      ...sharedEnv,
+      AGENT_RUNTIME_READER_SUMMARY_GENERATION_MODEL: "gpt-5.6-sol",
+    }, client)).toThrow("MiMo reader summary model conflicts with purpose policy");
+    expect(() => resolveAgentRuntimeReaderSummaryModelOptions({
+      AGENT_RUNTIME_READER_SUMMARY_GENERATION_MODEL: "mimo-v2.6-pro",
+    }, client)).toThrow("AGENT_RUNTIME_READER_SUMMARY_MODEL must be gpt-5.6-sol");
+    expect(() => resolveAgentRuntimeReaderSummaryModelOptions({
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "xiaomi-mimo-token-plan",
+      AGENT_RUNTIME_READER_SUMMARY_MODEL: "mimo-v2.6-pro",
+    }, client)).toThrow("AGENT_RUNTIME_READER_SUMMARY_MODEL must be gpt-5.6-sol");
+    expect(() => new AgentRuntimeReaderSummaryModelAdapter({
+      client,
+      modelBackend: "xiaomi-mimo-token-plan",
+      model: "mimo-v2.6-pro",
+      legacyRecoveryContract: frozenLegacyReaderSummaryRecoveryContract,
+    })).toThrow("MiMo reader summary model conflicts with purpose policy");
+  });
+
+  it("renders the canonical narrative when the duplicate executive summary is empty", async () => {
+    const providerDraft = validReaderProviderDraft();
+    providerDraft.executiveSummary = "";
+    const client = new CapturingAgentRuntimeClient({
+      status: "completed",
+      structuredOutput: providerDraft,
+      warnings: [],
+    });
+    const adapter = new AgentRuntimeReaderSummaryModelAdapter({
+      client,
+      agentProvider: "codex",
+    });
+    const input = readerSummaryInput();
+    const route = adapter.route(
+      input,
+      {
+        preferredProvider: "agent-runtime",
+        maxInputTokens: 24_000,
+        maxOutputTokens: 16_000,
+        maxEstimatedCostUsd: 1,
+      },
+      { remainingTokens: 40_000, remainingCostUsd: 1 },
+    );
+
+    const attempt = await adapter.generate(input, route);
+
+    expect(attempt.draft.executiveSummary).toContain(
+      "Developers are comparing agent runtime reliability",
+    );
+    expect(client.commands).toHaveLength(1);
+  });
+
   it("uses the strict production Codex model and effort by default", async () => {
     const client = new CapturingAgentRuntimeClient({
       status: "completed",
@@ -41,7 +129,7 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
 
     await adapter.generate(input, route);
 
-    expect(route.model).toBe("codex:gpt-5.6-sol:xhigh");
+    expect(route.model).toBe("codex:gpt-5.6-sol:high");
     expect(route.promptVersion).toBe(currentReaderSummaryPromptRelease.id);
     expect(client.commands).toHaveLength(1);
     expect(adapter.estimate(input, route).outputTokens).toBe(3_200);
@@ -61,16 +149,16 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
       "Preserve material qualifiers exactly as stated",
     );
     expect(client.commands[0]?.systemPrompt).toContain(
-      "must explain why the item matters",
+      "its concrete product or workflow impact",
     );
     expect(client.commands[0]?.systemPrompt).toContain(
-      "each topStories summary 420-650 characters",
+      "each topStories summary 140-300 characters",
     );
     expect(client.commands[0]?.systemPrompt).toContain(
       "Keep source validation out of topStories summary prose",
     );
     expect(client.commands[0]?.systemPrompt).toContain(
-      "return 12-15 topStories",
+      "Return at most 8 topStories, matching editorialSlate.top exactly",
     );
     expect(client.commands[0]?.systemPrompt).toContain(
       "evidencePack.confidence as a ceiling",
@@ -80,14 +168,17 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
     );
     expect(client.commands[0]?.controls).toMatchObject({
       model: "gpt-5.6-sol",
+      reasoningEffort: "high",
+      toolsEnabled: false,
+      toolPolicy: "none",
     });
     expect(client.commands[0]?.timeoutMs).toBe(600_000);
     expect(client.commands[0]?.metadata).toMatchObject({
-      reasoningEffort: "xhigh",
+      reasoningEffort: "high",
     });
   });
 
-  it("replaces an inconsistent generated headline with the planned lead", async () => {
+  it("keeps an explicitly source-framed generated headline grounded", async () => {
     const providerDraft = validReaderProviderDraft();
     providerDraft.headline =
       "Reddit discussion highlights developers routing GPT-5.6 Sol through Claude Code.";
@@ -114,7 +205,7 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
     const attempt = await adapter.generate(input, route);
 
     expect(attempt.draft.headline).toBe(
-      "Reports discuss Agent runtime reliability tradeoffs",
+      "Reddit discussion highlights developers routing GPT-5.6 Sol through Claude Code",
     );
     expect(attempt.draft.content?.headline).not.toMatch(/[.\u2026\u3002]$/u);
   });
@@ -177,9 +268,37 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
 
     await adapter.generate(input, route);
 
-    expect(route.model).toBe("codex:gpt-5.6-sol:xhigh");
+    expect(route.model).toBe("codex:gpt-5.6-sol:high");
     expect(client.commands[0]?.controls).toMatchObject({
       model: "gpt-5.6-sol",
+    });
+  });
+
+  it("keeps the frozen xhigh purpose available only to explicit recovery", async () => {
+    const client = new CapturingAgentRuntimeClient({
+      status: "completed",
+      structuredOutput: validReaderProviderDraft(),
+      warnings: [],
+    });
+    const adapter = new AgentRuntimeReaderSummaryModelAdapter({
+      client,
+      legacyRecoveryContract: frozenLegacyReaderSummaryRecoveryContract,
+      reasoningEffort: "xhigh",
+    });
+    const input = readerSummaryInput();
+    const route = adapter.route(input, {
+      preferredProvider: "agent-runtime",
+      maxInputTokens: 24_000,
+      maxOutputTokens: 16_000,
+      maxEstimatedCostUsd: 1,
+    }, { remainingTokens: 40_000, remainingCostUsd: 1 });
+
+    await adapter.generate(input, route);
+
+    expect(route.model).toBe("codex:gpt-5.6-sol:xhigh");
+    expect(client.commands[0]).toMatchObject({
+      purpose: "social_monitor.reader_summary.generate",
+      controls: { reasoningEffort: "xhigh" },
     });
   });
 
@@ -335,11 +454,23 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
         status: "completed",
         structuredOutput: invalidDraft,
         warnings: [],
+        usage: {
+          inputTokens: 101,
+          outputTokens: 11,
+          totalTokens: 112,
+          estimatedCostUsd: 0.01,
+        },
       },
       {
         status: "completed",
         structuredOutput: validReaderProviderDraft(),
         warnings: [],
+        usage: {
+          inputTokens: 202,
+          outputTokens: 22,
+          totalTokens: 224,
+          estimatedCostUsd: 0.02,
+        },
       },
     ]);
     const adapter = new AgentRuntimeReaderSummaryModelAdapter({
@@ -363,11 +494,11 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
       { remainingTokens: 40_000, remainingCostUsd: 1 },
     );
 
-    await adapter.generate(input, route);
+    const attempt = await adapter.generate(input, route);
 
     expect(client.commands).toHaveLength(2);
     expect(client.commands[1]).toMatchObject({
-      purpose: "social_monitor.reader_summary.repair",
+      purpose: "social_monitor.reader_summary.repair.v2",
       metadata: expect.objectContaining({ attempt: "repair" }),
     });
     expect(client.commands[1]?.systemPrompt).toContain(
@@ -379,185 +510,13 @@ describe("AgentRuntimeReaderSummaryModelAdapter", () => {
       attempt: "repair",
       attestation: {
         requestId: client.commands[1]?.requestId,
-        purpose: "social_monitor.reader_summary.repair",
+        purpose: "social_monitor.reader_summary.repair.v2",
       },
     });
+    expect(attempt.draft.usage).toEqual({
+      inputTokens: 303,
+      outputTokens: 33,
+      estimatedCostUsd: 0.03,
+    });
   });
-});
-
-class CapturingAgentRuntimeClient implements AgentRuntimeClientPort {
-  readonly commands: AgentRuntimeTaskCommand[] = [];
-  private readonly results: readonly AgentRuntimeTaskResult[];
-  private resultIndex = 0;
-
-  constructor(
-    result: AgentRuntimeTaskResult | readonly AgentRuntimeTaskResult[],
-  ) {
-    this.results = Array.isArray(result) ? result : [result];
-  }
-
-  async runTask(
-    command: AgentRuntimeTaskCommand,
-  ): Promise<AgentRuntimeTaskResult> {
-    this.commands.push(command);
-    const result = this.results[this.resultIndex] ?? this.results.at(-1);
-    this.resultIndex += 1;
-    if (result === undefined) {
-      throw new Error("No captured agent-runtime result configured");
-    }
-    return withTestExecutionAttestation(command, result);
-  }
-
-  async checkHealth(service: string): Promise<AgentRuntimeHealthResult> {
-    void service;
-
-    return {
-      status: "serving",
-      runtimeEngine: "test",
-      runtimeVersion: "test",
-      warnings: [],
-    };
-  }
-}
-
-const readerSummaryInput = (): ReaderSummaryModelInput => {
-  const observedAt = new Date("2026-06-23T08:01:00.000Z");
-  const selectedEvidence = [
-    {
-      feedItemId: "feed-reddit",
-      sourceItemId: "source-reddit",
-      sourceBindingId: "binding-reddit",
-      interestId: "interest-ai",
-      providerKey: "reddit",
-      canonicalUrl: "https://example.test/reddit/agent-runtime",
-      title: "Agent runtime discussions are accelerating",
-      bodyPreview: "Developers compare agent runtime reliability tradeoffs.",
-      publishedAt: new Date("2026-06-23T08:00:00.000Z"),
-      observedAt,
-      score: 2.4,
-      whyImportant: ["Fresh item in the current monitoring window"],
-    },
-  ];
-
-  const evidence = {
-    rankingPolicyVersion: "story_ranking_v1",
-    sourceWindow: {
-      windowId: "workspace:agent-runtime-reader-summary",
-      startedAt: observedAt,
-      endedAt: observedAt,
-      selectedFeedItemIds: selectedEvidence.map((item) => item.feedItemId),
-      storyClusterIds: ["story:agent-runtime-reader"],
-    },
-    clusters: [
-      {
-        id: "story:agent-runtime-reader",
-        storyKey: "url:example.test/reddit/agent-runtime",
-        representativeFeedItemId: "feed-reddit",
-        duplicateFeedItemIds: [],
-        interestIds: ["interest-ai"],
-        providerKeys: ["reddit"],
-        score: 2.4,
-        observedAtRange: {
-          startedAt: observedAt,
-          endedAt: observedAt,
-        },
-        whyImportant: ["Fresh item"],
-      },
-    ],
-    selectedEvidence,
-  };
-
-  return {
-    tenantId: tenantId("tenant-agent-runtime-reader-summary-adapter"),
-    workspaceId: workspaceId("workspace-agent-runtime-reader-summary-adapter"),
-    scope: { type: "workspace" },
-    period: {
-      cadence: "daily",
-      startedAt: new Date("2026-06-23T00:00:00.000Z"),
-      endedAt: new Date("2026-06-24T00:00:00.000Z"),
-      timezone: "UTC",
-      periodKey: "daily:2026-06-23T00:00:00.000Z:2026-06-24T00:00:00.000Z:UTC",
-    },
-    evidence,
-    coveragePlan: buildReaderSummaryCoveragePlan(evidence),
-    contextArtifacts: [],
-    policy: {
-      language: "auto",
-      format: "executive_brief",
-      tone: "analytical",
-      maxStories: 10,
-      includeRisks: true,
-      includeInterestHighlights: true,
-      includeRepeatedSignals: true,
-      dedupeStrategy: "canonical_url_then_title",
-      rulesVersion: "reader_summary.rules.test.v1",
-    },
-    requestedAt: new Date("2026-06-23T08:31:00.000Z"),
-  };
-};
-
-const validReaderProviderDraft = (): Record<string, unknown> => ({
-  headline: "Agent runtime discussions are accelerating",
-  executiveSummary:
-    "Developers are comparing agent runtime reliability and production tradeoffs.",
-  narrativeSections: [
-    {
-      kind: "lead",
-      title: "Overview",
-      text: "Developers are comparing agent runtime reliability and production tradeoffs.",
-      citationIds: ["c1"],
-      storyClusterId: null,
-    },
-  ],
-  topStories: [
-    {
-      storyClusterId: "story:agent-runtime-reader",
-      title: "Agent runtime reliability tradeoffs",
-      summary:
-        "The current discussion focuses on reliability and operational control.",
-      interestIds: ["interest-ai"],
-      providerKeys: ["reddit"],
-      citationIds: ["c1"],
-    },
-  ],
-  interestHighlights: [
-    {
-      interestId: "interest-ai",
-      title: "Agent runtime reliability",
-      summary: "Reliability is the active comparison point.",
-      citationIds: ["c1"],
-    },
-  ],
-  repeatedSignals: [
-    {
-      storyClusterId: "story:agent-runtime-reader",
-      title: "Agent runtime reliability",
-      interestIds: ["interest-ai"],
-      citationIds: ["c1"],
-    },
-  ],
-  risksAndUnknowns: [
-    {
-      description: "Provider runtime failures can still require fallback.",
-      citationIds: ["c1"],
-      reason: "source_limit",
-    },
-  ],
-  citationMap: [
-    {
-      citationId: "c1",
-      feedItemId: "feed-reddit",
-      sourceItemId: "source-reddit",
-      providerKey: "reddit",
-      field: "title",
-      canonicalUrl: "https://example.test/reddit/agent-runtime",
-    },
-  ],
-  qualityFlags: ["limited_sources"],
-  confidence: {
-    level: "medium",
-    score: 0.7,
-    rationale: "The draft is grounded in one selected evidence item.",
-  },
-  noSignalReason: null,
 });

@@ -1,3 +1,11 @@
+export { resolveOpenAiResponsesReaderSummaryModelOptions } from "./openai-responses-reader-summary-options";
+import { readerSummaryDailyInputReceipt } from "./reader-summary-daily-input-receipt";
+import { validateDailyEditorialPlan } from "../../domain";
+import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
+import {
+  buildDailyEditorialPrompt, dailyEditorialInstructions, dailyEditorialOutputSchema,
+  dailyEditorialSha256,
+} from "./reader-summary-daily-editorial-model";
 import type {
   ReaderSummaryModelBudget,
   ReaderSummaryModelEstimate,
@@ -8,6 +16,7 @@ import type {
   ReaderSummaryModelRoute,
   ReaderSummaryModelValidationResult,
   ProviderReaderSummaryAttempt,
+  ReaderSummaryDailyEditorialAttempt,
 } from "../../ports";
 import { buildReaderSummary, primaryReaderSummaryEvidence } from "../../domain";
 import {
@@ -19,22 +28,17 @@ import {
   extractOpenAiOutputText,
   normalizeOpenAiReaderSummaryDraft,
   OpenAiReaderSummaryOutputParseError,
-  openAiReaderSummaryJsonSchema,
   parseOpenAiReaderSummaryJsonObject,
   readOpenAiResponseBody,
   resolveOpenAiReaderSummaryUsage,
 } from "./openai-responses-reader-summary-model-support";
 import {
-  openAiApiKeySourceDescription,
-  resolveOpenAiApiKey,
-} from "./openai-api-key-source";
-import {
-  assertNoReaderSummaryPromptReleaseOverride,
   buildOpenAiReaderSummaryInstructions,
   buildOpenAiReaderSummaryPromptPayload,
   currentReaderSummaryPromptRelease,
 } from "./openai-responses-reader-summary-prompt";
 import { buildReaderSummaryEvidenceCitationMap } from "./reader-summary-evidence-citation-map";
+import { readerSummaryWriterSchema } from "./openai-responses-reader-summary-schema";
 
 type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
@@ -110,7 +114,10 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
     policy: ReaderSummaryModelPolicy,
     budget: ReaderSummaryModelBudget,
   ): ReaderSummaryModelRoute {
-    const route = this.buildRoute();
+    const route = { ...this.buildRoute(), ...(input.dailyEditorialPlan !== undefined
+      ? { promptVersion: "reader_summary.prompt.2026-11-03.daily_editorial_v1" }
+      : input.evidence.dailyGenerationInput === undefined ? {} :
+        { promptVersion: "reader_summary.prompt.2026-11-03.daily_likes_digest" }) };
     const estimate = this.estimate(input, route);
 
     if (
@@ -159,6 +166,51 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
     };
   }
 
+  async planDaily(
+    input: ReaderSummaryModelInput,
+    selectedRoute: ReaderSummaryModelRoute,
+  ): Promise<ReaderSummaryDailyEditorialAttempt> {
+    if (input.evidence.dailyGenerationInput === undefined) {
+      throw new Error("Daily editorial planning requires a frozen input");
+    }
+    const prompt = buildDailyEditorialPrompt(input);
+    const response = await this.createResponse({
+      model: selectedRoute.model,
+      store: false,
+      max_output_tokens: Math.min(this.maxOutputTokens, 3_000),
+      instructions: dailyEditorialInstructions,
+      input: prompt,
+      text: { format: {
+        type: "json_schema", name: "social_monitor_daily_editorial_plan",
+        strict: true, schema: dailyEditorialOutputSchema,
+      } },
+    });
+    const output = extractOpenAiOutputText(response);
+    if (output === undefined) {
+      throw new Error("Daily editorial plan response is empty");
+    }
+    const plan = validateDailyEditorialPlan(
+      parseOpenAiReaderSummaryJsonObject(output),
+      input.evidence.dailyGenerationInput,
+    );
+    const estimate = { inputTokens: Math.ceil(prompt.length / this.inputTokenDivisor),
+      outputTokens: 3_000,
+      estimatedCostUsd: (Math.ceil(prompt.length / this.inputTokenDivisor) *
+        this.estimatedInputCostUsdPerMillionTokens + 3_000 *
+        this.estimatedOutputCostUsdPerMillionTokens) / 1_000_000 };
+    return {
+      plan,
+      usage: (() => {
+        const actual = resolveOpenAiReaderSummaryUsage(response, estimate);
+        return { inputTokens: actual.inputTokens ?? estimate.inputTokens,
+          outputTokens: actual.outputTokens ?? estimate.outputTokens,
+          estimatedCostUsd: actual.estimatedCostUsd };
+      })(),
+      editorRequestSha256: dailyEditorialSha256(prompt),
+      editorOutputSha256: canonicalJsonSha256(plan),
+    };
+  }
+
   async generate(
     input: ReaderSummaryModelInput,
     selectedRoute: ReaderSummaryModelRoute,
@@ -178,18 +230,20 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
       });
     }
 
+    const prompt = buildOpenAiReaderSummaryPromptPayload(input);
+    const dailyGenerationReceipt = readerSummaryDailyInputReceipt(prompt, input.evidence.dailyGenerationInput, input.dailyEditorialPlan);
     const responseJson = await this.createResponse({
       model: selectedRoute.model,
       store: false,
       max_output_tokens: this.maxOutputTokens,
       instructions: buildOpenAiReaderSummaryInstructions(input),
-      input: buildOpenAiReaderSummaryPromptPayload(input),
+      input: prompt,
       text: {
         format: {
           type: "json_schema",
           name: "social_monitor_reader_summary_artifact",
           strict: true,
-          schema: openAiReaderSummaryJsonSchema,
+          schema: readerSummaryWriterSchema(input),
         },
       },
     });
@@ -220,6 +274,7 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
     return {
       route: selectedRoute,
       draft,
+      ...(dailyGenerationReceipt === undefined ? {} : { dailyGenerationReceipt }),
     };
   }
 
@@ -347,6 +402,7 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
           storyClusters: input.evidence.clusters,
           sourceWindow: input.evidence.sourceWindow,
           selectedEvidence: input.evidence.selectedEvidence,
+          editorialSlate: input.evidence.editorialSlate,
         }),
       },
     };
@@ -408,48 +464,6 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
   }
 }
 
-export const resolveOpenAiResponsesReaderSummaryModelOptions = (
-  env: NodeJS.ProcessEnv,
-  params: { readonly requireApiKey: boolean },
-): OpenAiResponsesReaderSummaryModelAdapterOptions => {
-  assertNoReaderSummaryPromptReleaseOverride({
-    environmentName: "OPENAI_READER_SUMMARY_PROMPT_VERSION",
-    value: env.OPENAI_READER_SUMMARY_PROMPT_VERSION,
-  });
-  const apiKey = resolveOpenAiApiKey(env);
-
-  if (params.requireApiKey && apiKey.length === 0) {
-    throw new Error(
-      `READER_SUMMARY_MODEL_PROVIDER=openai-responses requires ${openAiApiKeySourceDescription}`,
-    );
-  }
-
-  return {
-    apiKey,
-    endpointUrl: env.OPENAI_RESPONSES_ENDPOINT_URL,
-    model:
-      env.OPENAI_READER_SUMMARY_MODEL ??
-      env.OPENAI_READER_SUMMARY_MODEL ??
-      env.OPENAI_SUMMARY_MODEL,
-    evalDatasetVersion:
-      env.READER_SUMMARY_EVAL_DATASET_VERSION ??
-      env.READER_SUMMARY_EVAL_DATASET_VERSION,
-    timeoutMs: parsePositiveInteger(
-      env.OPENAI_READER_SUMMARY_TIMEOUT_MS ??
-        env.OPENAI_READER_SUMMARY_TIMEOUT_MS,
-    ),
-    maxOutputTokens: parsePositiveInteger(
-      env.OPENAI_READER_SUMMARY_MAX_OUTPUT_TOKENS ??
-        env.OPENAI_READER_SUMMARY_MAX_OUTPUT_TOKENS,
-    ),
-    estimatedInputCostUsdPerMillionTokens: parseNonNegativeNumber(
-      env.OPENAI_SUMMARY_INPUT_COST_USD_PER_MILLION_TOKENS,
-    ),
-    estimatedOutputCostUsdPerMillionTokens: parseNonNegativeNumber(
-      env.OPENAI_SUMMARY_OUTPUT_COST_USD_PER_MILLION_TOKENS,
-    ),
-  };
-};
 
 class ReaderSummaryModelProviderError extends Error {
   constructor(readonly failure: ReaderSummaryModelFailure) {
@@ -480,17 +494,3 @@ const nonNegativeNumberOrFallback = (
   typeof value === "number" && Number.isFinite(value) && value >= 0
     ? value
     : fallback;
-
-const parsePositiveInteger = (
-  value: string | undefined,
-): number | undefined => {
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
-};
-
-const parseNonNegativeNumber = (
-  value: string | undefined,
-): number | undefined => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
-};

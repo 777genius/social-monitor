@@ -184,18 +184,17 @@ restore_postgres_runtime_rolling_timer() {
 reconcile_postgres_runtime_rolling_timer() {
   local timer=social-monitor-rolling.timer
   local unit_state active_state next_trigger service_state
-  systemctl enable --now "$timer" || {
-    fail 'systemd rolling timer could not be enabled and started'
-    return 1
-  }
+  # Installing units and daemon-reload preserve the snapshotted timer state.
+  # Reconciliation must not activate an intentionally disabled rolling timer.
   unit_state=$(systemctl show --property=UnitFileState --value "$timer") || return 1
   active_state=$(systemctl show --property=ActiveState --value "$timer") || return 1
   next_trigger=$(systemctl show --property=NextElapseUSecRealtime --value \
     "$timer") || return 1
   service_state=$(systemctl show --property=ActiveState --value \
     social-monitor-rolling.service) || return 1
-  [[ $unit_state == enabled && $active_state == active && \
-     -n $next_trigger && $service_state == inactive ]] || {
+  [[ $service_state == inactive && (
+     ( $unit_state == enabled && $active_state == active && -n $next_trigger ) ||
+     ( $unit_state == disabled && $active_state == inactive ) ) ]] || {
     fail "systemd rolling timer activation proof is invalid: $unit_state/$active_state/$service_state"
     return 1
   }

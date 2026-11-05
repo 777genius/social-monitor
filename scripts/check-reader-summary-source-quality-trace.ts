@@ -7,14 +7,16 @@ import { defaultPostgresRuntimePoolConfig } from "@social-monitor/platform-persi
 import { PrismaFeedConnection } from "../libs/feed/adapters/persistence/prisma/prisma-feed-connection";
 import { PrismaFeedItemReadRepository } from "../libs/feed/adapters/persistence/prisma/prisma-feed-item-read.repository";
 import { InMemoryUserRelevanceProfileRepository } from "../libs/relevance/adapters/persistence/in-memory-user-relevance-profile.repository";
-import { SourceContentQualityPolicy } from "../libs/relevance/domain";
+import {
+  SourceContentQualityPolicy,
+  SourceContentSafetyPolicy,
+} from "../libs/relevance/domain";
+import { promotionSafeProviderMetadata } from "../libs/relevance/features/rank-feed-items/rank-feed-item-projection";
 import { hasReaderSummaryEvidenceHardBlock } from "../libs/summary/domain/policies/reader-summary-evidence-eligibility-policy";
 import { RankFeedItemsUseCase } from "../libs/relevance/features/rank-feed-items/rank-feed-items.use-case";
 import { readerSummaryArtifactFromPrisma } from "../libs/summary/adapters/persistence/prisma/prisma-reader-summary-records";
-import {
-  presentReaderSummaryArtifact,
-  type ReaderSummaryArtifactView,
-} from "../libs/summary/features/shared/reader-summary-artifact-presenter";
+import { presentReaderSummaryArtifact } from "../libs/summary/features/shared/reader-summary-artifact-presenter";
+import { readerSummaryPromotionBoardRestView } from "../libs/summary/interfaces/rest/reader-summary-promotion-board-rest.mapper";
 import { FixedClock, type JsonObject } from "@social-monitor/shared-kernel";
 
 import {
@@ -53,6 +55,7 @@ type FeedItemRow = {
   readonly authorHandle: string | null;
   readonly title: string;
   readonly bodyPreview: string | null;
+  readonly sourceBody: string;
   readonly publishedAt: Date;
   readonly observedAt: Date;
   readonly providerMetadata: unknown;
@@ -172,6 +175,7 @@ type ItemTrace = {
 };
 
 const rankLimit = 200;
+const promotionSourceTextSafetyCap = 256_000;
 const readerSources = ["hacker-news", "reddit", "rss", "x-twitter"] as const;
 const primarySources = ["reddit", "x-twitter"] as const;
 const xTwitterLaneFamilies = [
@@ -181,13 +185,16 @@ const xTwitterLaneFamilies = [
   "product_or_group",
   "search:general",
 ] as const;
-const outputPath = "ops/evals/reader-summary-source-quality-trace.v1.json";
+const outputPath = readOption("--output-path") ??
+  "ops/evals/reader-summary-source-quality-trace.v1.json";
 const databaseUrl = yesterdaySocialQualityDatabaseUrl();
 const update = process.argv.includes("--update");
 const artifactOnly = process.argv.includes("--artifact-only");
 const explicitDate = readOption("--date");
 
-void main();
+if (require.main === module) {
+  void main();
+}
 
 async function main(): Promise<void> {
   if (artifactOnly) {
@@ -209,15 +216,18 @@ async function main(): Promise<void> {
 
   const serialized = `${JSON.stringify(report, null, 2)}\n`;
 
+  if (update) {
+    mkdirSync(dirname(outputPath), { recursive: true });
+    writeFileSync(outputPath, serialized);
+    console.log(`Updated ${outputPath}`);
+  }
+
   if (!report.blockingPassed) {
     console.error(serialized);
     throw new Error("Reader summary source quality trace gates failed");
   }
 
   if (update) {
-    mkdirSync(dirname(outputPath), { recursive: true });
-    writeFileSync(outputPath, serialized);
-    console.log(`Updated ${outputPath}`);
     return;
   }
 
@@ -276,6 +286,7 @@ async function buildReport(pool: Pool): Promise<SourceQualityTraceReport> {
     readerSummaryArtifactFromPrisma(artifactRecord),
     { status: "fresh", checkedAt: new Date(`${collectionDate}T23:59:59.000Z`) },
   );
+  const promotionBoard = readerSummaryPromotionBoardRestView(view);
   const feedItems = await readFeedItems(pool, scope, collectionDate);
   const ranked = await rankFeedItems(scope, collectionDate);
   const rankedById = new Map(
@@ -289,7 +300,17 @@ async function buildReport(pool: Pool): Promise<SourceQualityTraceReport> {
     ]),
   );
   const selectedFeedItemIds = new Set(view.sourceWindow.selectedFeedItemIds);
-  const topReadFeedItemIds = topReadCitationFeedItemIds(view);
+  const topReadFeedItemIds = topReadPromotionCandidateFeedItemIds(
+    promotionBoard.topReads,
+  );
+  const attestedTopReadFeedItemIds = new Set(
+    view.promotionAttestations
+      .filter((attestation) =>
+        attestation.placement === "top" &&
+        (attestation.schemaVersion === "reader_post_promotion_attestation.v3" ||
+          attestation.qualityValid))
+      .map((attestation) => attestation.candidateId),
+  );
   const sources = {
     "hacker-news": buildSourceTrace({
       providerKey: "hacker-news",
@@ -297,6 +318,7 @@ async function buildReport(pool: Pool): Promise<SourceQualityTraceReport> {
       rankedById,
       selectedFeedItemIds,
       topReadFeedItemIds,
+      attestedTopReadFeedItemIds,
     }),
     reddit: buildSourceTrace({
       providerKey: "reddit",
@@ -304,6 +326,7 @@ async function buildReport(pool: Pool): Promise<SourceQualityTraceReport> {
       rankedById,
       selectedFeedItemIds,
       topReadFeedItemIds,
+      attestedTopReadFeedItemIds,
     }),
     rss: buildSourceTrace({
       providerKey: "rss",
@@ -311,6 +334,7 @@ async function buildReport(pool: Pool): Promise<SourceQualityTraceReport> {
       rankedById,
       selectedFeedItemIds,
       topReadFeedItemIds,
+      attestedTopReadFeedItemIds,
     }),
     "x-twitter": buildSourceTrace({
       providerKey: "x-twitter",
@@ -318,6 +342,7 @@ async function buildReport(pool: Pool): Promise<SourceQualityTraceReport> {
       rankedById,
       selectedFeedItemIds,
       topReadFeedItemIds,
+      attestedTopReadFeedItemIds,
     }),
   };
   const qualityGates = {
@@ -438,6 +463,7 @@ function buildSourceTrace(params: {
   readonly rankedById: ReadonlyMap<string, RankedTrace>;
   readonly selectedFeedItemIds: ReadonlySet<string>;
   readonly topReadFeedItemIds: ReadonlySet<string>;
+  readonly attestedTopReadFeedItemIds: ReadonlySet<string>;
 }): SourceTrace {
   const providerItems = params.feedItems.filter(
     (item) => item.providerKey === params.providerKey,
@@ -456,6 +482,7 @@ function buildSourceTrace(params: {
         rankedById: params.rankedById,
         selectedFeedItemIds: params.selectedFeedItemIds,
         topReadFeedItemIds: params.topReadFeedItemIds,
+        attestedTopReadFeedItemIds: params.attestedTopReadFeedItemIds,
       }),
     )
     .sort(
@@ -530,24 +557,39 @@ function buildLaneTrace(params: {
   readonly rankedById: ReadonlyMap<string, RankedTrace>;
   readonly selectedFeedItemIds: ReadonlySet<string>;
   readonly topReadFeedItemIds: ReadonlySet<string>;
+  readonly attestedTopReadFeedItemIds: ReadonlySet<string>;
 }): LaneTrace {
   const qualityPolicy = new SourceContentQualityPolicy();
+  const safetyPolicy = new SourceContentSafetyPolicy();
   const descriptor = laneDescriptor(
     params.providerKey,
     params.items[0]?.providerMetadata,
   );
   const itemTraces = params.items.map((item) => {
     const ranked = params.rankedById.get(item.id);
-    const verdict = qualityPolicy.evaluate({
+    const safety = safetyPolicy.evaluate({
       providerKey: item.providerKey,
       title: item.title,
-      bodyPreview: item.bodyPreview ?? undefined,
+      bodyPreview: sourceQualityBodyPreview(item),
       canonicalUrl: item.canonicalUrl,
+    });
+    const verdict = qualityPolicy.evaluate({
+      providerKey: item.providerKey,
+      title: safety.sanitizedTitle,
+      bodyPreview: safety.sanitizedBodyPreview,
+      canonicalUrl: safety.sanitizedCanonicalUrl ?? item.canonicalUrl,
       authorHandle: item.authorHandle ?? undefined,
-      providerMetadata: asJsonObject(item.providerMetadata),
+      providerMetadata: promotionSafeProviderMetadata(
+        item.providerKey,
+        asJsonObject(item.providerMetadata),
+      ),
     });
     const selected = params.selectedFeedItemIds.has(item.id);
     const topRead = params.topReadFeedItemIds.has(item.id);
+    // A V2 evidence-bound assessment may resolve deterministic lexical
+    // ambiguity. Rehydration has already verified the immutable attestation.
+    const eligibleForTopRead = verdict.eligibleForTopRead ||
+      (topRead && params.attestedTopReadFeedItemIds.has(item.id));
 
     return {
       itemFingerprint: fingerprint(`${item.providerKey}:${item.id}`),
@@ -556,7 +598,7 @@ function buildLaneTrace(params: {
         : { rank: ranked.rank, rankScore: roundMetric(ranked.score) }),
       qualityDecision: verdict.decision,
       eligibleForSummary: verdict.eligibleForSummary,
-      eligibleForTopRead: verdict.eligibleForTopRead,
+      eligibleForTopRead,
       flags: verdict.flags,
       selected,
       topRead,
@@ -565,7 +607,7 @@ function buildLaneTrace(params: {
         selected,
         topRead,
         eligibleForSummary: verdict.eligibleForSummary,
-        eligibleForTopRead: verdict.eligibleForTopRead,
+        eligibleForTopRead,
         flags: verdict.flags,
       }),
     } satisfies ItemTrace;
@@ -663,26 +705,31 @@ async function readFeedItems(
   const result = await pool.query<FeedItemRow>(
     `
       select
-        id::text as "id",
-        source_item_id::text as "sourceItemId",
-        source_binding_id::text as "sourceBindingId",
-        interest_id::text as "interestId",
-        provider_key as "providerKey",
-        canonical_url as "canonicalUrl",
-        author_handle as "authorHandle",
-        title,
-        body_preview as "bodyPreview",
-        published_at as "publishedAt",
-        observed_at as "observedAt",
-        provider_metadata as "providerMetadata"
-      from feed_items
-      where tenant_id = $1::uuid
-        and workspace_id = $2::uuid
-        and status = 'VISIBLE'
-        and published_at >= $3::timestamptz
-        and published_at < $4::timestamptz
-        and provider_key in ('hacker-news', 'reddit', 'rss', 'x-twitter')
-      order by provider_key, observed_at, id
+        fi.id::text as "id",
+        fi.source_item_id::text as "sourceItemId",
+        fi.source_binding_id::text as "sourceBindingId",
+        fi.interest_id::text as "interestId",
+        fi.provider_key as "providerKey",
+        fi.canonical_url as "canonicalUrl",
+        fi.author_handle as "authorHandle",
+        fi.title,
+        fi.body_preview as "bodyPreview",
+        si.body as "sourceBody",
+        fi.published_at as "publishedAt",
+        fi.observed_at as "observedAt",
+        fi.provider_metadata as "providerMetadata"
+      from feed_items fi
+      join source_items si
+        on si.id = fi.source_item_id
+       and si.tenant_id = fi.tenant_id
+       and si.workspace_id = fi.workspace_id
+      where fi.tenant_id = $1::uuid
+        and fi.workspace_id = $2::uuid
+        and fi.status = 'VISIBLE'
+        and fi.published_at >= $3::timestamptz
+        and fi.published_at < $4::timestamptz
+        and fi.provider_key in ('hacker-news', 'reddit', 'rss', 'x-twitter')
+      order by fi.provider_key, fi.observed_at, fi.id
     `,
     [
       scope.tenantId,
@@ -721,20 +768,30 @@ async function latestCleanDate(pool: Pool): Promise<string> {
   return cleanDate;
 }
 
-function topReadCitationFeedItemIds(
-  view: ReaderSummaryArtifactView,
+export function topReadPromotionCandidateFeedItemIds(
+  topReads: readonly {
+    readonly promotionAttestation?: { readonly candidateId: string };
+    readonly citationIds?: readonly string[];
+  }[],
 ): ReadonlySet<string> {
-  const citationById = new Map(
-    view.citations.map((citation) => [citation.citationId, citation] as const),
-  );
-
   return new Set(
-    view.content.topReads.flatMap((read) =>
-      read.citationIds
-        .map((citationId) => citationById.get(citationId)?.feedItemId)
-        .filter(isDefined),
+    topReads.flatMap((read) =>
+      read.promotionAttestation === undefined
+        ? []
+        : [read.promotionAttestation.candidateId],
     ),
   );
+}
+
+export function sourceQualityBodyPreview(
+  item: Pick<FeedItemRow, "bodyPreview" | "sourceBody">,
+): string | undefined {
+  const sourceText = item.sourceBody.trim().length > 0
+    ? item.sourceBody
+    : (item.bodyPreview ?? "");
+  return sourceText.length === 0
+    ? undefined
+    : sourceText.slice(0, promotionSourceTextSafetyCap);
 }
 
 function itemFilterReasons(params: {

@@ -1,3 +1,9 @@
+import { DirectScanDispatchAdapter } from '@social-monitor/monitoring/adapters/queue/direct-scan-dispatch.adapter';
+import { InMemoryInterestCreationState } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation-state';
+import { InMemoryInterestCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation.store';
+import { InMemorySourceBindingStatusChangeStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-source-binding-status-change.store';
+import { InMemorySourceBindingCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-source-binding-creation.store';
+import { CryptoIdGenerator } from '@social-monitor/shared-kernel';
 import {
   DomainError,
   type EventEnvelope,
@@ -17,7 +23,7 @@ import { WorkerRuntime } from '@social-monitor/platform-worker';
 import { ProjectSummaryReadyEventUseCase } from '../libs/delivery/features/project-summary-ready-event/project-summary-ready-event.use-case';
 import type { SummaryReadyProjectionPayload } from '../libs/delivery/features/project-summary-ready-event/project-summary-ready-event.command';
 import { ListRealtimeEventsUseCase } from '../libs/delivery/features/list-realtime-events/list-realtime-events.use-case';
-import { RecordRealtimeEventUseCase } from '../libs/delivery/features/record-realtime-event/record-realtime-event.use-case';
+import { InMemorySummaryReadyProjectionStore } from '../libs/delivery/adapters/persistence/in-memory-summary-ready-projection.store';
 import { InMemoryDeliveryProvider } from '../libs/delivery/adapters/notification/in-memory-delivery.provider';
 import { InMemoryDeliveryAttemptRepository } from '../libs/delivery/adapters/persistence/in-memory-delivery-attempt.repository';
 import { InMemoryDigestRepository } from '../libs/delivery/adapters/persistence/in-memory-digest.repository';
@@ -91,19 +97,20 @@ import { DeliveryAttemptDispatchLoop } from '../apps/delivery-service/src/delive
 type QueuedScanPayload = Omit<ExecuteScanCommand, 'correlationId' | 'causationId'>;
 
 const fixedNow = new Date('2026-06-06T00:00:00.000Z');
-const tenant = tenantId('tenant-mvp-core-loop-smoke');
-const workspace = workspaceId('workspace-mvp-core-loop-smoke');
+const tenant = tenantId('00000000-0000-7000-8000-000000000701');
+const workspace = workspaceId('00000000-0000-7000-8000-000000000702');
 const correlation = 'mvp-core-loop-correlation';
 
 async function main(): Promise<void> {
   const ids = new SequenceIdGenerator('mvp-core');
   const clock = new FixedClock(fixedNow);
-  const topics = new InMemoryInterestRepository();
-  const bindings = new InMemorySourceBindingRepository();
+  const interestCreationState = new InMemoryInterestCreationState();
+  const topics = new InMemoryInterestRepository(interestCreationState);
+  const bindings = new InMemorySourceBindingRepository(interestCreationState);
   const scanPolicies = new InMemoryScanPolicyRepository();
   const scanJobs = new InMemoryScanJobRepository();
-  const outbox = new InMemoryOutboxAdapter();
-  const idempotency = new InMemoryIdempotencyAdapter();
+  const outbox = new InMemoryOutboxAdapter(interestCreationState);
+  const idempotency = new InMemoryIdempotencyAdapter(interestCreationState);
   const queuePublisher = new InMemoryQueuePublisher();
   const scanQueue = new InMemoryScanQueueAdapter(queuePublisher, new InMemoryMetricsRecorder());
   const feedItems = new InMemoryFeedItemReadRepository();
@@ -120,7 +127,7 @@ async function main(): Promise<void> {
   const realtimeEvents = new InMemoryRealtimeEventRepository();
 
   const topic = unwrap(
-    await new CreateInterestUseCase(topics, outbox, idempotency, ids, clock).execute({
+    await new CreateInterestUseCase(new InMemoryInterestCreationStore(interestCreationState), idempotency, ids, clock).execute({
       tenantId: tenant,
       workspaceId: workspace,
       name: 'AI Infrastructure',
@@ -135,9 +142,8 @@ async function main(): Promise<void> {
   const sourceBinding = unwrap(
     await new BindSourceUseCase(
       topics,
-      bindings,
+      new InMemorySourceBindingCreationStore(interestCreationState),
       new FakeSourceCatalogAdapter(),
-      outbox,
       idempotency,
       new PassThroughConfigProtector(),
       ids,
@@ -173,17 +179,18 @@ async function main(): Promise<void> {
   );
   assert(scanPolicy.created, 'scan policy should be created on first command');
 
-  const changeSourceBindingStatus = new ChangeSourceBindingStatusUseCase(bindings, outbox, idempotency, ids, clock);
+  const changeSourceBindingStatus = new ChangeSourceBindingStatusUseCase(new InMemorySourceBindingStatusChangeStore(interestCreationState), ids, clock);
   const requestScan = new RequestScanUseCase(
-    bindings,
-    scanPolicies,
-    scanJobs,
-    scanQueue,
-    outbox,
-    idempotency,
-    new AllowingScanRequestQuota(),
-    ids,
-    clock,
+      bindings,
+      scanPolicies,
+      scanJobs,
+      scanQueue,
+      new DirectScanDispatchAdapter(scanJobs, scanQueue, outbox),
+      idempotency,
+      new AllowingScanRequestQuota(),
+      ids,
+      clock
+
   );
   const pausedBinding = unwrap(
     await changeSourceBindingStatus.execute({
@@ -443,10 +450,11 @@ async function main(): Promise<void> {
   const deliveryDispatchLoop = new DeliveryAttemptDispatchLoop(
     new SendDeliveryAttemptCommandHandler(
       new SendDeliveryAttemptUseCase(
-        deliveryAttempts,
+        deliveryAttempts.workflow,
         [deliveryProvider],
         new InMemoryNotificationPreferenceReader(),
         new FixedClock(new Date('2026-06-06T00:05:00.000Z')),
+        new CryptoIdGenerator(),
       ),
       deliveryMetrics,
       deliveryRuntime,
@@ -530,7 +538,8 @@ async function main(): Promise<void> {
   assertSummaryReadyEvent(summaryReadyEvent);
   const realtimeProjection = unwrap(
     await new ProjectSummaryReadyEventUseCase(
-      new RecordRealtimeEventUseCase(realtimeEvents, ids, clock),
+      new InMemorySummaryReadyProjectionStore(realtimeEvents),
+      { publish: async () => undefined },
     ).execute({
       event: summaryReadyEvent,
     }),

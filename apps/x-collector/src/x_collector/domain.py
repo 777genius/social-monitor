@@ -3,11 +3,42 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+from .quoted_post import XQuotedPost
 
 
 class SearchProduct(str, Enum):
     TOP = "top"
     LATEST = "latest"
+    ID_LOOKUP = "id_lookup"
+
+
+@dataclass(frozen=True)
+class PostLookupRequest:
+    request_id: str
+    tenant_id: str
+    workspace_id: str
+    source_binding_id: str
+    scan_job_id: str
+    correlation_id: str
+    tweet_ids: tuple[str, ...]
+
+    @property
+    def query(self) -> str:
+        return "known_post_id_lookup"
+
+
+class XPostContentKind(str, Enum):
+    ORIGINAL = "original_post"
+    REPLY = "reply"
+    QUOTE = "quote"
+    UNKNOWN = "unknown"
+
+
+class XEligibilityMetricsState(str, Enum):
+    OBSERVED = "observed"
+    MISSING = "missing"
+    MALFORMED = "malformed"
+    CONFLICT = "conflict"
 
 
 @dataclass(frozen=True)
@@ -38,6 +69,9 @@ class XPostMetrics:
     replies: int
     quotes: int | None = None
     views: int | None = None
+    likes_observed: bool = True
+    retweets_observed: bool = True
+    eligibility_state: XEligibilityMetricsState = XEligibilityMetricsState.OBSERVED
 
 
 @dataclass(frozen=True)
@@ -52,6 +86,8 @@ class XCollectedPost:
     media_urls: tuple[str, ...]
     source_product: SearchProduct
     trend_score: float
+    content_kind: XPostContentKind = XPostContentKind.UNKNOWN
+    quoted_post: XQuotedPost | None = None
 
 
 @dataclass(frozen=True)

@@ -35,6 +35,7 @@ export type ReaderSummaryCleanRealDayCollectionCli = Readonly<{
   targetCollectionDate: string;
   requestedProviderKeys: readonly CleanRealDayCollectionProviderKey[];
   outputPath: string;
+  exactDateArtifact: boolean;
   targetPublishedWindow: Readonly<{
     startInclusive: string;
     endExclusive: string;
@@ -68,6 +69,17 @@ export const readReaderSummaryCleanRealDayCollectionCli = (params: {
     collectionDateOptionOrDefault(dateOnly(params.collectionPolicyEvaluatedAt));
   const requestedProviderKeys = readProviderKeys();
   const artifactDirectory = readOption("--artifact-directory");
+  const exactDateArtifactDirectory = readOption(
+    "--exact-date-artifact-directory",
+  );
+  if (
+    artifactDirectory !== undefined &&
+    exactDateArtifactDirectory !== undefined
+  ) {
+    throw new Error(
+      "--artifact-directory and --exact-date-artifact-directory are exclusive",
+    );
+  }
   const productionHistoryFirstAttempt = process.argv.includes(
     "--production-history-scope",
   );
@@ -81,9 +93,31 @@ export const readReaderSummaryCleanRealDayCollectionCli = (params: {
   }
   const productionHistory =
     productionHistoryFirstAttempt || productionHistoryRetry;
+  const productionScheduledScope = process.argv.includes(
+    "--production-scheduled-scope",
+  );
+  if (productionScheduledScope && productionHistory) {
+    throw new Error(
+      "Production scheduled and historical collection scopes are exclusive",
+    );
+  }
+  if (
+    productionScheduledScope &&
+    (!update ||
+      artifactOnly ||
+      recalculateExisting ||
+      exactDateArtifactDirectory === undefined ||
+      artifactDirectory !== undefined)
+  ) {
+    throw new Error(
+      "--production-scheduled-scope requires update and an exact date artifact directory",
+    );
+  }
   const maintenanceScope =
-    artifactDirectory === undefined
-      ? undefined
+    productionScheduledScope
+      ? readerSummaryProductionHistoryScope
+      : artifactDirectory === undefined
+        ? undefined
       : productionHistory
         ? readerSummaryProductionHistoryScope
         : readerSummaryDailyMaintenanceScope;
@@ -160,7 +194,7 @@ export const readReaderSummaryCleanRealDayCollectionCli = (params: {
       "--allow-unproven-existing-window requires explicit historical provider catch-up and a date artifact directory",
     );
   }
-  if (maintenanceScope !== undefined) {
+  if (maintenanceScope !== undefined && !productionScheduledScope) {
     const maintenanceBounds = productionHistory
       ? readerSummaryProductionHistoryMaintenanceBounds
       : readerSummaryDailyJul31Aug3MaintenanceBounds;
@@ -196,12 +230,18 @@ export const readReaderSummaryCleanRealDayCollectionCli = (params: {
     targetCollectionDate,
     requestedProviderKeys,
     outputPath:
-      artifactDirectory === undefined
-        ? "ops/evals/reader-summary-clean-real-day-collection.v1.json"
-        : readerSummaryDailyCollectionArtifactPath({
-            directory: artifactDirectory,
+      exactDateArtifactDirectory !== undefined
+        ? readerSummaryDailyCollectionArtifactPath({
+            directory: exactDateArtifactDirectory,
             collectionDate: targetCollectionDate,
-          }),
+          })
+        : artifactDirectory === undefined
+          ? "ops/evals/reader-summary-clean-real-day-collection.v1.json"
+          : readerSummaryDailyCollectionArtifactPath({
+              directory: artifactDirectory,
+              collectionDate: targetCollectionDate,
+            }),
+    exactDateArtifact: exactDateArtifactDirectory !== undefined,
     targetPublishedWindow,
     targetPublishedWindowConfig: {
       ...targetPublishedWindow,

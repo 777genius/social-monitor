@@ -4,6 +4,7 @@ import {
   createReaderSummaryWeeklyReviewManifest,
   deriveReaderSummaryWeeklyReviewStoryCandidates,
   type ReaderSummaryWeeklyReviewManifest,
+  type ReaderSummaryWeeklyReviewExecutionAttestation,
   type ReaderSummaryWeeklyReviewSelection,
 } from "../../libs/summary/domain/value-objects/reader-summary-weekly-review-manifest";
 
@@ -40,6 +41,7 @@ export const reviewManifestFor = (
   options: Readonly<{
     selections?: readonly ReaderSummaryWeeklyReviewSelection[];
     responseSalt?: string;
+    executionAttestation?: ReaderSummaryWeeklyReviewExecutionAttestation;
   }> = {},
 ): ReaderSummaryWeeklyReviewManifest => {
   const authority = readerSummaryWeeklyReviewAuthorityFromProductionState(dbState);
@@ -58,14 +60,14 @@ export const reviewManifestFor = (
     authority,
     selections,
     modelResponseSha256,
-    executionAttestation: Object.freeze({
+    executionAttestation: options.executionAttestation ?? Object.freeze({
       schemaVersion: 1 as const,
       requestId: "reader-summary-weekly-review:fixture",
-      purpose: "social_monitor.reader_summary.weekly.review" as const,
+      purpose: "social_monitor.reader_summary.weekly.review.v2" as const,
       canonicalRequestSha256: sha("weekly-review-request"),
       provider: "codex" as const,
       model: "gpt-5.6-sol" as const,
-      reasoningEffort: "xhigh" as const,
+      reasoningEffort: "high" as const,
       runtimeEngine: "subscription-runtime-cli" as const,
       runtimePackageVersion: "fixture-1.0.0",
       launcherSha256: sha("weekly-review-launcher"),
@@ -108,6 +110,73 @@ export const historicalGithubUnavailableDbState = (
             certification.providerEvidence.filter((evidence) =>
               evidence.providerKey !== "github-trending-page"),
           ),
+        }),
+  ));
+  return Object.freeze({
+    ...base,
+    certifications,
+    weeklyCertificationSeal: certificationSealFor(certifications),
+  });
+};
+
+export const archivedGithubSubTop10DbState = (
+  requestedUtcDate = "2026-07-23",
+  repoCount = 9,
+): ReaderSummaryWeeklyProductionDbState => {
+  const base = completeDbState();
+  const certifications = Object.freeze(base.certifications.map((certification) =>
+    certification.requestedUtcDate !== requestedUtcDate
+      ? certification
+      : Object.freeze({
+          ...certification,
+          providerCounts: Object.freeze(
+            certification.providerCounts.map((count) => Object.freeze({
+              ...count,
+              count: count.providerKey === "github-trending-page" ? repoCount : count.count,
+            })),
+          ),
+          githubEvidence: Object.freeze({
+            ...certification.githubEvidence,
+            mode: "archived_verified",
+            evidenceCount: repoCount,
+            repositories: Object.freeze(
+              Array.from({ length: repoCount }, (_, repoIndex) => ({ rank: repoIndex + 1 })),
+            ),
+            sha256: sha(`github:${requestedUtcDate}:archived-subtop10`),
+          }),
+        }),
+  ));
+  return Object.freeze({
+    ...base,
+    certifications,
+    weeklyCertificationSeal: certificationSealFor(certifications),
+  });
+};
+
+export const shortVerifiedGithubDbState = (
+  requestedUtcDate = "2026-07-23",
+  repoCount = 9,
+): ReaderSummaryWeeklyProductionDbState => {
+  const base = completeDbState();
+  const certifications = Object.freeze(base.certifications.map((certification) =>
+    certification.requestedUtcDate !== requestedUtcDate
+      ? certification
+      : Object.freeze({
+          ...certification,
+          providerCounts: Object.freeze(
+            certification.providerCounts.map((count) => Object.freeze({
+              ...count,
+              count: count.providerKey === "github-trending-page" ? repoCount : count.count,
+            })),
+          ),
+          githubEvidence: Object.freeze({
+            ...certification.githubEvidence,
+            evidenceCount: repoCount,
+            repositories: Object.freeze(
+              Array.from({ length: repoCount }, (_, repoIndex) => ({ rank: repoIndex + 1 })),
+            ),
+            sha256: sha(`github:${requestedUtcDate}:short-verified`),
+          }),
         }),
   ));
   return Object.freeze({

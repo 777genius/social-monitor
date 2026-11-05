@@ -13,33 +13,41 @@ describe("reader summary current serving authority", () => {
       summaryModelMode: "agent-runtime",
       topicLabelerMode: "agent-runtime",
       env: {
-        AGENT_RUNTIME_PROVIDER: "claude",
-        AGENT_RUNTIME_READER_SUMMARY_MODEL: "summary-model",
-        AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MODEL: "labeler-model",
+        AGENT_RUNTIME_PROVIDER: "codex",
+        AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.6-sol",
+        AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MODEL: "gpt-5.6-sol",
         AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_MODEL:
-          "relation-model",
-        AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "xhigh",
+          "gpt-5.6-sol",
+        AGENT_RUNTIME_READER_SUMMARY_STORY_RELATION_VERIFIER_MODEL:
+          "gpt-5.6-sol",
+        AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "high",
       },
       agentRuntimeClient: { checkHealth },
       checkedAt,
     })).resolves.toEqual({
       summaryGenerator: {
         mode: "agent-runtime",
-        provider: "claude",
-        physicalModel: "summary-model",
-        reasoningPolicy: "xhigh",
+        provider: "codex",
+        physicalModel: "gpt-5.6-sol",
+        reasoningPolicy: "high",
       },
       topicLabeler: {
         mode: "agent-runtime",
-        provider: "claude",
-        physicalModel: "labeler-model",
-        reasoningPolicy: "runtime-default",
+        provider: "codex",
+        physicalModel: "gpt-5.6-sol",
+        reasoningPolicy: "high",
       },
       topicRelationVerifier: {
         mode: "agent-runtime",
-        provider: "claude",
-        physicalModel: "relation-model",
-        reasoningPolicy: "runtime-default",
+        provider: "codex",
+        physicalModel: "gpt-5.6-sol",
+        reasoningPolicy: "high",
+      },
+      storyRelationVerifier: {
+        mode: "agent-runtime",
+        provider: "codex",
+        physicalModel: "gpt-5.6-sol",
+        reasoningPolicy: "high",
       },
       runtime: {
         engine: "subscription-runtime-cli",
@@ -60,12 +68,87 @@ describe("reader summary current serving authority", () => {
     })).resolves.toMatchObject({
       summaryGenerator: { physicalModel: "gpt-5.6-sol" },
       topicLabeler: {
-        physicalModel: "agent-runtime-reader-summary-topic-labeler",
+        physicalModel: "gpt-5.6-sol",
       },
       topicRelationVerifier: {
-        physicalModel: "agent-runtime-reader-summary-topic-relation-verifier",
+        physicalModel: "gpt-5.6-sol",
+      },
+      storyRelationVerifier: {
+        physicalModel: "gpt-5.6-sol",
       },
     });
+  });
+
+  it("reports MiMo for generation and daily topic/relation authority", async () => {
+    const authority = await resolveReaderSummaryServingAuthority({
+      summaryModelMode: "agent-runtime",
+      topicLabelerMode: "agent-runtime",
+      env: {
+        AGENT_RUNTIME_READER_SUMMARY_BACKEND: "xiaomi-mimo-token-plan",
+        AGENT_RUNTIME_READER_SUMMARY_GENERATION_MODEL: "mimo-v2.6-pro",
+      },
+      agentRuntimeClient: { checkHealth: servingHealth() }, checkedAt,
+    });
+    expect(authority.summaryGenerator).toMatchObject({ provider: "codex", physicalModel: "mimo-v2.6-pro" });
+    expect(authority.topicLabeler.physicalModel).toBe("mimo-v2.6-pro");
+    expect(authority.topicRelationVerifier.physicalModel).toBe("mimo-v2.6-pro");
+    expect(authority.storyRelationVerifier.physicalModel).toBe("mimo-v2.6-pro");
+  });
+
+  it("reports the gateway route model and effort for every daily component", async () => {
+    const authority = await resolveReaderSummaryServingAuthority({
+      summaryModelMode: "agent-runtime",
+      topicLabelerMode: "agent-runtime",
+      env: {
+        AGENT_RUNTIME_READER_SUMMARY_BACKEND: "kimi-code",
+        // The Codex pins the daily runner exports stay valid and unused.
+        AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.6-sol",
+        AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "high",
+      },
+      agentRuntimeClient: { checkHealth: servingHealth() }, checkedAt,
+    });
+    for (const component of [authority.summaryGenerator, authority.topicLabeler,
+      authority.topicRelationVerifier, authority.storyRelationVerifier]) {
+      expect(component).toMatchObject({ provider: "codex", physicalModel: "k3-256k",
+        reasoningPolicy: "default" });
+    }
+  });
+
+  it("reports the Codex gateway pair only on the gateway transport", async () => {
+    const env = {
+      AGENT_RUNTIME_TRANSPORT: "gateway-llm",
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
+      AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.6-sol",
+      AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "high",
+    };
+    const resolve = (extra: Record<string, string>) => resolveReaderSummaryServingAuthority({
+      summaryModelMode: "agent-runtime", topicLabelerMode: "agent-runtime",
+      env: { ...env, ...extra }, agentRuntimeClient: { checkHealth: servingHealth() }, checkedAt,
+    });
+    const components = (authority: Awaited<ReturnType<typeof resolve>>) => [
+      authority.summaryGenerator, authority.topicLabeler,
+      authority.topicRelationVerifier, authority.storyRelationVerifier];
+    for (const component of components(await resolve({}))) {
+      expect(component).toMatchObject({ provider: "codex", physicalModel: "gpt-6.1-sol",
+        reasoningPolicy: "low" });
+    }
+    for (const component of components(await resolve({
+      AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-5.6-sol" }))) {
+      expect(component).toMatchObject({ physicalModel: "gpt-5.6-sol", reasoningPolicy: "high" });
+    }
+    for (const component of components(await resolve({ AGENT_RUNTIME_TRANSPORT: "agent-runtime" }))) {
+      expect(component).toMatchObject({ physicalModel: "gpt-5.6-sol", reasoningPolicy: "high" });
+    }
+    await expect(resolve({ AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "high" }))
+      .rejects.toThrow(/gpt-6\.1-sol\/low, gpt-5\.6-sol\/high/u);
+  });
+
+  it("rejects an unknown generation backend", async () => {
+    await expect(resolveReaderSummaryServingAuthority({
+      summaryModelMode: "agent-runtime", topicLabelerMode: "agent-runtime",
+      env: { AGENT_RUNTIME_READER_SUMMARY_BACKEND: "other" },
+      agentRuntimeClient: { checkHealth: servingHealth() }, checkedAt,
+    })).rejects.toThrow(/BACKEND/);
   });
 
   it("retains OpenAI summary authority when topic components use agent runtime", async () => {
@@ -85,6 +168,7 @@ describe("reader summary current serving authority", () => {
       },
       topicLabeler: { mode: "agent-runtime", provider: "codex" },
       topicRelationVerifier: { mode: "agent-runtime", provider: "codex" },
+      storyRelationVerifier: { mode: "deterministic" },
       runtime: { packageVersion: "1.4.2" },
     });
   });
@@ -97,6 +181,18 @@ describe("reader summary current serving authority", () => {
       agentRuntimeClient: null,
       checkedAt,
     })).rejects.toThrow("Current agent-runtime serving authority is required");
+  });
+
+  it("fails before probing when the active provider is not codex", async () => {
+    const checkHealth = servingHealth();
+    await expect(resolveReaderSummaryServingAuthority({
+      summaryModelMode: "agent-runtime",
+      topicLabelerMode: "agent-runtime",
+      env: { AGENT_RUNTIME_PROVIDER: "claude" },
+      agentRuntimeClient: { checkHealth },
+      checkedAt,
+    })).rejects.toThrow("provider must be codex");
+    expect(checkHealth).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -118,6 +214,7 @@ describe("reader summary current serving authority", () => {
       summaryGenerator: { mode: summaryModelMode, physicalModel },
       topicLabeler: { mode: "deterministic" },
       topicRelationVerifier: { mode: "deterministic" },
+      storyRelationVerifier: { mode: "deterministic" },
       runtime: null,
     });
     expect(readerSummaryServingAuthorityRequiresAgentRuntime({

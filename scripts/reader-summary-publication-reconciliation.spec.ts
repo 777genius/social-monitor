@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -22,11 +22,17 @@ import type {
   ReaderSummaryGitHubProjectionReaderPort,
   ReaderSummaryModelInput,
   ReaderSummaryModelPort,
+  ReaderSummaryPublicationCommand,
   ReserveSummaryJobQuotaCommand,
   ReserveSummaryJobQuotaResult,
   SummaryQuotaPort,
 } from "@social-monitor/summary/ports";
 import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
+import { ReaderSummaryExecutionLeasePolicy } from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-execution-lease.policy";
+import {
+  NOOP_READER_SUMMARY_PROMOTION_METRICS,
+  readerSummaryPromotionControl,
+} from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-promotion-control";
 import { RequestReaderSummaryUseCase } from "@social-monitor/summary/features/request-reader-summary/request-reader-summary.use-case";
 import type { BuildReaderSummaryTopicMapUseCase } from "@social-monitor/summary/features/build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
 import {
@@ -70,6 +76,12 @@ const servingAuthority = {
     physicalModel: "agent-runtime-reader-summary-topic-relation-verifier",
     reasoningPolicy: "runtime-default",
   },
+  storyRelationVerifier: {
+    mode: "agent-runtime" as const,
+    provider: "codex",
+    physicalModel: "agent-runtime-reader-summary-story-relation-verifier",
+    reasoningPolicy: "runtime-default",
+  },
   runtime: {
     engine: "subscription-runtime-cli",
     packageVersion: "1.2.3",
@@ -78,7 +90,7 @@ const servingAuthority = {
 };
 
 describe("reader summary DB publication reconciliation", () => {
-  it("reclaims a stale daily RUNNING job and replays it without a second model call", async () => {
+  it("reclaims and replays empty evidence without a model call", async () => {
     const jobs = new InMemoryReaderSummaryJobRepository();
     const artifacts = new InMemoryReaderSummaryArtifactRepository();
     const events = new InMemorySummaryEventPublisher();
@@ -110,6 +122,7 @@ describe("reader summary DB publication reconciliation", () => {
       publication,
       ids,
       clock,
+      readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
       undefined,
       undefined,
       successfulEmptyTopicMapBuilder(),
@@ -161,11 +174,15 @@ describe("reader summary DB publication reconciliation", () => {
       publication,
       ids,
       new FixedClock(new Date("2026-08-13T10:00:00.000Z")),
+      readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
       undefined,
       undefined,
       successfulEmptyTopicMapBuilder(),
       new AlwaysPublishPolicy(),
       zeroEligibleGitHubProjectionReader(),
+      undefined,
+      undefined,
+      new ReaderSummaryExecutionLeasePolicy(2 * 60 * 60 * 1_000),
     );
     const recovered = await recoveryExecutor.execute({
       tenantId: tenant,
@@ -183,10 +200,10 @@ describe("reader summary DB publication reconciliation", () => {
       requestCreated: false,
       readerSummaryJobId: requested.value.readerSummaryJobId,
     });
-    expect(model.calls()).toBe(1);
+    expect(model.calls()).toBe(0);
   });
 
-  it("replays the real request and execution use cases without another model call", async () => {
+  it("replays a persisted empty-evidence publication without a model call", async () => {
     const directory = mkdtempSync(join(tmpdir(), "summary-db-publication-"));
     try {
       const jobs = new InMemoryReaderSummaryJobRepository();
@@ -207,8 +224,13 @@ describe("reader summary DB publication reconciliation", () => {
         sourceProvenance: { kind: "live-production" },
       });
       const attestations = [executionAttestation()];
+      const delegate = new InMemoryReaderSummaryPublication(jobs, artifacts, events);
       const recoverable = createRecoverableReaderSummaryPublication({
-        delegate: new InMemoryReaderSummaryPublication(jobs, artifacts, events),
+        delegate: { async publish(command) {
+          expect(JSON.parse(onlyRecoveryReceipt(directory).toString("utf8"))
+            .executionAttestations).toEqual(attestations);
+          return delegate.publish(command);
+        } },
         recoveryDirectory: directory,
         attemptIdentity,
         attestations: () => attestations,
@@ -229,6 +251,7 @@ describe("reader summary DB publication reconciliation", () => {
         recoverable.publication,
         ids,
         clock,
+        readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
         undefined,
         undefined,
         successfulEmptyTopicMapBuilder(),
@@ -243,7 +266,7 @@ describe("reader summary DB publication reconciliation", () => {
         failpoint: "after-db-before-state",
       });
       expect(first.error).toMatch(/after DB publication before terminal state/u);
-      expect(model.calls()).toBe(1);
+      expect(model.calls()).toBe(0);
 
       const firstJob = jobs.all()[0]?.toSnapshot();
       const firstArtifact = artifacts.all()[0]?.toSnapshot();
@@ -267,7 +290,7 @@ describe("reader summary DB publication reconciliation", () => {
         readerSummaryJobId: firstJob?.id,
         readerSummaryArtifactId: firstArtifact?.readerSummaryId,
       });
-      expect(model.calls()).toBe(1);
+      expect(model.calls()).toBe(0);
       expect(onlyRecoveryReceipt(directory).equals(recoveryBytesBefore)).toBe(true);
       expect(
         recoverable.recovery?.load({
@@ -278,6 +301,27 @@ describe("reader summary DB publication reconciliation", () => {
           readerSummaryArtifactId: replay.readerSummaryArtifactId!,
         }),
       ).toEqual(attestations);
+      const recoveryScope = {
+        tenantId: tenant, workspaceId: workspace, periodKey,
+        readerSummaryJobId: replay.readerSummaryJobId!,
+        readerSummaryArtifactId: replay.readerSummaryArtifactId!,
+      };
+      for (const foreignScope of [
+        { tenantId: "foreign-tenant" }, { workspaceId: "foreign-workspace" },
+        { periodKey: "foreign-period" }, { readerSummaryJobId: "foreign-job" },
+      ]) {
+        expect(() => recoverable.recovery?.load({ ...recoveryScope, ...foreignScope })).toThrow(
+          "does not match durable identity",
+        );
+      }
+      const receiptPath = join(directory, readdirSync(directory)[0]!);
+      const altered = JSON.parse(recoveryBytesBefore.toString("utf8"));
+      altered.executionAttestations[0].normalizedOutputSha256 = "f".repeat(64);
+      chmodSync(receiptPath, 0o600);
+      writeFileSync(receiptPath, JSON.stringify(altered));
+      expect(() => recoverable.recovery?.load(recoveryScope)).toThrow("does not match durable identity");
+      writeFileSync(receiptPath, recoveryBytesBefore);
+      chmodSync(receiptPath, 0o400);
       for (const changedAuthority of [
         { ...servingAuthority, summaryGenerator: {
           ...servingAuthority.summaryGenerator,
@@ -328,6 +372,35 @@ describe("reader summary DB publication reconciliation", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+});
+
+it("binds the editor model attestation to actual writer plan before any publication", async () => {
+  const expected = "1".repeat(64);
+  const command = { artifact: { toSnapshot: () => ({
+    dailyEditorialPlan: { editorOutputSha256: expected },
+    dailyGenerationInput: { sent: { editorialPlanSha256: expected } },
+  }) } } as unknown as ReaderSummaryPublicationCommand;
+  const editor = { ...executionAttestation(), taskRole: "daily_editor" as const,
+    normalizedOutputSha256: expected,
+    attestation: { ...executionAttestation().attestation,
+      purpose: "social_monitor.reader_summary.daily_editorial.plan.v1" } };
+  const delegate = { publish: jest.fn(async () => "published" as const) };
+  let records: readonly VerifiedReaderSummaryExecutionAttestation[] = [editor];
+  const { publication } = createRecoverableReaderSummaryPublication({
+    delegate, recoveryDirectory: undefined, attemptIdentity: "a".repeat(64),
+    attestations: () => records,
+  });
+  await expect(publication.publish(command)).resolves.toBe("published");
+  expect(delegate.publish).toHaveBeenCalledTimes(1);
+  delegate.publish.mockClear();
+  records = [{ ...editor, normalizedOutputSha256: "2".repeat(64) }];
+  await expect(publication.publish(command)).rejects.toThrow(
+    "Daily editorial publication does not match");
+  expect(delegate.publish).not.toHaveBeenCalled();
+  records = [];
+  await expect(publication.publish(command)).rejects.toThrow(
+    "Daily editorial publication does not match");
+  expect(delegate.publish).not.toHaveBeenCalled();
 });
 
 const runProductionDayRequestExecution = async (input: {

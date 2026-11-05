@@ -48,6 +48,7 @@ export const POSTGRES_RUNTIME_CONNECTION_FACTORIES = {
     'libs/monitoring/adapters/persistence/prisma/prisma-monitoring-connection.ts',
   relevance:
     'libs/relevance/adapters/persistence/prisma/prisma-relevance-connection.ts',
+  readerValue: 'libs/relevance/infrastructure/reader-value/prisma-reader-value-connection.ts',
   socialResearch:
     'libs/social-research/infrastructure/cache/prisma-social-research-connection.ts',
   subscriptions:
@@ -116,7 +117,7 @@ export const PRODUCTION_POSTGRES_RUNTIME_INVENTORY: readonly ProductionPostgresR
       auxiliaryConnections: 0,
       connectionFactories: [
         'summary',
-        'relevance',
+        'relevance', 'readerValue',
         'feed',
         'monitoring',
         'subscriptions',

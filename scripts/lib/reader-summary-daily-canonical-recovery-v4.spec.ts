@@ -972,11 +972,11 @@ const validOutput = () => ({
 const attestation = (response: Buffer) => ({
   schemaVersion: 1,
   requestId: "recovery",
-  purpose: "social_monitor.reader_summary.weekly.generate",
+  purpose: "social_monitor.reader_summary.daily.canonical_recovery.v2",
   canonicalRequestSha256: "f".repeat(64),
   provider: "codex",
   model: "gpt-5.6-sol",
-  reasoningEffort: "xhigh",
+  reasoningEffort: "high",
   runtimeEngine: "subscription-runtime-cli",
   runtimePackageVersion: "1.2.3",
   launcherSha256: "1".repeat(64),

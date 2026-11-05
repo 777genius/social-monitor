@@ -10,6 +10,7 @@ import {
 
 import {
   codexAuthPoolExecutionPolicy,
+  describeCodexAuthPoolRunFailure,
   orderCodexAuthAccountsForTask,
 } from "./codex-auth-pool-routing.mjs";
 
@@ -89,6 +90,65 @@ test("pool retries a quota failure on another account with the exact same job", 
   } finally {
     await pool.dispose();
   }
+});
+
+test("exhausted attempt budget reports the capacity reason that blocked the run", () => {
+  const message = describeCodexAuthPoolRunFailure({
+    safeMessage: "Safe execution has no attempts remaining.",
+    reason: "account_unavailable",
+    failureDetails: {
+      workerId: "social-monitor-agent-task:abc:slot-1",
+      availability: "cooldown",
+      reason: "quota_recheck_identity_changed",
+      cooldownUntil: "2026-09-07T16:39:54.675Z",
+      accountId: "account-i",
+    },
+    attemptCount: 1,
+    accountCount: 1,
+  });
+
+  assert.match(message, /account_unavailable/u);
+  assert.match(message, /Safe execution has no attempts remaining\./u);
+  assert.match(message, /availability=cooldown/u);
+  assert.match(message, /reason=quota_recheck_identity_changed/u);
+  assert.match(message, /cooldownUntil=2026-09-07T16:39:54\.675Z/u);
+  assert.match(message, /accountId=account-i/u);
+  assert.match(message, /attempts=1\/1/u);
+});
+
+test("failure message keeps provider output and raw causes out of the message", () => {
+  const message = describeCodexAuthPoolRunFailure({
+    safeMessage: "Safe execution has no attempts remaining.",
+    reason: "unknown_error",
+    failureDetails: {
+      availability: "cooldown",
+      stderrTail: "sk-secret-looking-tail",
+      stdoutTail: "reader summary prompt bytes",
+      rawCause: "token=should-not-leak",
+    },
+    attemptCount: 1,
+    accountCount: 1,
+  });
+
+  assert.match(message, /availability=cooldown/u);
+  assert.doesNotMatch(message, /secret-looking-tail/u);
+  assert.doesNotMatch(message, /prompt bytes/u);
+  assert.doesNotMatch(message, /should-not-leak/u);
+});
+
+test("failure message survives a runtime result without classified details", () => {
+  assert.equal(
+    describeCodexAuthPoolRunFailure({
+      safeMessage: "Safe execution will not retry external side effects.",
+      reason: "budget_exceeded",
+    }),
+    "Codex auth pool run failed (budget_exceeded): " +
+      "Safe execution will not retry external side effects.",
+  );
+  assert.equal(
+    describeCodexAuthPoolRunFailure({}),
+    "Codex auth pool run failed: no safe message",
+  );
 });
 
 test("safe executor retries clean failures with the exact original job", () => {

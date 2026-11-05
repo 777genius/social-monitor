@@ -26,8 +26,8 @@ class ReaderSummaryWeeklyProjectionStoryDto {
 
   final List<String> citationIds;
   final String headline;
-  final String observedFrom;
-  final String observedThrough;
+  final DateTime observedFrom;
+  final DateTime observedThrough;
   final ReaderSummaryWeeklyProjectionStoryDtoStatusStatus status;
   final String storyId;
   final String summary;

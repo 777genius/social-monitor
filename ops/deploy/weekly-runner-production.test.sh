@@ -8,6 +8,7 @@ service=$SCRIPT_DIR/production-runtime/social-monitor-weekly.service
 timer=$SCRIPT_DIR/production-runtime/social-monitor-weekly.timer
 maintenance_lib=$SCRIPT_DIR/reader-summary-recovery-maintenance-lib.sh
 deploy_lib=$SCRIPT_DIR/postgres-runtime-deploy-lib.sh
+asset_lib=$SCRIPT_DIR/postgres-runtime-asset-lib.sh
 weekly_timer_state_lib=$SCRIPT_DIR/postgres-runtime-weekly-timer-state-lib.sh
 deploy_entrypoint=$SCRIPT_DIR/social-monitor-production-deploy.sh
 package_json=$REPO/package.json
@@ -23,11 +24,19 @@ weekly_review_admission=$REPO/scripts/lib/reader-summary-weekly-review-admission
 publication_pre_migration=$REPO/ops/deploy/reader-summary-publication-pre-migration.sql
 publication_post_migration=$REPO/ops/deploy/reader-summary-publication-post-migration.sql
 
+# Count the canonical SQL, including psql's reviewed relative ownership include.
+# Capture synchronously so loader errors fail the gate; no temporary SQL cleanup.
+publication_pre_migration_sql=$(node --experimental-strip-types --input-type=module -e '
+  const { readPublicationBootstrapSql } = await import(process.argv[1]);
+  process.stdout.write(readPublicationBootstrapSql(process.argv[2]));
+' "$REPO/scripts/lib/reader-summary-publication-bootstrap-sql.ts" "$publication_pre_migration")
+
 [[ -f $service ]]
 [[ -f $timer ]]
 [[ -f $weekly_timer_state_lib ]]
 grep -Fx 'Type=oneshot' "$service" >/dev/null
-grep -F 'github-production-deploy.sh" reader-summary-weekly-run "$release"' \
+grep -Fx \
+  'ExecStart=/var/data/social-monitor/control/postgres-runtime-current/reader-summary-one-shot.sh weekly' \
   "$service" >/dev/null
 grep -Fx 'Restart=on-failure' "$service" >/dev/null
 grep -Fx 'RestartSec=30min' "$service" >/dev/null
@@ -51,8 +60,8 @@ grep -F 'NextElapseUSecRealtime' "$weekly_timer_state_lib" >/dev/null
 ! grep -F 'systemctl enable "$timer"' "$deploy_lib" >/dev/null
 ! grep -F 'systemctl start "$timer"' "$deploy_lib" >/dev/null
 ! grep -Eq 'systemctl[[:space:]]+(enable|start|restart)[[:space:]]+social-monitor-weekly' "$deploy_entrypoint"
-grep -F 'social-monitor-weekly.service' "$deploy_lib" >/dev/null
-grep -F 'social-monitor-weekly.timer' "$deploy_lib" >/dev/null
+grep -F 'social-monitor-weekly.service' "$asset_lib" >/dev/null
+grep -F 'social-monitor-weekly.timer' "$asset_lib" >/dev/null
 grep -F 'ops/deploy/production-runtime/social-monitor-weekly.service' \
   "$deploy_entrypoint" >/dev/null
 grep -F 'ops/deploy/production-runtime/social-monitor-weekly.timer' \
@@ -89,35 +98,35 @@ grep -F 'capability_table_acl_count === "0"' "$weekly_seal_contract" \
 grep -F 'function_capability_acl_count === "0"' "$weekly_seal_contract" \
   >/dev/null
 [[ $(grep -Fc "'reader_summary_weekly_certification_seals'" \
-  "$publication_pre_migration") -eq 6 ]]
+  <<< "$publication_pre_migration_sql") -eq 6 ]]
 [[ $(awk '
   /AND relation\.relname NOT IN \(/ { in_owner_exclusion = 1; next }
   in_owner_exclusion && /reader_summary_weekly_certification_seals/ { count++ }
   in_owner_exclusion && /^      \)/ { in_owner_exclusion = 0 }
   END { print count + 0 }
-' "$publication_pre_migration") -eq 3 ]]
+' <<< "$publication_pre_migration_sql") -eq 3 ]]
 [[ $(awk '
   /^DO \$ownership_transfer_audit\$/ { in_owner_audit = 1 }
   in_owner_audit && /AND relation\.relname IN \(/ { in_owner_list = 1; next }
   in_owner_list && /reader_summary_weekly_certification_seals/ { count++ }
   in_owner_list && /^      \)/ { in_owner_list = 0 }
   END { print count + 0 }
-' "$publication_pre_migration") -eq 1 ]]
+' <<< "$publication_pre_migration_sql") -eq 1 ]]
 [[ $(grep -Fc "'reader_summary_weekly_review_manifests'" \
-  "$publication_pre_migration") -eq 7 ]]
+  <<< "$publication_pre_migration_sql") -eq 7 ]]
 [[ $(awk '
   /AND relation\.relname NOT IN \(/ { in_owner_exclusion = 1; next }
   in_owner_exclusion && /reader_summary_weekly_review_manifests/ { count++ }
   in_owner_exclusion && /^      \)/ { in_owner_exclusion = 0 }
   END { print count + 0 }
-' "$publication_pre_migration") -eq 3 ]]
+' <<< "$publication_pre_migration_sql") -eq 3 ]]
 [[ $(awk '
   /^DO \$ownership_transfer_audit\$/ { in_owner_audit = 1 }
   in_owner_audit && /AND relation\.relname IN \(/ { in_owner_list = 1; next }
   in_owner_list && /reader_summary_weekly_review_manifests/ { count++ }
   in_owner_list && /^[[:space:]]*\)[,;]?$/ { in_owner_list = 0 }
   END { print count + 0 }
-' "$publication_pre_migration") -eq 2 ]]
+' <<< "$publication_pre_migration_sql") -eq 2 ]]
 [[ $(awk '
   /^DO \$ownership_transfer_audit\$/ { in_owner_audit = 1 }
   in_owner_audit && /FROM unnest\(ARRAY\[/ {
@@ -134,7 +143,7 @@ grep -F 'function_capability_acl_count === "0"' "$weekly_seal_contract" \
     in_protected_array = 0
   }
   END { print count + 0 }
-' "$publication_pre_migration") -eq 1 ]]
+' <<< "$publication_pre_migration_sql") -eq 1 ]]
 [[ $(grep -Fc "'reader_summary_weekly_review_manifests'" \
   "$publication_post_migration") -eq 3 ]]
 [[ $(awk '
@@ -146,7 +155,7 @@ grep -F 'function_capability_acl_count === "0"' "$weekly_seal_contract" \
 ' "$publication_post_migration") -eq 1 ]]
 grep -F 'IF v_weekly_review_manifest_table_count NOT IN (0, 1)' \
   "$publication_post_migration" >/dev/null
-grep -F 'OR v_v4_table_count NOT IN (0, 3, 4)' \
+grep -F 'OR v_v4_table_count NOT IN (0, 3, 4, 5)' \
   "$publication_post_migration" >/dev/null
 grep -F 'OR v_owner_count <> 4 + v_weekly_review_manifest_table_count' \
   "$publication_post_migration" >/dev/null
@@ -233,7 +242,7 @@ awk '
       transfer_end < audit
     exit !(valid_safe_owners && valid_order && !expect_revoke_grantee)
   }
-' "$publication_pre_migration"
+' <<< "$publication_pre_migration_sql"
 ! grep -Eq '(GRANT|REVOKE).+reader_summary_weekly_certification_seals' \
   "$weekly_seal_contract"
 
@@ -293,7 +302,7 @@ runtime_connect_line=$(grep -n -m1 'GrpcAgentRuntimeClient.connect' \
 [[ $replay_branch_line =~ ^[0-9]+$ && $runtime_connect_line =~ ^[0-9]+$ ]]
 (( replay_branch_line < runtime_connect_line ))
 grep -F 'model: "gpt-5.6-sol"' "$weekly_runner" >/dev/null
-grep -F 'reasoningEffort: "xhigh"' "$weekly_runner" >/dev/null
+grep -F 'reasoningEffort: "high"' "$weekly_runner" >/dev/null
 ! grep -Eq '(OPENAI|CODEX)_API_KEY' "$weekly_runner"
 
 grep -F 'DAILY_SINGLETON_LOCK' "$maintenance_lib" >/dev/null

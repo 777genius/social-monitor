@@ -235,7 +235,7 @@ describe('hostile PostgreSQL pool budget review', () => {
       'PostgreSQL bootstrap marker must be absent for atomic repair',
     );
     expect(sshWrapper).toContain(
-      '^(plan|upload|deploy|disk-report|project-disk-cleanup|reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-production-history|reader-summary-daily-canonical-recovery-v4|reader-summary-daily-terminal-set-receipt-v1|reader-summary-daily-scan-terminal-preimage-c1|reader-summary-daily-scan-terminal-repair-c1|reader-summary-daily-delivery-c1-run|reader-summary-daily-delivery-c1-contain)$',
+      '^(plan|upload|deploy|deploy-transition|disk-report|project-disk-cleanup|reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-production-history|reader-summary-daily-canonical-recovery-v4|reader-summary-daily-terminal-set-receipt-v1|reader-summary-daily-scan-terminal-preimage-c1|reader-summary-daily-scan-terminal-repair-c1|reader-summary-daily-delivery-c1-run|reader-summary-daily-delivery-c1-contain)$',
     );
     expect(sshWrapper).not.toContain('bootstrap-postgres-pool');
     expect(transitionTest.indexOf('TEST_PHASE=legacy-poison-window')).toBeLessThan(
@@ -391,8 +391,8 @@ describe('hostile PostgreSQL pool budget review', () => {
     expect(worker).toContain(
       'worker drain threshold exceeded; continuing to wait before resource shutdown',
     );
-    expect(queueLoop).toContain("error.code === 'operation.backpressure'");
-    expect(queueLoop).toContain('delivery.nack({ requeue: true })');
+    expect(queueLoop).toContain("handlerError.code === 'operation.backpressure'");
+    expect(queueLoop).toContain('await batch.nack(delivery, { requeue: true })');
     expect(worker).toContain('postgres.too_many_connections');
     expect(worker).toContain("['code', 'sqlState', 'sqlstate', 'originalCode']");
     expect(worker).toContain('redactSensitiveText');

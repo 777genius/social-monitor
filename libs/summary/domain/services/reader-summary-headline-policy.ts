@@ -1,7 +1,8 @@
+import { READER_SUMMARY_DAILY_INPUT_POLICY } from "../value-objects/reader-summary-daily-generation-input";
+import { readerSummaryHeadlinesEquivalent } from "../value-objects/reader-summary-headline-equivalence";
 import type { SourceMixEntry } from "../entities/source-mix-entry";
 import type { TopRead } from "../entities/top-read";
 import {
-  firstSentence,
   readerSummaryHeadline,
   uniqueNonEmpty,
 } from "../value-objects/summary-text";
@@ -9,12 +10,21 @@ import {
 export const groundedReaderHeadline = (params: {
   readonly headline: string;
   readonly sourceMix: readonly SourceMixEntry[];
+  readonly sourceTitles?: readonly string[];
   readonly topReads: readonly TopRead[];
+  readonly narrativeLeadTitle?: string;
   readonly thematicSynthesisSupport?: {
+    readonly coveragePolicyVersion?: typeof READER_SUMMARY_DAILY_INPUT_POLICY;
     readonly clusterCount: number;
     readonly providerCount: number;
   };
 }): string => {
+  // Keep a copied model headline visible to the publication rejection gate.
+  // A neutral fallback must not launder a source heading into valid synthesis.
+  if (params.sourceTitles?.some((title) =>
+    readerSummaryHeadlinesEquivalent(title, params.headline),
+  )) return params.headline;
+
   const fallback = readerSummaryHeadline(params.headline);
 
   if (params.topReads.length === 0) {
@@ -27,10 +37,16 @@ export const groundedReaderHeadline = (params: {
   const explicitlySourceFramed = isExplicitlySourceFramedText(fallback, lead);
   const safelySupportedThematicSynthesis =
     (params.thematicSynthesisSupport?.clusterCount ?? 0) >= 2 &&
-    (params.thematicSynthesisSupport?.providerCount ?? 0) >= 2;
+    ((params.thematicSynthesisSupport?.providerCount ?? 0) >= 2 || params.thematicSynthesisSupport?.coveragePolicyVersion === READER_SUMMARY_DAILY_INPUT_POLICY);
+  // A headline that restates the top-ranked read while the lead narrative
+  // covers another story is off-lead: source framing must not bless it.
+  const copiesOffLeadTopReadTitle =
+    (params.narrativeLeadTitle?.trim().length ?? 0) > 0 &&
+    normalizedContains(fallback, lead.title);
   const safeSemanticHeadline =
     !isTechnicalReaderHeadline(fallback) &&
     !isVagueDailyWrapHeadline(fallback) &&
+    !copiesOffLeadTopReadTitle &&
     (safelySupportedThematicSynthesis ||
       explicitlySourceFramed ||
       (hasGroundedLead && !isUnverifiedLegalTopRead(lead)));
@@ -55,7 +71,8 @@ export const groundedReaderHeadline = (params: {
             providerNames.length > 3 ? ` +${providerNames.length - 3}` : ""
           }`;
   return readerSummaryHeadline(
-    buildHumanReaderHeadline(params.topReads) ?? `${providerSummary} summary`,
+    buildHumanReaderHeadline(params.topReads, params.narrativeLeadTitle) ??
+      `${providerSummary} summary`,
   );
 };
 
@@ -63,7 +80,7 @@ export const groundedTopReadTitle = (
   topRead: Pick<TopRead, "title" | "reason" | "whyImportant" | "confidence">,
 ): string =>
   isUnverifiedLegalTopRead(topRead)
-    ? compactHeadlinePart(sourceFramedLegalTitle(topRead.title))
+    ? `Source report: ${topRead.title}`
     : topRead.title;
 
 const providerNameForSource = (
@@ -130,37 +147,51 @@ export const isExplicitlySourceFramedText = (
   );
 };
 
+const normalizedContains = (haystack: string, needle: string): boolean => {
+  const normalize = (value: string): string =>
+    value
+      .normalize("NFKC")
+      .toLocaleLowerCase("en-US")
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
+      .trim()
+      .replace(/\s+/gu, " ");
+  const normalizedNeedle = normalize(needle);
+  if (normalizedNeedle.length === 0) return false;
+  // Whole-token boundaries: a short title like "AI" must not match inside "daily".
+  const escapedNeedle = normalizedNeedle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|\\s)${escapedNeedle}(?:\\s|$)`, "u").test(
+    normalize(haystack),
+  );
+};
+
 const buildHumanReaderHeadline = (
   topReads: readonly TopRead[],
+  narrativeLeadTitle?: string,
 ): string | undefined => {
+  // The headline sits above the lead narrative, so its fallback frame must
+  // describe that narrative's story instead of the top-ranked card.
+  const narrativeTitle = narrativeLeadTitle?.trim();
+  if (narrativeTitle !== undefined && narrativeTitle.length > 0) {
+    return humanReaderLeadHeadline(narrativeTitle, { title: narrativeTitle });
+  }
   const lead = topReads[0];
-  if (lead === undefined) {
-    return undefined;
-  }
-  if (
-    lead.confirmedProviderKeys.length <= 1 &&
-    lead.confidence.level === "low"
-  ) {
-    const cautiousReason = [lead.reason, ...lead.whyImportant].find((value) =>
-      /\b(?:allegation|needs? confirmation|not (?:independently )?confirmed|should not be treated as confirmation|uncertain|unverified)\b/iu.test(
-        value,
-      ),
-    );
+  if (lead === undefined) return undefined;
+  return humanReaderLeadHeadline(lead.title, lead);
+};
 
-    return compactHeadlinePart(
-      cautiousReason ?? `Reports discuss ${lead.title}`,
-    );
+const humanReaderLeadHeadline = (
+  title: string,
+  legalGuard: Parameters<typeof isUnverifiedLegalTopRead>[0],
+): string => {
+  // Only reuse a complete short heading. Never extract a sentence or a prefix
+  // from available source context, or discard an unverified legal qualification.
+  if (title.length > 118 || /[\r\n]|[.!?。！？]\s+\S/u.test(title) ||
+      isUnverifiedLegalTopRead(legalGuard)) {
+    return "Discussion from monitored sources";
   }
-
-  const leadTitle = lead.title.trim();
-  if (leadTitle.length === 0) {
-    return undefined;
-  }
-  if (isUnverifiedLegalTopRead(lead)) {
-    return compactHeadlinePart(sourceFramedLegalTitle(leadTitle));
-  }
-
-  return compactHeadlinePart(leadTitle);
+  // Source framing or corroboration does not make a copied heading synthesis.
+  // Keep the complete short title in the report frame, just as for other leads.
+  return `Reports discuss ${title}`;
 };
 
 export const isUnverifiedLegalTopRead = (lead: {
@@ -193,72 +224,3 @@ export const isUnverifiedLegalTopRead = (lead: {
     )
   );
 };
-
-const sourceFramedLegalTitle = (title: string): string => {
-  const normalizedTitle = stripTrailingQuestion(
-    title
-      .replace(/\s+/gu, " ")
-      .replace(/^(Reports say)(?:\s+Reports say)+\b/iu, "$1"),
-  );
-  if (
-    /^(?:reports? (?:say|allege|report|discuss)|reported|alleged)\b/iu.test(
-      normalizedTitle,
-    )
-  ) {
-    return normalizedTitle;
-  }
-  if (
-    normalizedTitle.length > 0 &&
-    (/^(?:who|what|when|where|which|did|does|do|is|are|was|were|has|have|can|could|should|may|might|must|will|would)\b/iu.test(
-      normalizedTitle,
-    ) ||
-      title.trim().endsWith("?"))
-  ) {
-    return `Source asks: ${normalizedTitle}`;
-  }
-  if (/^(?:why|how|whether)\b/iu.test(normalizedTitle)) {
-    return `Source explainer: ${normalizedTitle}`;
-  }
-
-  const reportedAction = normalizedTitle.match(
-    /^(.*?)\s+(?:sues?|sued|suing)\s+(.+)$/iu,
-  );
-  if (reportedAction !== null) {
-    const reportedObject = reportedAction[2]
-      ?.trim()
-      .replace(/\s*,\s*(?:says?|according to)\b.*$/iu, "")
-      .replace(/\s*,?\s+(?:alleging|alleges?)\s+/iu, " over alleged ");
-
-    return `Reports say ${reportedAction[1]?.trim()} sued ${reportedObject}`;
-  }
-
-  return `Reports discuss the ${normalizedTitle.replace(/^the\s+/iu, "")}`;
-};
-
-const compactHeadlinePart = (value: string): string => {
-  const sentence = firstSentence(value) ?? value;
-  const compact = stripTrailingPeriod(sentence.replace(/\s+/gu, " "));
-  const maxLength = 82;
-
-  if (compact.length <= maxLength) {
-    return compact;
-  }
-
-  const shortened = compact
-    .slice(0, maxLength)
-    .replace(/\s+\S*$/u, "")
-    .trim();
-
-  return shortened.length === 0
-    ? compact.slice(0, maxLength).trim()
-    : shortened;
-};
-
-const stripTrailingPeriod = (value: string): string => {
-  const trimmed = value.trim();
-
-  return trimmed.endsWith(".") ? trimmed.slice(0, -1) : trimmed;
-};
-
-const stripTrailingQuestion = (value: string): string =>
-  value.trim().replace(/\?+$/u, "").trim();

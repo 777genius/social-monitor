@@ -1,11 +1,11 @@
 import { WebhookEndpoint } from '@social-monitor/delivery/domain';
 import { ContractWebhookEventCatalogAdapter } from '@social-monitor/delivery/adapters/events/contract-webhook-event-catalog.adapter';
-import {
-  HttpWebhookDeliveryProvider,
-  type WebhookHttpClientPort,
-  type WebhookHttpRequest,
-  type WebhookHttpResponse,
-} from '@social-monitor/delivery/adapters/notification/http-webhook-delivery.provider';
+import { HttpWebhookDeliveryProvider } from '@social-monitor/delivery/adapters/notification/http-webhook-delivery.provider';
+import type {
+  WebhookHttpClientPort,
+  WebhookHttpRequest,
+  WebhookHttpResponse,
+} from '@social-monitor/delivery/adapters/notification/guarded-webhook-http-client';
 import { InMemoryWebhookEndpointRepository } from '@social-monitor/delivery/adapters/persistence/in-memory-webhook-endpoint.repository';
 import { InMemoryWebhookSecretVault } from '@social-monitor/delivery/adapters/secrets/in-memory-webhook-secret.vault';
 import { SignWebhookPayloadUseCase } from '@social-monitor/delivery/features/sign-webhook-payload/sign-webhook-payload.use-case';

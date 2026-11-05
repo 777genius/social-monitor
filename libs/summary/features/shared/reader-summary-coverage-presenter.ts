@@ -1,4 +1,7 @@
-import type { ReaderSummaryArtifactProps } from "../../domain";
+import {
+  readerSummaryIndependentProviderFamilyCount,
+  type ReaderSummaryArtifactProps,
+} from "../../domain";
 import type { ReaderSummaryCollectedFeedItemCoverage } from "../../ports";
 import type {
   ReaderSummaryContentView,
@@ -85,8 +88,14 @@ export const buildReaderSummaryCoverageView = (
   freshness: ReaderSummaryFreshnessView,
   collectedCoverage: ReaderSummaryCollectedFeedItemCoverage | undefined,
 ): ReaderSummaryCoverageView => {
-  const selectedFeedItemCount =
-    snapshot.sourceWindow.selectedFeedItemIds.length;
+  const selectedFeedItemCount = snapshot.dailyGenerationInput?.selected.length ?? new Set(
+    (snapshot.promotionAttestations ?? []).flatMap((attestation) => [
+      attestation.candidateId,
+      ...(attestation.schemaVersion === "reader_post_promotion_attestation.v3"
+        ? []
+        : attestation.supportFacts.map((fact) => fact.candidateId)),
+    ]),
+  ).size;
   const collectedFeedItemCount =
     collectedCoverage === undefined
       ? undefined
@@ -94,9 +103,9 @@ export const buildReaderSummaryCoverageView = (
           collectedCoverage.collectedFeedItemCount,
           selectedFeedItemCount,
         );
-  const interestIds = countBy(
-    snapshot.storyClusters.flatMap((cluster) => cluster.interestIds),
-  );
+  const interestIds = countBy(snapshot.dailyGenerationInput === undefined
+    ? snapshot.storyClusters.flatMap((cluster) => cluster.interestIds)
+    : snapshot.dailyGenerationInput.selected.map(entry => entry.interestId));
   const topProviderKeys = content.sourceMix
     .filter(
       (source) =>
@@ -120,7 +129,10 @@ export const buildReaderSummaryCoverageView = (
     })
     .slice(0, 5)
     .map((source) => source.providerKey);
-  const providerBreakdown = buildProviderBreakdown(content, collectedCoverage);
+  const usedByProvider = snapshot.dailyGenerationInput === undefined ? undefined :
+    countBy(snapshot.dailyGenerationInput.selected.map(entry => entry.providerKey));
+  const providerBreakdown = buildProviderBreakdown(content, collectedCoverage).map(provider => usedByProvider === undefined
+    ? provider : { ...provider, selectedFeedItemCount: usedByProvider.get(provider.providerKey) ?? 0 });
   const collectionCoverageState =
     aggregateCollectionCoverageState(providerBreakdown);
 
@@ -131,23 +143,29 @@ export const buildReaderSummaryCoverageView = (
     mutedFeedItemCount: collectedCoverage?.mutedFeedItemCount ?? 0,
     userRatedFeedItemCount: collectedCoverage?.userRatedFeedItemCount ?? 0,
     selectedFeedItemCount,
-    storyClusterCount: snapshot.storyClusters.length,
+    storyClusterCount: snapshot.dailyGenerationInput?.selected.length ?? snapshot.storyClusters.length,
     topReadCount: content.topReads.length,
     citationCount: snapshot.citationMap.length,
-    providerCount: content.sourceMix.length,
+    providerCount: readerSummaryIndependentProviderFamilyCount(
+      content.sourceMix.map((source) => source.providerKey),
+    ),
     interestCount: interestIds.size,
     duplicateFeedItemCount: snapshot.storyClusters.reduce(
       (total, cluster) => total + cluster.duplicateFeedItemIds.length,
       0,
     ),
     crossSourceClusterCount: snapshot.storyClusters.filter(
-      (cluster) => cluster.providerKeys.length > 1,
+      (cluster) =>
+        readerSummaryIndependentProviderFamilyCount(cluster.providerKeys) > 1,
     ).length,
     hasCrossProviderEvidence: snapshot.storyClusters.some(
-      (cluster) => cluster.providerKeys.length > 1,
+      (cluster) =>
+        readerSummaryIndependentProviderFamilyCount(cluster.providerKeys) > 1,
     ),
     isSingleSource:
-      content.sourceMix.length <= 1 ||
+      readerSummaryIndependentProviderFamilyCount(
+        content.sourceMix.map((source) => source.providerKey),
+      ) <= 1 ||
       content.sourceMix.every((source) => source.singleSourceOnly),
     topProviderKeys,
     topInterestIds: [...interestIds.entries()]

@@ -1,0 +1,99 @@
+import {
+  evaluateReaderPostPromotion,
+  readerPostProviderFamily,
+  readerPostPromotionTimestampMicros,
+  READER_POST_PROMOTION_POLICY_V1,
+  type ReaderPostPromotionInput,
+} from "./reader-post-promotion-policy";
+import { isTrustedReaderPostPromotionSupport } from
+  "./reader-post-promotion-support-authority";
+
+export type ReaderPostPromotionEvidenceConfidence = Readonly<{
+  providerCount: number;
+  confidence: number;
+}>;
+
+/**
+ * Calibrates evidence confidence after ranking has selected a lead and its
+ * support. This policy never evaluates, reorders, or changes promotion lanes.
+ */
+export const readerPostPromotionEvidenceConfidence = (params: {
+  readonly lead: ReaderPostPromotionInput;
+  readonly support: readonly ReaderPostPromotionInput[];
+}): ReaderPostPromotionEvidenceConfidence => {
+  const trustedSupport = params.support.filter(
+    (support) => isEligibleConfidenceSupport(support, params.lead),
+  );
+  const admitted = [params.lead, ...trustedSupport];
+  const providerCount = new Set(
+    admitted.map((item) => readerPostProviderFamily(item.provider)),
+  ).size;
+  const rawConfidence = Math.min(
+    1,
+    params.lead.qualityScore + Math.min(
+      READER_POST_PROMOTION_POLICY_V1.confidence.maxSupportBoost,
+      trustedSupport.length *
+        READER_POST_PROMOTION_POLICY_V1.confidence.supportBoost,
+    ),
+  );
+  const confidence = providerCount > 1
+    ? rawConfidence
+    : Math.min(
+        rawConfidence,
+        isAttestedOfficial(params.lead)
+          ? 0.62
+          : trustedSupport.length > 0
+            ? 0.55
+            : 0.42,
+      );
+
+  return { providerCount, confidence };
+};
+
+const isAttestedOfficial = (input: ReaderPostPromotionInput): boolean =>
+  input.authorityAttestation?.status === "attested" &&
+  input.authorityAttestation.official && input.authorityAttestation.trusted &&
+  (readerPostProviderFamily(input.provider) !== "x" ||
+    input.authorityAttestation.attestedBy === "source_catalog");
+
+const isEligibleConfidenceSupport = (
+  support: ReaderPostPromotionInput,
+  lead: ReaderPostPromotionInput,
+): boolean => {
+  if (!isTrustedReaderPostPromotionSupport(support) ||
+      readerPostProviderFamily(support.provider) === undefined ||
+      readerPostProviderFamily(lead.provider) === undefined ||
+      !sameSelectionWindow(support, lead)) {
+    return false;
+  }
+  const evaluation = evaluateReaderPostPromotion({
+    ...support,
+    relation: {
+      kind: "same_story",
+      targetCanonicalIdentity: lead.canonicalIdentity,
+      confidence: 1,
+      approved: true,
+    },
+  });
+  return evaluation.decision === "support_only" &&
+    evaluation.authoritativeSameStory;
+};
+
+const sameSelectionWindow = (
+  support: ReaderPostPromotionInput,
+  lead: ReaderPostPromotionInput,
+): boolean => promotionMicros(support, "start") ===
+    promotionMicros(lead, "start") &&
+  promotionMicros(support, "end") === promotionMicros(lead, "end") &&
+  promotionMicros(support, "cutoff") === promotionMicros(lead, "cutoff");
+
+const promotionMicros = (
+  input: ReaderPostPromotionInput,
+  field: "start" | "end" | "cutoff",
+): bigint | undefined => readerPostPromotionTimestampMicros(
+  field === "start"
+    ? input.exactPeriodStart ?? input.periodStart
+    : field === "end"
+      ? input.exactPeriodEnd ?? input.periodEnd
+      : input.exactIngestionCutoff ?? input.ingestionCutoff,
+);

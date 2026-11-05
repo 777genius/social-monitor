@@ -272,6 +272,12 @@ const evaluateNonXSource = (
   if (normalized.weakTopicMatch) {
     flags.add("weak_topic_match");
   }
+  if (normalized.engagementBait) {
+    flags.add("engagement_bait");
+  }
+  if (normalized.genericQuestion) {
+    flags.add("generic_question");
+  }
   if (normalized.missingTopicContext) {
     flags.add("missing_topic_context");
   }
@@ -322,6 +328,8 @@ const evaluateNonXSource = (
     ? "reject"
     : (normalized.missingTopicContext && !normalized.legacyCoreTopicSignal) ||
         normalized.weakTopicMatch ||
+        normalized.engagementBait ||
+        normalized.genericQuestion ||
         normalized.predictionMarketRumor ||
         normalized.rumorOnly ||
         normalized.speculativeFinancialChallenge ||

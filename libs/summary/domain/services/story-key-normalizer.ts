@@ -1,4 +1,6 @@
-import { validateOutboundUrl } from "@social-monitor/shared-kernel";
+import { createHash } from "node:crypto";
+
+import { identityQueryEntries, validateOutboundUrl } from "@social-monitor/shared-kernel";
 
 import type { StoryRankingPolicy } from "../policies/story-ranking-policy";
 import type { SummaryEvidenceItem } from "../value-objects/summary-evidence-item";
@@ -8,12 +10,14 @@ export const storyKey = (
   policy: StoryRankingPolicy,
 ): string => {
   const canonicalUrls = canonicalUrlCandidates(item.canonicalUrl);
-  const githubRepositoryKey = githubRepositoryStoryKey(item, canonicalUrls);
+  const canonicalUrlKey = firstNonNull(canonicalUrls.map(canonicalUrlStoryKey));
+  const githubRepositoryKey = githubRepositoryStoryKey(
+    item, canonicalUrls, canonicalUrlKey,
+  );
   if (githubRepositoryKey !== null) {
     return githubRepositoryKey;
   }
 
-  const canonicalUrlKey = firstNonNull(canonicalUrls.map(canonicalUrlStoryKey));
   if (canonicalUrlKey !== null) {
     return canonicalUrlKey;
   }
@@ -53,12 +57,17 @@ const trustedStoryKeyHint = (
 const githubRepositoryStoryKey = (
   item: SummaryEvidenceItem,
   canonicalUrls: readonly string[],
+  canonicalUrlKey: string | null,
 ): string | null => {
   const canonicalKey = singleUnambiguousKey(
     canonicalUrls.map(githubRepositoryUrlKey),
   );
   if (canonicalKey !== null) {
     return canonicalKey;
+  }
+
+  if (canonicalUrlKey?.startsWith("url:github.com/")) {
+    return null;
   }
 
   const fields = [item.title, item.bodyPreview ?? ""];
@@ -134,10 +143,16 @@ const githubRepositoryUrlKey = (value: string): string | null => {
       return null;
     }
 
-    const [owner, repo] = parsed.pathname
+    const [owner, repo, section, detail] = parsed.pathname
       .split("/")
       .filter((part) => part.trim().length > 0);
     if (owner === undefined || repo === undefined) {
+      return null;
+    }
+
+    // Stargazers is repository-level metadata, not a distinct event.
+    if (section !== undefined &&
+        !(section.toLocaleLowerCase("en-US") === "stargazers" && detail === undefined)) {
       return null;
     }
 
@@ -229,21 +244,39 @@ const canonicalUrlStoryKey = (value: string): string | null => {
       host === "news.ycombinator.com" &&
       parsed.pathname.replace(/\/+$/u, "") === "/item"
     ) {
-      const itemId = parsed.searchParams.get("id")?.trim();
-      if (itemId !== undefined && itemId.length > 0) {
+      const itemIds = parsed.searchParams.getAll("id");
+      const itemId = itemIds[0]?.trim();
+      if (itemIds.length === 1 && itemId !== undefined && /^[0-9]+$/u.test(itemId)) {
         return `url:news.ycombinator.com/item/${itemId}`;
       }
     }
 
     parsed.hash = "";
-    parsed.search = "";
     parsed.hostname = host;
     const pathname = normalizeCanonicalPath(host, parsed.pathname);
+    if (redirectTargetParams(host, parsed.pathname).length > 0) {
+      return `url:${host}${pathname}`;
+    }
 
-    return `url:${host}${pathname}`;
+    const queryKey = canonicalQueryKey(host, parsed.searchParams);
+
+    return `url:${host}${pathname}${queryKey}`;
   } catch {
     return null;
   }
+};
+
+const canonicalQueryKey = (host: string, params: URLSearchParams): string => {
+  const identityParameters = identityQueryEntries(host, params);
+
+  if (identityParameters.length === 0) {
+    return "";
+  }
+
+  const digest = createHash("sha256")
+    .update(JSON.stringify(identityParameters), "utf8")
+    .digest("hex");
+  return `?q=${digest}`;
 };
 
 const normalizeHost = (value: string): string =>

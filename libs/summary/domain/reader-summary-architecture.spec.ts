@@ -18,7 +18,6 @@ const readerSummaryCoreFiles = [
   "events/reader-summary-ready.event.ts",
   "policies/reader-action-policy.ts",
   "policies/source-mix-quality-policy.ts",
-  "policies/top-read-selection-policy.ts",
   "services/reader-summary-support.ts",
   "services/story-clustering.service.ts",
   "services/story-key-normalizer.ts",

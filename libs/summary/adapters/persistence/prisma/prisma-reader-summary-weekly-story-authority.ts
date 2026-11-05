@@ -5,17 +5,13 @@ import {
 } from "../../../domain/value-objects/reader-summary-weekly-publication-evidence";
 import {
   assertReaderSummaryWeeklyExactObject,
-  canonicalizeReaderSummaryWeeklyHistoricalArtifactJson,
   canonicalizeReaderSummaryWeeklyJson,
+  canonicalizeReaderSummaryWeeklyV3PublicationJson,
   deepFreezeReaderSummaryWeekly,
   exactReaderSummaryWeeklyIdentity,
   exactReaderSummaryWeeklySha256,
   readerSummaryWeeklyScopeKey,
 } from "../../../domain/value-objects/reader-summary-weekly-canonical-json";
-import {
-  assertReaderSummaryWeeklyPublicationGitHubEvidence,
-  type ReaderSummaryWeeklyPublicationGitHubEvidence,
-} from "../../../domain/value-objects/reader-summary-weekly-publication-github-evidence";
 import {
   assertReaderSummaryWeeklyStoryAuthorityBinding,
   readerSummaryWeeklyStoryAuthoritySchemaVersion,
@@ -28,6 +24,7 @@ import type {
   ReaderSummaryWeeklyStoryAuthorityPort,
 } from "../../../ports/reader-summary-weekly-story-authority.port";
 import type { PrismaSummaryClient } from "./prisma-summary-client";
+import { assertReaderSummaryWeeklyStoryAuthorityPersistedHashes } from "./reader-summary-weekly-story-authority-hashes";
 
 type WeeklyPublicationEvidenceRow = Readonly<{
   publicationId: string;
@@ -41,6 +38,10 @@ type WeeklyPublicationEvidenceRow = Readonly<{
   periodTimezone: string;
   requestedUtcDate: Date;
   readerSummaryJobId: string;
+  jobId: string;
+  jobTenantId: string;
+  jobWorkspaceId: string;
+  selectionStrategy: string | null;
   readerSummaryArtifactId: string;
   reportId: string;
   proofId: string;
@@ -96,38 +97,46 @@ export class PrismaReaderSummaryWeeklyStoryAuthority
       readonly WeeklyPublicationEvidenceRow[]
     >`
       SELECT
-        "publication_id"::text AS "publicationId",
-        "tenant_id"::text AS "tenantId",
-        "workspace_id"::text AS "workspaceId",
-        "scope_type" AS "scopeType",
-        "scope_key" AS "scopeKey",
-        "cadence",
-        "period_started_at" AS "periodStartedAt",
-        "period_ended_at" AS "periodEndedAt",
-        "period_timezone" AS "periodTimezone",
-        "requested_utc_date" AS "requestedUtcDate",
-        "reader_summary_job_id"::text AS "readerSummaryJobId",
-        "reader_summary_artifact_id"::text AS "readerSummaryArtifactId",
-        "report_id" AS "reportId",
-        "proof_id" AS "proofId",
-        "semantic_status"::text AS "semanticStatus",
-        "report",
-        btrim("report_sha256") AS "reportSha256",
-        "exact_proof" AS "exactProof",
-        btrim("proof_sha256") AS "proofSha256",
-        btrim("artifact_payload_sha256") AS "artifactPayloadSha256",
-        "provider_evidence" AS "providerEvidence",
-        btrim("provider_evidence_sha256") AS "providerEvidenceSha256",
-        "github_evidence" AS "githubEvidence",
-        "canonical_record" AS "canonicalRecord",
-        "canonical_bytes" AS "canonicalBytes",
-        btrim("canonical_sha256") AS "canonicalSha256",
-        "identity",
-        "recorded_at" AS "recordedAt"
-      FROM "reader_summary_weekly_publication_evidence"
-      WHERE "tenant_id" = ${exactQuery.tenantId}::uuid
-        AND "workspace_id" = ${exactQuery.workspaceId}::uuid
-        AND "publication_id" = ${exactQuery.publicationId}::uuid
+        evidence."publication_id"::text AS "publicationId",
+        evidence."tenant_id"::text AS "tenantId",
+        evidence."workspace_id"::text AS "workspaceId",
+        evidence."scope_type" AS "scopeType",
+        evidence."scope_key" AS "scopeKey",
+        evidence."cadence",
+        evidence."period_started_at" AS "periodStartedAt",
+        evidence."period_ended_at" AS "periodEndedAt",
+        evidence."period_timezone" AS "periodTimezone",
+        evidence."requested_utc_date" AS "requestedUtcDate",
+        evidence."reader_summary_job_id"::text AS "readerSummaryJobId",
+        job."id"::text AS "jobId",
+        job."tenant_id"::text AS "jobTenantId",
+        job."workspace_id"::text AS "jobWorkspaceId",
+        job."selection_strategy" AS "selectionStrategy",
+        evidence."reader_summary_artifact_id"::text AS "readerSummaryArtifactId",
+        evidence."report_id" AS "reportId",
+        evidence."proof_id" AS "proofId",
+        evidence."semantic_status"::text AS "semanticStatus",
+        evidence."report",
+        btrim(evidence."report_sha256") AS "reportSha256",
+        evidence."exact_proof" AS "exactProof",
+        btrim(evidence."proof_sha256") AS "proofSha256",
+        btrim(evidence."artifact_payload_sha256") AS "artifactPayloadSha256",
+        evidence."provider_evidence" AS "providerEvidence",
+        btrim(evidence."provider_evidence_sha256") AS "providerEvidenceSha256",
+        evidence."github_evidence" AS "githubEvidence",
+        evidence."canonical_record" AS "canonicalRecord",
+        evidence."canonical_bytes" AS "canonicalBytes",
+        btrim(evidence."canonical_sha256") AS "canonicalSha256",
+        evidence."identity",
+        evidence."recorded_at" AS "recordedAt"
+      FROM "reader_summary_weekly_publication_evidence" AS evidence
+      JOIN "reader_summary_jobs" AS job
+        ON job."id" = evidence."reader_summary_job_id"
+       AND job."tenant_id" = evidence."tenant_id"
+       AND job."workspace_id" = evidence."workspace_id"
+      WHERE evidence."tenant_id" = ${exactQuery.tenantId}::uuid
+        AND evidence."workspace_id" = ${exactQuery.workspaceId}::uuid
+        AND evidence."publication_id" = ${exactQuery.publicationId}::uuid
       LIMIT 2
     `;
     if (rows.length === 0) {
@@ -189,7 +198,11 @@ const authorityFromVerifiedRow = (
   query: LoadReaderSummaryWeeklyStoryAuthorityQuery,
 ): ReaderSummaryWeeklyStoryAuthorityHandle => {
   assertExactRowScope(row, query);
-  const canonicalRecord = canonicalizeReaderSummaryWeeklyJson(
+  const profile = row.selectionStrategy === "jev_primary_v3" ? "v3" : "legacy";
+  const canonicalize = profile === "v3"
+    ? canonicalizeReaderSummaryWeeklyV3PublicationJson
+    : canonicalizeReaderSummaryWeeklyJson;
+  const canonicalRecord = canonicalize(
     row.canonicalRecord,
     "persisted story publication canonical record",
   );
@@ -217,8 +230,8 @@ const authorityFromVerifiedRow = (
     row.identity,
     canonicalSha256,
   );
-  assertReaderSummaryWeeklyCanonicalPublicationEvidence(publication);
-  assertPersistedHashes(row, publication);
+  assertReaderSummaryWeeklyCanonicalPublicationEvidence(publication, profile);
+  assertReaderSummaryWeeklyStoryAuthorityPersistedHashes(row, publication, profile);
   assertPersistedBindings(row, publication);
   return createLoadedAuthority(storyAuthorityBinding(publication));
 };
@@ -262,86 +275,15 @@ const assertExactRowScope = (
   if (
     row.tenantId !== query.tenantId ||
     row.workspaceId !== query.workspaceId ||
-    row.publicationId !== query.publicationId
+    row.publicationId !== query.publicationId ||
+    row.jobId !== row.readerSummaryJobId ||
+    row.jobTenantId !== row.tenantId ||
+    row.jobWorkspaceId !== row.workspaceId
   ) {
     throw new Error(
       "Reader summary weekly story authority row escaped exact tenant, workspace, or publication scope",
     );
   }
-};
-
-const assertPersistedHashes = (
-  row: WeeklyPublicationEvidenceRow,
-  publication: ReaderSummaryWeeklyCanonicalPublicationEvidence,
-): void => {
-  assertReaderSummaryWeeklyPublicationGitHubEvidence(row.githubEvidence);
-  const githubEvidence =
-    row.githubEvidence as ReaderSummaryWeeklyPublicationGitHubEvidence;
-  const reportArtifactPayload = artifactPayloadFromReport(row.report);
-  const persistedHashes = [
-    [
-      canonicalizeReaderSummaryWeeklyHistoricalArtifactJson(
-        row.report,
-        "persisted story publication report",
-      ).sha256,
-      row.reportSha256,
-      publication.reportSha256,
-    ],
-    [
-      canonicalizeReaderSummaryWeeklyJson(row.exactProof).sha256,
-      row.proofSha256,
-      publication.proofSha256,
-    ],
-    [
-      canonicalizeReaderSummaryWeeklyHistoricalArtifactJson(
-        reportArtifactPayload,
-        "persisted story publication artifact payload",
-      ).sha256,
-      row.artifactPayloadSha256,
-      publication.artifactPayloadSha256,
-    ],
-    [
-      canonicalizeReaderSummaryWeeklyJson(row.providerEvidence).sha256,
-      row.providerEvidenceSha256,
-      publication.providerEvidenceSha256,
-    ],
-  ] as const;
-  if (
-    persistedHashes.some(
-      ([computed, persisted, canonical]) =>
-        computed !==
-          exactReaderSummaryWeeklySha256(
-            persisted,
-            "persisted story publication hash",
-          ) || persisted !== canonical,
-    ) ||
-    canonicalizeReaderSummaryWeeklyJson(row.providerEvidence).json !==
-      canonicalizeReaderSummaryWeeklyJson(
-        publication.providerEvidence,
-      ).json ||
-    canonicalizeReaderSummaryWeeklyJson(githubEvidence).json !==
-      canonicalizeReaderSummaryWeeklyJson(
-        publication.githubEvidence,
-      ).json
-  ) {
-    throw new Error(
-      "Reader summary weekly story publication persisted hash diverged",
-    );
-  }
-};
-
-const artifactPayloadFromReport = (report: unknown): unknown => {
-  if (
-    typeof report !== "object" ||
-    report === null ||
-    Array.isArray(report) ||
-    !Object.hasOwn(report, "artifactPayload")
-  ) {
-    throw new Error(
-      "Reader summary weekly story publication report artifact payload is missing",
-    );
-  }
-  return (report as Readonly<Record<string, unknown>>).artifactPayload;
 };
 
 const assertPersistedBindings = (

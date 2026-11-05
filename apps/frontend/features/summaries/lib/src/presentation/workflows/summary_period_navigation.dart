@@ -64,3 +64,14 @@ List<SummaryPeriod> mergeSummaryPeriods(
   }
   return periodsByKey.values.toList(growable: false);
 }
+
+List<PublishedSummaryReference> mergePublishedSummaryReferences(
+  Iterable<PublishedSummaryReference> current,
+  Iterable<PublishedSummaryReference> incoming,
+) {
+  final referencesByKey = <String, PublishedSummaryReference>{};
+  for (final reference in [...current, ...incoming]) {
+    referencesByKey[summaryPeriodAvailabilityKey(reference.period)] = reference;
+  }
+  return referencesByKey.values.toList(growable: false);
+}

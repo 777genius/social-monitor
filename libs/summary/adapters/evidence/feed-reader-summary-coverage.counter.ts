@@ -1,4 +1,9 @@
-import type { FeedItemReadRepositoryPort } from "@social-monitor/feed/ports";
+import type { FeedItem } from "@social-monitor/feed/domain";
+import type {
+  FeedCollectionCoverageRow,
+  FeedItemReadRepositoryPort,
+  ListFeedItemSignalCandidatesQuery,
+} from "@social-monitor/feed/ports";
 
 import type {
   CountReaderSummaryCollectedFeedItemsQuery,
@@ -13,7 +18,6 @@ import type {
 import { NOOP_READER_SUMMARY_PROVIDER_COLLECTION_HEALTH_READER } from "../../ports";
 import { statsForFeedItemMetadata } from "./feed-item-collection-stats";
 import { isDefaultReaderSummaryEvidenceProvider } from "./reader-summary-evidence-provider-filter";
-import { inclusiveObservedBefore } from "./relevance-reader-summary-evidence-support";
 
 const PAGE_LIMIT = 100;
 const MAX_PAGES = 1000;
@@ -34,87 +38,50 @@ export class FeedReaderSummaryCoverageCounter implements ReaderSummaryCoverageCo
   async countCollectedFeedItemCoverage(
     query: CountReaderSummaryCollectedFeedItemsQuery,
   ): Promise<ReaderSummaryCollectedFeedItemCoverage | undefined> {
-    const observedBefore =
-      query.observedThrough === undefined
-        ? undefined
-        : inclusiveObservedBefore(query.observedThrough);
+    // Own both branches before yielding, including synchronous port throws and
+    // pagination exits. A failure must not leave the other branch unobserved.
+    const [collectionHealth, accumulator] = await Promise.all([
+      (async () => this.collectionHealth.readProviderCollectionHealth(query))(),
+      this.collectFeedItemCoverage(query),
+    ]);
+    return accumulator === undefined
+      ? undefined
+      : coverageResult(accumulator, collectionHealth);
+  }
+
+  private async collectFeedItemCoverage(
+    query: CountReaderSummaryCollectedFeedItemsQuery,
+  ): Promise<CoverageAccumulator | undefined> {
     let cursor: string | undefined;
-    let total = 0;
-    const totals = emptyCoverageCounts();
-    const providerCounts = new Map<string, CoverageBucket>();
-    const topicCounts = new Map<string, CoverageBucket>();
-    const queryCounts = new Map<string, CoverageBucket>();
-    const collectionHealthPromise =
-      this.collectionHealth.readProviderCollectionHealth(query);
+    const accumulator = emptyCoverageAccumulator();
+    const aggregateReader = this.feedItems.readCollectionCoverage;
+    const feedQuery = coverageFeedItemQuery(query);
+
+    if (aggregateReader !== undefined) {
+      const rows = await aggregateReader.call(this.feedItems, {
+        tenantId: query.tenantId,
+        workspaceId: query.workspaceId,
+        interestId: feedQuery.interestId,
+        publishedAtOrAfter: query.period.startedAt,
+        publishedBefore: query.period.endedAt,
+        observedAtOrBefore: query.observedThrough,
+        excludedProviderKeys: ["github-issues", "github-trending-page"],
+      });
+      for (const row of rows) recordAggregate(row, accumulator);
+      return accumulator;
+    }
 
     for (let page = 0; page < MAX_PAGES; page += 1) {
       const result = await this.feedItems.list({
-        tenantId: query.tenantId,
-        workspaceId: query.workspaceId,
-        interestId:
-          query.scope.type === "interest" ? query.scope.interestId : undefined,
-        publishedAtOrAfter: query.period.startedAt,
-        publishedBefore: query.period.endedAt,
-        observedBefore,
+        ...feedQuery,
         limit: PAGE_LIMIT,
         cursor,
       });
-      for (const item of result.items) {
-        const snapshot = item.toSnapshot();
-        const providerKey = snapshot.providerKey;
-        if (!isDefaultReaderSummaryEvidenceProvider(providerKey)) {
-          continue;
-        }
-        const stats = statsForFeedItemMetadata(snapshot.providerMetadata);
-
-        total += 1;
-        incrementBucket(totals, stats);
-        incrementNamedBucket(providerCounts, providerKey, stats);
-        incrementNamedBucket(topicCounts, snapshot.interestId, stats, {
-          label: stats.topicLabel,
-        });
-        for (const searchQuery of stats.searchQueries) {
-          incrementNamedBucket(queryCounts, searchQuery, stats);
-        }
-      }
+      if (result.candidateWindowExhausted !== true) return undefined;
+      recordCoverageItems(result.items, accumulator);
 
       if (result.nextCursor === undefined) {
-        return {
-          collectedFeedItemCount: total,
-          lowRelevanceFeedItemCount: totals.lowRelevanceFeedItemCount,
-          mutedFeedItemCount: totals.mutedFeedItemCount,
-          userRatedFeedItemCount: totals.userRatedFeedItemCount,
-          providerBreakdown: mergeProviderCollectionHealth(
-            coverageRows(providerCounts).map(
-              ([
-                providerKey,
-                bucket,
-              ]): ReaderSummaryCollectedProviderCoverage => ({
-                providerKey,
-                ...bucket,
-              }),
-            ),
-            await collectionHealthPromise,
-          ),
-          topicBreakdown: coverageRows(topicCounts).map(
-            ([topicKey, bucket]): ReaderSummaryCollectedTopicCoverage => ({
-              topicKey,
-              ...(bucket.label === undefined
-                ? {}
-                : { topicLabel: bucket.label }),
-              collectedFeedItemCount: bucket.collectedFeedItemCount,
-              lowRelevanceFeedItemCount: bucket.lowRelevanceFeedItemCount,
-              mutedFeedItemCount: bucket.mutedFeedItemCount,
-              userRatedFeedItemCount: bucket.userRatedFeedItemCount,
-            }),
-          ),
-          queryBreakdown: coverageRows(queryCounts).map(
-            ([queryText, bucket]): ReaderSummaryCollectedQueryCoverage => ({
-              query: queryText,
-              ...bucket,
-            }),
-          ),
-        };
+        return accumulator;
       }
 
       if (result.nextCursor === cursor) {
@@ -129,6 +96,14 @@ export class FeedReaderSummaryCoverageCounter implements ReaderSummaryCoverageCo
 
 type FeedItemCollectionStats = ReturnType<typeof statsForFeedItemMetadata>;
 
+type CoverageAccumulator = {
+  total: number;
+  readonly totals: CoverageBucket;
+  readonly providerCounts: Map<string, CoverageBucket>;
+  readonly topicCounts: Map<string, CoverageBucket>;
+  readonly queryCounts: Map<string, CoverageBucket>;
+};
+
 type CoverageBucket = {
   collectedFeedItemCount: number;
   lowRelevanceFeedItemCount: number;
@@ -142,6 +117,89 @@ const emptyCoverageCounts = (): CoverageBucket => ({
   lowRelevanceFeedItemCount: 0,
   mutedFeedItemCount: 0,
   userRatedFeedItemCount: 0,
+});
+
+const emptyCoverageAccumulator = (): CoverageAccumulator => ({
+  total: 0,
+  totals: emptyCoverageCounts(),
+  providerCounts: new Map(),
+  topicCounts: new Map(),
+  queryCounts: new Map(),
+});
+
+const coverageFeedItemQuery = (
+  query: CountReaderSummaryCollectedFeedItemsQuery,
+): ListFeedItemSignalCandidatesQuery => ({
+  tenantId: query.tenantId,
+  workspaceId: query.workspaceId,
+  interestId:
+    query.scope.type === "interest" ? query.scope.interestId : undefined,
+  publishedAtOrAfter: query.period.startedAt,
+  publishedBefore: query.period.endedAt,
+  observedAtOrBefore: query.observedThrough,
+});
+
+const recordCoverageItems = (
+  items: readonly FeedItem[],
+  accumulator: CoverageAccumulator,
+): void => {
+  for (const item of items) {
+    const snapshot = item.toSnapshot();
+    const providerKey = snapshot.providerKey;
+    if (!isDefaultReaderSummaryEvidenceProvider(providerKey)) {
+      continue;
+    }
+    const stats = statsForFeedItemMetadata(snapshot.providerMetadata);
+
+    accumulator.total += 1;
+    incrementBucket(accumulator.totals, stats);
+    incrementNamedBucket(accumulator.providerCounts, providerKey, stats);
+    incrementNamedBucket(
+      accumulator.topicCounts,
+      snapshot.interestId,
+      stats,
+      { label: stats.topicLabel },
+    );
+    for (const searchQuery of stats.searchQueries) {
+      incrementNamedBucket(accumulator.queryCounts, searchQuery, stats);
+    }
+  }
+};
+
+const coverageResult = (
+  accumulator: CoverageAccumulator,
+  collectionHealth: readonly ReaderSummaryProviderCollectionHealth[],
+): ReaderSummaryCollectedFeedItemCoverage => ({
+  collectedFeedItemCount: accumulator.total,
+  lowRelevanceFeedItemCount:
+    accumulator.totals.lowRelevanceFeedItemCount,
+  mutedFeedItemCount: accumulator.totals.mutedFeedItemCount,
+  userRatedFeedItemCount: accumulator.totals.userRatedFeedItemCount,
+  providerBreakdown: mergeProviderCollectionHealth(
+    coverageRows(accumulator.providerCounts).map(
+      ([providerKey, bucket]): ReaderSummaryCollectedProviderCoverage => ({
+        providerKey,
+        ...bucket,
+      }),
+    ),
+    collectionHealth,
+  ),
+  topicBreakdown: coverageRows(accumulator.topicCounts).map(
+    ([topicKey, bucket]): ReaderSummaryCollectedTopicCoverage => ({
+      topicKey,
+      ...(bucket.label === undefined ? {} : { topicLabel: bucket.label }),
+      collectedFeedItemCount: bucket.collectedFeedItemCount,
+      lowRelevanceFeedItemCount: bucket.lowRelevanceFeedItemCount,
+      mutedFeedItemCount: bucket.mutedFeedItemCount,
+      userRatedFeedItemCount: bucket.userRatedFeedItemCount,
+    }),
+  ),
+  queryBreakdown: coverageRows(accumulator.queryCounts).map(
+    ([queryText, bucket]): ReaderSummaryCollectedQueryCoverage => ({
+      query: queryText,
+      ...bucket,
+    }),
+  ),
 });
 
 const incrementNamedBucket = (
@@ -217,5 +275,30 @@ const mergeProviderCollectionHealth = (
     return countDiff === 0
       ? left.providerKey.localeCompare(right.providerKey)
       : countDiff;
+  });
+};
+
+const recordAggregate = (
+  row: FeedCollectionCoverageRow,
+  accumulator: CoverageAccumulator,
+): void => {
+  if (row.dimension === "total") {
+    accumulator.total = row.collectedFeedItemCount;
+    Object.assign(accumulator.totals, {
+      collectedFeedItemCount: row.collectedFeedItemCount,
+      lowRelevanceFeedItemCount: row.lowRelevanceFeedItemCount,
+      mutedFeedItemCount: row.mutedFeedItemCount,
+      userRatedFeedItemCount: row.userRatedFeedItemCount,
+    });
+    return;
+  }
+  const buckets = row.dimension === "provider" ? accumulator.providerCounts
+    : row.dimension === "topic" ? accumulator.topicCounts : accumulator.queryCounts;
+  buckets.set(row.key, {
+    collectedFeedItemCount: row.collectedFeedItemCount,
+    lowRelevanceFeedItemCount: row.lowRelevanceFeedItemCount,
+    mutedFeedItemCount: row.mutedFeedItemCount,
+    userRatedFeedItemCount: row.userRatedFeedItemCount,
+    ...(row.label === undefined ? {} : { label: row.label }),
   });
 };

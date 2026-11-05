@@ -9,6 +9,7 @@ import {
   isGitHubTrendingProvider,
 } from "../value-objects/reader-summary-provider-identity";
 import { normalizedGitHubRepositoryIdentity } from "../value-objects/github-repository-identity";
+import { dailyGenerationNarrativeClusters } from "../services/reader-summary-daily-input-binding";
 
 export { githubTrendingProviderKey };
 export const githubTrendingNarrativeSectionId = "github-trending";
@@ -20,6 +21,7 @@ export type GitHubTrendingWatchEntry = {
   readonly repositoryIdentity: string;
   readonly rank: number;
   readonly starsGained: number;
+  readonly archivedUtcDay?: string;
 };
 
 export const githubTrendingWatchText = (
@@ -28,7 +30,7 @@ export const githubTrendingWatchText = (
   entries
     .map(
       (entry) =>
-        `- **${entry.repositoryIdentity}** (#${entry.rank}): +${entry.starsGained.toLocaleString("en-US")} stars today.`,
+        `- **${entry.repositoryIdentity}** (#${entry.rank}): +${entry.starsGained.toLocaleString("en-US")} stars ${entry.archivedUtcDay === undefined ? "today" : `on ${entry.archivedUtcDay} (archived observation)`}.`,
     )
     .join("\n");
 
@@ -48,9 +50,62 @@ export const isGitHubTrendingEvidence = (
 
 export const primaryReaderSummaryEvidence = (
   selection: SummaryEvidenceSelection,
+): SummaryEvidenceSelection =>
+  selection.dailyGenerationInput !== undefined
+    ? dailyNarrativeEvidence(selection)
+    : selection.editorialSlate === undefined
+    ? projectReaderSummaryEvidence(
+        selection,
+        (item) => !isGitHubTrendingEvidence(item),
+      )
+    : projectEditorialPlacementEvidence(selection, "top");
+
+export const additionalReaderSummaryEvidence = (
+  selection: SummaryEvidenceSelection,
+): SummaryEvidenceSelection =>
+  selection.dailyGenerationInput === undefined ? projectEditorialPlacementEvidence(selection, "additional")
+    : projectReaderSummaryEvidence(selection, () => false);
+
+const dailyNarrativeEvidence = (selection: SummaryEvidenceSelection): SummaryEvidenceSelection => {
+  const proof = selection.dailyGenerationInput!;
+  const byId = new Map((selection.dailyGenerationEvidence ?? selection.selectedEvidence).map(item => [item.feedItemId, item]));
+  const selectedEvidence = proof.selected.map(entry => {
+    const item = byId.get(entry.feedItemId);
+    if (item === undefined) throw new Error("Daily narrative evidence binding missing");
+    return item;
+  });
+  const clusters = dailyGenerationNarrativeClusters(proof);
+  return { ...selection, selectedEvidence, clusters, sourceWindow: {
+    ...selection.sourceWindow, selectedFeedItemIds: proof.selected.map(entry => entry.feedItemId),
+    storyClusterIds: clusters.map(cluster => cluster.id) } };
+};
+
+const projectEditorialPlacementEvidence = (
+  selection: SummaryEvidenceSelection,
+  placement: "top" | "additional",
+): SummaryEvidenceSelection => {
+  const entries = selection.editorialSlate?.[placement] ?? [];
+  const clusterIds = new Set(entries.map((entry) => entry.storyClusterId));
+  const candidateIds = new Set(entries.map((entry) => entry.candidateId));
+  const evidenceIds = new Set(selection.clusters
+    .filter((cluster) => clusterIds.has(cluster.id))
+    .flatMap((cluster) => [
+      cluster.representativeFeedItemId,
+      ...cluster.duplicateFeedItemIds,
+    ]));
+  return projectReaderSummaryEvidence(
+    selection,
+    (item) => candidateIds.has(item.feedItemId) ||
+      evidenceIds.has(item.feedItemId),
+  );
+};
+
+const projectReaderSummaryEvidence = (
+  selection: SummaryEvidenceSelection,
+  include: (item: SummaryEvidenceItem) => boolean,
 ): SummaryEvidenceSelection => {
   const selectedEvidence = selection.selectedEvidence.filter(
-    (item) => !isGitHubTrendingEvidence(item),
+    include,
   );
   const selectedFeedItemIds = new Set(
     selectedEvidence.map((item) => item.feedItemId),
@@ -235,7 +290,8 @@ export const githubTrendingStarsGained = (
 ): number | undefined => {
   const metric = item.providerMetricLabels?.find(
     (candidate) =>
-      candidate.label.toLocaleLowerCase("en-US") === "github trending today",
+      candidate.label.toLocaleLowerCase("en-US") === "github trending today" ||
+      /^GitHub Trending archive \d{4}-\d{2}-\d{2}$/u.test(candidate.label),
   );
   const match = metric?.value.match(/\+([\d,]+)\s+stars\b/iu);
   if (match === null || match === undefined) {
@@ -251,7 +307,8 @@ export const githubTrendingRank = (
 ): number | undefined => {
   const metric = item.providerMetricLabels?.find(
     (candidate) =>
-      candidate.label.toLocaleLowerCase("en-US") === "github trending today",
+      candidate.label.toLocaleLowerCase("en-US") === "github trending today" ||
+      /^GitHub Trending archive \d{4}-\d{2}-\d{2}$/u.test(candidate.label),
   );
   const match = metric?.value.match(/#([\d,]+)\b/u);
   if (match === null || match === undefined) {
@@ -284,7 +341,8 @@ export const buildGitHubTrendingNarrativeAppendix = (params: {
       rank === undefined ||
       repositoryIdentity === undefined
       ? []
-      : [{ citation, repositoryIdentity, rank, starsGained }];
+      : [{ citation, repositoryIdentity, rank, starsGained,
+          ...(archivedGitHubEvidenceDay(item) === undefined ? {} : { archivedUtcDay: archivedGitHubEvidenceDay(item) }) }];
   });
   if (citedHighlights.length === 0) {
     return undefined;
@@ -293,7 +351,8 @@ export const buildGitHubTrendingNarrativeAppendix = (params: {
   return {
     id: githubTrendingNarrativeSectionId,
     kind: "watch",
-    title: "GitHub Trending",
+    title: citedHighlights[0]?.archivedUtcDay === undefined
+      ? "GitHub Trending" : `GitHub Trending archive ${citedHighlights[0].archivedUtcDay}`,
     text: githubTrendingWatchText(citedHighlights),
     citationIds: citedHighlights.map(({ citation }) => citation.citationId),
   };
@@ -323,3 +382,10 @@ export const buildSupplementalTrendNarrativeAppendix =
   buildGitHubTrendingNarrativeAppendix;
 export const withSupplementalTrendNarrativeAppendix =
   withGitHubTrendingNarrativeAppendix;
+
+export const archivedGitHubEvidenceDay = (item: SummaryEvidenceItem): string | undefined => {
+  const metric = item.providerMetricLabels?.find((candidate) =>
+    /^GitHub Trending archive \d{4}-\d{2}-\d{2}$/u.test(candidate.label));
+  const day = metric?.label.slice("GitHub Trending archive ".length);
+  return day === item.publishedAt.toISOString().slice(0, 10) ? day : undefined;
+};

@@ -11,6 +11,11 @@ import {
   reportIdentityMatches,
   summaryBindingMatches,
 } from "./reader-summary-production-day-provenance";
+import {
+  approvedMimoRuntimePackageVersion,
+  approvedSubscriptionRuntimeLauncherSha256,
+  approvedSubscriptionRuntimePackageVersion,
+} from "../../apps/agent-runtime/src/subscription-runtime-installation";
 
 const collectionDate = "2026-07-15";
 const readerSummaryId = "11111111-1111-4111-8111-111111111111";
@@ -22,7 +27,7 @@ const capture = {
 };
 const runtimeHealth = {
   status: "serving",
-  runtimeEngine: "subscription-runtime-cli",
+  runtimeEngine: "subscription-runtime-cli" as const,
   runtimeVersion: "0.1.0-main.2",
   launcherSha256: "b".repeat(64),
   checkedAt: "2026-07-16T01:00:30.000Z",
@@ -52,6 +57,59 @@ describe("production-day evidence provenance", () => {
     expect(inspected.binding?.captureExecution.frontendArtifactSha256).toMatch(
       /^[0-9a-f]{64}$/u,
     );
+  });
+
+  it("accepts only the versioned high identity for active generation", () => {
+    const frontend = frontendArtifact();
+    frontend.readerSummaryArtifact.lineage.modelVersion =
+      "codex:gpt-5.6-sol:high";
+    const artifact = evidence(frontend, runtimeHealth, (raw) => {
+      for (const record of raw.executionAttestations) {
+        record.attestation.purpose = `${record.attestation.purpose}.v2`;
+        record.attestation.reasoningEffort = "high";
+      }
+    });
+
+    expect(inspect(artifact, frontend).binding?.runtimeProvenance)
+      .toMatchObject({ reasoningEffort: "high" });
+
+    artifact.executionAttestations[0]!.attestation.reasoningEffort = "xhigh";
+    expect(inspect(artifact, frontend).binding).toBeNull();
+  });
+
+  it("accepts MiMo execution attested by the pinned runtime while health reports the pinned launcher package", () => {
+    const frontend = frontendArtifact();
+    frontend.readerSummaryArtifact.lineage.modelVersion =
+      "codex:mimo-v2.6-pro:high";
+    const health = {
+      ...runtimeHealth,
+      runtimeVersion: approvedSubscriptionRuntimePackageVersion,
+      launcherSha256: approvedSubscriptionRuntimeLauncherSha256,
+    };
+    const artifact = evidence(frontend, health, (raw) => {
+      for (const record of raw.executionAttestations) {
+        record.attestation.purpose = `${record.attestation.purpose}.v2`;
+        record.attestation.model = "mimo-v2.6-pro";
+        record.attestation.reasoningEffort = "high";
+        record.attestation.runtimePackageVersion =
+          approvedMimoRuntimePackageVersion;
+        record.attestation.launcherSha256 =
+          approvedSubscriptionRuntimeLauncherSha256;
+      }
+    });
+
+    expect(inspect(artifact, frontend).binding?.runtimeProvenance).toMatchObject({
+      physicalModel: "mimo-v2.6-pro",
+      runtimeVersion: approvedMimoRuntimePackageVersion,
+    });
+    const wrongHealth = {
+      ...artifact,
+      captureExecution: {
+        ...artifact.captureExecution,
+        runtimeHealth: { ...health, runtimeVersion: "0.1.0-main.42-sm.2" },
+      },
+    };
+    expect(inspect(wrongHealth, frontend).binding).toBeNull();
   });
 
   it.each([
@@ -128,7 +186,8 @@ describe("production-day evidence provenance", () => {
   it("rejects a live identity that contradicts executor attestations", () => {
     const artifact = evidence(frontendArtifact(), {
       ...runtimeHealth,
-      runtimeEngine: "generic-health-label",
+      // A malformed live identity on purpose: the type forbids unknown engines.
+      runtimeEngine: "generic-health-label" as unknown as typeof runtimeHealth.runtimeEngine,
       runtimeVersion: "unknown",
     });
 
@@ -167,6 +226,30 @@ describe("production-day evidence provenance", () => {
     );
 
     expect(inspect(artifact).binding).toBeNull();
+  });
+
+  it("accepts the dedicated related-topic relation attestation and rejects unknown roles", () => {
+    const valid = evidence(frontendArtifact(), runtimeHealth, (raw) => {
+      raw.executionAttestations.push(executionAttestation(
+        "related_topic_relation",
+        "related-topic",
+        "reader-summary-related-topic-request",
+        "social_monitor.reader_summary.verify_related_topic_relations",
+      ));
+    });
+    expect(inspect(valid).violations).toEqual([]);
+
+    const unknown = evidence();
+    unknown.executionAttestations.push({
+      ...executionAttestation(
+        "related_topic_relation",
+        "related-topic",
+        "reader-summary-unknown-relation-request",
+        "social_monitor.reader_summary.verify_related_topic_relations",
+      ),
+      taskRole: "unknown_relation" as "related_topic_relation",
+    });
+    expect(inspect(unknown).binding).toBeNull();
   });
 
   it("accepts immutable historical attestation bytes after a runtime upgrade", () => {
@@ -432,7 +515,7 @@ function executorAttestations() {
 }
 
 function executionAttestation(
-  taskRole: "summary" | "topic_label",
+  taskRole: "summary" | "topic_label" | "related_topic_relation",
   attempt: string,
   requestId: string,
   purpose: string,

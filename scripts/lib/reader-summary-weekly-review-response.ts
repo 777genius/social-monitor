@@ -125,10 +125,71 @@ const parseSelection = (
 ): ReaderSummaryWeeklyReviewSelection => {
   const record = asRecord(input, "weekly review model selection");
   if (hasExactKeys(record, ["story", "observation"])) {
+    const observation = record.observation;
+    if (typeof observation === "object" && observation !== null && !Array.isArray(observation)) {
+      const nested = observation as Readonly<Record<string, unknown>>;
+      assertReaderSummaryWeeklyExactObject(
+        nested,
+        ["citations"],
+        "weekly review model observation",
+      );
+      assertReaderSummaryWeeklyDenseArray(
+        nested.citations,
+        "weekly review model citation selectors",
+      );
+      const nestedCitations = nested.citations.map(exactCitationSelector);
+      if (
+        nestedCitations.length === 0 ||
+        nestedCitations.length > 7 ||
+        new Set(nestedCitations).size !== nestedCitations.length
+      ) {
+        throw new Error("Reader summary weekly review model citation selectors are invalid");
+      }
+      return deepFreezeReaderSummaryWeekly({
+        story: exactStorySelector(record.story),
+        label: "observation" as const,
+        citationSelectors: nestedCitations,
+      });
+    }
     return deepFreezeReaderSummaryWeekly({
       story: exactStorySelector(record.story),
       label: "observation" as const,
-      citationSelectors: [exactCitationSelector(record.observation)],
+      citationSelectors: [exactCitationSelector(observation)],
+    });
+  }
+  if (hasExactKeys(record, ["story", "evolution"])) {
+    const evolution = asRecord(record.evolution, "weekly review model evolution");
+    assertReaderSummaryWeeklyExactObject(
+      evolution,
+      ["before", "after"],
+      "weekly review model evolution",
+    );
+    const before = exactCitationSelector(evolution.before);
+    const after = exactCitationSelector(evolution.after);
+    if (before === after) {
+      throw new Error("Reader summary weekly review model citation selectors are invalid");
+    }
+    return deepFreezeReaderSummaryWeekly({
+      story: exactStorySelector(record.story),
+      label: "evolution" as const,
+      citationSelectors: [before, after],
+      beforeCitationSelector: before,
+      afterCitationSelector: after,
+    });
+  }
+  if (hasExactKeys(record, ["story", "resolution"])) {
+    const resolution = asRecord(record.resolution, "weekly review model resolution");
+    assertReaderSummaryWeeklyExactObject(
+      resolution,
+      ["terminal"],
+      "weekly review model resolution",
+    );
+    const terminal = exactCitationSelector(resolution.terminal);
+    return deepFreezeReaderSummaryWeekly({
+      story: exactStorySelector(record.story),
+      label: "resolution" as const,
+      citationSelectors: [terminal],
+      terminalCitationSelector: terminal,
     });
   }
   const label = exactLabel(record.label);

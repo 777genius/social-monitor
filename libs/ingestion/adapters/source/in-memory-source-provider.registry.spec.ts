@@ -46,7 +46,10 @@ describe('InMemorySourceProviderRegistry', () => {
         }),
         expect.objectContaining({
           providerKey: 'telegram',
-          state: 'manual_only',
+          state: 'enabled_beta',
+          runtimeReadiness: 'fixture_ready',
+          credentialOwnership: 'none',
+          cursorModel: 'since_id',
         }),
       ]),
     );

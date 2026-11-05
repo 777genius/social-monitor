@@ -3,6 +3,10 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 
 import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/post_rating.dart';
+import '../../domain/entities/summary_citation.dart';
+import '../../domain/value_objects/top_posts_sort_order.dart';
+import '../stores/reader_posts_browse_store.dart';
+import '../stores/top_posts_sort_store.dart';
 import '../view_models/reader_summary_top_posts_projection.dart';
 import 'reader_summary_brief_surface.dart';
 
@@ -14,6 +18,8 @@ class ReaderSummaryTopPostsSectionSliver extends StatefulWidget {
     required this.onOpenUrl,
     this.ratingFor,
     this.onRated,
+    this.sortStore,
+    this.browseStore,
   });
 
   final ReaderSummary summary;
@@ -26,6 +32,11 @@ class ReaderSummaryTopPostsSectionSliver extends StatefulWidget {
     PostRatingReason? reason,
   )?
   onRated;
+
+  /// Remembered reader order of the ranked lanes; `null` keeps the model
+  /// order and hides the order control.
+  final TopPostsSortStore? sortStore;
+  final ReaderPostsBrowseStore? browseStore;
 
   @override
   State<ReaderSummaryTopPostsSectionSliver> createState() =>
@@ -52,30 +63,189 @@ class _ReaderSummaryTopPostsSectionSliverState
 
   @override
   Widget build(BuildContext context) {
-    if (_projection.isEmpty) {
-      return const SliverToBoxAdapter(child: SizedBox.shrink());
-    }
-    return SliverMainAxisGroup(
-      slivers: [
-        const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.md + 2)),
-        SliverPadding(
+    final browse = widget.browseStore;
+    if (browse == null) return _buildSection(context);
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        browse,
+        if (widget.sortStore != null) widget.sortStore!,
+      ]),
+      builder: (context, _) {
+        final order = widget.sortStore?.order ?? TopPostsSortOrder.modelRank;
+        browse.bind(widget.summary, order);
+        if (browse.selectedOnly) return _buildSection(context);
+        return SliverPadding(
           padding: widget.contentPadding,
-          sliver: ReaderSummaryTopPostsSliver(
-            projection: _projection,
-            selectedPostCount: _selectedPostCount(widget.summary),
+          sliver: ReaderSummaryAllPostsSliver(
+            store: browse,
             period: widget.summary.period,
-            citationsById: {
-              for (final citation in widget.summary.citations)
-                citation.id: citation,
-            },
-            ratingFor: widget.ratingFor,
-            onRated: widget.onRated,
+            sortOrder: order,
+            onSortChanged: widget.sortStore?.select,
             onOpenUrl: widget.onOpenUrl,
           ),
-        ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSection(BuildContext context) {
+    final projection = _projection;
+    if (projection.isEmpty) {
+      final notice = projection.requiresRebuild
+          ? const _RebuildRequiredTopPostsNotice()
+          : _hasSummaryEvidence(widget.summary)
+          ? const _UnavailableTopPostsNotice()
+          : null;
+      if (notice == null && widget.browseStore == null) {
+        return const SliverToBoxAdapter(child: SizedBox.shrink());
+      }
+      return SliverMainAxisGroup(
+        slivers: [
+          const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.md + 2)),
+          SliverPadding(
+            padding: widget.contentPadding,
+            sliver: SliverToBoxAdapter(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (widget.browseStore case final browse?)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: AppCheckbox(
+                        key: const ValueKey('reader-summary-selected-posts'),
+                        label: 'AI picks',
+                        value: true,
+                        onChanged: browse.selectOnly,
+                      ),
+                    ),
+                  if (notice != null)
+                    notice
+                  else
+                    const Text('No selected posts for this period.'),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+    final citationsById = {
+      for (final citation in widget.summary.citations) citation.id: citation,
+    };
+    return SliverMainAxisGroup(
+      slivers: [
+        if (projection.hasRankedPosts || widget.browseStore != null) ...[
+          const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.md + 2)),
+          SliverPadding(
+            padding: widget.contentPadding,
+            sliver: switch (widget.sortStore) {
+              null => _rankedPosts(projection, citationsById),
+              final sortStore => ListenableBuilder(
+                listenable: sortStore,
+                builder: (context, _) => _rankedPosts(
+                  projection,
+                  citationsById,
+                  sortOrder: sortStore.order,
+                  onSortOrderChanged: sortStore.select,
+                ),
+              ),
+            },
+          ),
+        ],
+        if (projection.hasNewsWithoutRating) ...[
+          const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.lg)),
+          SliverPadding(
+            padding: widget.contentPadding,
+            sliver: ReaderSummaryNewsWithoutRatingSliver(
+              posts: projection.newsWithoutRatingPosts,
+              period: widget.summary.period,
+              citationsById: citationsById,
+              ratingFor: widget.ratingFor,
+              onRated: widget.onRated,
+              onOpenUrl: widget.onOpenUrl,
+            ),
+          ),
+        ],
       ],
     );
   }
+
+  Widget _rankedPosts(
+    ReaderSummaryTopPostsProjection projection,
+    Map<String, SummaryCitation> citationsById, {
+    TopPostsSortOrder sortOrder = TopPostsSortOrder.modelRank,
+    ValueChanged<TopPostsSortOrder>? onSortOrderChanged,
+  }) => ReaderSummaryTopPostsSliver(
+    projection: projection,
+    onSelectedOnlyChanged: widget.browseStore?.selectOnly,
+    selectedPostCount: _selectedPostCount(widget.summary),
+    period: widget.summary.period,
+    citationsById: citationsById,
+    ratingFor: widget.ratingFor,
+    onRated: widget.onRated,
+    onOpenUrl: widget.onOpenUrl,
+    sortOrder: sortOrder,
+    onSortOrderChanged: onSortOrderChanged,
+  );
+}
+
+bool _hasSummaryEvidence(ReaderSummary summary) =>
+    summary.citations.isNotEmpty ||
+    (summary.coverage?.selectedFeedItemCount ?? 0) > 0;
+
+class _UnavailableTopPostsNotice extends StatelessWidget {
+  const _UnavailableTopPostsNotice();
+
+  @override
+  Widget build(BuildContext context) => Column(
+    key: const ValueKey('reader-summary-top-posts-unavailable'),
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text(
+        'Top posts',
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0,
+        ),
+      ),
+      const SizedBox(height: AppSpacing.sm),
+      const AppInlineProblem(
+        title: 'Verified Top posts unavailable',
+        message:
+            'This summary still has its narrative and citations, but no posts '
+            'have the verification required for the Top posts board.',
+      ),
+    ],
+  );
+}
+
+/// A day ranked under an earlier policy is outdated, not broken: the
+/// narrative and citations stay, the boards come back after a rebuild.
+class _RebuildRequiredTopPostsNotice extends StatelessWidget {
+  const _RebuildRequiredTopPostsNotice();
+
+  @override
+  Widget build(BuildContext context) => Column(
+    key: const ValueKey('reader-summary-top-posts-rebuild-required'),
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text(
+        'Top posts',
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0,
+        ),
+      ),
+      const SizedBox(height: AppSpacing.sm),
+      const AppInlineProblem(
+        title: 'Top posts are waiting for a rebuild',
+        message:
+            'This day was ranked under an earlier ranking policy. Its '
+            'narrative and citations are unchanged; Top posts and News '
+            'without rating appear again after the day is rebuilt.',
+      ),
+    ],
+  );
 }
 
 int _selectedPostCount(ReaderSummary summary) {

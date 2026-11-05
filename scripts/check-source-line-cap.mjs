@@ -4,10 +4,11 @@ const maxLoc = 1000;
 const violations = [];
 
 const sourceTestPatterns = [
-  "apps/**/*.{ts,tsx,js,jsx,mjs,cjs,dart,py}",
-  "libs/**/*.{ts,tsx,js,jsx,mjs,cjs,dart,py}",
-  "test/**/*.{ts,tsx,js,jsx,mjs,cjs,dart,py}",
-  "scripts/**/*.{ts,js,mjs,cjs,py}",
+  "apps/**/*.{ts,tsx,js,jsx,mjs,cjs,dart,py,sh}",
+  "libs/**/*.{ts,tsx,js,jsx,mjs,cjs,dart,py,sh}",
+  "test/**/*.{ts,tsx,js,jsx,mjs,cjs,dart,py,sh}",
+  "scripts/**/*.{ts,tsx,js,jsx,mjs,cjs,py,sh}",
+  "ops/**/*.{ts,tsx,js,jsx,mjs,cjs,py,sh}",
 ];
 
 const ignoredPathPatterns = [
@@ -32,20 +33,10 @@ const legacyLineCapDebt = new Map([
     "libs/monitoring/features/list-interest-source-daily-history/list-interest-source-daily-history.use-case.spec.ts",
     1055,
   ],
-  ["libs/monitoring/features/request-scan/request-scan.use-case.spec.ts", 1127],
-  [
-    "libs/monitoring/features/schedule-due-scans/schedule-due-scans.use-case.spec.ts",
-    1995,
-  ],
-  ["libs/summary/domain/aggregates/reader-summary.spec.ts", 1409],
   ["scripts/capture-durable-backend-e2e-loop.ts", 2348],
-  ["scripts/check-autonomous-monitoring-loop-smoke.ts", 1650],
   ["scripts/check-credential-secret-runtime-flow.mjs", 1122],
   ["scripts/check-delivery-prisma-persistence.ts", 1291],
   ["scripts/check-external-beta-evidence-runner.mjs", 4268],
-  ["scripts/check-ingestion-feed-prisma-persistence.ts", 1013],
-  ["scripts/check-live-multi-provider-summary-smoke.ts", 2465],
-  ["scripts/check-reader-summary-quality-dashboard.ts", 2272],
   ["scripts/check-reader-summary-rest-smoke.ts", 1199],
   ["scripts/check-release-artifact-evidence.mjs", 1062],
   ["scripts/check-security-final-sweep.mjs", 1332],
@@ -56,7 +47,6 @@ const legacyLineCapDebt = new Map([
   ["scripts/check-summary-feedback-hardening.mjs", 1328],
   ["scripts/external-beta-evidence-runner.mjs", 2113],
   ["scripts/lib/docker-backend-evidence-harness.mjs", 1174],
-  ["test/e2e/feed.items.list.e2e-spec.ts", 1117],
 ]);
 
 function normalizePath(file) {
@@ -64,7 +54,10 @@ function normalizePath(file) {
 }
 
 function lineCount(source) {
-  return source.split("\n").length;
+  if (source.length === 0) return 0;
+  return source.endsWith("\n")
+    ? source.slice(0, -1).split("\n").length
+    : source.split("\n").length;
 }
 
 function addViolation(file, message) {

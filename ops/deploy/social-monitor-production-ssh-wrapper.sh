@@ -13,7 +13,7 @@ read -r action sha first_authorization_value second_authorization_value \
   third_authorization_value extra <<< "$original_command"
 
 [[ -z ${extra:-} ]] || exit 64
-[[ ${action:-} =~ ^(plan|upload|deploy|disk-report|project-disk-cleanup|reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-production-history|reader-summary-daily-canonical-recovery-v4|reader-summary-daily-terminal-set-receipt-v1|reader-summary-daily-scan-terminal-preimage-c1|reader-summary-daily-scan-terminal-repair-c1|reader-summary-daily-delivery-c1-run|reader-summary-daily-delivery-c1-contain)$ ]] || exit 64
+[[ ${action:-} =~ ^(plan|upload|deploy|deploy-transition|disk-report|project-disk-cleanup|reader-summary-recover-missing-days|reader-summary-weekly-run|reader-summary-production-history|reader-summary-daily-canonical-recovery-v4|reader-summary-daily-terminal-set-receipt-v1|reader-summary-daily-scan-terminal-preimage-c1|reader-summary-daily-scan-terminal-repair-c1|reader-summary-daily-delivery-c1-run|reader-summary-daily-delivery-c1-contain)$ ]] || exit 64
 [[ ${sha:-} =~ ^[0-9a-f]{40}$ ]] || exit 64
 if [[ $action == reader-summary-daily-delivery-c1-run ]]; then
   [[ ${first_authorization_value:-} == "$action" && \

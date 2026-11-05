@@ -20,7 +20,7 @@ export const formatFeedProviderMetrics = (
         metric("Source lag", "GH Archive can lag by about an hour"),
         metric("Stars", metrics.stars),
         ...metrics.trendDeltas.map((delta) =>
-          metric(
+          delta.value === undefined ? undefined : metric(
             metrics.trendDeltas.length > 1 ? `Trend ${delta.window}` : "Trend",
             `+${delta.value}${delta.window.length === 0 ? "" : ` / ${delta.window}`}`,
           ),
@@ -87,7 +87,9 @@ export const summarizeFeedProviderMetrics = (
 
   switch (metrics.kind) {
     case "github_repository": {
-      const trend = `${formatSigned(metrics.trendingDelta.value)} stars / ${metrics.trendingDelta.window}`;
+      const trend = metrics.trendingDelta.value === undefined
+        ? undefined
+        : `${formatSigned(metrics.trendingDelta.value)} stars / ${metrics.trendingDelta.window}`;
       return compactText([
         trend,
         `${metrics.stars.toLocaleString("en-US")} total stars`,
@@ -129,8 +131,12 @@ export const summarizeFeedProviderMetrics = (
       ]);
     case "x_post":
       return compactText([
-        formatNamedNumber("likes", metrics.likes),
-        formatNamedNumber("reposts", metrics.reposts),
+        metrics.likes === undefined
+          ? undefined
+          : formatNamedNumber("likes", metrics.likes),
+        metrics.reposts === undefined
+          ? undefined
+          : formatNamedNumber("reposts", metrics.reposts),
         formatNamedNumber("replies", metrics.replies),
       ]);
   }

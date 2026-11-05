@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 
 const policyPath = 'ops/security/container-release-policy.json';
@@ -29,6 +30,12 @@ for (const required of ['FROM node:22', 'npm ci', 'npm run prisma:generate', 'np
   if (!dockerfile.includes(required)) {
     violations.push(`${policy.dockerfile}: missing required container build/runtime marker "${required}"`);
   }
+}
+
+// A root-owned checkout may have umask 077. npm runs as node in daily-runner,
+// so the manifests must be readable independently of build-context modes.
+if (!/^COPY --chmod=0644 package\.json package-lock\.json \.\/\s*$/m.test(dockerfile)) {
+  violations.push(`${policy.dockerfile}: copy npm manifests with explicit non-root-readable modes`);
 }
 
 const npmCiIndex = dockerfile.indexOf('RUN npm ci');
@@ -78,4 +85,7 @@ if (violations.length > 0) {
   process.exit(1);
 }
 
+execFileSync('python3', ['ops/deploy/runtime-source-permissions.test.py', '--local'], {
+  stdio: 'inherit',
+});
 console.log('Container release contract OK');

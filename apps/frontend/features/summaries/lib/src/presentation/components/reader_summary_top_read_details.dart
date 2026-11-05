@@ -3,11 +3,13 @@ import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 
 import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/summary_citation.dart';
+import '../view_models/reader_summary_top_posts_projection.dart';
 import 'reader_summary_citation_text.dart';
 import 'reader_summary_confirmation.dart';
 import 'reader_summary_external_link.dart';
 import 'reader_summary_provider_logo.dart';
 import 'reader_summary_reason_text.dart';
+import 'reader_summary_source_text.dart';
 
 class ReaderSummaryTopReadDetails extends StatelessWidget {
   const ReaderSummaryTopReadDetails({
@@ -80,6 +82,7 @@ class ReaderSummaryTopReadDetails extends StatelessWidget {
           const SizedBox(height: AppSpacing.xs),
           ReaderSummaryExternalLink(
             url: item.canonicalUrl!,
+            actionIdentity: 'card-${readerSummaryTopPostIdentity(item)}',
             onOpenUrl: onOpenUrl,
           ),
         ],
@@ -219,7 +222,7 @@ class _CitationDisclosure extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    ReaderSummarySourceText(
                       citation.sourceLabel,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -229,7 +232,7 @@ class _CitationDisclosure extends StatelessWidget {
                       ),
                     ),
                     if (snippet != null)
-                      Text(
+                      ReaderSummarySourceText(
                         snippet,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -238,6 +241,7 @@ class _CitationDisclosure extends StatelessWidget {
                     if (citation.canonicalUrl != null)
                       ReaderSummaryExternalLink(
                         url: citation.canonicalUrl!,
+                        actionIdentity: 'citation-${citation.id}',
                         onOpenUrl: onOpenUrl,
                       ),
                   ],

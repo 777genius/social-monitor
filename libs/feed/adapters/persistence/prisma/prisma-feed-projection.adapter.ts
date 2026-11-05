@@ -1,5 +1,9 @@
 import { withPrismaWriteRetry } from "@social-monitor/platform-persistence";
-import type { IdGenerator } from "@social-monitor/shared-kernel";
+import {
+  normalizeJsonObject,
+  type IdGenerator,
+  type JsonObject,
+} from "@social-monitor/shared-kernel";
 import type {
   FeedProjectionPort,
   ProjectFeedItemsCommand,
@@ -9,6 +13,8 @@ import type {
 import {
   assertGitHubTrendingDurableObservationCoherence,
   assertGitHubTrendingSnapshotBatchIntegrity,
+  buildSourceEngagementMetrics,
+  sourceMetadataWithoutEngagementMetrics,
 } from "@social-monitor/ingestion/domain";
 
 import type { PrismaFeedClient } from "./prisma-feed-client";
@@ -21,6 +27,10 @@ import {
   feedBodyPreviewForProjection,
   feedProviderMetadataForProjection,
 } from "../feed-projection-content";
+import {
+  deepMergeJson,
+  maxDate,
+} from "./prisma-source-engagement-projection-helpers";
 
 type TransactionalPrismaFeedClient = PrismaFeedClient & {
   readonly $transaction?: <Result>(
@@ -70,18 +80,6 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
         this.inSerializableTransaction(async (transaction) => {
           const projectedItems: ProjectedFeedItemRef[] = [];
           for (const plan of plans) {
-            const update = {
-              sourceItemId: plan.snapshot.id,
-              sourceBindingId: command.sourceBindingId,
-              providerKey: command.providerKey,
-              dedupeKey: plan.dedupeKey,
-              canonicalUrl: plan.snapshot.canonicalUrl,
-              title: plan.snapshot.title,
-              bodyPreview: plan.bodyPreview,
-              authorHandle: plan.snapshot.authorHandle ?? null,
-              publishedAt: plan.snapshot.publishedAt,
-              providerMetadata: plan.providerMetadata,
-            };
             const existingFeedItem = await transaction.feedItem.findFirst({
               where: {
                 tenantId: command.tenantId,
@@ -91,6 +89,43 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
                 status: "VISIBLE",
               },
             });
+            const engagementSnapshot =
+              (await transaction.sourceItemEngagementSnapshot?.findUnique({
+                where: {
+                  tenantId_workspaceId_sourceItemId: {
+                    tenantId: command.tenantId,
+                    workspaceId: command.workspaceId,
+                    sourceItemId: plan.snapshot.id,
+                  },
+                },
+              })) ?? null;
+            const authoritativeObservedAt = maxDate(
+              engagementSnapshot?.lastObservedAt ?? null,
+              plan.snapshot.ingestedAt,
+            );
+            const update = {
+              sourceItemId: plan.snapshot.id,
+              sourceBindingId: command.sourceBindingId,
+              providerKey: command.providerKey,
+              // Capturing a shared article enriches a post; it cannot replace
+              // that existing post's durable feed identity with another post's.
+              dedupeKey: existingFeedItem?.dedupeKey ?? plan.dedupeKey,
+              canonicalUrl: plan.snapshot.canonicalUrl,
+              title: plan.snapshot.title,
+              bodyPreview: plan.bodyPreview,
+              authorHandle: plan.snapshot.authorHandle ?? null,
+              providerMetadata:
+                existingFeedItem !== null &&
+                engagementSnapshot !== null &&
+                plan.snapshot.ingestedAt.getTime() <=
+                  engagementSnapshot.lastObservedAt.getTime()
+                  ? providerMetadataPreservingEngagement({
+                      providerKey: command.providerKey,
+                      incoming: plan.providerMetadata,
+                      current: existingFeedItem.providerMetadata,
+                    })
+                  : plan.providerMetadata,
+            };
             const feedItem =
               existingFeedItem !== null &&
               transaction.feedItem.update !== undefined
@@ -103,7 +138,7 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
                       tenantId_interestId_dedupeKey: {
                         tenantId: command.tenantId,
                         interestId: command.interestId,
-                        dedupeKey: plan.dedupeKey,
+                        dedupeKey: update.dedupeKey,
                       },
                     },
                     update,
@@ -113,6 +148,7 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
                       workspaceId: command.workspaceId,
                       interestId: command.interestId,
                       ...update,
+                      publishedAt: plan.snapshot.publishedAt,
                       observedAt: plan.snapshot.ingestedAt,
                       status: "VISIBLE",
                     },
@@ -149,7 +185,7 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
                   contentType: signalSample.contentType,
                   strength: signalSample.strength,
                   publishedAt: signalSample.publishedAt,
-                  observedAt: plan.snapshot.ingestedAt,
+                  observedAt: authoritativeObservedAt,
                 },
                 create: {
                   id:
@@ -164,7 +200,7 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
                   contentType: signalSample.contentType,
                   strength: signalSample.strength,
                   publishedAt: signalSample.publishedAt,
-                  observedAt: plan.snapshot.ingestedAt,
+                  observedAt: authoritativeObservedAt,
                 },
               });
             }
@@ -209,6 +245,35 @@ export class PrismaFeedProjectionAdapter implements FeedProjectionPort {
         }) as Promise<Result>);
   }
 }
+
+const providerMetadataPreservingEngagement = (params: {
+  readonly providerKey: string;
+  readonly incoming: JsonObject;
+  readonly current: unknown;
+}): JsonObject => {
+  const current = normalizeJsonObject(params.current);
+  const engagement = buildSourceEngagementMetrics({
+    providerKey: params.providerKey,
+    metadata: current,
+  });
+  if (
+    engagement.metrics === null ||
+    engagement.metricsFingerprint === undefined ||
+    !engagement.qualityFlags.metadataKindKnown ||
+    engagement.qualityFlags.invalidMetricValue ||
+    engagement.qualityFlags.conflictingAliases
+  ) {
+    return current;
+  }
+
+  return deepMergeJson(
+    sourceMetadataWithoutEngagementMetrics({
+      providerKey: params.providerKey,
+      metadata: params.incoming,
+    }),
+    engagement.providerMetadataPatch,
+  );
+};
 
 const isUniqueConflict = (error: unknown): boolean =>
   typeof error === "object" &&

@@ -1,3 +1,5 @@
+import { InMemoryOutboxAdapter } from '@social-monitor/monitoring/adapters/messaging/in-memory-outbox.adapter';
+import { DirectScanDispatchAdapter } from '@social-monitor/monitoring/adapters/queue/direct-scan-dispatch.adapter';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
 import { WorkerRuntime } from '@social-monitor/platform-worker';
@@ -126,12 +128,14 @@ async function main(): Promise<void> {
   const loop = new ScanSchedulerLoop(
     new ScheduleDueScansCommandHandler(
       new ScheduleDueScansUseCase(
-        bindings,
-        policies,
-        jobs,
-        new InMemoryScanQueueAdapter(queuePublisher, metrics),
-        new SequenceIdGenerator(),
-        new FixedClock(now),
+      bindings,
+      policies,
+      jobs,
+      new InMemoryScanQueueAdapter(queuePublisher, metrics),
+      new DirectScanDispatchAdapter(jobs, new InMemoryScanQueueAdapter(queuePublisher, metrics), new InMemoryOutboxAdapter()),
+      new SequenceIdGenerator(),
+      new FixedClock(now)
+
       ),
       metrics,
       runtime,

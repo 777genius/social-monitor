@@ -5,6 +5,8 @@ import type {
 } from "../entities/reader-summary-topic-recommendation";
 import type { ReaderSummaryTopicMapNode } from "../entities/reader-summary-topic-map";
 import type { TopRead } from "../entities/top-read";
+import { readerSummaryIndependentProviderFamilyCount } from
+  "../value-objects/reader-summary-provider-identity";
 import { uniqueNonEmpty } from "../value-objects/summary-text";
 import {
   isUsableReaderSummaryTopicRecommendationLabel,
@@ -302,7 +304,8 @@ const metricsForAggregate = (
     topReadCount,
     citationCount: citationIds.length,
     crossSourceSummaryCount: aggregate.signals.filter(
-      (signal) => signal.providerKeys.length > 1,
+      (signal) =>
+        readerSummaryIndependentProviderFamilyCount(signal.providerKeys) > 1,
     ).length,
     usefulSummaryCount: aggregate.signals.filter(
       (signal) => signal.usefulSummary,

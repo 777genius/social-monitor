@@ -12,7 +12,10 @@ import type {
   SourceProviderScanResult,
   SourceProviderValidationResult,
   SourceQuery,
+  XPromotionAuthorityRegistryPort,
 } from "../../../ports";
+import { DenyAllXPromotionAuthorityRegistry } from
+  "./static-x-promotion-authority-registry";
 import { readSourceItemRankingPlan } from "../source-item-ranking-config";
 import {
   readAdaptivePaginationPolicy,
@@ -66,6 +69,8 @@ export class XTwitterSourceProvider implements SourceProviderPort {
   constructor(
     private readonly collector: XDailyCollectorClientPort,
     private readonly clock: { now(): Date },
+    private readonly authorityRegistry: XPromotionAuthorityRegistryPort =
+      new DenyAllXPromotionAuthorityRegistry(),
   ) {}
 
   key(): string {
@@ -192,10 +197,17 @@ export class XTwitterSourceProvider implements SourceProviderPort {
         );
       } catch (error) {
         const failure = this.classifyError(error);
-        if (failure.kind === "rate_limited" && postsByExternalId.size > 0) {
+        if (
+          postsByExternalId.size > 0 &&
+          failure.retryable &&
+          (failure.kind === "rate_limited" || failure.kind === "unavailable")
+        ) {
+          const warningCode = failure.kind === "rate_limited"
+            ? "x-twitter.partial_rate_limit"
+            : "x-twitter.partial_provider_failure";
           warnings.push(
             redactSensitiveText(
-              `${searchQuery}: x-twitter.partial_rate_limit: ${failure.message}`,
+              `${searchQuery}: ${warningCode}: ${failure.message}`,
             ),
           );
           break;
@@ -208,7 +220,17 @@ export class XTwitterSourceProvider implements SourceProviderPort {
     const normalizedItems = [...postsByExternalId.values()]
       .sort((left, right) => compareXCollectedPosts(left.post, right.post))
       .map((item) =>
-        normalizeXPost(item.post, item.searchQuery, item.maxItems),
+        normalizeXPost(
+          item.post,
+          item.searchQuery,
+          item.maxItems,
+          item.post.authorHandle === undefined
+            ? undefined
+            : this.authorityRegistry.resolveVerifiedIdentity(
+                item.post.authorHandle,
+              ) ?? undefined,
+          this.clock.now(),
+        ),
       );
 
     const outputItemLimit = Math.max(

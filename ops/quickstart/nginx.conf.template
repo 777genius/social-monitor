@@ -1,0 +1,53 @@
+map $http_upgrade $selfhost_connection {
+  default upgrade;
+  '' close;
+}
+map $http_host $selfhost_host_allowed {
+  default 0;
+  ~*^(localhost|127\.0\.0\.1)(:[0-9]+)?$ 1;
+}
+
+server {
+  listen 80;
+  server_name _;
+  root /usr/share/nginx/html;
+  index index.html;
+  server_tokens off;
+  client_max_body_size 1m;
+  # Local owner credentials must not be usable through DNS rebinding or a
+  # cross-origin page, even if the development API permits that origin's CORS.
+  if ($selfhost_host_allowed = 0) { return 403; }
+  set $selfhost_origin_allowed 1;
+  if ($http_origin != "") { set $selfhost_origin_allowed 0; }
+  if ($http_origin = "$scheme://$http_host") { set $selfhost_origin_allowed 1; }
+  if ($selfhost_origin_allowed = 0) { return 403; }
+
+  # This image belongs to the explicitly localhost-only single-owner profile.
+  # The browser never receives the owner credential or the model credential.
+  proxy_set_header Authorization "Bearer ${SELFHOST_BEARER_TOKEN}";
+  proxy_set_header Host $host;
+  proxy_set_header X-Forwarded-Proto $scheme;
+  proxy_set_header Upgrade $http_upgrade;
+  proxy_set_header Connection $selfhost_connection;
+  proxy_http_version 1.1;
+  proxy_read_timeout 600s;
+
+  location = /ready {
+    access_log off;
+    add_header Cache-Control "no-store" always;
+    return 200 "ready\n";
+  }
+  location /api/ {
+    proxy_pass http://api:3000/;
+  }
+  location = /app/bootstrap {
+    proxy_pass http://api:3000/app/bootstrap;
+  }
+  location /socket.io/ {
+    proxy_pass http://api:3000;
+  }
+  location / {
+    add_header Cache-Control "no-cache" always;
+    try_files $uri $uri/ /index.html;
+  }
+}

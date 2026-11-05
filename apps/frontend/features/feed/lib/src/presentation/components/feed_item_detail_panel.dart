@@ -1,7 +1,4 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
@@ -10,6 +7,7 @@ import '../../domain/value_objects/feed_provider_metadata.dart';
 import '../formatters/feed_time_formatters.dart';
 import '../view_models/feed_provider_visuals.dart';
 import 'feed_signal_metric_strip.dart';
+import 'feed_source_link.dart';
 
 class FeedItemDetailPanel extends StatelessWidget {
   const FeedItemDetailPanel({
@@ -17,11 +15,13 @@ class FeedItemDetailPanel extends StatelessWidget {
     required this.item,
     required this.isLoading,
     required this.failure,
+    this.onOpenSource,
   });
 
   final FeedItem item;
   final bool isLoading;
   final AppFailure? failure;
+  final Future<bool> Function(Uri)? onOpenSource;
 
   @override
   Widget build(BuildContext context) {
@@ -30,6 +30,12 @@ class FeedItemDetailPanel extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _DetailHero(item: item, visuals: visuals),
+        const SizedBox(height: AppSpacing.md),
+        FeedSourceLink(
+          providerKey: item.providerKey,
+          canonicalUrl: item.canonicalUrl,
+          onOpenSource: onOpenSource,
+        ),
         if (isLoading) ...[
           const SizedBox(height: AppSpacing.md),
           const AppInlineProblem(
@@ -81,18 +87,6 @@ class FeedItemDetailPanel extends StatelessWidget {
         ],
         const SizedBox(height: AppSpacing.md),
         _DetailSection(title: 'Body preview', child: Text(item.bodyPreview)),
-        const SizedBox(height: AppSpacing.md),
-        AppInlineProblem(
-          title: 'Source link',
-          message: item.canonicalUrl,
-          tone: AppProblemTone.neutral,
-          actionLabel: _canCopyUrl(item.canonicalUrl) ? 'Copy URL' : null,
-          onAction: _canCopyUrl(item.canonicalUrl)
-              ? () => unawaited(
-                  Clipboard.setData(ClipboardData(text: item.canonicalUrl)),
-                )
-              : null,
-        ),
         const SizedBox(height: AppSpacing.md),
         _DetailSection(
           title: 'Provenance',
@@ -335,11 +329,4 @@ class _DetailRow extends StatelessWidget {
       ),
     );
   }
-}
-
-bool _canCopyUrl(String value) {
-  final uri = Uri.tryParse(value);
-  return uri != null &&
-      (uri.scheme == 'http' || uri.scheme == 'https') &&
-      uri.host.isNotEmpty;
 }

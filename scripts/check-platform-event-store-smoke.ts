@@ -42,6 +42,8 @@ async function main(): Promise<void> {
     causationId: null,
     createdAt: new Date('2026-06-16T00:00:00.000Z'),
     publishedAt: null,
+    publishAttempts: 0,
+    lastError: null,
   });
 
   const publisher = new InMemoryEventPublisher();
@@ -70,6 +72,8 @@ async function main(): Promise<void> {
     causationId: null,
     createdAt: new Date('2026-06-16T00:01:00.000Z'),
     publishedAt: null,
+    publishAttempts: 0,
+    lastError: null,
   });
 
   const failingDispatcher = new OutboxDispatcher(new PrismaOutboxStoreAdapter(prisma, clock), {
@@ -125,6 +129,19 @@ class FakePrismaEventStoreClient implements PrismaEventStoreClient {
           left.id.localeCompare(right.id)
         ))
         .slice(0, args.take),
+    updateMany: async ({ where, data }) => {
+      const existing = this.outboxEvents.get(where.id);
+      if (existing === undefined || existing.messageKind !== where.messageKind ||
+        existing.status !== where.status) return { count: 0 };
+      this.outboxEvents.set(existing.id, {
+        ...existing,
+        status: data.status ?? existing.status,
+        publishAttempts: existing.publishAttempts + (data.publishAttempts?.increment ?? 0),
+        lastError: data.lastError === undefined ? existing.lastError : data.lastError,
+        publishedAt: data.publishedAt === undefined ? existing.publishedAt : data.publishedAt,
+      });
+      return { count: 1 };
+    },
     update: async (args) => {
       const existing = this.outboxEvents.get(args.where.id);
       if (!existing) {
@@ -133,7 +150,9 @@ class FakePrismaEventStoreClient implements PrismaEventStoreClient {
 
       const record: PrismaEventOutboxRecord = {
         ...existing,
-        status: args.data.status,
+        status: args.data.status ?? existing.status,
+        publishAttempts: existing.publishAttempts + (args.data.publishAttempts?.increment ?? 0),
+        lastError: args.data.lastError === undefined ? existing.lastError : args.data.lastError,
         publishedAt: args.data.publishedAt ?? null,
       };
       this.outboxEvents.set(record.id, record);

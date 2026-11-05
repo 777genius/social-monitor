@@ -2,6 +2,7 @@ import {
   normalizeJsonObject,
   type JsonObject,
 } from '@social-monitor/shared-kernel';
+import { assertGitHubTrendingArchiveBatchIntegrity, isGitHubTrendingArchivedObservation } from './github-trending-archive';
 
 export const GITHUB_TRENDING_PAGE_PROVIDER_KEY = 'github-trending-page';
 export const GITHUB_TRENDING_PAGE_REPOSITORY_METADATA_KIND =
@@ -32,6 +33,7 @@ export type GitHubTrendingPageRepositoryMetadataInput = {
     readonly scanJobId: string;
     readonly fetchStartedAt: Date;
     readonly checkedAt: Date;
+    readonly snapshotContentHash: string;
     readonly source: 'github_trending_html' | 'fixture_github_trending_html';
   };
 };
@@ -53,6 +55,7 @@ export type GitHubTrendingPageRepositoryMetadata = {
     readonly scanJobId: string;
     readonly fetchStartedAt: string;
     readonly checkedAt: string;
+    readonly snapshotContentHash: string;
     readonly source: string;
   };
 };
@@ -81,6 +84,7 @@ export const githubTrendingPageRepositoryMetadata = (
       scanJobId: input.trending.scanJobId,
       fetchStartedAt: input.trending.fetchStartedAt.toISOString(),
       checkedAt: input.trending.checkedAt.toISOString(),
+      snapshotContentHash: input.trending.snapshotContentHash,
       source: input.trending.source,
     },
   });
@@ -104,6 +108,7 @@ export const parseGitHubTrendingPageRepositoryMetadata = (
   const scanJobId = readString(trending.scanJobId);
   const fetchStartedAt = readExactIsoDateString(trending.fetchStartedAt);
   const checkedAt = readExactIsoDateString(trending.checkedAt);
+  const snapshotContentHash = readSha256(trending.snapshotContentHash);
   const window = readWindow(trending.window);
   const totalStars = readNonNegativeInteger(repository.totalStars);
   const forksCount = readNonNegativeInteger(repository.forksCount);
@@ -116,6 +121,7 @@ export const parseGitHubTrendingPageRepositoryMetadata = (
     scanJobId === undefined ||
     fetchStartedAt === undefined ||
     checkedAt === undefined ||
+    snapshotContentHash === undefined ||
     window === undefined ||
     totalStars === undefined ||
     forksCount === undefined ||
@@ -143,6 +149,7 @@ export const parseGitHubTrendingPageRepositoryMetadata = (
       scanJobId,
       fetchStartedAt,
       checkedAt,
+      snapshotContentHash,
       source: readString(trending.source) ?? 'unknown',
     },
   };
@@ -164,12 +171,17 @@ type GitHubSnapshotEnvelope = {
   readonly checkedAt: string;
   readonly publishedAt: string;
   readonly observedAt: string;
+  readonly snapshotContentHash: string;
 };
 
 export const assertGitHubTrendingSnapshotBatchIntegrity = (params: {
   readonly providerKey: string;
   readonly items: readonly GitHubSnapshotCandidate[];
 }): void => {
+  if (params.items.some(item => isGitHubTrendingArchivedObservation(item.metadata))) {
+    assertGitHubTrendingArchiveBatchIntegrity(params);
+    return;
+  }
   const hasGitHubMetadata = params.items.some(
     (item) =>
       item.metadata?.kind === GITHUB_TRENDING_PAGE_REPOSITORY_METADATA_KIND,
@@ -207,7 +219,8 @@ export const assertGitHubTrendingSnapshotBatchIntegrity = (params: {
         envelope.fetchStartedAt !== first.fetchStartedAt ||
         envelope.checkedAt !== first.checkedAt ||
         envelope.publishedAt !== first.publishedAt ||
-        envelope.observedAt !== first.observedAt,
+        envelope.observedAt !== first.observedAt ||
+        envelope.snapshotContentHash !== first.snapshotContentHash,
     ) ||
     ranks.some((rank, index) => rank !== index + 1) ||
     new Set(ranks).size !== ranks.length ||
@@ -317,6 +330,7 @@ const assertGitHubTrendingSnapshotIntegrity = (
     checkedAt: metadata.trending.checkedAt,
     publishedAt: publishedAt.toISOString(),
     observedAt: observedAt.toISOString(),
+    snapshotContentHash: metadata.trending.snapshotContentHash,
   };
 };
 
@@ -333,6 +347,13 @@ const readString = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim().length > 0
     ? value.trim()
     : undefined;
+
+const readSha256 = (value: unknown): string | undefined => {
+  const text = readString(value);
+  return text !== undefined && /^[a-f0-9]{64}$/u.test(text)
+    ? text
+    : undefined;
+};
 
 const readExactIsoDateString = (value: unknown): string | undefined => {
   const text = readString(value);

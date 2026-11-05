@@ -1,6 +1,8 @@
 part 'summary_reader_quality_api_dto.dart';
+part 'reader_post_promotion_api_dto.dart';
 part 'reader_summary_content_api_dto.dart';
 part 'reader_summary_coverage_api_dto.dart';
+part 'workspace_summary_api_dto.dart';
 
 final class SummaryCitationApiDto {
   const SummaryCitationApiDto({
@@ -55,13 +57,19 @@ final class SummaryStoryApiDto {
     required this.summary,
     required this.topicCount,
     required this.providerCount,
-    required this.citationIds,
+    this.citationIds = const [],
+    this.storyClusterId,
+    this.interestIds = const [],
+    this.providerKeys = const [],
   });
 
+  final String? storyClusterId;
   final String title;
   final String summary;
   final int topicCount;
   final int providerCount;
+  final List<String> interestIds;
+  final List<String> providerKeys;
   final List<String> citationIds;
 }
 
@@ -69,7 +77,7 @@ final class RepeatedSignalApiDto {
   const RepeatedSignalApiDto({
     required this.title,
     required this.interestIds,
-    required this.citationIds,
+    this.citationIds = const [],
   });
 
   final String title;
@@ -79,6 +87,15 @@ final class RepeatedSignalApiDto {
 
 final class TopReadApiDto {
   const TopReadApiDto({
+    this.displayHeadline,
+    this.capturedSource,
+    this.summary,
+    this.storyClusterId,
+    this.cardKind,
+    this.relationId,
+    this.relationMarkerIds = const [],
+    this.targetStoryClusterId,
+    this.promotionAttestation,
     required this.title,
     required this.providerKey,
     required this.reason,
@@ -103,6 +120,15 @@ final class TopReadApiDto {
     this.previewMedia,
   });
 
+  final Object? displayHeadline;
+  final Object? capturedSource;
+  final String? summary;
+  final String? storyClusterId;
+  final String? cardKind;
+  final String? relationId;
+  final List<String> relationMarkerIds;
+  final String? targetStoryClusterId;
+  final ReaderPostPromotionAttestationApiDto? promotionAttestation;
   final String title;
   final String providerKey;
   final String? providerName;
@@ -253,14 +279,18 @@ final class SummaryPeriodApiDto {
 
 final class SummaryWindowApiDto {
   const SummaryWindowApiDto({
+    this.id,
     required this.label,
     required this.startedAt,
     required this.endedAt,
+    this.ingestionCutoff,
   });
 
+  final String? id;
   final String label;
   final DateTime startedAt;
   final DateTime endedAt;
+  final DateTime? ingestionCutoff;
 }
 
 final class ReaderSummaryApiDto {
@@ -271,12 +301,15 @@ final class ReaderSummaryApiDto {
     required this.userId,
     required this.content,
     required this.topStories,
+    this.storyClusterIds = const [],
+    this.storyClusterAuthorities = const [],
     required this.repeatedSignals,
     required this.citations,
     required this.period,
     this.generatedAt,
     required this.sourceWindow,
     required this.freshnessLabel,
+    this.freshnessReason,
     required this.isDegraded,
     this.coverage,
   });
@@ -287,26 +320,31 @@ final class ReaderSummaryApiDto {
   final String? userId;
   final ReaderSummaryContentApiDto content;
   final List<SummaryStoryApiDto> topStories;
+  final List<String> storyClusterIds;
+  final List<ReaderSummaryStoryClusterAuthorityApiDto> storyClusterAuthorities;
   final List<RepeatedSignalApiDto> repeatedSignals;
   final List<SummaryCitationApiDto> citations;
   final SummaryPeriodApiDto period;
   final DateTime? generatedAt;
   final SummaryWindowApiDto sourceWindow;
   final String freshnessLabel;
+
+  /// Wire reason of a stale summary, e.g. `ranking_policy_changed`.
+  final String? freshnessReason;
   final bool isDegraded;
   final ReaderSummaryCoverageApiDto? coverage;
 }
 
-final class WorkspaceSummaryApiDto {
-  const WorkspaceSummaryApiDto({
-    this.current,
-    this.availablePeriods = const [],
-    this.availablePeriodsAreComplete = false,
+final class ReaderSummaryStoryClusterAuthorityApiDto {
+  const ReaderSummaryStoryClusterAuthorityApiDto({
+    required this.id,
+    required this.feedItemIds,
+    required this.providerKeys,
   });
 
-  final ReaderSummaryApiDto? current;
-  final List<SummaryPeriodApiDto> availablePeriods;
-  final bool availablePeriodsAreComplete;
+  final String id;
+  final List<String> feedItemIds;
+  final List<String> providerKeys;
 }
 
 final class ReaderSummaryJobApiDto {

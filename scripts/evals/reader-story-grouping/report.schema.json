@@ -1,0 +1,120 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 2
+    },
+    "mode": {
+      "enum": [
+        "OFFLINE_DETERMINISTIC_NO_VERIFIER",
+        "OFFLINE_CAPTURED_REGRESSION",
+        "LIVE_IMPORTED"
+      ]
+    },
+    "liveStatus": {
+      "enum": [
+        "NOT_RUN",
+        "IMPORTED_ATTESTED"
+      ]
+    },
+    "labelSealSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "totals": {
+      "type": "object"
+    },
+    "requestCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "metrics": {
+      "type": "object"
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "semanticRelation",
+          "productAction",
+          "scored",
+          "retrieval",
+          "model",
+          "confidence",
+          "gate",
+          "relationTogether",
+          "publicationTogether",
+          "posts"
+        ]
+      }
+    },
+    "clusterCases": {
+      "type": "array"
+    },
+    "captureSourceRevision": {
+      "const": "e83b577f85d3f287055dc0a6154bef6a35b50bd2"
+    },
+    "evaluatedSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "revision": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "treeSha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "worktree": {
+          "const": "clean"
+        }
+      },
+      "required": [
+        "revision",
+        "treeSha",
+        "worktree"
+      ]
+    },
+    "manifestSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "replaySha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "captureSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "ownedFiles": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      }
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "mode",
+    "liveStatus",
+    "labelSealSha256",
+    "totals",
+    "requestCount",
+    "metrics",
+    "cases",
+    "clusterCases",
+    "captureSourceRevision",
+    "evaluatedSource",
+    "manifestSha256",
+    "replaySha256",
+    "captureSha256",
+    "ownedFiles"
+  ],
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

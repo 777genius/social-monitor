@@ -1,3 +1,4 @@
+import { READER_SUMMARY_NATIVE_V3_PREFIX } from "../../../application/contracts/reader-summary-native-owner";
 import {
   runWithSystemDatabaseAccess,
   withPrismaWriteRetry,
@@ -5,7 +6,8 @@ import {
 import type { TenantId, WorkspaceId } from "@social-monitor/shared-kernel";
 
 import type { ReaderSummaryJob } from "../../../domain";
-import type { ReaderSummaryJobRepositoryPort } from "../../../ports";
+import type { ReaderSummaryJobRepositoryPort,
+  ReaderSummaryJobPollingRepositoryPort } from "../../../ports";
 import type { PrismaSummaryClient } from "./prisma-summary-client";
 import {
   readerSummaryJobFromPrisma,
@@ -13,7 +15,7 @@ import {
   readerSummaryScopeToPrisma,
 } from "./prisma-reader-summary-records";
 
-export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobRepositoryPort {
+export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobPollingRepositoryPort {
   constructor(private readonly prisma: PrismaSummaryClient) {}
 
   async save(job: ReaderSummaryJob): Promise<void> {
@@ -41,6 +43,15 @@ export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobReposit
           failedAt: snapshot.failedAt ?? null,
           readerSummaryArtifactId: snapshot.readerSummaryId ?? null,
           failureReason: snapshot.failureReason ?? null,
+          terminalFailureCode: snapshot.terminalFailureCode ?? null,
+          selectionStrategy: snapshot.selectionStrategy ?? null,
+          preparationConfig: snapshot.preparationConfig ?? undefined,
+          preparationManifest: snapshot.preparationManifest ?? undefined,
+          preparationManifestSha256: snapshot.preparationManifestSha256 ?? null,
+          preparationCutoffAt: snapshot.preparationCutoffAt ?? null,
+          preparationDeadlineAt: snapshot.preparationDeadlineAt ?? null,
+          preparationNextCheckAt: snapshot.preparationNextCheckAt ?? null,
+          preparationReadyAt: snapshot.preparationReadyAt ?? null,
         },
         create: {
           id: snapshot.id,
@@ -62,6 +73,15 @@ export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobReposit
           failedAt: snapshot.failedAt ?? null,
           readerSummaryArtifactId: snapshot.readerSummaryId ?? null,
           failureReason: snapshot.failureReason ?? null,
+          terminalFailureCode: snapshot.terminalFailureCode ?? null,
+          selectionStrategy: snapshot.selectionStrategy ?? null,
+          preparationConfig: snapshot.preparationConfig ?? undefined,
+          preparationManifest: snapshot.preparationManifest ?? undefined,
+          preparationManifestSha256: snapshot.preparationManifestSha256 ?? null,
+          preparationCutoffAt: snapshot.preparationCutoffAt ?? null,
+          preparationDeadlineAt: snapshot.preparationDeadlineAt ?? null,
+          preparationNextCheckAt: snapshot.preparationNextCheckAt ?? null,
+          preparationReadyAt: snapshot.preparationReadyAt ?? null,
         },
       }),
     );
@@ -80,7 +100,9 @@ export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobReposit
       },
     });
 
-    return record === null ? null : readerSummaryJobFromPrisma(record);
+    return record === null ? null : readerSummaryJobFromPrisma(
+      await this.withExactPreparationTimes(record),
+    );
   }
 
   async findByIdempotencyKey(params: {
@@ -96,23 +118,34 @@ export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobReposit
       },
     });
 
-    return record === null ? null : readerSummaryJobFromPrisma(record);
+    return record === null ? null : readerSummaryJobFromPrisma(
+      await this.withExactPreparationTimes(record),
+    );
   }
 
   async findRequested(
     params: Parameters<ReaderSummaryJobRepositoryPort["findRequested"]>[0],
   ): Promise<readonly ReaderSummaryJob[]> {
     assertOptionalScopeIsComplete(params);
-    const findRequested = () =>
-      this.prisma.readerSummaryJob.findMany({
+    const findRequested = async () => {
+      const records = await this.prisma.readerSummaryJob.findMany({
         where: {
           tenantId: params.tenantId,
           workspaceId: params.workspaceId,
+          NOT: { idempotencyKey: { startsWith: READER_SUMMARY_NATIVE_V3_PREFIX } },
           status: "REQUESTED",
+          ...(params.now === undefined ? {} : {
+            OR: [
+              { preparationNextCheckAt: null },
+              { preparationNextCheckAt: { lte: params.now } },
+            ] as const,
+          }),
         },
         orderBy: [{ requestedAt: "asc" }, { id: "asc" }],
         take: params.limit,
       });
+      return this.withExactPreparationTimesForRecords(records);
+    };
     const records =
       params.tenantId === undefined
         ? await runWithSystemDatabaseAccess(
@@ -122,6 +155,87 @@ export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobReposit
         : await findRequested();
 
     return records.map((record) => readerSummaryJobFromPrisma(record));
+  }
+
+  async findDueForPolling(
+    params: Parameters<ReaderSummaryJobPollingRepositoryPort["findDueForPolling"]>[0],
+  ): Promise<readonly ReaderSummaryJob[]> {
+    assertOptionalScopeIsComplete(params);
+    const findDue = async () => {
+      const records = await this.prisma.readerSummaryJob.findMany({
+        where: {
+          tenantId: params.tenantId,
+          workspaceId: params.workspaceId,
+          NOT: { idempotencyKey: { startsWith: READER_SUMMARY_NATIVE_V3_PREFIX } },
+          OR: [
+            { status: "REQUESTED", OR: [
+              { preparationNextCheckAt: null },
+              { preparationNextCheckAt: { lte: params.now } },
+            ] },
+            { status: "RUNNING", selectionStrategy: "jev_primary_v3",
+              startedAt: { lt: params.staleRunningStartedBefore } },
+          ],
+        },
+        orderBy: [{ requestedAt: "asc" }, { id: "asc" }],
+        take: params.limit,
+      });
+      return this.withExactPreparationTimesForRecords(records);
+    };
+    const records = params.tenantId === undefined
+      ? await runWithSystemDatabaseAccess(
+        "cross-tenant reader summary job polling", findDue)
+      : await findDue();
+    return records.map((record) => readerSummaryJobFromPrisma(record));
+  }
+
+  private async withExactPreparationTimes<T extends {
+    readonly id: string;
+    readonly tenantId: string;
+    readonly workspaceId: string;
+  }>(record: T): Promise<T & {
+    readonly preparationCutoffAtText?: string | null;
+    readonly preparationDeadlineAtText?: string | null;
+  }> {
+    return (await this.withExactPreparationTimesForRecords([record]))[0]!;
+  }
+
+  private async withExactPreparationTimesForRecords<T extends {
+    readonly id: string;
+    readonly tenantId: string;
+    readonly workspaceId: string;
+  }>(records: readonly T[]): Promise<readonly (T & {
+    readonly preparationCutoffAtText?: string | null;
+    readonly preparationDeadlineAtText?: string | null;
+  })[]> {
+    if (records.length === 0 || typeof this.prisma.$queryRaw !== "function") {
+      return records;
+    }
+    const ids = records.map((record) => record.id);
+    const tenantIds = records.map((record) => record.tenantId);
+    const workspaceIds = records.map((record) => record.workspaceId);
+    const exact = await this.prisma.$queryRaw<readonly {
+      readonly id: string;
+      readonly preparation_cutoff_at: string | null;
+      readonly preparation_deadline_at: string | null;
+    }[]>`
+      SELECT id::text,
+        CASE WHEN preparation_cutoff_at IS NULL THEN NULL ELSE
+          to_char(preparation_cutoff_at AT TIME ZONE 'UTC',
+            'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') END AS preparation_cutoff_at,
+        CASE WHEN preparation_deadline_at IS NULL THEN NULL ELSE
+          to_char(preparation_deadline_at AT TIME ZONE 'UTC',
+            'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') END AS preparation_deadline_at
+      FROM reader_summary_jobs WHERE id=ANY(${ids}::uuid[])
+        AND tenant_id=ANY(${tenantIds}::uuid[])
+        AND workspace_id=ANY(${workspaceIds}::uuid[])
+    `;
+    const byId = new Map(exact.map((row) => [row.id, row] as const));
+    return records.map((record) => {
+      const row = byId.get(record.id);
+      return row === undefined ? record : { ...record,
+        preparationCutoffAtText: row.preparation_cutoff_at,
+        preparationDeadlineAtText: row.preparation_deadline_at };
+    });
   }
 
   async claimForExecution(
@@ -138,11 +252,13 @@ export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobReposit
     if (record === null) {
       return null;
     }
+    if (record.selectionStrategy === "jev_primary_v3") return null;
     const staleRunning =
       record.status === "RUNNING" &&
       record.startedAt !== null &&
       record.startedAt < params.staleRunningStartedBefore;
     if (
+      (record.status === "FAILED" && record.terminalFailureCode != null) ||
       record.status !== "REQUESTED" &&
       record.status !== "FAILED" &&
       !staleRunning
@@ -160,6 +276,7 @@ export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobReposit
           ...(record.status === "RUNNING" && record.startedAt !== null
             ? { startedAt: record.startedAt }
             : {}),
+          ...(record.status === "FAILED" ? { terminalFailureCode: null } : {}),
         },
         data: {
           status: "RUNNING",
@@ -174,6 +291,8 @@ export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobReposit
           failedAt: null,
           readerSummaryArtifactId: null,
           failureReason: null,
+          terminalFailureCode: null,
+          preparationNextCheckAt: null,
         },
       }),
     );
@@ -216,6 +335,9 @@ export class PrismaReaderSummaryJobRepository implements ReaderSummaryJobReposit
           failedAt: snapshot.failedAt ?? null,
           readerSummaryArtifactId: snapshot.readerSummaryId ?? null,
           failureReason: snapshot.failureReason ?? null,
+          terminalFailureCode: snapshot.terminalFailureCode ?? null,
+          preparationNextCheckAt: snapshot.preparationNextCheckAt ?? null,
+          preparationReadyAt: snapshot.preparationReadyAt ?? null,
         },
       }),
     );

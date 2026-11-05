@@ -1,56 +1,118 @@
 #!/usr/bin/env node
 
-import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
+import { resolvePinnedCodexBinaryPath } from "./pinned-codex-native-binary.mjs";
+import { withTrustedCodexWorkerUsage } from "./codex-worker-cli-usage.mjs";
+import { createAssessmentCliLifecycle } from "./assessment-cli-lifecycle.mjs";
+import { createMimoAppServerCustody } from "./mimo-app-server-custody.mjs";
+import { loadInstalledSubscriptionRuntimeCli, loadInstalledMimoAppServerProcess } from "./installed-runtime-modules.mjs";
+import { createAssessmentProgress } from "./assessment-cli-progress.mjs";
+import { subscriptionRuntimeFailureDetails } from "./subscription-runtime-failure-details.mjs";
+import { readMimoApiKeyFile } from "./mimo-key-file.mjs";
 
 import {
   admitSubscriptionRuntimeWrapperRequest,
+  readerPromotionV2CanaryActivationCapability,
+  readerPromotionV2CanaryPurpose,
+  readerPromotionV2CanaryOutputSchema,
+  readerPromotionV2CanarySchemaName,
   subscriptionOnlyCodexEnvironment,
 } from "./subscription-runtime-purpose-model-policy.mjs";
 import { loadCodexAuthPoolFromEnv } from "./codex-auth-pool-manifest.mjs";
 import {
   codexAuthPoolExecutionPolicy,
   codexAuthPoolTaskHash,
+  describeCodexAuthPoolRunFailure,
   orderCodexAuthAccountsForTask,
 } from "./codex-auth-pool-routing.mjs";
 
+let lifecycle;
+let progress = process.env.SOCIAL_MONITOR_ASSESSMENT_DEADLINE_MS === undefined ? undefined :
+  createAssessmentProgress({ write: (line) => process.stderr.write(line),
+    now: () => globalThis.performance.now(), remaining: () => lifecycle?.remaining() ?? 0 });
+lifecycle = createAssessmentCliLifecycle({
+  parentDeadline: process.env.SOCIAL_MONITOR_ASSESSMENT_DEADLINE_MS,
+  mark: (...args) => progress?.mark(...args),
+});
+process.exitCode = await lifecycle.runCli(async () => {
 const argv = process.argv.slice(2);
-const provider = requiredArgument(argv, "--provider");
-const inputPath = requiredArgument(argv, "--input");
-const requestedModel = optionalArgument(argv, "--model");
+const canaryActivationFlag = "--activate-reader-promotion-v2-canary";
+const canaryActivationRequested = argv.includes(canaryActivationFlag);
+const runtimeArgv = argv.filter((argument) => argument !== canaryActivationFlag);
+const provider = requiredArgument(runtimeArgv, "--provider");
+const inputPath = requiredArgument(runtimeArgv, "--input");
+const requestedModel = optionalArgument(runtimeArgv, "--model");
 const requestedReasoningEffort =
   process.env.AGENT_RUNTIME_REASONING_EFFORT?.trim() || undefined;
-const request = JSON.parse(await readFile(inputPath, "utf8"));
-const pinnedCodexBinaryPath = join(
-  process.cwd(),
-  "node_modules",
-  ".bin",
-  "codex",
-);
+const request = JSON.parse(await lifecycle.work(() => readFile(inputPath, "utf8")));
 const admission = admitSubscriptionRuntimeWrapperRequest({
   request,
   provider,
   model: requestedModel,
   reasoningEffort: requestedReasoningEffort,
-});
-await writeFile(inputPath, JSON.stringify(admission.canonicalRequest), "utf8");
+}, canaryActivationRequested
+  ? readerPromotionV2CanaryActivationCapability
+  : undefined);
+const isMimoSummary = admission.profile.modelBackend === "xiaomi-mimo-token-plan";
+const createMimoPresentationCompletionValidator = isMimoSummary &&
+  admission.canonicalRequest.context.purpose === "social_monitor.reader_summary.promotion_presentation.v3"
+  ? (await lifecycle.work(() => import(new URL(
+    "../../../dist/apps/agent-runtime/src/mimo-presentation-completion.js", import.meta.url,
+  ).href))).createMimoPresentationCompletionValidator : undefined;
+const isSourceContentAssessment = admission.canonicalRequest.context.purpose === "social_monitor.relevance.assess_source_content.v1";
+lifecycle.configure(isSourceContentAssessment || isMimoSummary, admission.canonicalRequest.timeoutMs,
+  isMimoSummary ? Math.min(20_000, Math.max(1, Math.floor(admission.canonicalRequest.timeoutMs / 2))) : 20_000);
+if (isSourceContentAssessment) {
+  progress ??= createAssessmentProgress({ write: (line) => process.stderr.write(line),
+    now: () => globalThis.performance.now(), remaining: lifecycle.remaining });
+  progress.mark("setup", "started");
+}
+const isReaderPromotionV2Canary = admission.canonicalRequest.context.purpose === readerPromotionV2CanaryPurpose;
+const assessmentOutputSchemas = isSourceContentAssessment
+  ? sourceContentAssessmentOutputSchemas(admission.canonicalRequest.task)
+  : undefined;
+await lifecycle.work(() => writeFile(inputPath, JSON.stringify(admission.canonicalRequest), "utf8"));
 
-const { FileBackendCodexWorker } = await import(
+const { FileBackendCodexWorker, NodeProcessRunner } = await lifecycle.work(() => import(
   "@vioxen/subscription-runtime/worker-codex"
-);
-const { FileBackendCodexSafeExecutor } = await import(
+));
+const { createOneShotExecutor } = await lifecycle.work(() => import(
   "@vioxen/subscription-runtime/worker-codex"
-);
-const { SubscriptionWorkerError } = await import(
+));
+const { SubscriptionWorkerError } = await lifecycle.work(() => import(
   "@vioxen/subscription-runtime/worker-core"
-);
-const { runSubscriptionAgentTaskCli } = await import(
-  "../../../node_modules/@vioxen/subscription-runtime/dist/worker-local/agent-task-runner-cli.js"
-);
+));
+const { runSubscriptionAgentTaskCli } = await lifecycle.work(loadInstalledSubscriptionRuntimeCli);
+const mimoRuntime = isMimoSummary
+  ? await lifecycle.work(() => import("@vioxen/subscription-runtime-mimo/worker-codex"))
+  : undefined;
+if (isMimoSummary && typeof mimoRuntime?.createOneShotExecutor !== "function") {
+  throw new Error("MiMo Codex model backend is not installed");
+}
+const mimoProcess = isMimoSummary ? await lifecycle.work(loadInstalledMimoAppServerProcess) : undefined;
+const mimoCustody = mimoProcess ? createMimoAppServerCustody({
+  signal: lifecycle.signal,
+  spawnProcess: mimoProcess.spawnCodexAppServerProcess,
+  signalChild: mimoProcess.signalCodexAppServerChildGroup,
+}) : undefined;
+const mimoApiKey = isMimoSummary
+  ? await lifecycle.work(() => readMimoApiKeyFile(process.env.AGENT_RUNTIME_MIMO_API_KEY_FILE))
+  : undefined;
 
-const authPool = await loadCodexAuthPoolFromEnv(process.env);
+const authPool = isMimoSummary ? undefined :
+  await lifecycle.work(() => loadCodexAuthPoolFromEnv(process.env));
+progress?.mark("setup", "completed");
 
 const createStrictCodexWorker = (input) => {
+  lifecycle.checkpoint();
   if (input.provider !== admission.profile.provider) {
     throw new Error("Agent runtime provider conflicts with purpose policy");
   }
@@ -60,26 +122,401 @@ const createStrictCodexWorker = (input) => {
     throw new Error("Agent runtime model conflicts with purpose policy");
   }
 
+  if (isMimoSummary) {
+    return createMimoSummaryWorker({ input, model });
+  }
+
   if (authPool !== undefined) {
-    return createPooledCodexWorker({ input, model, authPool });
+    if (isReaderPromotionV2Canary) {
+      return createReaderPromotionV2CanaryWorker({ input, model, authPool });
+    }
+    return createPooledCodexWorker({ input, model, authPool, outputSchemas: assessmentOutputSchemas });
+  }
+
+  if (isSourceContentAssessment) {
+    throw new Error("Source content assessment requires the configured Codex auth pool");
   }
 
   return new FileBackendCodexWorker({
     providerInstanceId: input.providerInstanceId,
     stateRootDir: input.stateRootDir,
     encryptionKey: input.encryptionKey,
-    codexBinaryPath: input.codexBinaryPath ?? pinnedCodexBinaryPath,
+    codexBinaryPath: input.codexBinaryPath ?? resolvePinnedCodexBinaryPath(),
     sourceEnv: subscriptionOnlyCodexEnvironment(input.env),
     workspacePath: input.cwd,
     model,
     reasoningEffort: admission.profile.reasoningEffort,
+    ...(isReaderPromotionV2Canary ? readerPromotionV2CanaryWorkerOptions() : {}),
     ...(input.timeoutMs ? { taskTimeoutMs: input.timeoutMs } : {}),
   });
 };
 
-function createPooledCodexWorker({ input, model, authPool }) {
+function createMimoSummaryWorker({ input, model }) {
+  const summaryTask = admission.canonicalRequest.task;
+  const schemaName = summaryTask.outputSchemaName;
+  const purpose = admission.canonicalRequest.context.purpose;
+  const schemaByPurpose = {
+    "social_monitor.reader_summary.promotion_presentation.v3": ["social_monitor_reader_post_presentation_v3", "presentations", "array"],
+    "social_monitor.reader_summary.generate.v2": ["social_monitor_reader_summary_artifact", "headline", "string"],
+    "social_monitor.reader_summary.repair.v2": ["social_monitor_reader_summary_artifact", "headline", "string"],
+    "social_monitor.reader_summary.topic_map.label.v2": ["social_monitor_reader_summary_topic_map_labels", "nodeLabels", "array"],
+    "social_monitor.reader_summary.topic_map.verify_relations.v2": ["social_monitor_reader_summary_topic_relations", "decisions", "array"],
+    "social_monitor.reader_summary.verify_story_relations.v2": ["social_monitor_reader_summary_story_relations", "decisions", "array"],
+    "social_monitor.reader_summary.verify_related_topic_relations.v2": ["social_monitor_reader_summary_related_topic_relations", "decisions", "array"],
+  };
+  const expected = Object.hasOwn(schemaByPurpose, purpose) ? schemaByPurpose[purpose] : undefined;
+  if (expected === undefined || schemaName !== expected[0] ||
+      summaryTask.controls.outputSchemaName !== schemaName ||
+      summaryTask.controls.outputSchema?.type !== "object") {
+    throw new Error("MiMo reader summary requires its named output schema");
+  }
+  const outputSchemas = { [schemaName]: summaryTask.controls.outputSchema };
+  const presentationCompletion = purpose === "social_monitor.reader_summary.promotion_presentation.v3"
+    ? createMimoPresentationCompletionValidator({ purpose, provider: admission.profile.provider,
+      model, modelBackend: admission.profile.modelBackend, reasoningEffort: admission.profile.reasoningEffort,
+      task: summaryTask }) : undefined;
+  // The pinned engine normalizes against the admitted schema before this predicate.
+  // Summary artifacts are one structured response; publication still validates their evidence.
+  const summaryCompletion = ["social_monitor.reader_summary.generate.v2", "social_monitor.reader_summary.repair.v2"].includes(purpose)
+    ? (output) => output !== null && typeof output === "object" && !Array.isArray(output) &&
+      typeof output.headline === "string" && output.headline.trim().length > 0
+    : undefined;
+  const oneTurnCompletion = presentationCompletion ?? summaryCompletion;
+  const outputContract = `TRUSTED NAMED OUTPUT CONTRACT:
+The final answer must be one JSON object matching the admitted schema "${schemaName}" below, including the required top-level property "${expected[1]}" of type "${expected[2]}". Return the output object, not the original input envelope or a schema description.
+${JSON.stringify(summaryTask.controls.outputSchema)}`;
+  const mimoSummaryAttemptLimit = 3;
+  const mimoSummaryNonRetryableMarkers = [
+    "user_abort",
+    "task_cancelled",
+    "permission_required",
+    "budget_exceeded",
+    "account_unavailable",
+    "quota_limited",
+    "capacity_unavailable",
+  ];
+  const mimoSummaryFailureIsRetryable = (value) => {
+    let text;
+    try {
+      text = `${String(value?.message ?? "")} ${String(value?.failureReason ?? "")} ${JSON.stringify(value ?? {})}`;
+    } catch {
+      text = `${String(value?.message ?? "")} ${String(value?.failureReason ?? "")}`;
+    }
+    return !mimoSummaryNonRetryableMarkers.some((marker) => text.includes(marker));
+  };
+  const disposeMimoSummaryAttempt = async (attemptExecutor) => {
+    try {
+      await attemptExecutor?.dispose();
+    } catch {
+      // Best-effort cleanup between bounded attempts.
+    }
+  };
+  let executor;
+  return {
+    async start() {},
+    async seedCodexAuthJsonFile() {
+      throw new Error("MiMo reader summary rejects Codex auth.json");
+    },
+    async run(job) {
+      if (executor !== undefined || job.logicalThread !== undefined ||
+          job.recoveryPacket !== undefined) {
+        throw new Error("MiMo reader summary accepts one task without continuation");
+      }
+      const taskId = nonEmptyRunId(job.runId);
+      const attemptBudgetMs = input.timeoutMs
+        ? Math.floor(input.timeoutMs * 0.85) : undefined;
+      const attemptStartedAt = Date.now();
+      let failure;
+      for (let attempt = 1; attempt <= mimoSummaryAttemptLimit; attempt += 1) {
+      const attemptTaskId = attempt === 1 ? taskId : `${taskId}:attempt-${attempt}`;
+      const taskHash = codexAuthPoolTaskHash(attemptTaskId);
+      const workspacePath = join(input.stateRootDir, "task-workspaces", taskHash);
+      const attemptTimeoutMs = attemptBudgetMs === undefined ? undefined
+        : Math.max(1_000, attemptBudgetMs - (Date.now() - attemptStartedAt));
+      await mkdir(workspacePath, { recursive: true, mode: 0o700 });
+      executor = mimoRuntime.createOneShotExecutor({
+        executorId: `social-monitor-mimo-summary:${taskHash}`,
+        stateRootDir: input.stateRootDir,
+        workspacePath,
+        requireGitWorkspace: false,
+        effectMode: "read_only",
+        maxAccountCycles: 1,
+        safeExecutionPolicy: {
+          ...codexAuthPoolExecutionPolicy,
+          maxAttempts: 1,
+          retryOnCapacity: false,
+          retryOnAccountUnavailable: false,
+          retryOnReconnectRequired: false,
+          retryUnknownCleanWorkspace: false,
+          continuationMode: "disabled",
+        },
+        outputSchemas,
+        accounts: [{ worker: {
+          providerInstanceId: "mimo:reader-summary",
+          stateRootDir: input.stateRootDir,
+          encryptionKey: input.encryptionKey,
+          codexBinaryPath: input.codexBinaryPath ?? resolvePinnedCodexBinaryPath(),
+          sourceEnv: {
+            ...subscriptionOnlyCodexEnvironment(input.env),
+            MIMO_TOKEN_PLAN_API_KEY: mimoApiKey,
+          },
+          model,
+          modelBackend: "xiaomi-mimo-token-plan",
+          mimoApiKeyEnvVarName: "MIMO_TOKEN_PLAN_API_KEY",
+          executionEngine: "app-server-goal",
+          appServerProcessFactory: mimoCustody.processFactory,
+          boundedWorkspaceTools: { allowedTools: [], denyProjectInstructions: true },
+          warmupPrompt: false,
+          cleanThreadPrewarm: false,
+          reasoningEffort: admission.profile.reasoningEffort,
+          ...(oneTurnCompletion === undefined ? {} : {
+            maxGoalTurns: 1, completedGoalOutputValidator: oneTurnCompletion,
+          }),
+          ...(attemptTimeoutMs === undefined ? {} : { taskTimeoutMs: attemptTimeoutMs }),
+        } }],
+      });
+      let result;
+      try {
+        result = await executor.run({
+          ...job,
+          runId: attemptTaskId,
+          prompt: oneTurnCompletion !== undefined ? `${presentationCompletion !== undefined
+            ? "Prepare the complete named presentation output for every supplied candidate."
+            : "Prepare the complete named reader-summary output, preserving every original evidence and cutoff requirement."} An active native Goal already exists; do not create another Goal. The trusted host validates the completed output and finishes that native Goal. Return only the final JSON object; do not call lifecycle tools or request another turn.
+
+ORIGINAL JOB PROMPT (VERBATIM):
+${job.prompt}` : `Mandatory lifecycle order:
+1. An active native Goal already exists. Do not create another goal. First call native get_goal.
+2. Fulfill every requirement in the original job prompt, including all supplied evidence, cutoff rules, and named-schema requirements.
+3. Prepare the exact named structured output internally, including the required root property "${expected[1]}". Follow the trusted admitted JSON schema in the system instructions, not the original input envelope.
+4. Only after every original requirement is fulfilled and that output is ready, call native update_goal({status:'complete'}).
+5. After lifecycle tools, return only the prepared JSON value. The final answer is JSON-only: no Markdown, prose, or commentary.
+
+ORIGINAL JOB PROMPT (VERBATIM):
+${job.prompt}`,
+          systemPrompt: oneTurnCompletion !== undefined ? `${job.systemPrompt ?? ""}
+
+Use only the supplied full source. Preserve every material qualification and exact evidence offset. An active native Goal is owned by the host; its completion follows strict validation of your final output. Filesystem, shell, web, delegation, SQL, source, and publication effects are unavailable. Return the named JSON output in this one turn without lifecycle tool calls.
+
+${outputContract}` : `${job.systemPrompt ?? ""}
+
+An active native Goal already exists; do not create another goal. Call native get_goal first and native update_goal({status:'complete'}) after fulfilling the task and preparing its named output, before the final answer. Filesystem, shell, web, delegation, SQL, source, and publication effects are unavailable and must not be attempted. Use only the supplied prompt and evidence, preserve the original named schema, cutoff and evidence rules, and make one attempt. The final-answer JSON-only rule applies after lifecycle tools.
+
+${outputContract}`,
+          taskId: attemptTaskId,
+          originalPrompt: job.prompt,
+          effectMode: "read_only",
+          maxAccountCycles: 1,
+          metadata: {
+            ...job.metadata,
+            codexGoalObjective: oneTurnCompletion !== undefined
+              ? presentationCompletion !== undefined
+                ? "Produce complete named presentation JSON for every candidate, with source-grounded headlines or explicit unavailable results."
+                : "Produce the complete admitted reader-summary JSON using the supplied evidence and cutoff rules."
+              : "Complete the reader-summary task and prepare its named JSON output before marking the goal complete.",
+          },
+        });
+      } catch (error) {
+        failure = error;
+        if (attempt < mimoSummaryAttemptLimit && mimoSummaryFailureIsRetryable(error) &&
+            (attemptBudgetMs === undefined ||
+              Date.now() - attemptStartedAt < attemptBudgetMs)) {
+          await disposeMimoSummaryAttempt(executor);
+          continue;
+        }
+        break;
+      }
+      if (result.status === "completed") {
+        if (JSON.stringify(result.result ?? {}).includes(mimoApiKey)) {
+          throw new SubscriptionWorkerError(
+            "subscription_worker_run_failed",
+            "MiMo reader summary output was rejected",
+            { details: {} },
+          );
+        }
+        const output = result.result?.structuredOutput;
+        if (output === null || typeof output !== "object" || Array.isArray(output) ||
+            (expected[2] === "array"
+              ? !Array.isArray(output[expected[1]])
+              : typeof output[expected[1]] !== expected[2])) {
+          throw new SubscriptionWorkerError(
+            "subscription_worker_run_failed",
+            "MiMo reader summary output was rejected",
+            { details: {} },
+          );
+        }
+        return result.result;
+      }
+      failure = result;
+      if (attempt < mimoSummaryAttemptLimit && mimoSummaryFailureIsRetryable(result) &&
+          (attemptBudgetMs === undefined ||
+            Date.now() - attemptStartedAt < attemptBudgetMs)) {
+        await disposeMimoSummaryAttempt(executor);
+        continue;
+      }
+      break;
+      }
+      throw new SubscriptionWorkerError(
+        "subscription_worker_run_failed",
+        "MiMo reader summary did not complete",
+        { details: presentationCompletion?.failureDetails(failure) ?? {} },
+      );
+    },
+    async dispose() {
+      try {
+        await executor?.dispose();
+      } catch {
+        throw new Error("MiMo reader summary cleanup failed");
+      }
+    },
+  };
+}
+
+function createReaderPromotionV2CanaryWorker({ input, model, authPool }) {
+  const taskId = nonEmptyRunId(admission.canonicalRequest.runId);
+  const selectedAccount = orderCodexAuthAccountsForTask(
+    authPool.accounts,
+    taskId,
+  )[0];
+  if (selectedAccount === undefined) {
+    throw new Error("Reader promotion V2 canary requires one Codex account");
+  }
+  const worker = new FileBackendCodexWorker({
+    providerInstanceId: `codex:${selectedAccount.id}`,
+    capacityAccountId: selectedAccount.id,
+    stateRootDir: input.stateRootDir,
+    encryptionKey: input.encryptionKey,
+    codexBinaryPath: input.codexBinaryPath ?? resolvePinnedCodexBinaryPath(),
+    sourceEnv: subscriptionOnlyCodexEnvironment(input.env),
+    workspacePath: input.cwd,
+    model,
+    reasoningEffort: admission.profile.reasoningEffort,
+    ...readerPromotionV2CanaryWorkerOptions(),
+    ...(input.timeoutMs ? { taskTimeoutMs: input.timeoutMs } : {}),
+  });
+  let started = false;
+  let ran = false;
+  let materializedAuthRoot;
+  return {
+    async start() {
+      if (started) throw new Error("Reader promotion V2 canary already started");
+      started = true;
+      await worker.start();
+      materializedAuthRoot = await createAuthMaterializationRoot(
+        input.stateRootDir,
+        taskId,
+      );
+      try {
+        const authJsonPath = await materializeCodexAuthAccount(
+          materializedAuthRoot,
+          selectedAccount,
+        );
+        await worker.seedCodexAuthJsonFile(authJsonPath);
+      } catch (error) {
+        await removeAuthMaterialization(materializedAuthRoot);
+        materializedAuthRoot = undefined;
+        throw error;
+      }
+    },
+
+    async seedCodexAuthJsonFile(authJsonPath) {
+      const selectedPath = await realpath(authJsonPath);
+      if (!authPool.accounts.some(
+        (account) => account.authJsonPath === selectedPath,
+      )) {
+        throw new Error(
+          "--codex-auth-json cannot override the configured Codex auth pool",
+        );
+      }
+    },
+
+    async run(job) {
+      if (!started || ran) {
+        throw new Error("Reader promotion V2 canary permits exactly one run");
+      }
+      if (job.logicalThread !== undefined || job.recoveryPacket !== undefined) {
+        throw new Error("Reader promotion V2 canary rejects continuation");
+      }
+      ran = true;
+      const result = await worker.run({ ...job, runId: taskId });
+      if (result.status === "waiting_for_input") {
+        throw new Error("Reader promotion V2 canary rejects waiting output");
+      }
+      return result;
+    },
+
+    async dispose() {
+      try {
+        await worker.dispose();
+      } finally {
+        await removeAuthMaterialization(materializedAuthRoot);
+      }
+    },
+  };
+}
+
+function oneNativeCommandRunner() {
+  const delegate = new NodeProcessRunner();
+  let executed = false;
+  return {
+    runnerId: "reader-promotion-v2-canary-single-command",
+    capabilities: {
+      ...delegate.capabilities,
+      runnerId: "reader-promotion-v2-canary-single-command",
+    },
+    async run(input) {
+      if (executed) {
+        throw new Error(
+          "Reader promotion V2 canary rejects a second native command",
+        );
+      }
+      executed = true;
+      return delegate.run(input);
+    },
+  };
+}
+
+function readerPromotionV2CanaryWorkerOptions() {
+  return {
+    executionEngine: "packaged-exec",
+    refreshConflictRetryMaxMs: 0,
+    cleanThreadPrewarm: false,
+    runner: oneNativeCommandRunner(),
+    outputSchemas: {
+      [readerPromotionV2CanarySchemaName]: readerPromotionV2CanaryOutputSchema,
+    },
+  };
+}
+
+function sourceContentAssessmentOutputSchemas(task) {
+  const name = "social_monitor_source_content_quality_review";
+  const schema = task.controls.outputSchema;
+  if (task.outputSchemaName !== name ||
+      (task.controls.outputSchemaName !== undefined && task.controls.outputSchemaName !== name) ||
+      schema === null || typeof schema !== "object" || Array.isArray(schema)) {
+    throw new Error("Source content assessment requires its named output schema object");
+  }
+  return { [name]: schema };
+}
+
+function createPooledCodexWorker({ input, model, authPool, outputSchemas }) {
   let executor;
   let disposed = false;
+  let providerTaskEffectPossible = false;
+  const assessmentObservability = {
+    ...progress,
+    emit(event) {
+      // Session reads and auth refreshes happen against a disposable per-account
+      // auth materialization before the model task starts. A typed
+      // provider_session_invalid result can therefore move to another account
+      // after those phases. Once the provider task itself starts, fallback is
+      // forbidden even if a later wrapper misclassifies the failure.
+      if (event?.name === "provider.task.started") {
+        providerTaskEffectPossible = true;
+      }
+      progress?.emit(event);
+    },
+  };
 
   return {
     async start() {},
@@ -104,6 +541,9 @@ function createPooledCodexWorker({ input, model, authPool }) {
       if (executor !== undefined) {
         throw new Error("Pooled Codex worker accepts one task per CLI process");
       }
+      if (isSourceContentAssessment && (job.logicalThread !== undefined || job.recoveryPacket !== undefined)) {
+        throw new Error("Source content assessment rejects continuation");
+      }
       const taskId = job.runId?.trim();
       if (!taskId) {
         throw new Error("Pooled Codex worker requires a stable runId");
@@ -115,56 +555,123 @@ function createPooledCodexWorker({ input, model, authPool }) {
         taskHash,
       );
       await mkdir(workspacePath, { recursive: true, mode: 0o700 });
-
-      executor = new FileBackendCodexSafeExecutor({
-        executorId: `social-monitor-agent-task:${taskHash}`,
-        stateRootDir: input.stateRootDir,
-        workspacePath,
-        requireGitWorkspace: false,
-        effectMode: "read_only",
-        maxAccountCycles: 1,
-        safeExecutionPolicy: {
-          ...codexAuthPoolExecutionPolicy,
-          maxAttempts: authPool.accounts.length,
-        },
-        accounts: orderCodexAuthAccountsForTask(
-          authPool.accounts,
-          taskId,
-        ).map((account) => ({
-          codexAuthJsonPath: account.authJsonPath,
-          worker: {
-            providerInstanceId: `codex:${account.id}`,
-            capacityAccountId: account.id,
-            stateRootDir: input.stateRootDir,
-            encryptionKey: input.encryptionKey,
-            codexBinaryPath: input.codexBinaryPath ?? pinnedCodexBinaryPath,
-            sourceEnv: subscriptionOnlyCodexEnvironment(input.env),
-            model,
-            reasoningEffort: admission.profile.reasoningEffort,
-            ...(input.timeoutMs ? { taskTimeoutMs: input.timeoutMs } : {}),
-          },
-        })),
-      });
-      const result = await executor.run({
-        ...job,
+      lifecycle.checkpoint();
+      progress?.mark("account_materialization", "started");
+      const materializedAuthRoot = await createAuthMaterializationRoot(
+        input.stateRootDir,
         taskId,
-        originalPrompt: job.prompt,
-        effectMode: "read_only",
-        maxAccountCycles: 1,
-      });
-      if (result.status === "completed") {
-        return result.result;
-      }
-      throw new SubscriptionWorkerError(
-        "subscription_worker_run_failed",
-        result.safeMessage,
-        {
-          details: {
-            reason: result.reason,
-            ...(result.failureDetails ?? {}),
-          },
-        },
       );
+
+      try {
+        lifecycle.checkpoint();
+        const accounts = await Promise.all(
+          orderCodexAuthAccountsForTask(authPool.accounts, taskId).map(
+            async (account) => ({
+              codexAuthJsonPath: await lifecycle.work(() => materializeCodexAuthAccount(
+                materializedAuthRoot,
+                account,
+              )),
+              worker: {
+                providerInstanceId: `codex:${account.id}`,
+                capacityAccountId: account.id,
+                stateRootDir: input.stateRootDir,
+                encryptionKey: input.encryptionKey,
+                codexBinaryPath: input.codexBinaryPath ?? resolvePinnedCodexBinaryPath(),
+                sourceEnv: subscriptionOnlyCodexEnvironment(input.env),
+                model,
+                reasoningEffort: admission.profile.reasoningEffort,
+                ...(outputSchemas === undefined ? {} : { outputSchemas }),
+                ...(input.timeoutMs ? { taskTimeoutMs: input.timeoutMs } : {}),
+              },
+            }),
+          ),
+        );
+        lifecycle.checkpoint();
+        progress?.mark("account_materialization", "completed");
+        executor = createOneShotExecutor({
+          executorId: `social-monitor-agent-task:${taskHash}`,
+          stateRootDir: input.stateRootDir,
+          workspacePath,
+          requireGitWorkspace: false,
+          effectMode: "read_only",
+          maxAccountCycles: 1,
+          safeExecutionPolicy: {
+            ...codexAuthPoolExecutionPolicy,
+            maxAttempts: admission.profile.retryMode === "never" ? 1 : authPool.accounts.length,
+            ...(admission.profile.retryMode === "never" ? {
+              retryOnCapacity: false, retryOnAccountUnavailable: false,
+              retryOnReconnectRequired: false, retryUnknownCleanWorkspace: false,
+            } : {}),
+            ...(isSourceContentAssessment ? { continuationMode: "disabled" } : {}),
+          },
+          accounts,
+          // Assessment never consumes native startup guidance or continuation.
+          ...(isSourceContentAssessment ? {
+            observability: assessmentObservability, shutdownTimeoutMs: 1_000,
+            controlInbox: { consumeForContinuation: async () => undefined },
+          } : {}),
+        });
+        lifecycle.checkpoint();
+        progress?.mark("executor_run", "started");
+        const runInput = {
+          ...job,
+          taskId,
+          originalPrompt: job.prompt,
+          effectMode: "read_only",
+          maxAccountCycles: 1,
+        };
+        let result = await executor.run(runInput);
+        // Keep the same executor, task journal and round-robin cursor. Grant
+        // exactly one more admission attempt only after proven pre-provider
+        // account_unavailable rejection; retryMode "never" still forbids replay.
+        // Generic capacity failures cannot authorize another admission.
+        for (let attempt = 1; isSourceContentAssessment && attempt < accounts.length; attempt++) {
+          if (!isPreProviderAccountUnavailable(result, attempt, accounts)) break;
+          // The native worker emits provider.task.started before opening its
+          // responses WebSocket. A typed provider_session_invalid rejection
+          // therefore proves that no provider task was admitted even when the
+          // coarse lifecycle signal was already observed. All other failures
+          // remain blocked once that signal has fired.
+          if (providerTaskEffectPossible && !isPreProviderSessionRejection(
+            result.attempts.at(-1), accounts[attempt - 1],
+          )) break;
+          // The exact rejection above proves that this attempt never crossed
+          // the provider boundary. Reset the per-attempt signal before the
+          // next admission so an unrelated disabled-account preflight can
+          // still advance to another healthy account.
+          providerTaskEffectPossible = false;
+          lifecycle.checkpoint();
+          if (disposed || job.abortSignal?.aborted) break;
+          result = await executor.run({
+            ...runInput,
+            safeExecutionPolicy: {
+              maxAttempts: attempt + 1,
+              retryOnAccountUnavailable: true,
+            },
+          });
+        }
+        progress?.mark("executor_run", "completed");
+        if (result.status === "completed") {
+          return result.result;
+        }
+        throw new SubscriptionWorkerError(
+          "subscription_worker_run_failed",
+          describeCodexAuthPoolRunFailure({
+            safeMessage: result.safeMessage,
+            reason: result.reason,
+            failureDetails: result.failureDetails,
+            attemptCount: result.attempts?.length,
+            accountCount: authPool.accounts.length,
+          }),
+          {
+            details: subscriptionRuntimeFailureDetails(result),
+          },
+        );
+      } finally {
+        progress?.mark("auth_cleanup", "started");
+        await removeAuthMaterialization(materializedAuthRoot);
+        progress?.mark("auth_cleanup", "completed");
+      }
     },
 
     async dispose() {
@@ -174,11 +681,115 @@ function createPooledCodexWorker({ input, model, authPool }) {
   };
 }
 
-process.exitCode = await runSubscriptionAgentTaskCli(
-  withExactModel(argv, admission.profile.model),
+function isPreProviderAccountUnavailable(result, attemptCount, accounts) {
+  if (result.status !== "waiting_capacity" ||
+      result.reason !== "account_unavailable" ||
+      result.attempts?.length !== attemptCount) return false;
+  if (!result.attempts.every((attempt) =>
+    attempt.status === "blocked" &&
+    attempt.failureReason === "account_unavailable" &&
+    attempt.workspaceDirtyBefore === false && attempt.workspaceDirtyAfter === false &&
+    attempt.changedFiles?.length === 0 && attempt.usage === undefined &&
+    attempt.lastOutputSummary === undefined)) return false;
+  // The pool serializes away the auth rejection cause. Accept only the
+  // confirmed native auth-rejection journal signature, scoped to this account.
+  if (isPreProviderSessionRejection(result.attempts.at(-1), accounts[attemptCount - 1])) {
+    const wrapper = result.error;
+    // The local-file executor persists the exact attempt evidence but does not
+    // guarantee that its outer in-memory error wrapper survives readback.
+    // Absence is acceptable here; any present wrapper must remain the narrow
+    // account-unavailable shape below.
+    return isConsistentProviderSessionRejectionError(
+      wrapper, accounts[attemptCount - 1]?.worker.capacityAccountId,
+    );
+  }
+  let error = result.error;
+  // Only unwrap the pool's immediate slot wrapper, never a provider cause chain.
+  if (error instanceof SubscriptionWorkerError &&
+      error.code === "subscription_worker_pool_slot_failed" && error.usage === undefined) {
+    error = error.cause;
+  }
+  // Only these exact native snapshot reasons prove stop and cleanup completed.
+  // Keep account identity and the immediate typed admission wrapper mandatory.
+  if (error instanceof SubscriptionWorkerError && error.cause === undefined &&
+      error.usage === undefined && error.code === "subscription_worker_account_unavailable" &&
+      error.details?.availability === "cooldown" &&
+      typeof error.details.accountId === "string" &&
+      error.details.accountId === accounts[attemptCount - 1]?.worker.capacityAccountId &&
+      ["native_snapshot_invalid", "native_snapshot_deadline"].includes(error.details.reason)) return true;
+  // Explicit disabled-account preflight remains independently harmless.
+  return error instanceof SubscriptionWorkerError && error.cause === undefined &&
+    error.usage === undefined &&
+    error.code === "subscription_worker_account_unavailable" &&
+    error.details?.availability === "disabled" &&
+    error.details?.reason === "account_unavailable";
+}
+
+function isConsistentProviderSessionRejectionError(error, accountId) {
+  if (error === undefined) return true;
+  if (error?.code !== "subscription_worker_pool_slot_failed" ||
+      error.usage !== undefined) return false;
+  const cause = error.cause;
+  if (cause === undefined) return true;
+  if (cause?.usage !== undefined) return false;
+  if (cause?.code === "subscription_worker_account_unavailable") {
+    return cause.cause === undefined;
+  }
+  // The real file-backed worker wraps the native process rejection once
+  // before the pool adds its slot wrapper. Require the same exact session
+  // classification and account identity already persisted in the journal;
+  // a generic provider/task failure remains insufficient.
+  return cause?.code === "subscription_worker_run_failed" &&
+    cause.details?.reason === "provider_session_invalid" &&
+    cause.details?.accountId === accountId;
+}
+
+function isPreProviderSessionRejection(attempt, account) {
+  const details = attempt.failureDetails;
+  return details?.reason === "provider_session_invalid" &&
+    details.accountId === account?.worker.capacityAccountId &&
+    typeof details.accountId === "string" &&
+    details.subscriptionWorkerCode === "subscription_worker_pool_slot_failed" &&
+    (details.exitCode === "1" || details.exitCode === 1);
+}
+
+async function createAuthMaterializationRoot(stateRootDir, taskId) {
+  const parent = join(stateRootDir, "auth-materializations");
+  await mkdir(parent, { recursive: true, mode: 0o700 });
+  return mkdtemp(join(parent, `${codexAuthPoolTaskHash(taskId)}-`));
+}
+
+async function materializeCodexAuthAccount(root, account) {
+  const accountRoot = join(root, account.id);
+  const authJsonPath = join(accountRoot, "auth.json");
+  await mkdir(accountRoot, { mode: 0o700 });
+  await writeFile(authJsonPath, await readFile(account.authJsonPath), {
+    mode: 0o600,
+  });
+  return authJsonPath;
+}
+
+async function removeAuthMaterialization(path) {
+  if (path !== undefined) {
+    await rm(path, { recursive: true, force: true });
+  }
+}
+
+return await runSubscriptionAgentTaskCli(
+  withExactModel(runtimeArgv, admission.profile.model),
   undefined,
-  createStrictCodexWorker,
+  (input) => {
+    const worker = withTrustedCodexWorkerUsage(createStrictCodexWorker(input));
+    return isSourceContentAssessment || isMimoSummary ? lifecycle.decorateWorker(worker) : worker;
+  },
 );
+
+function nonEmptyRunId(value) {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error("Reader promotion V2 canary requires a stable runId");
+  }
+  return value.trim();
+}
 
 function withExactModel(args, model) {
   return optionalArgument(args, "--model") === undefined
@@ -211,3 +822,5 @@ function optionalArgument(args, name) {
   }
   return values[0];
 }
+
+});

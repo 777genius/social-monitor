@@ -1,12 +1,43 @@
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
+import { guardedContentGet } from '../../http/guarded-content-http';
 
 import { certifySourceProvider } from "../testing/source-provider-certification";
 import { validateFeedUrl } from "./feed-url-policy";
 import { FixtureRssClient } from "./fixture-rss-client";
+import { HttpRssClient } from "./http-rss-client";
 import type { RssClientPort } from "./rss-client.port";
 import { RssSourceProvider } from "./rss-source.provider";
 
+jest.mock('../../http/guarded-content-http', () => ({ guardedContentGet: jest.fn() }));
+
 describe("RssSourceProvider", () => {
+  const originalFetch = globalThis.fetch;
+  beforeEach(() => {
+    jest.mocked(guardedContentGet).mockImplementation(async (input) => {
+      const response = await globalThis.fetch(input.url, { headers: input.headers });
+      return { status: response.status, headers: response.headers,
+        finalUrl: response.url || input.url, body: await response.text() };
+    });
+  });
+  afterEach(() => { globalThis.fetch = originalFetch; });
+
+  it("reports a malformed secondary feed as a partial acquisition while retaining a valid empty primary feed", async () => {
+    const primary = "https://example.test/feed.xml";
+    const secondary = "https://feeds.example.test/extra.xml";
+    globalThis.fetch = jest.fn(async (url: string) => new Response(
+      url === primary ? '<rss><channel/></rss>' : '<html><body>Outage</body></html>', { status: 200 },
+    )) as unknown as typeof fetch;
+    const provider = new RssSourceProvider(new HttpRssClient());
+    const context = {
+      tenantId: tenantId("tenant-1"), workspaceId: workspaceId("workspace-1"),
+      sourceBindingId: "rss-binding-1", scanJobId: "scan-job-1", correlationId: "correlation-1",
+      config: { feedUrls: [secondary] },
+    };
+    const result = await provider.scan(provider.planScan({ mode: "url", query: primary }, context), context);
+    expect(result.items).toEqual([]);
+    expect(result.warnings).toEqual([expect.stringContaining("invalid RSS or Atom envelope")]);
+  });
+
   certifySourceProvider({
     providerFactory: () => new RssSourceProvider(new FixtureRssClient()),
     validQuery: { mode: "url", query: "https://example.test/feed.xml" },

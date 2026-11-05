@@ -16,7 +16,10 @@ import type { CleanRealDayCollectionReport } from "./clean-real-day-collection-r
 import {
   explicitGitHubUnavailableIsTransparentPartialDailyInput,
   providerMeetsProductionBlockingPolicy,
+  recalculateProductionBlockingPolicyGates,
 } from "./production-collection-quality-policy";
+import { withProviderCollectionWindowProof } from "./provider-collection-observability";
+import { allQualityGatesPassed } from "./quality-gates";
 import { noRawSecretFragments } from "./yesterday-social-replay-support";
 import {
   assertReaderSummaryDailyMaintenanceScope,
@@ -56,11 +59,13 @@ export const readExactDayCollectionArtifact = (params: {
   readonly path: string;
   readonly collectionDate: string;
   readonly expectedScope?: ReaderSummaryDailyMaintenanceScope;
+  readonly requireExactDatePath?: boolean;
 }): CleanRealDayCollectionReport | null => {
   assertExpectedMaintenanceScope(params.expectedScope);
   assertSafeCollectionArtifactPath(params.path);
   if (
-    params.expectedScope !== undefined &&
+    (params.expectedScope !== undefined ||
+      params.requireExactDatePath === true) &&
     basename(params.path) !==
       readerSummaryDailyCollectionArtifactFileName(params.collectionDate)
   ) {
@@ -110,12 +115,14 @@ export const writeCollectionArtifactAtomically = (params: {
   readonly path: string;
   readonly report: CleanRealDayCollectionReport;
   readonly expectedScope?: ReaderSummaryDailyMaintenanceScope;
+  readonly requireExactDatePath?: boolean;
 }): void => {
   assertExpectedMaintenanceScope(params.expectedScope);
   assertSafeCollectionArtifactPath(params.path);
   assertExactDayIdentity(params.report, params.report.run.collectionDate);
   if (
-    params.expectedScope !== undefined &&
+    (params.expectedScope !== undefined ||
+      params.requireExactDatePath === true) &&
     basename(params.path) !==
       readerSummaryDailyCollectionArtifactFileName(
         params.report.run.collectionDate,
@@ -189,6 +196,53 @@ export const collectionArtifactPassesBlockingValidation = (
   report.qualityGates.noRawSecretFragments === true &&
   report.blockingPassed === true &&
   noRawSecretFragments(report);
+
+export const refreshCollectionArtifactTargetWindow = (params: {
+  readonly report: CleanRealDayCollectionReport;
+  readonly targetWindow: CleanRealDayCollectionReport["targetWindow"];
+}): CleanRealDayCollectionReport => {
+  const targetWindowEndedAt = new Date(
+    params.report.inputs.targetPublishedWindow.endExclusive,
+  );
+  const scans = params.report.scans.map((scan) => {
+    if (scan.acquisitionMode === "durable_snapshot_reuse") return scan;
+    const newestPublishedAt =
+      params.targetWindow.newestItemAtByProvider[scan.providerKey];
+
+    return {
+      ...scan,
+      observability: withProviderCollectionWindowProof({
+        observation: scan.observability,
+        windowItemCount:
+          params.targetWindow.providerCounts[scan.providerKey] ?? 0,
+        ...(newestPublishedAt === undefined
+          ? {}
+          : { newestPublishedAt: new Date(newestPublishedAt) }),
+        targetWindowEndedAt,
+      }),
+    };
+  });
+  const provisional = {
+    ...params.report,
+    scans,
+    targetWindow: params.targetWindow,
+    qualityGates: recalculateProductionBlockingPolicyGates(
+      params.report.qualityGates,
+      scans,
+      params.targetWindow.providerCounts,
+    ),
+  };
+  const qualityGates = {
+    ...provisional.qualityGates,
+    noRawSecretFragments: noRawSecretFragments(provisional),
+  };
+
+  return {
+    ...provisional,
+    qualityGates,
+    blockingPassed: allQualityGatesPassed(qualityGates),
+  };
+};
 
 const assertExactDayIdentity = (
   report: CleanRealDayCollectionReport,

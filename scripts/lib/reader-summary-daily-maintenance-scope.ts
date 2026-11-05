@@ -1,4 +1,7 @@
-import { runWithSystemDatabaseAccess } from "@social-monitor/platform-persistence";
+import {
+  runWithSystemDatabaseAccess,
+  runWithTenantDatabaseAccess,
+} from "@social-monitor/platform-persistence";
 
 export type ReaderSummaryDailyMaintenanceScope = Readonly<{
   tenantId: string;
@@ -62,8 +65,8 @@ export const discoverReaderSummaryProductionHistoryTargets = async <
 >(
   discover: () => Promise<readonly Target[]>,
 ): Promise<readonly Target[]> => {
-  const targets = await runWithSystemDatabaseAccess(
-    "production history enabled provider target discovery",
+  const targets = await runWithTenantDatabaseAccess(
+    readerSummaryProductionHistoryScope,
     discover,
   );
   if (

@@ -9,6 +9,15 @@ import type {
   StoryCluster,
   SummaryEvidenceItem,
 } from "../value-objects/summary-evidence-item";
+import type { ReaderSummarySelectionStrategy } from
+  "../value-objects/reader-summary-preparation";
+
+export type ReaderSummaryTopicMapEvidenceAdmission =
+  | { readonly selectionStrategy: Exclude<
+      ReaderSummarySelectionStrategy, "jev_primary_v3"
+    > }
+  | { readonly selectionStrategy: "jev_primary_v3";
+      readonly admittedCandidateIds: readonly string[] };
 
 export const READER_SUMMARY_AGENT_TOPIC_RELEVANCE_SCORE_MIN = 0.56;
 
@@ -21,7 +30,13 @@ export type ReaderSummaryAgentTopicEvidence = {
 
 export const isReaderSummaryAgentTopicEvidenceEligible = (
   evidence: SummaryEvidenceItem,
+  admission: ReaderSummaryTopicMapEvidenceAdmission = {
+    selectionStrategy: "legacy_v2",
+  },
 ): boolean => {
+  if (admission.selectionStrategy === "jev_primary_v3") {
+    return admission.admittedCandidateIds.includes(evidence.feedItemId);
+  }
   const relevanceScore = evidence.contentQuality?.interestRelevanceScore;
 
   return (
@@ -35,10 +50,12 @@ export const isReaderSummaryAgentTopicEvidenceEligible = (
 export const buildReaderSummaryAgentTopicEvidence = (
   params: ReaderSummaryAgentTopicEvidence & {
     readonly requestedAt: Date;
+    readonly evidenceAdmission: ReaderSummaryTopicMapEvidenceAdmission;
   },
 ): ReaderSummaryAgentTopicEvidence => {
   const acceptedEvidence = params.selectedEvidence.filter(
-    isReaderSummaryAgentTopicEvidenceEligible,
+    (evidence) => isReaderSummaryAgentTopicEvidenceEligible(
+      evidence, params.evidenceAdmission),
   );
   const acceptedById = new Map(
     acceptedEvidence.map((item) => [item.feedItemId, item] as const),

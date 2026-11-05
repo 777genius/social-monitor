@@ -17,6 +17,7 @@ export type ListConversationSignalBaselineSamplesQuery = {
   readonly workspaceId: WorkspaceId;
   readonly interestId?: string;
   readonly observedAfter: Date;
+  readonly observedAtOrBefore?: Date;
   readonly observedBefore?: Date;
   readonly limit: number;
   readonly cohortFilters?: readonly ConversationSignalBaselineCohortFilter[];

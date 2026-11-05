@@ -1,12 +1,17 @@
 import { eventId, tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import {
+  READER_PROMOTION_POLICY_V1,
+  githubTrendingWatchText,
   ReaderSummaryJob,
+  readerSummaryWorkspaceManifestSha256,
   readerSummaryGitHubProjectionCollectionGraceMs,
   readerSummaryGitHubProjectionCollectionWarningThresholdMs,
 } from "../../domain";
+import type { ReaderSummaryArtifact } from "../../domain";
 import type {
   ReaderSummaryPublicationCommand,
+  ReaderSummaryV3PreparationSourcePort,
   SummaryEventPublisherPort,
 } from "../../ports";
 import { InMemorySummaryEventPublisher } from "../messaging/in-memory-summary-event-publisher";
@@ -41,9 +46,9 @@ describe("InMemoryReaderSummaryPublication", () => {
           },
         }),
       ).rejects.toThrow("idempotency conflict");
-      await expect(
-        context.artifacts.findById(fixture.identity),
-      ).resolves.toBe(fixture.command.artifact);
+      await expect(context.artifacts.findById(fixture.identity)).resolves.toBe(
+        fixture.command.artifact,
+      );
       expect(context.events.all()).toHaveLength(1);
       expect(context.jobs.all()).toHaveLength(1);
     },
@@ -68,7 +73,9 @@ describe("InMemoryReaderSummaryPublication", () => {
     await expect(context.artifacts.findById(left.identity)).resolves.toBe(
       left.command.artifact,
     );
-    await expect(context.artifacts.findById(right.identity)).resolves.toBeNull();
+    await expect(
+      context.artifacts.findById(right.identity),
+    ).resolves.toBeNull();
   });
 
   it("rejects a mismatched ready event before a candidate becomes visible", async () => {
@@ -85,7 +92,9 @@ describe("InMemoryReaderSummaryPublication", () => {
     await expect(context.publication.publish(invalid)).rejects.toThrow(
       "exact publication binding",
     );
-    await expect(context.artifacts.findById(fixture.identity)).resolves.toBeNull();
+    await expect(
+      context.artifacts.findById(fixture.identity),
+    ).resolves.toBeNull();
     expect(context.events.all()).toHaveLength(0);
   });
 
@@ -151,8 +160,7 @@ describe("InMemoryReaderSummaryPublication", () => {
         telemetry: {
           github_projection_collection_delay_ms:
             readerSummaryGitHubProjectionCollectionWarningThresholdMs,
-          collectionGraceMs:
-            readerSummaryGitHubProjectionCollectionGraceMs,
+          collectionGraceMs: readerSummaryGitHubProjectionCollectionGraceMs,
           warningThresholdMs:
             readerSummaryGitHubProjectionCollectionWarningThresholdMs,
           qualitySignal: "github_projection_collection_delay_warning",
@@ -175,12 +183,241 @@ describe("InMemoryReaderSummaryPublication", () => {
     await expect(context.publication.publish(invalid)).rejects.toThrow(
       "exact verified GitHub projection audit",
     );
-    await expect(context.artifacts.findById(fixture.identity)).resolves.toBeNull();
+    await expect(
+      context.artifacts.findById(fixture.identity),
+    ).resolves.toBeNull();
     expect(context.events.all()).toEqual([]);
     expect(context.jobs.all()).toHaveLength(1);
     expect(context.jobs.all()[0]?.toSnapshot().status).toBe("running");
   });
+
+  // Regression: an in-memory workspace V3 publication must enforce its frozen
+  // active-interest configuration and full candidate coverage before exposing
+  // a no-signal artifact; an exact post-commit replay remains idempotent.
+  it("guards workspace V3 scope and coverage while preserving exact replay", async () => {
+    const fixture = workspaceV3NoSignalFixture(40);
+    const context = await createContext(fixture.command);
+    let changed = false;
+    const source: ReaderSummaryV3PreparationSourcePort = {
+      configuration: async () => ({ ok: true,
+        config: changed ? { ...fixture.config, interests: [{
+          ...fixture.config.interests[0]!, interestSha256: "b".repeat(64) }] }
+          : fixture.config }),
+      prepare: jest.fn(), coverage: async () => ({ status: "ready",
+        hasPromotableSignal: false }),
+    };
+    const publication = new InMemoryReaderSummaryPublication(context.jobs,
+      context.artifacts, context.events, source);
+
+    await expect(publication.publish(fixture.command)).resolves.toBe("published");
+    changed = true;
+    await expect(publication.publish(fixture.command)).resolves.toBe("replayed");
+    expect(context.events.all()).toHaveLength(1);
+  });
+
+  // Regression: a changed interest or revoked candidate after preparation
+  // cannot turn a workspace V3 no-signal artifact visible in memory.
+  it.each(["interest_changed", "binding_revoked"] as const)(
+    "rejects workspace V3 publication when %s", async (failure) => {
+      const fixture = workspaceV3NoSignalFixture(failure === "interest_changed" ? 41 : 42);
+      const context = await createContext(fixture.command);
+      const source: ReaderSummaryV3PreparationSourcePort = {
+        configuration: async () => ({ ok: true,
+          config: failure === "interest_changed"
+            ? { ...fixture.config, interests: [{ ...fixture.config.interests[0]!,
+              interestSha256: "b".repeat(64) }] }
+            : fixture.config }),
+        prepare: jest.fn(), coverage: async () => failure === "binding_revoked"
+          ? { status: "unavailable", code: "assessment_unavailable" }
+          : { status: "ready", hasPromotableSignal: false },
+      };
+      const publication = new InMemoryReaderSummaryPublication(context.jobs,
+        context.artifacts, context.events, source);
+
+      await expect(publication.publish(fixture.command)).rejects.toThrow(
+        "Workspace V3 publication scope or coverage changed");
+      await expect(context.artifacts.findById(fixture.identity)).resolves.toBeNull();
+      expect(context.events.all()).toHaveLength(0);
+    });
+
+  // Regression: completed assessments with a qualifying primary candidate
+  // must never be published as no signal after presentation fails or is skipped.
+  it("rejects a workspace no-signal artifact with promotable evidence", async () => {
+    const fixture = workspaceV3NoSignalFixture(43);
+    const context = await createContext(fixture.command);
+    const source: ReaderSummaryV3PreparationSourcePort = {
+      configuration: async () => ({ ok: true, config: fixture.config }),
+      prepare: jest.fn(), coverage: async () => ({ status: "ready",
+        hasPromotableSignal: true }),
+    };
+    const publication = new InMemoryReaderSummaryPublication(context.jobs,
+      context.artifacts, context.events, source);
+
+    await expect(publication.publish(fixture.command)).rejects.toThrow(
+      "Workspace V3 publication scope or coverage changed");
+    await expect(context.artifacts.findById(fixture.identity)).resolves.toBeNull();
+    expect(context.events.all()).toHaveLength(0);
+  });
+
+  // The in-memory guard recomputes the signed popularity cohort exactly like
+  // the Prisma guard; a forged count is rejected before anything is visible.
+  it.each([false, true])("checks frozen non-zero popularity (forged: %s)", async (forged) => {
+    const fixture = workspaceV3RankedFixture(forged ? 47 : 46, forged);
+    const context = await createContext(fixture.command);
+    const source: ReaderSummaryV3PreparationSourcePort = {
+      configuration: async () => ({ ok: true, config: fixture.config }),
+      prepare: jest.fn(), coverage: async () => ({ status: "ready",
+        hasPromotableSignal: true }),
+    };
+    const publication = new InMemoryReaderSummaryPublication(context.jobs,
+      context.artifacts, context.events, source, (id) => fixture.assessments.get(id));
+
+    if (forged) {
+      await expect(publication.publish(fixture.command)).rejects.toThrow(
+        "Workspace V3 publication provenance changed");
+      expect(context.events.all()).toHaveLength(0);
+    } else {
+      await expect(publication.publish(fixture.command)).resolves.toBe("published");
+    }
+  });
+
+  // Regression: a selected card must not attest to another interest's rubric
+  // or model configuration while reusing a correctly pinned FeedItem digest.
+  it.each(["rubric", "model"] as const)(
+    "rejects workspace V3 publication with a changed %s attestation", async (change) => {
+      const fixture = workspaceV3ReadyFixture(change === "rubric" ? 44 : 45, change);
+      const context = await createContext(fixture.command);
+      const source: ReaderSummaryV3PreparationSourcePort = {
+        configuration: async () => ({ ok: true, config: fixture.config }),
+        prepare: jest.fn(), coverage: async () => ({ status: "ready",
+          hasPromotableSignal: true }),
+      };
+      const publication = new InMemoryReaderSummaryPublication(context.jobs,
+        context.artifacts, context.events, source);
+
+      await expect(publication.publish(fixture.command)).rejects.toThrow(
+        "Workspace V3 publication provenance changed");
+      await expect(context.artifacts.findById(fixture.identity)).resolves.toBeNull();
+      expect(context.events.all()).toHaveLength(0);
+    });
 });
+
+const workspaceV3NoSignalFixture = (sequence: number) => {
+  const fixture = createFixture({ semanticStatus: "NO_SIGNAL", sequence });
+  const original = fixture.command.finalJob.toSnapshot();
+  const cutoff = "2026-07-05T10:00:00.000000Z";
+  const config = { schemaVersion: "reader_summary_preparation_config.v2" as const,
+    interests: [{ schemaVersion: "reader_summary_preparation_config.v1" as const,
+      interestId: "00000000-0000-4000-8000-000000000010",
+      interestSha256: "a".repeat(64), rubricVersion: "rubric.v1",
+      rubricSha256: "c".repeat(64), inputBuilderVersion: "input.v1",
+      modelConfigVersion: "model.v1" }] };
+  const manifest = { schemaVersion: "reader_summary_preparation_manifest.v2" as const,
+    cutoffAt: cutoff, periodKey: original.period.periodKey,
+    interests: config.interests, candidates: [] };
+  const finalJob = ReaderSummaryJob.rehydrate({ ...original,
+    selectionStrategy: "jev_primary_v3", preparationConfig: config,
+    preparationManifest: manifest,
+    preparationManifestSha256: readerSummaryWorkspaceManifestSha256(manifest),
+    preparationCutoffAt: cutoff,
+    preparationDeadlineAt: "2026-07-05T10:15:00.000000Z",
+    preparationReadyAt: new Date(cutoff) });
+  const artifactSnapshot = fixture.command.artifact.toSnapshot();
+  const artifact = { toSnapshot: () => ({ ...artifactSnapshot,
+    sourceWindow: { ...artifactSnapshot.sourceWindow,
+      exactIngestionCutoff: cutoff, ingestionCutoff: new Date(cutoff) } }) };
+  return { ...fixture, config, command: { ...fixture.command,
+    finalJob, artifact } as ReaderSummaryPublicationCommand };
+};
+
+const workspaceV3ReadyFixture = (sequence: number, change: "rubric" | "model") => {
+  const fixture = createFixture({ semanticStatus: "COMPLETED", sequence });
+  const original = fixture.command.finalJob.toSnapshot();
+  const cutoff = "2026-07-05T10:00:00.000000Z";
+  const interestId = "00000000-0000-4000-8000-000000000010";
+  const config = { schemaVersion: "reader_summary_preparation_config.v2" as const,
+    interests: [{ schemaVersion: "reader_summary_preparation_config.v1" as const,
+      interestId, interestSha256: "a".repeat(64),
+      rubricVersion: "rubric.v1", rubricSha256: "c".repeat(64),
+      inputBuilderVersion: "input.v1", modelConfigVersion: "model.v1" }] };
+  const candidate = { candidateId: "00000000-0000-4000-8000-000000000020",
+    interestId, sourceBindingId: "00000000-0000-4000-8000-000000000021",
+    providerKey: "rss", sourceItemId: "00000000-0000-4000-8000-000000000022",
+    sourceRevisionKey: "revision-1", sourceSnapshotSha256: "d".repeat(64),
+    assessmentId: "00000000-0000-4000-8000-000000000023",
+    inputSha256: "e".repeat(64), publishedAt: "2026-07-05T09:00:00.000000Z",
+    observedAt: "2026-07-05T09:01:00.000000Z", sourceKind: "article",
+    canonicalIdentity: "https://example.test/item" };
+  const manifest = { schemaVersion: "reader_summary_preparation_manifest.v2" as const,
+    cutoffAt: cutoff, periodKey: original.period.periodKey,
+    interests: config.interests, candidates: [candidate] };
+  const finalJob = ReaderSummaryJob.rehydrate({ ...original,
+    selectionStrategy: "jev_primary_v3", preparationConfig: config,
+    preparationManifest: manifest,
+    preparationManifestSha256: readerSummaryWorkspaceManifestSha256(manifest),
+    preparationCutoffAt: cutoff,
+    preparationDeadlineAt: "2026-07-05T10:15:00.000000Z",
+    preparationReadyAt: new Date(cutoff) });
+  const artifactSnapshot = fixture.command.artifact.toSnapshot();
+  const attestation = { schemaVersion: "reader_post_promotion_attestation.v3",
+    candidateId: candidate.candidateId, exactIngestionCutoff: cutoff,
+    assessment: { assessmentId: candidate.assessmentId,
+      sourceSnapshotSha256: candidate.sourceSnapshotSha256,
+      inputSha256: candidate.inputSha256, rubricVersion: "rubric.v1",
+      rubricSha256: change === "rubric" ? "0".repeat(64) : "c".repeat(64),
+      modelConfigVersion: change === "model" ? "other-model" : "model.v1" } };
+  const artifact = ({ toSnapshot: () => ({ ...artifactSnapshot,
+    promotionAttestations: [attestation],
+    sourceWindow: { ...artifactSnapshot.sourceWindow,
+      exactIngestionCutoff: cutoff, ingestionCutoff: new Date(cutoff) } }) }) as unknown as ReaderSummaryArtifact;
+  return { ...fixture, config, command: { ...fixture.command,
+    finalJob, artifact } };
+};
+
+/** Five mature Reddit posts with scores 10..50 and their signed popularity. */
+const workspaceV3RankedFixture = (sequence: number, forged: boolean) => {
+  const base = workspaceV3ReadyFixture(sequence, "rubric");
+  const interest = { ...base.config.interests[0]! };
+  const config = { ...base.config, interests: [interest] };
+  const original = base.command.finalJob.toSnapshot();
+  const cutoff = "2026-07-05T10:00:00.000000Z";
+  const uuid = (n: number) => `00000000-0000-4000-8000-${n.toString(16).padStart(12, "0")}`;
+  const candidates = [10, 20, 30, 40, 50].map((score, index) => ({
+    candidateId: uuid(0x100 + index), interestId: interest.interestId,
+    sourceBindingId: uuid(0x200 + index), providerKey: "reddit",
+    sourceItemId: uuid(0x300 + index), sourceRevisionKey: "revision-1",
+    sourceSnapshotSha256: "d".repeat(64), assessmentId: uuid(0x400 + index),
+    inputSha256: "e".repeat(64), publishedAt: "2026-07-05T01:00:00.000000Z",
+    observedAt: "2026-07-05T01:01:00.000000Z", sourceKind: "post",
+    canonicalIdentity: `https://example.test/reddit-${index}`,
+    providerMetadata: { kind: "reddit_post", score },
+    engagementObservedAt: "2026-07-05T08:00:00.000000Z" }));
+  const manifest = { schemaVersion: "reader_summary_preparation_manifest.v2" as const,
+    cutoffAt: cutoff, periodKey: original.period.periodKey,
+    interests: config.interests, candidates };
+  const finalJob = ReaderSummaryJob.rehydrate({ ...original, preparationConfig: config,
+    preparationManifest: manifest,
+    preparationManifestSha256: readerSummaryWorkspaceManifestSha256(manifest) });
+  // Explicit expected counts, not a recomputation: score 10 has 0 below, 50 has 4.
+  const attestations = candidates.map((candidate, index) => ({
+    schemaVersion: "reader_post_promotion_attestation.v3",
+    policyVersion: READER_PROMOTION_POLICY_V1,
+    candidateId: candidate.candidateId, exactIngestionCutoff: cutoff,
+    assessment: { assessmentId: candidate.assessmentId,
+      sourceSnapshotSha256: candidate.sourceSnapshotSha256,
+      inputSha256: candidate.inputSha256, rubricVersion: interest.rubricVersion,
+      rubricSha256: interest.rubricSha256, modelConfigVersion: interest.modelConfigVersion },
+    comparator: { engagement: { method: "reddit_score",
+      value: candidate.providerMetadata.score, observedAt: candidate.engagementObservedAt },
+    popularity: { cohortSize: 5, below: forged && index === 0 ? 1 : index, equal: 1 } } }));
+  const artifactSnapshot = base.command.artifact.toSnapshot();
+  const artifact = ({ toSnapshot: () => ({ ...artifactSnapshot,
+    promotionAttestations: attestations }) }) as unknown as ReaderSummaryArtifact;
+  const assessments = new Map(candidates.map((candidate) => [candidate.assessmentId, {
+    result: { usefulness: { choice: "useful" }, relevance: { choice: "central" } },
+    input_snapshot: { safety: "allowed" } }] as const));
+  return { config, assessments, command: { ...base.command, finalJob, artifact } };
+};
 
 const createContext = async (
   ...commands: readonly ReaderSummaryPublicationCommand[]
@@ -231,14 +468,14 @@ const createFixture = (params: {
   const jobId = `10000000-0000-4000-8000-${suffix}`;
   const artifactId = `20000000-0000-4000-8000-${suffix}`;
   const eventId = `30000000-0000-4000-8000-${suffix}`;
-  const requestedAt = params.requestedAt ?? new Date("2026-07-05T10:00:00.000Z");
+  const requestedAt =
+    params.requestedAt ?? new Date("2026-07-05T10:00:00.000Z");
   const period = {
     cadence: "daily" as const,
     startedAt: new Date("2026-07-05T00:00:00.000Z"),
     endedAt: new Date("2026-07-06T00:00:00.000Z"),
     timezone: "UTC",
-    periodKey:
-      "daily:2026-07-05T00:00:00.000Z:2026-07-06T00:00:00.000Z:UTC",
+    periodKey: "daily:2026-07-05T00:00:00.000Z:2026-07-06T00:00:00.000Z:UTC",
   };
   const scope = { type: "workspace" as const };
   const noSignal = params.semanticStatus === "NO_SIGNAL";
@@ -267,7 +504,7 @@ const createFixture = (params: {
       providerMetrics: [
         {
           label: "GitHub Trending today",
-          value: `#${rank}, +${200 + rank} stars today`,
+          value: `#${rank}, +${githubStarsGained(rank)} stars today`,
         },
       ],
     };
@@ -310,7 +547,29 @@ const createFixture = (params: {
           selectedPosts: [],
           narrativeSections: [],
         }
-      : { selectedPosts: githubSelectedPosts },
+      : {
+          selectedPosts: githubSelectedPosts,
+          narrativeSections: [
+            {
+              id: "github-trending",
+              kind: "watch" as const,
+              title: "GitHub Trending",
+              text: githubTrendingWatchText(
+                githubSelectedPosts.slice(0, 3).map((_, index) => {
+                  const rank = index + 1;
+                  return {
+                    repositoryIdentity: `owner/repository-${rank}`,
+                    rank,
+                    starsGained: githubStarsGained(rank),
+                  };
+                }),
+              ),
+              citationIds: githubCitations
+                .slice(0, 3)
+                .map((citation) => citation.citationId),
+            },
+          ],
+        },
     qualityFlags: noSignal ? ["no_signal"] : [],
     confidence: {
       level: noSignal ? "none" : "medium",
@@ -423,7 +682,7 @@ const createFixture = (params: {
               scanJobId: `github-publication-scan-${params.sequence}`,
               repositoryIdentity: `owner/repository-${rank}`,
               canonicalUrl: citation.canonicalUrl,
-              starsGained: 200 + rank,
+              starsGained: githubStarsGained(rank),
               fetchStartedAt: githubFetchStartedAt.toISOString(),
               publishedAt: githubCheckedAt.toISOString(),
               checkedAt: githubCheckedAt.toISOString(),
@@ -449,3 +708,5 @@ const createFixture = (params: {
     },
   };
 };
+
+const githubStarsGained = (rank: number): number => 1_200 + rank;

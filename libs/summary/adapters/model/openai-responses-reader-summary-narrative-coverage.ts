@@ -1,6 +1,7 @@
 import type {
   ReaderSummaryCitation,
   ReaderSummaryCoverageMode,
+  ReaderSummaryNarrativeSection,
 } from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
 
@@ -9,6 +10,7 @@ export type ReaderSummaryNarrativeCoverage = {
   readonly leadClusterId: string | undefined;
   readonly leadCitationIds: ReadonlySet<string>;
   readonly allowedLeadCitationIds: ReadonlySet<string>;
+  readonly allowedNarrativeCitationIds: ReadonlySet<string>;
   readonly secondaryCitationIds: ReadonlyMap<string, ReadonlySet<string>>;
 };
 
@@ -35,6 +37,10 @@ export const buildReaderSummaryNarrativeCoverage = (
       citationIdsFor(item.feedItemIds),
     ]),
   );
+  const allowedNarrativeCitationIds = new Set([
+    ...leadCitationIds,
+    ...[...secondaryCitationIds.values()].flatMap((ids) => [...ids]),
+  ]);
 
   return {
     mode: plan.mode,
@@ -42,11 +48,9 @@ export const buildReaderSummaryNarrativeCoverage = (
     leadCitationIds,
     allowedLeadCitationIds:
       plan.mode === "daily_synthesis"
-        ? new Set([
-            ...leadCitationIds,
-            ...[...secondaryCitationIds.values()].flatMap((ids) => [...ids]),
-          ])
+        ? allowedNarrativeCitationIds
         : leadCitationIds,
+    allowedNarrativeCitationIds,
     secondaryCitationIds,
   };
 };
@@ -72,3 +76,23 @@ export const isValidReaderSummaryNarrativeLead = (
     )
   );
 };
+
+export const buildReaderSummaryNarrativeCitationGuard =
+  (
+    coverage: ReaderSummaryNarrativeCoverage,
+    eligibleWatchCitationIds: ReadonlySet<string>,
+  ): ((
+    kind: ReaderSummaryNarrativeSection["kind"] | undefined,
+    citationIds: readonly string[],
+  ) => boolean) =>
+  (kind, citationIds) => {
+    if (kind === "watch") {
+      return citationIds.every((id) => eligibleWatchCitationIds.has(id));
+    }
+    if (kind === "main_signal" || kind === "why_it_matters") {
+      return citationIds.every((id) =>
+        coverage.allowedNarrativeCitationIds.has(id),
+      );
+    }
+    return true;
+  };

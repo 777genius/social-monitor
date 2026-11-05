@@ -6,6 +6,7 @@ import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 
 import '../../domain/entities/source_binding.dart';
 import '../../domain/entities/source_binding_health_snapshot.dart';
+import '../formatters/scan_run_display_formatters.dart';
 import '../formatters/source_binding_display_formatters.dart';
 import '../stores/scan_policy_store.dart';
 import '../stores/scan_run_store.dart';
@@ -192,7 +193,7 @@ class _ReadyHealthSummary extends StatelessWidget {
             ),
             _DetailRow(
               label: 'Operator action',
-              value: snapshot.operatorAction,
+              value: scanOperatorActionLabel(snapshot.operatorAction),
             ),
             _DetailRow(
               label: 'Evaluated',

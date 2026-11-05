@@ -1,0 +1,81 @@
+import { rankSourceItems } from "../../../domain";
+import type { FetchedSourceItem } from "../../../ports";
+import type { AdaptivePaginationPolicy } from "../adaptive-source-pagination";
+import type { readSourceItemRankingPlan } from "../source-item-ranking-config";
+import type { XExperimentalDailyScanConfig } from "./x-twitter-experimental-daily-config";
+import {
+  compareXCollectedPosts, normalizeXPost, xPostMatchesMetricThresholds,
+  xPostMatchesSearchQuery, xPostSignalScore, type XCanonicalRankingPost,
+} from "./x-twitter-experimental-daily-item";
+
+export type XCanonicalCandidate<P extends XCanonicalRankingPost> = {
+  readonly post: P;
+  readonly searchQuery: string;
+  readonly maxItems: number;
+};
+
+// Budgets constrain collector requests and describe normalization; they do not
+// truncate returned posts. Collector scoring/capping has already happened.
+export const resolveXQueryBudget = (
+  config: XExperimentalDailyScanConfig, searchQuery: string,
+): number => config.maxItemsBySearchQuery.get(searchQuery) ?? config.maxItemsPerQuery;
+
+export const resolveXQueryTarget = (
+  queryMaxItems: number, queryCount: number,
+  paginationPolicy: AdaptivePaginationPolicy | undefined,
+): number => paginationPolicy === undefined ? queryMaxItems : Math.max(
+  queryMaxItems, Math.ceil(paginationPolicy.targetItems / Math.max(queryCount, 1)),
+);
+
+/** Call for each returned page in canonical order, BEFORE filtering the lane. */
+export function reduceXReturnedPage<P extends XCanonicalRankingPost>(
+  postsByTweetId: Map<string, P>, posts: readonly P[],
+): { pageNewItemCount: number; pageDuplicateCount: number } {
+  let pageNewItemCount = 0;
+  let pageDuplicateCount = 0;
+  for (const post of posts) {
+    const existing = postsByTweetId.get(post.tweetId);
+    if (existing === undefined) {
+      postsByTweetId.set(post.tweetId, post);
+      pageNewItemCount += 1;
+      continue;
+    }
+    pageDuplicateCount += 1;
+    if (xPostSignalScore(post) > xPostSignalScore(existing)) {
+      postsByTweetId.set(post.tweetId, post);
+    }
+  }
+  return { pageNewItemCount, pageDuplicateCount };
+}
+
+/** Input is a reduced complete lane, never raw acquisition occurrences. */
+export function mergeXCanonicalLane<P extends XCanonicalRankingPost>(
+  postsByExternalId: Map<string, XCanonicalCandidate<P>>, posts: readonly P[],
+  searchQuery: string, maxItems: number, config: XExperimentalDailyScanConfig,
+): void {
+  for (const post of posts.filter((item) =>
+    xPostMatchesMetricThresholds(item.metrics, config) &&
+    (!config.requireQueryMatch || xPostMatchesSearchQuery(item, searchQuery, maxItems)),
+  )) {
+    const externalId = `x-twitter:${post.tweetId}`;
+    const existing = postsByExternalId.get(externalId);
+    if (existing === undefined || xPostSignalScore(post) > xPostSignalScore(existing.post)) {
+      postsByExternalId.set(externalId, { post, searchQuery, maxItems });
+    }
+  }
+}
+
+/** Stable signal/publication order precedes the existing ranking policy. */
+export function rankXCanonicalSelection<P extends XCanonicalRankingPost>(
+  postsByExternalId: ReadonlyMap<string, XCanonicalCandidate<P>>,
+  rankingPlan: ReturnType<typeof readSourceItemRankingPlan>, planMaxItems: number,
+  paginationPolicy: AdaptivePaginationPolicy | undefined,
+  normalize: (item: XCanonicalCandidate<P>) => FetchedSourceItem =
+    (item) => normalizeXPost(item.post, item.searchQuery, item.maxItems),
+): readonly FetchedSourceItem[] {
+  const normalizedItems = [...postsByExternalId.values()]
+    .sort((left, right) => compareXCollectedPosts(left.post, right.post))
+    .map(normalize);
+  const outputItemLimit = Math.max(planMaxItems, paginationPolicy?.targetItems ?? 0);
+  return rankSourceItems(normalizedItems, rankingPlan).slice(0, outputItemLimit);
+}

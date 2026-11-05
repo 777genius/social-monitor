@@ -80,18 +80,26 @@ class _CitationChipState extends State<_CitationChip> {
                 MouseRegion(
                   onEnter: (_) => _openMenu(),
                   onExit: (_) => _scheduleClose(),
-                  child: MenuItemButton(
-                    key: ValueKey(
-                      'reader-summary-citation-source-${citation.id}',
+                  child: Semantics(
+                    key: readerSummaryUrlActionKey(
+                      'citation-source',
+                      citation.id,
                     ),
-                    onPressed:
-                        citation.canonicalUrl != null &&
-                            citation.canonicalUrl!.trim().isNotEmpty
-                        ? () => widget.onOpenUrl(citation.canonicalUrl!)
-                        : null,
-                    child: _CitationSourcePreview(
-                      citation: citation,
-                      source: widget.citationSourceById[citation.id],
+                    link: true,
+                    label: readerSummaryUrlActionSemantics(
+                      'citation-source',
+                      citation.id,
+                    ),
+                    child: MenuItemButton(
+                      onPressed:
+                          citation.canonicalUrl != null &&
+                              citation.canonicalUrl!.trim().isNotEmpty
+                          ? () => widget.onOpenUrl(citation.canonicalUrl!)
+                          : null,
+                      child: _CitationSourcePreview(
+                        citation: citation,
+                        source: widget.citationSourceById[citation.id],
+                      ),
                     ),
                   ),
                 ),
@@ -106,6 +114,9 @@ class _CitationChipState extends State<_CitationChip> {
           onExit: (_) => _scheduleClose(),
           cursor: SystemMouseCursors.click,
           child: InkWell(
+            key: ValueKey(
+              'reader-summary-url-menu-citation-${widget.citation.id}',
+            ),
             onTap: _toggleMenu,
             borderRadius: BorderRadius.circular(6),
             child: DecoratedBox(
@@ -190,7 +201,7 @@ class _CitationSourcePreview extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
+                  ReaderSummarySourceText(
                     title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
@@ -201,7 +212,7 @@ class _CitationSourcePreview extends StatelessWidget {
                   ),
                   if (snippet != null) ...[
                     const SizedBox(height: 2),
-                    Text(
+                    ReaderSummarySourceText(
                       snippet,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -239,7 +250,9 @@ String _titleForCitation(
 ) {
   final title = source?.title.trim();
   if (title != null && title.isNotEmpty) {
-    return _withoutCitationNumber(title);
+    return readerSummaryNeedsSourceDisclosure(title)
+        ? title
+        : _withoutCitationNumber(title);
   }
   return _withoutCitationNumber(citation.sourceLabel);
 }
@@ -336,10 +349,17 @@ class _TopPostReferenceCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _TopPostTextBody(item: read),
+                    _TopPostTextBody(
+                      item: read,
+                      showOriginal: false,
+                      showOriginalControl: false,
+                      originalExpanded: false,
+                      onOriginalChanged: (_) {},
+                      onOriginalExpandedChanged: (_) {},
+                    ),
                     if (snippet != null) ...[
                       const SizedBox(height: AppSpacing.xs),
-                      Text(
+                      ReaderSummarySourceText(
                         snippet,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,

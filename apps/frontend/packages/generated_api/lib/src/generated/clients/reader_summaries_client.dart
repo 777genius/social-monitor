@@ -13,6 +13,8 @@ import '../models/freshness_status.dart';
 import '../models/list_reader_summaries_response_dto.dart';
 import '../models/list_reader_summary_periods_response_dto.dart';
 import '../models/list_reader_summary_topic_recommendations_response_dto.dart';
+import '../models/order.dart';
+import '../models/reader_posts_page_dto.dart';
 import '../models/reader_summary_job_status_response_dto.dart';
 import '../models/reader_summary_quality_rejection_response_dto.dart';
 import '../models/reader_summary_response_dto.dart';
@@ -27,6 +29,26 @@ part 'reader_summaries_client.g.dart';
 abstract class ReaderSummariesClient {
   factory ReaderSummariesClient(Dio dio, {String? baseUrl}) =
       _ReaderSummariesClient;
+
+  /// Browse all collected posts in a period using saved assessments; no model calls.
+  ///
+  /// [authorization] - Optional Bearer API key. Requires read:feed. If supplied, x-workspace-role is not required.
+  ///
+  /// [xWorkspaceRole] - Workspace feed read access. Required when Authorization bearer API key is not supplied.
+  @GET('/reader-posts')
+  Future<ReaderPostsPageDto> readerPostsControllerList({
+    @Query('endedAt') required String endedAt,
+    @Query('startedAt') required String startedAt,
+    @Header('x-workspace-id') required String xWorkspaceId,
+    @Header('x-tenant-id') required String xTenantId,
+    @Query('cursor') String? cursor,
+    @Query('excludedProviders') String? excludedProviders,
+    @Query('limit') num? limit,
+    @Query('order') Order? order,
+    @Query('interestId') String? interestId,
+    @Header('authorization') String? authorization,
+    @Header('x-workspace-role') String? xWorkspaceRole,
+  });
 
   /// List tenant/workspace summaries with cursor pagination.
   ///
@@ -100,7 +122,7 @@ abstract class ReaderSummariesClient {
   @GET('/reader-summaries/weekly')
   Future<ReaderSummaryWeeklyProjectionResponseDto>
   readerSummaryWeeklyProjectionControllerGet({
-    @Query('weekStartedOn') required String weekStartedOn,
+    @Query('weekStartedOn') required DateTime weekStartedOn,
     @Header('x-workspace-id') required String xWorkspaceId,
     @Header('x-tenant-id') required String xTenantId,
     @Header('authorization') String? authorization,

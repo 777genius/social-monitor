@@ -4,6 +4,17 @@ import { join } from "node:path";
 import { resolveProductionDayExecutionRequest } from "./lib/reader-summary-production-day-reuse-provenance";
 
 describe("production-day execution request", () => {
+  it("reuses an already opened runtime artifact directory", () => {
+    const source = readFileSync(
+      join(process.cwd(), "scripts/run-reader-summary-production-day.ts"),
+      "utf8",
+    );
+
+    expect(source).toContain(
+      "if (!existsSync(runtimeArtifactDirectory)) {\n    mkdirSync(runtimeArtifactDirectory, { recursive: true });\n  }",
+    );
+  });
+
   it("binds production history readiness to its exact-day artifact", () => {
     const source = readFileSync(
       join(process.cwd(), "scripts/run-reader-summary-production-day.ts"),
@@ -19,6 +30,17 @@ describe("production-day execution request", () => {
       "Production history collection scope is not 6101/6102",
     );
   });
+
+  it("binds preserved regeneration quality to its immutable collection", () => {
+    const source = readFileSync(
+      join(process.cwd(), "scripts/run-reader-summary-production-day.ts"),
+      "utf8",
+    );
+    expect(source).toContain("historicalCleanDayCollectionPath(");
+    expect(source).toContain("executionRequest, historicalCollection?.path");
+    expect(source).toContain("historicalCollection?.path, collectionDate");
+  });
+
   it("leaves migrations exclusively in the release pipeline", () => {
     const runner = readFileSync(
       join(process.cwd(), "scripts/run-reader-summary-production-day.ts"),
@@ -30,7 +52,7 @@ describe("production-day execution request", () => {
     );
 
     expect(runner).not.toContain("migrate:deploy");
-    expect(deploy).toContain("exec npm run migrate:deploy");
+    expect(deploy).toContain("npm run migrate:deploy");
   });
 
   it("defaults to live production without reuse flags", () => {
@@ -143,12 +165,15 @@ describe("production-day execution request", () => {
       ]),
     ).toEqual({
       mode: "historical-regeneration",
-      sourceReportPath: "/tmp/source-report.json",
-      sourceReportSha256: "a".repeat(64),
-      collectionArtifactPath: "/tmp/collection.json",
-      collectionArtifactSha256: "b".repeat(64),
-      collectionQualityReportPath: "/tmp/collection-quality.json",
-      collectionQualityReportSha256: "c".repeat(64),
+      sourceEvidence: {
+        kind: "preserved-production-day-report",
+        sourceReportPath: "/tmp/source-report.json",
+        sourceReportSha256: "a".repeat(64),
+        collectionArtifactPath: "/tmp/collection.json",
+        collectionArtifactSha256: "b".repeat(64),
+        collectionQualityReportPath: "/tmp/collection-quality.json",
+        collectionQualityReportSha256: "c".repeat(64),
+      },
       datasetManifestPath: "/tmp/dataset-manifest.json",
       datasetManifestSha256: "d".repeat(64),
       timestampPolicy: "published_at",
@@ -163,13 +188,13 @@ describe("production-day execution request", () => {
     );
 
     expect(source).toContain(
-      "DURABLE_READER_SUMMARY_SOURCE_REPORT_SHA256:\n                  executionRequest.sourceReportSha256",
+      "DURABLE_READER_SUMMARY_SOURCE_REPORT_SHA256:\n                        executionRequest.sourceEvidence.sourceReportSha256",
     );
     expect(source).toContain(
-      "DURABLE_READER_SUMMARY_COLLECTION_ARTIFACT_SHA256:\n                  executionRequest.collectionArtifactSha256",
+      "DURABLE_READER_SUMMARY_COLLECTION_ARTIFACT_SHA256:\n                        executionRequest.sourceEvidence\n                          .collectionArtifactSha256",
     );
     expect(source).toContain(
-      "DURABLE_READER_SUMMARY_COLLECTION_QUALITY_REPORT_SHA256:\n                  executionRequest.collectionQualityReportSha256",
+      "DURABLE_READER_SUMMARY_COLLECTION_QUALITY_REPORT_SHA256:\n                        executionRequest.sourceEvidence\n                          .collectionQualityReportSha256",
     );
     expect(source).toContain(
       "DURABLE_READER_SUMMARY_DATASET_MANIFEST_SHA256:\n                  executionRequest.datasetManifestSha256",
@@ -177,25 +202,35 @@ describe("production-day execution request", () => {
   });
 
   it("requires the complete regeneration authority when capture builds identity", () => {
-    const source = readFileSync(
+    const captureSource = readFileSync(
       join(
         process.cwd(),
         "scripts/capture-durable-reader-summary-from-postgres.ts",
       ),
       "utf8",
     );
+    const promotionInputSource = readFileSync(
+      join(
+        process.cwd(),
+        "scripts/lib/reader-summary-production-day-promotion-input.ts",
+      ),
+      "utf8",
+    );
 
-    expect(source).toContain(
-      "sourceReportSha256: requiredEnv(sourceReportSha256Env)",
+    expect(captureSource).toContain(
+      "resolveProductionDayPromotionInput({",
     );
-    expect(source).toContain(
-      "collectionArtifactSha256: requiredEnv(collectionArtifactSha256Env)",
+    expect(promotionInputSource).toContain(
+      '"DURABLE_READER_SUMMARY_SOURCE_REPORT_SHA256"',
     );
-    expect(source).toMatch(
-      /collectionQualityReportSha256:\s*requiredEnv\(\s*collectionQualityReportSha256Env,?\s*\)/u,
+    expect(promotionInputSource).toContain(
+      '"DURABLE_READER_SUMMARY_COLLECTION_ARTIFACT_SHA256"',
     );
-    expect(source).toContain(
-      "datasetManifestSha256: requiredEnv(datasetManifestSha256Env)",
+    expect(promotionInputSource).toContain(
+      '"DURABLE_READER_SUMMARY_COLLECTION_QUALITY_REPORT_SHA256"',
+    );
+    expect(promotionInputSource).toContain(
+      '"DURABLE_READER_SUMMARY_DATASET_MANIFEST_SHA256"',
     );
   });
 

@@ -136,7 +136,7 @@ describe("selectedCoverageMatchesProviderBreakdown", () => {
     ).toBe(true);
   });
 
-  it("fails closed when a citation references outside the selected window", () => {
+  it("ignores separately verified citations outside promotion selection", () => {
     const fixture = productionRegressionFixture();
 
     expect(
@@ -147,7 +147,7 @@ describe("selectedCoverageMatchesProviderBreakdown", () => {
           { feedItemId: "outside-selection", providerKey: "reddit" },
         ],
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("fails closed when one selected item maps to conflicting providers", () => {
