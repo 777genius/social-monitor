@@ -13,7 +13,7 @@ import type {
 } from "../../ports";
 import { SourceFetchError } from "../../ports";
 import { scanSourceProviderPages } from './source-provider-pagination';
-import { buildSourceFetchTelemetry, compactUnique, filterByTargetPublishedWindow } from './source-fetch-result-assembly';
+import { buildSourceFetchTelemetry, compactUnique, filterByTargetPublishedWindow, readTargetPublishedWindow } from './source-fetch-result-assembly';
 import {
   DefaultSourceQueryPlanRuntimeCompiler,
   isSourceQueryPlannerEnabled,
@@ -68,6 +68,17 @@ export class RegistrySourceFetcherAdapter implements SourceFetcherPort {
       command,
       mergeSourceQueryParameters(initialConfig, planned.sourceQuery.parameters),
     );
+    // Fail closed before provider acquisition; invalid historical windows must
+    // not silently turn into unbounded, cursor-advancing scans.
+    if (context.config?.targetPublishedWindow !== undefined &&
+        readTargetPublishedWindow(context.config) === undefined) {
+      throw new SourceFetchError({
+        providerKey: provider.key(),
+        kind: 'invalid_query',
+        retryable: false,
+        message: 'targetPublishedWindow requires valid, increasing startInclusive and endExclusive dates',
+      });
+    }
 
     try {
       const plan = {

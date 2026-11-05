@@ -93,6 +93,34 @@ describe('RegistrySourceFetcherAdapter', () => {
     });
   });
 
+  it.each([
+    ['missing start', { endExclusive: '2026-07-08T00:00:00.000Z' }],
+    ['malformed end', { startInclusive: '2026-07-07T00:00:00.000Z', endExclusive: 'not-a-date' }],
+    ['reversed window', { startInclusive: '2026-07-08T00:00:00.000Z', endExclusive: '2026-07-07T00:00:00.000Z' }],
+    ['missing bounds', null],
+  ])('rejects an explicit %s window before scanning', async (_reason, window) => {
+    const provider = new FakeSourceProvider();
+    const scan = jest.spyOn(provider, 'scan');
+    const fetcher = new RegistrySourceFetcherAdapter(
+      new InMemorySourceProviderRegistry([provider], []),
+    );
+
+    await expect(fetcher.fetch({
+      tenantId: tenantId('tenant-registry-fetcher'),
+      workspaceId: workspaceId('workspace-registry-fetcher'),
+      sourceBindingId: 'source-binding-registry-fetcher',
+      scanJobId: 'scan-job-registry-fetcher',
+      providerKey: 'fake-source',
+      sourceQuery: {
+        mode: 'search',
+        query: 'AI agents',
+        parameters: { targetPublishedWindow: window },
+      },
+      correlationId: 'correlation-registry-fetcher',
+    })).rejects.toMatchObject({ kind: 'invalid_query', retryable: false });
+    expect(scan).not.toHaveBeenCalled();
+  });
+
   it('filters scanned items and conversation units to the requested published window', async () => {
     const provider = new WindowedProvider();
     const fetcher = new RegistrySourceFetcherAdapter(

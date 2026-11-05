@@ -110,7 +110,7 @@ export const filterByTargetPublishedWindow = (
   };
 };
 
-const readTargetPublishedWindow = (
+export const readTargetPublishedWindow = (
   config: SourceRuntimeConfig | undefined,
 ): { readonly start: Date; readonly end: Date } | undefined => {
   const raw = readRecord(config?.targetPublishedWindow);
