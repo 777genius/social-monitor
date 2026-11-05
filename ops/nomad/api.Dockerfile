@@ -20,6 +20,8 @@ COPY tsconfig.json tsconfig.build.json ./
 COPY prisma.config.ts ./
 COPY prisma ./prisma
 COPY scripts/check-feed-promotion-index-recovery.ts ./scripts/
+# npm run build invokes this post-emit alias rewriter inside the image.
+COPY scripts/rewrite-build-aliases.mjs ./scripts/
 COPY apps ./apps
 COPY libs ./libs
 COPY ops/nomad/api-env-entrypoint.mjs ./ops/nomad/api-env-entrypoint.mjs
