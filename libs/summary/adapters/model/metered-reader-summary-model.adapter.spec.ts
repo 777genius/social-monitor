@@ -4,6 +4,8 @@ import { dailyEditorialCoveragePlan, validateDailyEditorialPlan } from "../../do
 import { generateReaderSummaryWithDailyEditor } from "../../features/execute-reader-summary-job/reader-summary-daily-editorial-generation";
 import { MeteredReaderSummaryModelAdapter } from "./metered-reader-summary-model.adapter";
 import { OpenAiResponsesReaderSummaryModelAdapter } from "./openai-responses-reader-summary-model.adapter";
+import { AgentRuntimeReaderSummaryModelAdapter } from "./agent-runtime-reader-summary-model.adapter";
+import { CapturingAgentRuntimeClient } from "./agent-runtime-reader-summary-model.spec-support";
 import { dailyDigestFixture, dailyProviderDraft } from "./reader-summary-daily-digest.fixture";
 import { jsonResponse } from "./reader-summary-model-promotion.spec-support";
 
@@ -39,4 +41,67 @@ it("preserves editor capability and the residual writer budget through the runti
   expect(result.attempt.dailyGenerationReceipt?.evidence).toHaveLength(30);
   expect(metrics.counters("summary_model_requests_total").filter(metric =>
     metric.labels.status === "succeeded")).toHaveLength(2);
+});
+
+it("records spent OpenAI editor tokens even when its JSON plan fails validation", async () => {
+  const { input } = await dailyDigestFixture();
+  const delegate = new OpenAiResponsesReaderSummaryModelAdapter({
+    apiKey: "fixture-only-key",
+    estimatedInputCostUsdPerMillionTokens: 2,
+    estimatedOutputCostUsdPerMillionTokens: 8,
+    fetchFn: async () => jsonResponse({ output_text: "{}",
+      usage: { input_tokens: 120, output_tokens: 30 } }),
+  });
+  const metrics = new InMemoryMetricsRecorder();
+  const model = new MeteredReaderSummaryModelAdapter(delegate, metrics);
+  const route = model.route(input, {
+    preferredProvider: "openai-responses", maxInputTokens: 100000,
+    maxOutputTokens: 16000, maxEstimatedCostUsd: 5,
+  }, { remainingTokens: 160000, remainingCostUsd: 10 });
+
+  await expect(model.planDaily(input, route)).rejects.toThrow();
+  expect(metrics.counterValue("summary_model_tokens_total", {
+    model: route.model, provider: route.provider, token_type: "input",
+  })).toBe(120);
+  expect(metrics.counterValue("summary_model_tokens_total", {
+    model: route.model, provider: route.provider, token_type: "output",
+  })).toBe(30);
+  expect(metrics.counterValue("summary_model_estimated_cost_usd", {
+    model: route.model, provider: route.provider,
+  })).toBeGreaterThan(0);
+  expect(metrics.counterValue("summary_model_requests_total", {
+    model: route.model, provider: route.provider, status: "failed",
+  })).toBe(1);
+});
+
+it("records failed agent-runtime editor usage without changing its failure", async () => {
+  const { input } = await dailyDigestFixture();
+  const client = new CapturingAgentRuntimeClient({
+    status: "completed", structuredOutput: {
+      version: "reader_summary.daily_editorial.v2", topics: [],
+    }, warnings: [],
+    usage: { inputTokens: 240, outputTokens: 50, totalTokens: 290, estimatedCostUsd: 0.27 },
+  });
+  const delegate = new AgentRuntimeReaderSummaryModelAdapter({ client, agentProvider: "codex" });
+  const metrics = new InMemoryMetricsRecorder();
+  const model = new MeteredReaderSummaryModelAdapter(delegate, metrics);
+  const route = model.route(input, {
+    preferredProvider: "agent-runtime", maxInputTokens: 100000,
+    maxOutputTokens: 16000, maxEstimatedCostUsd: 5,
+  }, { remainingTokens: 160000, remainingCostUsd: 10 });
+
+  await expect(model.planDaily(input, route)).rejects.toThrow();
+  expect(client.commands).toHaveLength(1);
+  expect(metrics.counterValue("summary_model_tokens_total", {
+    model: route.model, provider: route.provider, token_type: "input",
+  })).toBe(240);
+  expect(metrics.counterValue("summary_model_tokens_total", {
+    model: route.model, provider: route.provider, token_type: "output",
+  })).toBe(50);
+  expect(metrics.counterValue("summary_model_estimated_cost_usd", {
+    model: route.model, provider: route.provider,
+  })).toBeCloseTo(0.27);
+  expect(metrics.counterValue("summary_model_requests_total", {
+    model: route.model, provider: route.provider, status: "failed",
+  })).toBe(1);
 });
