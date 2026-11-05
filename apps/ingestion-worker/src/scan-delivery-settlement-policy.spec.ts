@@ -33,9 +33,9 @@ describe('scan delivery settlement policy', () => {
   });
 
   it.each(['P1001', 'P1002', 'P1017', 'P2024', 'P2034'])(
-    'requeues known transient Prisma failures %s', (code) => {
+    'does not introduce unbounded raw Prisma delivery requeue for %s', (code) => {
       expect(decideFailedScanDeliveryAction(Object.assign(new Error('DB unavailable'), { code }), false))
-        .toBe('requeue');
+        .toBe('reject');
     },
   );
 
