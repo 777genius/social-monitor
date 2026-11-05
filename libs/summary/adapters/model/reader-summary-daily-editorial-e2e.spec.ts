@@ -46,15 +46,15 @@ it("editor and writer use the same thirty inputs; the saved plan guards publicat
       })),
     };
   };
-  const requests: { name: string; prompt: string }[] = [];
+  const requests: { name: string; prompt: string; model: string }[] = [];
   const writerInput = { current: undefined as ReaderSummaryModelInput | undefined };
   const adapter = new OpenAiResponsesReaderSummaryModelAdapter({
     apiKey: "fixture-only-key",
     fetchFn: async (_url, init) => {
       const request = JSON.parse(String(init?.body)) as {
-        input: string; text: { format: { name: string } };
+        input: string; model: string; text: { format: { name: string } };
       };
-      requests.push({ name: request.text.format.name, prompt: request.input });
+      requests.push({ name: request.text.format.name, prompt: request.input, model: request.model });
       return jsonResponse({ output_text: JSON.stringify(
         request.text.format.name === "social_monitor_reader_summary_daily_editor"
           ? rawPlan : providerDraft(writerInput.current!),
@@ -64,13 +64,15 @@ it("editor and writer use the same thirty inputs; the saved plan guards publicat
   const policy = { preferredProvider: "openai-responses", maxInputTokens: 100000,
     maxOutputTokens: 16000, maxEstimatedCostUsd: 5 };
   const budget = { remainingTokens: 120000, remainingCostUsd: 10 };
-  const editor = await adapter.planDaily(input, adapter.route(input, policy, budget));
+  const editorRoute = { ...adapter.route(input, policy, budget), model: "fixture-editor-model" };
+  const editor = await adapter.planDaily(input, editorRoute);
   expect(editor.plan).toEqual(plan);
   writerInput.current = { ...input, dailyEditorialPlan: editor.plan,
     coveragePlan: readerSummaryDailyEditorialCoveragePlan(evidence, editor.plan),
     policy: { ...input.policy, maxStories: 10 } };
   const attempt = await adapter.generate(writerInput.current, adapter.route(writerInput.current, policy, budget));
   expect(requests).toHaveLength(2);
+  expect(requests[0]!.model).toBe("fixture-editor-model");
   expect(JSON.parse(requests[0]!.prompt).evidence).toHaveLength(30);
   expect(JSON.parse(requests[1]!.prompt).evidence).toHaveLength(30);
   expect(writerInput.current.coveragePlan.lead?.clusterId).toBe(picked[0]!.storyId);
