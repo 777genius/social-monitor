@@ -98,7 +98,7 @@ describe("RssSourceProvider", () => {
         },
       },
       {
-        externalId: "https://example.test/rss/item-2#1",
+        externalId: "https://example.test/rss/item-2",
         canonicalUrl: "https://example.test/rss/item-2",
         title: "RSS item 2 without guid",
         body: "Second RSS item",

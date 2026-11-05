@@ -1,4 +1,4 @@
-import { normalizeItem } from "./rss-source-item-mapping";
+import { normalizeItem, rssWarnings } from "./rss-source-item-mapping";
 
 describe("RSS source-item canonical identity", () => {
   const feedUrl = "https://feeds.example.net/updates/feed.xml";
@@ -24,6 +24,18 @@ describe("RSS source-item canonical identity", () => {
     expect(reordered[0]?.externalId).toBe(early[0]?.externalId);
     expect(normalizeItem({ ...entry, guid: "stable-guid" }, 7, feedUrl)[0]?.externalId)
       .toBe("stable-guid");
+  });
+
+  it("reports missing canonical links only for readable timestamped entries", () => {
+    const now = new Date("2026-07-09T08:00:00.000Z");
+    expect(rssWarnings([
+      { title: "Readable", publishedAt: now, guid: "missing-link" },
+      { title: "Readable", guid: "missing-time" },
+      { title: "", content: "", publishedAt: now, guid: "unreadable" },
+    ])).toEqual([
+      "Some RSS items had no published timestamp; they were skipped.",
+      "Some RSS items had no canonical link; they were skipped.",
+    ]);
   });
 
   it("does not accept a non-HTTP link as a canonical URL", () => {

@@ -88,7 +88,7 @@ export const rssWarnings = (items: readonly RssFeedItem[]): readonly string[] =>
     (item) =>
       hasReadableContent(item) &&
       item.publishedAt !== undefined &&
-      item.link?.trim() === undefined || item.link.trim().length === 0,
+      (item.link?.trim().length ?? 0) === 0,
   )
     ? ["Some RSS items had no canonical link; they were skipped."]
     : []),

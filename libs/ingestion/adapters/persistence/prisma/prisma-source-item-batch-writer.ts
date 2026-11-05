@@ -191,8 +191,8 @@ async function updateExistingSourceItem(
           metadata: params.snapshot.metadata ?? {},
         },
   });
-  // A binding provenance change is not a new content revision.
-  return { record, contentChanged: contentChanged && !bindingOnlyChange };
+  // Binding-only provenance updates retain their revision, but are still observable writes.
+  return { record, contentChanged };
 }
 
 async function findExistingSourceItems(
