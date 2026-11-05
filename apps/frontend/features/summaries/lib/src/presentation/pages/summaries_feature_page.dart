@@ -45,7 +45,7 @@ class _SummariesFeaturePageState extends State<SummariesFeaturePage> {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
+    final page = AnimatedBuilder(
       animation: widget.store,
       builder: (context, child) {
         return MediaQuery.removePadding(
@@ -64,6 +64,7 @@ class _SummariesFeaturePageState extends State<SummariesFeaturePage> {
         );
       },
     );
+    return AppWebFindInPage(child: page);
   }
 }
 

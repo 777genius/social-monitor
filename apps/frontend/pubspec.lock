@@ -225,6 +225,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "7.0.1"
+  find_in_page:
+    dependency: transitive
+    description:
+      name: find_in_page
+      sha256: "6ff9118347ed2fcc66aa2ea0c7c917a26bda21e88e4636514fc756615847e9a6"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.2.3"
   fixnum:
     dependency: transitive
     description:

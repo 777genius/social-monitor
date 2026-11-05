@@ -37,7 +37,7 @@ class _PublishedSummaryPageState extends State<PublishedSummaryPage> {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
+    final page = AnimatedBuilder(
       animation: widget.store,
       builder: (context, _) {
         final state = widget.store.state;
@@ -94,6 +94,7 @@ class _PublishedSummaryPageState extends State<PublishedSummaryPage> {
         );
       },
     );
+    return AppWebFindInPage(child: page);
   }
 }
 

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -51,6 +52,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.byType(AppWebFindInPage), findsOneWidget);
+    if (kIsWeb) {
+      await _sendFindShortcut(tester);
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+    }
     expect(
       find.byKey(const ValueKey('published-reader-summary-view')),
       findsOneWidget,
@@ -193,6 +202,17 @@ Offset _textOffsetToPosition(RenderParagraph paragraph, int offset) {
       paragraph.getOffsetForCaret(TextPosition(offset: offset), caret) +
       Offset(0, paragraph.preferredLineHeight);
   return paragraph.localToGlobal(localOffset) + const Offset(0, -2);
+}
+
+Future<void> _sendFindShortcut(WidgetTester tester) async {
+  final modifier =
+      defaultTargetPlatform == TargetPlatform.macOS ||
+          defaultTargetPlatform == TargetPlatform.iOS
+      ? LogicalKeyboardKey.metaLeft
+      : LogicalKeyboardKey.controlLeft;
+  await tester.sendKeyDownEvent(modifier);
+  await tester.sendKeyEvent(LogicalKeyboardKey.keyF);
+  await tester.sendKeyUpEvent(modifier);
 }
 
 final class _SourceLauncher implements ReaderSourceLauncher {

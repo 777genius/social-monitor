@@ -35,6 +35,7 @@ void main() {
     await _pumpSizedFeature(tester, store: store);
     await tester.pumpAndSettle();
 
+    expect(find.byType(AppWebFindInPage), findsOneWidget);
     final header = find.byKey(const ValueKey('workspace-summary-header-band'));
 
     expect(header, findsOneWidget);
