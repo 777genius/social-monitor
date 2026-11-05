@@ -54,7 +54,7 @@ const searchLaneMatchesCandidate = (
   const tokens = tokenizeQuery(query);
   if (tokens.length === 0) {
     // All low-signal terms (e.g. "AI") still match as whole words, not substrings.
-    const candidateWords = text.match(/[\p{L}\p{N}]+/gu) ?? [];
+    const candidateWords: readonly string[] = text.match(/[\p{L}\p{N}]+/gu) ?? [];
     return rawQueryTokens(query).some((token) => candidateWords.includes(token));
   }
 
