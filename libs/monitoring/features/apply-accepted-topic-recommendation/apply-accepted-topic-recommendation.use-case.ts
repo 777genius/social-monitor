@@ -1,67 +1,24 @@
-import {
-  type Clock,
-  DomainError,
-  type IdGenerator,
-  causationId,
-  correlationId,
-  eventId,
-  err,
-  ok,
-  type Result,
-} from "@social-monitor/shared-kernel";
-
-import {
-  type SourceBinding,
-  type SourceBindingConfigExpandedEvent,
-  type SourceBindingConfigExpansionRevertedEvent,
-} from "../../domain";
+import { type Clock, DomainError, type IdGenerator, err, ok, type Result } from '@social-monitor/shared-kernel';
+import type { SourceBinding } from '../../domain';
 import type {
   IdempotencyPort,
   OutboxPort,
-  SourceBindingConfig,
   SourceBindingConfigProtectorPort,
   SourceBindingRepositoryPort,
   SourceCatalogPort,
-} from "../../ports";
-import {
-  createRollbackToken,
-  parseRollbackToken,
-  sameConfig,
-  type SourceBindingConfigRollbackToken,
-} from "./accepted-topic-rollback-token";
-import {
-  uniqueNormalized,
-  validateApplyAcceptedTopicRecommendationCommand,
-  validateRevertAcceptedTopicRecommendationCommand,
-} from "./accepted-topic-recommendation-validation";
-import { expandConfigForAcceptedTopic } from "./accepted-topic-source-binding-config-expander";
+} from '../../ports';
+import { uniqueNormalized, validateApplyAcceptedTopicRecommendationCommand, validateRevertAcceptedTopicRecommendationCommand } from './accepted-topic-recommendation-validation';
+import { prepareAcceptedTopicBindingUpdate, type PreparedBindingUpdate, type ChangedBindingUpdate } from './prepare-accepted-topic-binding-update';
+import { revertAcceptedTopicBindingUpdate } from './revert-accepted-topic-binding-update';
+import type { ApplyAcceptedTopicRecommendationCommand, RevertAcceptedTopicRecommendationCommand } from './apply-accepted-topic-recommendation.command';
 import type {
-  ApplyAcceptedTopicRecommendationCommand,
-  RevertAcceptedTopicRecommendationCommand,
-} from "./apply-accepted-topic-recommendation.command";
-import type {
-  AppliedTopicSourceBindingUpdate,
   ApplyAcceptedTopicRecommendationResult,
   RevertedTopicSourceBindingUpdate,
   RevertAcceptedTopicRecommendationResult,
-} from "./apply-accepted-topic-recommendation.result";
+} from './apply-accepted-topic-recommendation.result';
 
 type ApplyAcceptedTopicRecommendationFailure = DomainError | Error;
-type PreparedBindingUpdate = {
-  readonly result: AppliedTopicSourceBindingUpdate;
-  readonly changedBinding?: SourceBinding;
-  readonly event: SourceBindingConfigExpandedEvent;
-};
-type ChangedBindingUpdate = PreparedBindingUpdate & {
-  readonly changedBinding: SourceBinding;
-};
-
-const supportedProviderKeys = new Set([
-  "hacker-news",
-  "reddit",
-  "rss",
-  "x-twitter",
-]);
+const supportedProviderKeys = new Set(['hacker-news', 'reddit', 'rss', 'x-twitter']);
 
 export class ApplyAcceptedTopicRecommendationUseCase {
   constructor(
@@ -112,7 +69,12 @@ export class ApplyAcceptedTopicRecommendationUseCase {
 
     const prepared: PreparedBindingUpdate[] = [];
     for (const binding of bindings) {
-      const update = await this.prepareBindingUpdate(command, binding);
+      const update = await prepareAcceptedTopicBindingUpdate(command, binding, {
+        sourceCatalog: this.sourceCatalog,
+        configProtector: this.configProtector,
+        ids: this.ids,
+        clock: this.clock,
+      });
       if (!update.ok) {
         return err(update.error);
       }
@@ -159,7 +121,12 @@ export class ApplyAcceptedTopicRecommendationUseCase {
 
     const reversions: RevertedTopicSourceBindingUpdate[] = [];
     for (const update of command.sourceBindingUpdates) {
-      const reversion = await this.revertBindingUpdate(command, update);
+      const reversion = await revertAcceptedTopicBindingUpdate(command, update, {
+        sourceBindings: this.sourceBindings,
+        outbox: this.outbox,
+        ids: this.ids,
+        clock: this.clock,
+      });
       if (!reversion.ok) {
         return err(reversion.error);
       }
@@ -240,202 +207,6 @@ export class ApplyAcceptedTopicRecommendationUseCase {
     }
 
     return bindings;
-  }
-
-  private async prepareBindingUpdate(
-    command: ApplyAcceptedTopicRecommendationCommand,
-    binding: SourceBinding,
-  ): Promise<Result<PreparedBindingUpdate, DomainError>> {
-    const snapshot = binding.toSnapshot();
-    const unprotected = await this.configProtector.unprotect(
-      snapshot.config as SourceBindingConfig,
-    );
-    const expansion = expandConfigForAcceptedTopic(
-      snapshot.providerKey,
-      unprotected,
-      command.topicLabel,
-    );
-
-    if (!expansion.changed) {
-      return ok({
-        result: {
-          sourceBindingId: snapshot.id,
-          interestId: snapshot.interestId,
-          providerKey: snapshot.providerKey,
-          changed: false,
-          changedConfigPaths: [],
-        },
-        event: this.configExpandedEvent(command, snapshot, []),
-      });
-    }
-
-    const validation = await this.sourceCatalog.validateBindingConfig(
-      snapshot.providerKey,
-      expansion.config,
-    );
-    if (!validation.ok) {
-      return err(
-        new DomainError(
-          "validation.failed",
-          "Expanded source binding config is invalid for provider",
-          {
-            providerKey: snapshot.providerKey,
-            reason: validation.reason,
-            sourceBindingId: snapshot.id,
-          },
-        ),
-      );
-    }
-
-    const protectedConfig = await this.configProtector.protect(
-      expansion.config,
-    );
-    const changedBinding = binding.reconfigure(protectedConfig);
-
-    return ok({
-      result: {
-        sourceBindingId: snapshot.id,
-        interestId: snapshot.interestId,
-        providerKey: snapshot.providerKey,
-        changed: true,
-        changedConfigPaths: expansion.changedConfigPaths,
-        rollbackToken: createRollbackToken({
-          sourceBindingId: snapshot.id,
-          previousConfig: snapshot.config as SourceBindingConfig,
-          appliedConfig: protectedConfig,
-          changedConfigPaths: expansion.changedConfigPaths,
-        }),
-      },
-      changedBinding,
-      event: this.configExpandedEvent(
-        command,
-        snapshot,
-        expansion.changedConfigPaths,
-      ),
-    });
-  }
-
-  private configExpandedEvent(
-    command: ApplyAcceptedTopicRecommendationCommand,
-    snapshot: ReturnType<SourceBinding["toSnapshot"]>,
-    changedConfigPaths: readonly string[],
-  ): SourceBindingConfigExpandedEvent {
-    return {
-      eventId: eventId(this.ids.generate()),
-      eventType: "monitoring.source-binding.config-expanded",
-      schemaVersion: 1,
-      occurredAt: this.clock.now(),
-      tenantId: command.tenantId,
-      workspaceId: command.workspaceId,
-      correlationId: correlationId(command.correlationId),
-      causationId: causationId(command.idempotencyKey),
-      payload: {
-        sourceBindingId: snapshot.id,
-        tenantId: command.tenantId,
-        workspaceId: command.workspaceId,
-        interestId: snapshot.interestId,
-        providerKey: snapshot.providerKey,
-        topicLabel: command.topicLabel.trim(),
-        recommendationId: command.recommendationId.trim(),
-        changedConfigPaths,
-      },
-    };
-  }
-
-  private async revertBindingUpdate(
-    command: RevertAcceptedTopicRecommendationCommand,
-    update: RevertAcceptedTopicRecommendationCommand["sourceBindingUpdates"][number],
-  ): Promise<Result<RevertedTopicSourceBindingUpdate, DomainError>> {
-    if (!update.changed) {
-      return ok({
-        sourceBindingId: update.sourceBindingId,
-        interestId: update.interestId,
-        providerKey: update.providerKey,
-        reverted: false,
-        reason: "not_changed",
-        restoredConfigPaths: [],
-      });
-    }
-
-    const rollbackToken = parseRollbackToken(update.rollbackToken);
-    if (rollbackToken === null) {
-      return ok({
-        sourceBindingId: update.sourceBindingId,
-        interestId: update.interestId,
-        providerKey: update.providerKey,
-        reverted: false,
-        reason: "missing_rollback_token",
-        restoredConfigPaths: [],
-      });
-    }
-
-    const binding = await this.sourceBindings.findById({
-      tenantId: command.tenantId,
-      workspaceId: command.workspaceId,
-      sourceBindingId: update.sourceBindingId,
-    });
-    if (binding === null) {
-      return ok({
-        sourceBindingId: update.sourceBindingId,
-        interestId: update.interestId,
-        providerKey: update.providerKey,
-        reverted: false,
-        reason: "source_binding_missing",
-        restoredConfigPaths: [],
-      });
-    }
-
-    const snapshot = binding.toSnapshot();
-    if (!sameConfig(snapshot.config, rollbackToken.appliedConfig)) {
-      return ok({
-        sourceBindingId: update.sourceBindingId,
-        interestId: update.interestId,
-        providerKey: update.providerKey,
-        reverted: false,
-        reason: "config_changed",
-        restoredConfigPaths: [],
-      });
-    }
-
-    await this.sourceBindings.save(binding.reconfigure(rollbackToken.previousConfig));
-    await this.outbox.append(
-      this.configExpansionRevertedEvent(command, snapshot, rollbackToken),
-    );
-
-    return ok({
-      sourceBindingId: update.sourceBindingId,
-      interestId: update.interestId,
-      providerKey: update.providerKey,
-      reverted: true,
-      restoredConfigPaths: rollbackToken.changedConfigPaths,
-    });
-  }
-
-  private configExpansionRevertedEvent(
-    command: RevertAcceptedTopicRecommendationCommand,
-    snapshot: ReturnType<SourceBinding["toSnapshot"]>,
-    rollbackToken: SourceBindingConfigRollbackToken,
-  ): SourceBindingConfigExpansionRevertedEvent {
-    return {
-      eventId: eventId(this.ids.generate()),
-      eventType: "monitoring.source-binding.config-expansion-reverted",
-      schemaVersion: 1,
-      occurredAt: this.clock.now(),
-      tenantId: command.tenantId,
-      workspaceId: command.workspaceId,
-      correlationId: correlationId(command.correlationId),
-      causationId: causationId(command.idempotencyKey),
-      payload: {
-        sourceBindingId: snapshot.id,
-        tenantId: command.tenantId,
-        workspaceId: command.workspaceId,
-        interestId: snapshot.interestId,
-        providerKey: snapshot.providerKey,
-        topicLabel: command.topicLabel.trim(),
-        recommendationId: command.recommendationId.trim(),
-        restoredConfigPaths: rollbackToken.changedConfigPaths,
-      },
-    };
   }
 
   private async cacheResult(
