@@ -1,6 +1,6 @@
 import { redactSensitiveText } from "@social-monitor/shared-kernel";
 
-import { GITHUB_TRENDING_PAGE_PROVIDER_KEY } from '../../../domain';
+import { GITHUB_TRENDING_PAGE_PROVIDER_KEY, type GitHubTrendingPageRepositoryMetadataInput } from '../../../domain';
 import { parseConfig, readWindow, readPositiveInteger } from './github-trending-page-source-config';
 import {
   normalizeRepository,
@@ -54,6 +54,7 @@ export class GitHubTrendingPageSourceProvider implements SourceProviderPort {
   constructor(
     private readonly client: GitHubTrendingPageClientPort,
     private readonly clock: { now(): Date },
+    private readonly sourceLabel: GitHubTrendingPageRepositoryMetadataInput["trending"]["source"] = "github_trending_html",
   ) {}
 
   key(): string {
@@ -150,7 +151,7 @@ export class GitHubTrendingPageSourceProvider implements SourceProviderPort {
           fetchStartedAt,
           checkedAt,
           snapshotContentHash,
-          source: config.source,
+          source: this.sourceLabel,
         }),
       ),
       nextCursor: checkedAt.toISOString(),

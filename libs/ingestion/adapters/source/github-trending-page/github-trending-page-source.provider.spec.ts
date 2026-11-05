@@ -34,6 +34,7 @@ describe("GitHubTrendingPageSourceProvider", () => {
     const provider = new GitHubTrendingPageSourceProvider(
       new FixtureGitHubTrendingPageClient(),
       { now: () => new Date("2026-06-24T12:00:00.000Z") },
+      "fixture_github_trending_html",
     );
     const scanContext = context({
       language: "Python",
@@ -50,7 +51,7 @@ describe("GitHubTrendingPageSourceProvider", () => {
     expect(result.items).toHaveLength(1);
     expect(result.items[0]).toMatchObject({
       externalId:
-        "github-trending-page:daily:scan-github-trending-page:calesthio/OpenMontage",
+        "github-trending-page:daily:scan-github-trending-page:calesthio/openmontage",
       canonicalUrl: "https://github.com/calesthio/OpenMontage",
       title: "calesthio/OpenMontage is #1 on GitHub Trending",
     });
@@ -85,6 +86,21 @@ describe("GitHubTrendingPageSourceProvider", () => {
         }),
       }),
     );
+  });
+
+  it("does not let binding fixtureMode mislabel the client provenance", async () => {
+    const provider = new GitHubTrendingPageSourceProvider(
+      new FixtureGitHubTrendingPageClient(),
+      { now: () => new Date("2026-06-24T12:00:00.000Z") },
+    );
+    const scanContext = context({ language: "Python", maxItems: 1, fixtureMode: true });
+    const result = await provider.scan(
+      provider.planScan({ mode: "listing", query: "daily" }, scanContext),
+      scanContext,
+    );
+    expect(result.items[0]?.metadata).toMatchObject({
+      trending: { source: "github_trending_html" },
+    });
   });
 
   it("rejects a post-midnight fetch instead of backdating it into the requested day", async () => {

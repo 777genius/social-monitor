@@ -2,7 +2,7 @@ import type { RssFeedItem } from './rss-client.port';
 import { hasReadableFeedText } from './rss-readable-content';
 
 /** RSS normalization and evidence warnings share the same readability policy. */
-export const normalizeItem = (item: RssFeedItem, index: number, feedUrl: string) => {
+export const normalizeItem = (item: RssFeedItem, _index: number, feedUrl: string) => {
   const title = item.title ?? "";
   const body = item.content ?? "";
 
@@ -14,7 +14,7 @@ export const normalizeItem = (item: RssFeedItem, index: number, feedUrl: string)
     return [];
   }
 
-  const canonicalUrl = canonicalLinkForItem(item);
+  const canonicalUrl = canonicalLinkForItem(item, feedUrl);
 
   if (canonicalUrl === undefined) {
     return [];
@@ -22,7 +22,7 @@ export const normalizeItem = (item: RssFeedItem, index: number, feedUrl: string)
 
   return [
     {
-      externalId: item.guid ?? `${canonicalUrl}#${index}`,
+      externalId: item.guid ?? canonicalUrl,
       canonicalUrl,
       title,
       body,
@@ -88,7 +88,7 @@ export const rssWarnings = (items: readonly RssFeedItem[]): readonly string[] =>
     (item) =>
       hasReadableContent(item) &&
       item.publishedAt !== undefined &&
-      canonicalLinkForItem(item) === undefined,
+      item.link?.trim() === undefined || item.link.trim().length === 0,
   )
     ? ["Some RSS items had no canonical link; they were skipped."]
     : []),
@@ -124,8 +124,15 @@ const hasReadableContent = (item: RssFeedItem): boolean =>
     ? item.content !== undefined && item.xhtmlReadability?.content === true
     : hasReadableFeedText(item.content, item.contentType));
 
-const canonicalLinkForItem = (item: RssFeedItem): string | undefined => {
-  const link = item.link?.trim();
-
-  return link === undefined || link.length === 0 ? undefined : link;
+const canonicalLinkForItem = (item: RssFeedItem, feedUrl: string): string | undefined => {
+  const rawLink = item.link?.trim();
+  if (rawLink === undefined || rawLink.length === 0) return undefined;
+  try {
+    const url = new URL(rawLink, feedUrl);
+    return url.protocol === "https:" || url.protocol === "http:"
+      ? url.toString()
+      : undefined;
+  } catch {
+    return undefined;
+  }
 };

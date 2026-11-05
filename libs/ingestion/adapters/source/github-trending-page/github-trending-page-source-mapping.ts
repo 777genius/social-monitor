@@ -45,7 +45,7 @@ export const normalizeRepository = (params: {
     repository.description ?? "No GitHub Trending description available.";
 
   return {
-    externalId: `github-trending-page:${window}:${scanJobId}:${repository.fullName}`,
+    externalId: `github-trending-page:${window}:${scanJobId}:${repository.fullName.toLocaleLowerCase("en-US")}`,
     canonicalUrl: repository.url,
     title: `${repository.fullName} is #${repository.rank} on GitHub Trending`,
     body: `${description}\nGitHub Trending ${window}: #${repository.rank}, +${repository.starsGained} stars. Total stars: ${repository.totalStars}.`,

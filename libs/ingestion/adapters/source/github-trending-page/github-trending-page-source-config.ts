@@ -1,4 +1,4 @@
-import { githubTrendingPageWindows, type GitHubTrendingPageRepositoryMetadataInput, type GitHubTrendingPageWindow } from '../../../domain';
+import { githubTrendingPageWindows, type GitHubTrendingPageWindow } from '../../../domain';
 import type { SourceQuery, SourceProviderScanContext } from '../../../ports';
 
 export type GitHubTrendingPageConfig = {
@@ -7,7 +7,6 @@ export type GitHubTrendingPageConfig = {
   readonly spokenLanguage?: string;
   readonly userAgent?: string;
   readonly maxItemsPerLanguage: number;
-  readonly source: GitHubTrendingPageRepositoryMetadataInput["trending"]["source"];
 };
 
 export const parseConfig = (
@@ -40,9 +39,6 @@ export const parseConfig = (
       1,
       100,
     ),
-    source: readBoolean(context.config?.fixtureMode, false)
-      ? "fixture_github_trending_html"
-      : "github_trending_html",
   };
 };
 
@@ -115,9 +111,6 @@ const readLanguage = (value: unknown): string | undefined => {
 
 const languageKey = (value: string | undefined): string =>
   value?.toLocaleLowerCase("en-US") ?? "overall";
-
-const readBoolean = (value: unknown, fallback: boolean): boolean =>
-  typeof value === "boolean" ? value : fallback;
 
 export const readPositiveInteger = (
   value: unknown,

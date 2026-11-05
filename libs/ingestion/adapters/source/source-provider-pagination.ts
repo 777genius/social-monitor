@@ -12,7 +12,7 @@ import {
   readAdaptivePaginationPolicy,
   type AdaptivePaginationStopReason,
 } from './adaptive-source-pagination';
-import { compactUnique, countRateLimitWarnings } from './source-fetch-result-assembly';
+import { compactUnique, countRateLimitWarnings, filterByTargetPublishedWindow } from './source-fetch-result-assembly';
 
 export type ScanWithTelemetryResult = {
   readonly result: SourceProviderScanResult;
@@ -122,7 +122,13 @@ export async function scanSourceProviderPages(
     }
     nextCursor = result.nextCursor;
 
-    if (accumulator.uniqueItemCount() >= policyResult.policy.targetItems) {
+    const partial = accumulator.state("max_pages");
+    const acceptedCount = filterByTargetPublishedWindow({
+      items: partial.items,
+      conversationUnits: partial.conversationUnits,
+      warnings: [],
+    }, context).items.length;
+    if (acceptedCount >= policyResult.policy.targetItems) {
       stopReason = "target_items";
       break;
     }
