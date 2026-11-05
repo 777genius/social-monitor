@@ -701,6 +701,31 @@ describe("RedditSourceProvider", () => {
     expect(result.warnings).toContain(
       "Reddit scan pass degraded (ClaudeAI:top:day): fetch failed",
     );
+    expect(result.collection).toEqual({ complete: false, backfillPending: true });
+  });
+
+  it("retries historical windows when one Reddit lane fails", async () => {
+    const provider = new RedditSourceProvider(
+      new CapturingRedditClient({
+        listingResponses: new Map<string, RedditListingPage | Error>([
+          ["OpenAI:new:", { posts: [] }],
+          ["ClaudeAI:new:", new Error("historical lane failed")],
+        ]),
+      }),
+      new StaticTokenProvider("reddit-app-only-token"),
+    );
+    const context = scanContext({
+      targetPublishedWindow: {
+        startInclusive: "2026-07-07T00:00:00.000Z",
+        endExclusive: "2026-07-08T00:00:00.000Z",
+      },
+      scanPasses: [
+        { mode: "listing", subreddit: "OpenAI", listing: "new" },
+        { mode: "listing", subreddit: "ClaudeAI", listing: "new" },
+      ],
+    });
+    const plan = provider.planScan({ mode: "search", query: "AI agents" }, context);
+    await expect(provider.scan(plan, context)).rejects.toThrow("historical lane failed");
   });
 
   it("fails configured scan-passes when every Reddit pass is unavailable", async () => {

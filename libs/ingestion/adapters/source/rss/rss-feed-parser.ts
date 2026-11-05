@@ -8,6 +8,8 @@ const parser = new XMLParser({
   attributeNamePrefix: '@_',
   textNodeName: '#text',
   trimValues: true,
+  // Numeric-looking GUIDs and Atom IDs are identities, never numbers.
+  parseTagValue: false,
   htmlEntities: true,
   processEntities: {
     maxEntitySize: 8192, maxEntityCount: 128, maxTotalExpansions: 10_000,
@@ -257,11 +259,15 @@ const readAtomLink = (value: unknown): string | undefined => {
 };
 
 const readAtomAuthor = (value: unknown): string | undefined => {
-  if (isRecord(value)) {
-    return readText(value.name) ?? readText(value.email);
+  const authors = Array.isArray(value) ? value : [value];
+  for (const author of authors) {
+    const name = isRecord(author)
+      ? (readText(author.name) ?? readText(author.email))
+      : readText(author);
+    if (name !== undefined) return name;
   }
 
-  return readText(value);
+  return undefined;
 };
 
 const readElementAttribute = (

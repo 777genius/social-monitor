@@ -56,6 +56,7 @@ export async function collectRedditScanPasses(client: RedditClientPort, params: 
   const candidatesByExternalId = new Map<string, RedditScanCandidate>();
   const warnings: string[] = [];
   let failedPasses = 0;
+  let incompleteScan = false;
   let firstFailure: unknown;
 
   for (const pass of params.passes) {
@@ -107,8 +108,9 @@ export async function collectRedditScanPasses(client: RedditClientPort, params: 
                 after: cursor,
               });
       } catch (error) {
+        incompleteScan = true;
+        firstFailure ??= error;
         if (pageIndex === 0) {
-          firstFailure ??= error;
           failedPasses += 1;
         }
 
@@ -213,7 +215,9 @@ export async function collectRedditScanPasses(client: RedditClientPort, params: 
     }
   }
 
-  if (failedPasses === params.passes.length && firstFailure !== undefined) {
+  // Retry incomplete historical windows; expose partial live scans as incomplete.
+  if (firstFailure !== undefined &&
+      (targetPublishedWindow !== undefined || failedPasses === params.passes.length)) {
     throw firstFailure;
   }
 
@@ -239,6 +243,7 @@ export async function collectRedditScanPasses(client: RedditClientPort, params: 
   return {
     items: rankedItems,
     conversationUnits: conversationResult.conversationUnits,
+    ...(incompleteScan ? { collection: { complete: false, backfillPending: true } } : {}),
     warnings: compactUnique([...warnings, ...conversationResult.warnings]),
   };
 }

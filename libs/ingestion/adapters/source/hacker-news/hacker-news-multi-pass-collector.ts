@@ -55,6 +55,7 @@ export async function collectHackerNewsScanPasses(client: HackerNewsClientPort, 
   const rootStoriesById = new Map<number, HackerNewsStory | null>();
   const warnings: string[] = [];
   let failedPasses = 0;
+  let historicalPassTruncated = false;
   let firstFailure: unknown;
 
   for (const pass of params.passes) {
@@ -98,6 +99,7 @@ export async function collectHackerNewsScanPasses(client: HackerNewsClientPort, 
       pass.requiredStoryKeywords,
     );
     if (params.targetWindow !== undefined && filteredStories.length > limit) {
+      historicalPassTruncated = true;
       warnings.push(`Hacker News historical pass incomplete: maxItems exceeded (${sourceKeyForPass(pass)})`);
     }
     const sourceKey = sourceKeyForPass(pass);
@@ -165,7 +167,9 @@ export async function collectHackerNewsScanPasses(client: HackerNewsClientPort, 
     warnings.push(...hackerNewsWarnings(filteredStories));
   }
 
-  if (failedPasses === params.passes.length && firstFailure !== undefined) {
+  // A missing historical lane must not be recorded as a complete backfill.
+  if (firstFailure !== undefined &&
+      (params.targetWindow !== undefined || failedPasses === params.passes.length)) {
     throw firstFailure;
   }
 
@@ -182,12 +186,15 @@ export async function collectHackerNewsScanPasses(client: HackerNewsClientPort, 
       .slice(0, params.plan.maxItems)
       .map((item) => item.externalId),
   );
-  if (params.targetWindow !== undefined && filteredItems.length > params.plan.maxItems) {
+  const historicalOverflow = params.targetWindow !== undefined &&
+    (historicalPassTruncated || filteredItems.length > params.plan.maxItems);
+  if (historicalOverflow) {
     warnings.push("Hacker News historical scan incomplete: maxItems exceeded");
   }
 
   return {
     items: filteredItems.slice(0, params.plan.maxItems),
+    ...(historicalOverflow ? { collection: { complete: false, backfillPending: true } } : {}),
     conversationUnits: [...conversationUnitsByProviderUnitId.values()].filter(
       (unit) => returnedRootExternalIds.has(unit.rootExternalId),
     ),

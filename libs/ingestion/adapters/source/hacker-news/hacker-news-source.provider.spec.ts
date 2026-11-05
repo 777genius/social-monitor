@@ -388,6 +388,57 @@ describe("HackerNewsSourceProvider", () => {
     );
   });
 
+  it("does not report a partial historical lane as a successful scan", async () => {
+    const client = new RecordingHackerNewsClient();
+    jest.spyOn(client, "searchStories")
+      .mockRejectedValueOnce(new Error("historical story lane failed"))
+      .mockResolvedValueOnce([]);
+    const provider = new HackerNewsSourceProvider(client, new SystemClock());
+    const context = {
+      tenantId: tenantId("tenant-1"), workspaceId: workspaceId("workspace-1"),
+      sourceBindingId: "hn-binding-1", scanJobId: "scan-job-1", correlationId: "correlation-1",
+      config: {
+        targetPublishedWindow: {
+          startInclusive: "2026-07-07T00:00:00.000Z",
+          endExclusive: "2026-07-08T00:00:00.000Z",
+        },
+        scanPasses: [
+          { mode: "search", target: "story", query: "first" },
+          { mode: "search", target: "story", query: "second" },
+        ],
+      },
+    };
+    await expect(provider.scan(
+      provider.planScan({ mode: "search", query: "AI agents" }, context), context,
+    )).rejects.toThrow("historical story lane failed");
+  });
+
+  it("marks historical result truncation as incomplete coverage", async () => {
+    const client = new RecordingHackerNewsClient();
+    jest.spyOn(client, "searchStories").mockResolvedValueOnce([
+      { id: 9301, title: "First story", time: Date.parse("2026-07-07T12:00:00Z") / 1000 },
+      { id: 9302, title: "Second story", time: Date.parse("2026-07-07T13:00:00Z") / 1000 },
+    ]);
+    const provider = new HackerNewsSourceProvider(client, new SystemClock());
+    const context = {
+      tenantId: tenantId("tenant-1"), workspaceId: workspaceId("workspace-1"),
+      sourceBindingId: "hn-binding-1", scanJobId: "scan-job-1", correlationId: "correlation-1",
+      config: {
+        maxItems: 1,
+        targetPublishedWindow: {
+          startInclusive: "2026-07-07T00:00:00.000Z",
+          endExclusive: "2026-07-08T00:00:00.000Z",
+        },
+        scanPasses: [{ mode: "search", target: "story", query: "overflow", maxItems: 1 }],
+      },
+    };
+    const result = await provider.scan(
+      provider.planScan({ mode: "search", query: "AI agents" }, context), context,
+    );
+    expect(result.items).toHaveLength(1);
+    expect(result.collection).toEqual({ complete: false, backfillPending: true });
+  });
+
   it("uses target published window for historical search passes", async () => {
     const client = new RecordingHackerNewsClient();
     const provider = new HackerNewsSourceProvider(client, new SystemClock());
