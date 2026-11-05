@@ -1,3 +1,6 @@
+import type { SummaryEvidenceSelection } from "../../domain";
+import { buildReaderSummaryEvidenceCitationMap,
+  readerSummaryCitableEvidence } from "./reader-summary-evidence-citation-map";
 import {
   openAiReaderSummaryCitationFields,
   openAiReaderSummaryConfidenceLevels,
@@ -196,16 +199,20 @@ export const dailySynthesisReaderSummaryJsonSchema = {
 } as const;
 export function readerSummaryWriterSchema(input: {
   readonly dailyEditorialPlan?: {readonly version:string; readonly topics?: readonly {readonly feedItemIds:readonly string[]}[]};
-  readonly evidence?: {readonly dailyGenerationInput?: {readonly selected:readonly {readonly feedItemId:string;readonly storyId:string}[]}};
+  readonly evidence?: SummaryEvidenceSelection;
 }) {
   if (input.dailyEditorialPlan === undefined) return openAiReaderSummaryJsonSchema;
   if (input.dailyEditorialPlan.version !== "reader_summary.daily_editorial.v2") return dailyEditorialReaderSummaryJsonSchema;
   const assigned = new Set(input.dailyEditorialPlan.topics?.flatMap(topic => topic.feedItemIds) ?? []);
   const stories = new Set(input.evidence?.dailyGenerationInput?.selected.filter(item => assigned.has(item.feedItemId)).map(item => item.storyId));
-  if (stories.size < 2) return dailySynthesisReaderSummaryJsonSchema;
+  if (input.evidence === undefined) return dailySynthesisReaderSummaryJsonSchema;
+  const permitted = buildReaderSummaryEvidenceCitationMap(readerSummaryCitableEvidence(input.evidence))
+    .filter(citation => assigned.has(citation.feedItemId)).map(citation => citation.citationId);
+  const citationIds = dailySynthesisReaderSummaryJsonSchema.$defs.narrativeSection.properties.citationIds;
   return {...dailySynthesisReaderSummaryJsonSchema,$defs:{...dailySynthesisReaderSummaryJsonSchema.$defs,narrativeSection:{
     ...dailySynthesisReaderSummaryJsonSchema.$defs.narrativeSection,
     properties:{...dailySynthesisReaderSummaryJsonSchema.$defs.narrativeSection.properties,
-      citationIds:{...dailySynthesisReaderSummaryJsonSchema.$defs.narrativeSection.properties.citationIds,minItems:2}},
+      citationIds: {...citationIds, minItems: stories.size < 2 ? 1 : 2,
+        items: {...citationIds.items, enum: permitted}}},
   }}};
 }

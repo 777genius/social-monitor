@@ -5,6 +5,7 @@ import { buildOpenAiReaderSummaryInstructions } from "./openai-responses-reader-
 import { dailyEditorialReaderSummaryJsonSchema, openAiReaderSummaryJsonSchema } from "./openai-responses-reader-summary-schema";
 import { normalizeDailyEditorialNarrative } from "./openai-responses-reader-summary-editorial-narrative";
 import { dailyDigestFixture } from "./reader-summary-daily-digest.fixture";
+import { buildReaderSummaryEvidenceCitationMap, readerSummaryCitableEvidence } from "./reader-summary-evidence-citation-map";
 import { validateDailyEditorialPlan } from "../../domain";
 
 it("keeps complete detailed paragraphs beyond the previous 720-character ceiling", async () => {
@@ -40,9 +41,13 @@ it("synthesizes distinct stories while preserving sparse evidence and rejecting 
   const plan = validateDailyEditorialPlan({ version: "reader_summary.daily_editorial.v2", topics: distinct.map((source,index) => ({
     title: `Event ${index}`, why: "A supported development", depth: index===0 ? "detailed" : "brief", feedItemIds:[source.feedItemId],
   })) }, frozen);
+  const allowed = buildReaderSummaryEvidenceCitationMap(readerSummaryCitableEvidence(input.evidence))
+    .filter(citation => distinct.some(item => item.feedItemId === citation.feedItemId))
+    .map(citation => citation.citationId);
+  expect(allowed).toHaveLength(distinct.length);
   const instructions = buildOpenAiReaderSummaryInstructions({...input,dailyEditorialPlan:plan});
   expect(instructions).toContain("overall picture");
-  expect((readerSummaryWriterSchema({...input,dailyEditorialPlan:plan}) as { $defs:{narrativeSection:{properties:{citationIds:unknown}}}}).$defs.narrativeSection.properties.citationIds).toMatchObject({minItems:2,maxItems:3});
+  expect((readerSummaryWriterSchema({...input,dailyEditorialPlan:plan}) as { $defs:{narrativeSection:{properties:{citationIds:unknown}}}}).$defs.narrativeSection.properties.citationIds).toMatchObject({minItems:2,maxItems:3,items:{enum:allowed}});
   expect(instructions).toContain("not a sequence of post recaps");
   expect(instructions).toContain("not a rewrite of the first event title");
   const citationMap = distinct.map((source,index) => ({citationId:`c${index}`,feedItemId:source.feedItemId,
@@ -59,7 +64,8 @@ it("synthesizes distinct stories while preserving sparse evidence and rejecting 
   expect(() => normalize([{...overview,citationIds:["c0"]}])).toThrow("distinct supported stories");
   expect(() => normalize([{...overview,citationIds:["c0","unknown"]}])).toThrow("unplanned");
   expect(() => normalize([{...overview,citationIds:["c0","c0"]}])).toThrow("unplanned");
-  expect(() => normalize([{...overview,storyClusterId:distinct[0]!.storyId}])).toThrow("unplanned");
+  expect(() => normalize([{...overview,storyClusterId:distinct[0]!.storyId}])).toThrow("story cluster");
+  expect(() => normalize([theme,overview])).toThrow("section order");
   expect(() => normalize([{...overview,text:"An unfinished thought"}])).toThrow("unfinished");
   expect(() => normalize([overview,...Array.from({length:6},()=>theme)])).toThrow("at most five");
   const unrelated = {...citationMap[0]!,citationId:"outside",feedItemId:"not-planned"};
