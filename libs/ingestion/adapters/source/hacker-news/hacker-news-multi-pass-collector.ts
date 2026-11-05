@@ -16,6 +16,7 @@ import {
   normalizeHackerNewsStoriesWithOptionalComments,
 } from './hacker-news-comment-enrichment';
 import { hackerNewsRecencyWarnings, hackerNewsWarnings } from './hacker-news-item-normalizer';
+import { historicalDurationBudgetMs } from './hacker-news-historical-search';
 import {
   compactUnique,
   formatHackerNewsScanPassWarning,
@@ -60,7 +61,7 @@ export async function collectHackerNewsScanPasses(client: HackerNewsClientPort, 
   // One deadline for all historical search passes, not a new budget per pass.
   const searchOptions = params.targetWindow === undefined ? params.searchOptions : {
     ...params.searchOptions,
-    deadline: params.searchOptions?.deadline ?? AbortSignal.timeout(120_000),
+    deadline: params.searchOptions?.deadline ?? AbortSignal.timeout(historicalDurationBudgetMs),
   };
 
   for (const pass of params.passes) {

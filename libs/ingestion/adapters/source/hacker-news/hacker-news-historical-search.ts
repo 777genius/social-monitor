@@ -4,7 +4,7 @@ import { hasExhaustiveHitCount } from './hacker-news-algolia-policy';
 const historicalPageSize = 100;
 const historicalPageCeiling = 10;
 const historicalRequestBudget = 512;
-const historicalDurationBudgetMs = 120_000; // below the worker's 300s scan lease
+export const historicalDurationBudgetMs = 120_000; // below the worker's 300s scan lease
 
 /** Recursively split crowded Algolia result windows until page completeness is provable. */
 export async function searchCompleteHackerNewsWindow(

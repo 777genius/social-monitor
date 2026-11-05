@@ -24,7 +24,7 @@ export const ndcgAt = (
   const labelsByCandidateId = new Map(
     labels.map((label) => [label.candidateId, label]),
   );
-  const gains = rankedCandidateIds.map((candidateId, index) =>
+  const gains = rankedCandidateIds.slice(0, cutoff).map((candidateId, index) =>
     discountedGain(labelGain(labelsByCandidateId.get(candidateId)), index),
   );
   const idealGains = labels

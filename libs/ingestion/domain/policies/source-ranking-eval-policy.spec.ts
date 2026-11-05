@@ -1,3 +1,4 @@
+import { ndcgAt } from './source-ranking-eval-metrics';
 import {
   evaluateRankingEvalCase,
   evaluateRankingEvalSuite,
@@ -102,6 +103,15 @@ describe('source ranking eval policy', () => {
     expect(empty.metrics.ndcgAt20).toBe(0);
     expect(short.metrics.ndcgAt20).toBeGreaterThan(0);
     expect(short.metrics.ndcgAt20).toBeLessThan(1);
+  });
+
+  it('never counts ranked positions beyond an explicit NDCG cutoff', () => {
+    const labels = [
+      label('first', { relevance: 3 }),
+      label('second', { relevance: 2 }),
+    ];
+    expect(ndcgAt(['first', 'second'], labels, 1)).toBe(1);
+    expect(ndcgAt(['second', 'first'], labels, 1)).toBeLessThan(1);
   });
 
   it('treats single-source cases as fully source-covered', () => {

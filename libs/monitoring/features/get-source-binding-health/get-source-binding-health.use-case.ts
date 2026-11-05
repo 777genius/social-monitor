@@ -98,9 +98,10 @@ export class GetSourceBindingHealthUseCase {
           intervalSeconds: scanPolicySnapshot.intervalSeconds,
           freshnessSeconds: scanPolicySnapshot.freshnessSeconds,
         });
+    // Preserve elapsed-time evidence after a failed scan; health state still
+    // classifies failed scans separately instead of treating them as healthy.
     const freshness = scanPolicySnapshot === undefined ||
-      latestScanSnapshot?.status !== 'succeeded' ||
-      latestScanSnapshot.completedAt === undefined
+      latestScanSnapshot?.completedAt === undefined
       ? undefined
       : buildFreshness({
           completedAt: latestScanSnapshot.completedAt,
