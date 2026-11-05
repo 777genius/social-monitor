@@ -29,13 +29,18 @@ describe("RSS source-item canonical identity", () => {
   it("reports missing canonical links only for readable timestamped entries", () => {
     const now = new Date("2026-07-09T08:00:00.000Z");
     expect(rssWarnings([
-      { title: "Readable", publishedAt: now, guid: "missing-link" },
-      { title: "Readable", guid: "missing-time" },
-      { title: "", content: "", publishedAt: now, guid: "unreadable" },
+      { item: { title: "Readable", publishedAt: now, guid: "missing-link" }, feedUrl },
+      { item: { title: "Readable", guid: "missing-time" }, feedUrl },
+      { item: { title: "", content: "", publishedAt: now, guid: "unreadable" }, feedUrl },
     ])).toEqual([
       "Some RSS items had no published timestamp; they were skipped.",
       "Some RSS items had no canonical link; they were skipped.",
     ]);
+  });
+
+  it("reports a readable timestamped entry with an invalid non-HTTP link", () => {
+    expect(rssWarnings([{ item: { ...entry, link: "javascript:alert(1)" }, feedUrl }]))
+      .toEqual(["Some RSS items had no canonical link; they were skipped."]);
   });
 
   it("does not accept a non-HTTP link as a canonical URL", () => {

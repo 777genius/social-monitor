@@ -70,25 +70,28 @@ const searchQueryFromFeedUrl = (feedUrl: string): string | undefined => {
   }
 };
 
-export const rssWarnings = (items: readonly RssFeedItem[]): readonly string[] => [
-  ...(items.some(
-    (item) =>
+type SourcedRssWarningItem = { readonly item: RssFeedItem; readonly feedUrl: string };
+
+export const rssWarnings = (entries: readonly SourcedRssWarningItem[]): readonly string[] => [
+  ...(entries.some(
+    ({ item, feedUrl }) =>
       hasReadableContent(item) &&
       item.publishedAt !== undefined &&
-      item.guid === undefined,
+      item.guid === undefined &&
+      canonicalLinkForItem(item, feedUrl) !== undefined,
   )
     ? ["Some RSS items had no GUID; canonical URL fallback was used."]
     : []),
-  ...(items.some(
-    (item) => hasReadableContent(item) && item.publishedAt === undefined,
+  ...(entries.some(
+    ({ item }) => hasReadableContent(item) && item.publishedAt === undefined,
   )
     ? ["Some RSS items had no published timestamp; they were skipped."]
     : []),
-  ...(items.some(
-    (item) =>
+  ...(entries.some(
+    ({ item, feedUrl }) =>
       hasReadableContent(item) &&
       item.publishedAt !== undefined &&
-      (item.link?.trim().length ?? 0) === 0,
+      canonicalLinkForItem(item, feedUrl) === undefined,
   )
     ? ["Some RSS items had no canonical link; they were skipped."]
     : []),
@@ -96,13 +99,17 @@ export const rssWarnings = (items: readonly RssFeedItem[]): readonly string[] =>
 
 export const rssHistoricalRejectionWarnings = (
   rejectedEntries: number | undefined,
-  items: readonly RssFeedItem[],
+  entries: readonly SourcedRssWarningItem[],
   historical: boolean,
 ): readonly string[] => historical ? [
   ...((rejectedEntries ?? 0) > 0
     ? ["Some RSS entries could not be parsed; historical acquisition is incomplete."] : []),
-  ...(items.some((item) => !hasReadableContent(item))
+  ...(entries.some(({ item }) => !hasReadableContent(item))
     ? ["Some RSS entries had no readable title or content; historical acquisition is incomplete."] : []),
+  ...(entries.some(({ item, feedUrl }) =>
+    hasReadableContent(item) && item.publishedAt !== undefined &&
+    canonicalLinkForItem(item, feedUrl) === undefined)
+    ? ["Some RSS entries had no usable canonical URL; historical acquisition is incomplete."] : []),
 ] : [];
 
 export const rssRecencyWarnings = (

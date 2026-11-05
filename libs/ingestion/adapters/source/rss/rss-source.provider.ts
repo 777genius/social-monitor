@@ -144,8 +144,9 @@ export class RssSourceProvider implements SourceProviderPort {
         nextCursor: encodeCursor(feed, plan.cursor),
         warnings: [
           ...(feed.truncated ? ["RSS recovery window exceeds maxItems; acquisition is incomplete."] : []),
-          ...rssHistoricalRejectionWarnings(feed.rejectedEntries, filteredItems, targetWindow !== undefined),
-          ...rssWarnings(feed.items),
+          ...rssHistoricalRejectionWarnings(feed.rejectedEntries,
+            filteredItems.map((item) => ({ item, feedUrl })), targetWindow !== undefined),
+          ...rssWarnings(feed.items.map((item) => ({ item, feedUrl }))),
           ...rssRecencyWarnings(
             feed.items,
             filteredItems,
@@ -213,11 +214,11 @@ export class RssSourceProvider implements SourceProviderPort {
           ? ["RSS recovery window exceeds maxItems; acquisition is incomplete."] : []),
         ...rssHistoricalRejectionWarnings(
           feeds.reduce((count, { feed }) => count + (feed.rejectedEntries ?? 0), 0),
-          filteredItems,
+          filteredSourcedItems,
           targetWindow !== undefined,
         ),
         ...feedReadWarnings,
-        ...rssWarnings(allItems),
+        ...rssWarnings(sourcedItems),
         ...rssRecencyWarnings(
           allItems,
           filteredItems,
