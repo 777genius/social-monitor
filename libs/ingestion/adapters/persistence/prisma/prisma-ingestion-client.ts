@@ -178,6 +178,7 @@ export type PrismaIngestionClient = {
       readonly where: { readonly id: string };
       readonly data: {
         readonly sourceBindingId?: string;
+        readonly providerItemId?: string;
         readonly canonicalUrl?: string;
         readonly title?: string;
         readonly body?: string;

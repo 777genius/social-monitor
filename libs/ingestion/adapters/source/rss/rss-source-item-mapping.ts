@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { RssFeedItem } from './rss-client.port';
 import { hasReadableFeedText } from './rss-readable-content';
 
@@ -22,7 +23,7 @@ export const normalizeItem = (item: RssFeedItem, _index: number, feedUrl: string
 
   return [
     {
-      externalId: item.guid ?? canonicalUrl,
+      externalId: item.guid ?? stableGuidlessRssId(canonicalUrl, item),
       canonicalUrl,
       title,
       body,
@@ -31,6 +32,16 @@ export const normalizeItem = (item: RssFeedItem, _index: number, feedUrl: string
       metadata: rssItemMetadata(item, feedUrl),
     },
   ];
+};
+
+// Stable under feed reordering, and distinct for publications sharing a URL.
+const stableGuidlessRssId = (canonicalUrl: string, item: RssFeedItem): string => {
+  const identity = JSON.stringify([
+    item.publishedAt?.toISOString(),
+    item.title?.trim() || item.content?.trim() || '',
+  ]);
+  const digest = createHash('sha256').update(identity).digest('hex').slice(0, 24);
+  return `${canonicalUrl}#rss2-${digest}`;
 };
 
 const rssItemMetadata = (item: RssFeedItem, feedUrl: string) => {

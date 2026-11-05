@@ -184,6 +184,8 @@ async function updateExistingSourceItem(
     where: { id: params.existing.id },
     data: contentChanged
       ? {
+          ...(params.existing.providerItemId === params.snapshot.externalId
+            ? {} : { providerItemId: params.snapshot.externalId }),
           sourceBindingId: params.snapshot.sourceBindingId,
           canonicalUrl: params.snapshot.canonicalUrl,
           title: params.snapshot.title,
@@ -197,6 +199,8 @@ async function updateExistingSourceItem(
           metadata: snapshot.metadata ?? {},
         }
       : {
+          ...(params.existing.providerItemId === params.snapshot.externalId
+            ? {} : { providerItemId: params.snapshot.externalId }),
           providerContentHash: params.providerContentHash,
           lastObservedAt: params.snapshot.ingestedAt,
           metadata: params.snapshot.metadata ?? {},
@@ -267,7 +271,46 @@ async function findExistingSourceItems(
       providerItemId: { in: externalIds },
     },
   });
-  return new Map(records.map((record) => [record.providerItemId, record]));
+  const found = new Map(records.map((record) => [record.providerItemId, record]));
+  // Older RSS versions used canonicalUrl#<feed-index> for GUID-less items.
+  // Reuse only an unambiguous, tenant-scoped legacy row and migrate the
+  // provider ID in the same Serializable transaction, retaining its DB ID.
+  const pendingRss = command.providerKey === 'rss'
+    ? command.items.map((item) => item.toSnapshot()).filter((snapshot) =>
+        !found.has(snapshot.externalId) &&
+        snapshot.externalId.startsWith(`${snapshot.canonicalUrl}#rss2-`))
+    : [];
+  if (pendingRss.length === 0) return found;
+  const legacyClient = transaction.sourceItem as typeof transaction.sourceItem & {
+    findMany(args: { readonly where: {
+      readonly tenantId: string;
+      readonly workspaceId: string;
+      readonly providerKey: string;
+      readonly canonicalUrl: { readonly in: readonly string[] };
+    } }): Promise<readonly PrismaSourceItemRecord[]>;
+  };
+  const legacyRows = await legacyClient.findMany({
+    where: {
+      tenantId: command.tenantId,
+      workspaceId: command.workspaceId,
+      providerKey: command.providerKey,
+      canonicalUrl: { in: [...new Set(pendingRss.map((item) => item.canonicalUrl))] },
+    },
+  });
+  const claimedLegacyIds = new Set<string>();
+  for (const incoming of pendingRss) {
+    const prefix = `${incoming.canonicalUrl}#`;
+    const matches = legacyRows.filter((existing) =>
+      existing.canonicalUrl === incoming.canonicalUrl &&
+      existing.providerItemId.startsWith(prefix) &&
+      /^\d+$/.test(existing.providerItemId.slice(prefix.length)) &&
+      existing.title === incoming.title &&
+      existing.publishedAt.getTime() === incoming.publishedAt.getTime());
+    if (matches.length !== 1 || claimedLegacyIds.has(matches[0]!.id)) continue;
+    found.set(incoming.externalId, matches[0]!);
+    claimedLegacyIds.add(matches[0]!.id);
+  }
+  return found;
 }
 
 const savedItemRef = (

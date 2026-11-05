@@ -14,7 +14,9 @@ describe("RSS source-item canonical identity", () => {
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
       canonicalUrl: "https://feeds.example.net/posts/42",
-      externalId: "https://feeds.example.net/posts/42",
+      externalId: expect.stringMatching(
+        /^https:\/\/feeds\.example\.net\/posts\/42#rss2-[0-9a-f]{24}$/,
+      ),
     });
   });
 
@@ -24,6 +26,14 @@ describe("RSS source-item canonical identity", () => {
     expect(reordered[0]?.externalId).toBe(early[0]?.externalId);
     expect(normalizeItem({ ...entry, guid: "stable-guid" }, 7, feedUrl)[0]?.externalId)
       .toBe("stable-guid");
+  });
+
+  it("does not merge distinct GUID-less entries that share one canonical URL", () => {
+    const first = normalizeItem(entry, 0, feedUrl)[0];
+    const second = normalizeItem({ ...entry, title: "Different article" }, 1, feedUrl)[0];
+    expect(first?.externalId).not.toBe(second?.externalId);
+    expect(first?.canonicalUrl).toBe(second?.canonicalUrl);
+    expect(normalizeItem(entry, 8, feedUrl)[0]?.externalId).toBe(first?.externalId);
   });
 
   it("reports missing canonical links only for readable timestamped entries", () => {
