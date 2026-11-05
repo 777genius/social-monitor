@@ -1,3 +1,4 @@
+import { parseRssFeedDocument } from "./rss-feed-parser";
 import { normalizeItem, rssWarnings } from "./rss-source-item-mapping";
 
 describe("RSS source-item canonical identity", () => {
@@ -26,6 +27,30 @@ describe("RSS source-item canonical identity", () => {
     expect(reordered[0]?.externalId).toBe(early[0]?.externalId);
     expect(normalizeItem({ ...entry, guid: "stable-guid" }, 7, feedUrl)[0]?.externalId)
       .toBe("stable-guid");
+  });
+
+  it("keeps id-less Atom identity when the mutable updated timestamp advances", () => {
+    const read = (updated: string) => parseRssFeedDocument(
+      '<feed><entry><link href="https://feeds.example.net/posts/42"/>' +
+      '<title>Article</title><summary>Readable summary</summary>' +
+      `<updated>${updated}</updated></entry></feed>`,
+    ).items[0]!;
+    const original = read("2026-07-09T08:00:00Z");
+    const edited = read("2026-07-10T08:00:00Z");
+    expect(original.publishedAt).not.toEqual(edited.publishedAt);
+    expect(normalizeItem(original, 0, feedUrl)[0]?.externalId)
+      .toBe(normalizeItem(edited, 3, feedUrl)[0]?.externalId);
+  });
+
+  it("distinguishes GUID-less entries with different explicit publication dates", () => {
+    const read = (published: string) => parseRssFeedDocument(
+      '<feed><entry><link href="https://feeds.example.net/posts/42"/>' +
+      '<title>Article</title><summary>Readable summary</summary>' +
+      `<published>${published}</published></entry></feed>`,
+    ).items[0]!;
+    const first = normalizeItem(read("2026-07-09T08:00:00Z"), 0, feedUrl)[0];
+    const second = normalizeItem(read("2026-07-10T08:00:00Z"), 1, feedUrl)[0];
+    expect(first?.externalId).not.toBe(second?.externalId);
   });
 
   it("does not merge distinct GUID-less entries that share one canonical URL", () => {

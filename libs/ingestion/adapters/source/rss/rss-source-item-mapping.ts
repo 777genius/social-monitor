@@ -36,8 +36,10 @@ export const normalizeItem = (item: RssFeedItem, _index: number, feedUrl: string
 
 // Stable under feed reordering, and distinct for publications sharing a URL.
 const stableGuidlessRssId = (canonicalUrl: string, item: RssFeedItem): string => {
+  // A GUID-less Atom <updated> timestamp can advance without a new article.
+  // Explicit RSS pubDate and Atom <published> still distinguish publications.
   const identity = JSON.stringify([
-    item.publishedAt?.toISOString(),
+    item.publishedAtFromUpdated ? null : item.publishedAt?.toISOString(),
     item.title?.trim() || item.content?.trim() || '',
   ]);
   const digest = createHash('sha256').update(identity).digest('hex').slice(0, 24);

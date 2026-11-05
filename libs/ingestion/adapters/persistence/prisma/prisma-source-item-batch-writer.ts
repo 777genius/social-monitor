@@ -144,12 +144,25 @@ async function updateExistingSourceItem(
   // being retried. Do not let an older observation regress content or clocks.
   const persistedObservedAt = params.existing.lastObservedAt ?? params.existing.observedAt;
   if (params.snapshot.ingestedAt.getTime() < persistedObservedAt.getTime()) {
+    // The old RSS positional ID may be migrated without overwriting newer
+    // content, clocks, or article capture. The Serializable transaction owns it.
+    let record = params.existing;
+    if (params.providerKey === 'rss' &&
+        record.providerItemId !== params.snapshot.externalId) {
+      if (transaction.sourceItem.update === undefined) {
+        throw new Error("Source item repository requires scoped update support");
+      }
+      record = await transaction.sourceItem.update({
+        where: { id: record.id },
+        data: { providerItemId: params.snapshot.externalId },
+      });
+    }
     return {
-      record: params.existing,
+      record,
       contentChanged: false,
-      ...(params.existing.sourceBindingId === params.snapshot.sourceBindingId ? {} : {
+      ...(record.sourceBindingId === params.snapshot.sourceBindingId ? {} : {
         projectionItem: bindingScopedStaleProjection(
-          params.existing, params.snapshot, params.providerKey,
+          record, params.snapshot, params.providerKey,
         ),
       }),
     };

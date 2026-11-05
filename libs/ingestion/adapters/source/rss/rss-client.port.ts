@@ -14,6 +14,8 @@ type RssFeedItemFields = {
   readonly enclosureUrl?: string;
   readonly enclosureType?: string;
   readonly publishedAt?: Date;
+  /** GUID-less Atom <updated> is mutable scan time, not publication identity. */
+  readonly publishedAtFromUpdated?: boolean;
 };
 
 type XhtmlReadability = { readonly title: boolean; readonly content: boolean };

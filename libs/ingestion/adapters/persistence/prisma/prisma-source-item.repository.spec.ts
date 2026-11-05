@@ -136,6 +136,77 @@ describe("PrismaSourceItemRepository", () => {
     expect(persisted.providerItemId).toBe(stableId);
   });
 
+  it.each([
+    ["same binding", "00000000-0000-7000-8000-000000000004"],
+    ["different binding", "00000000-0000-7000-8000-000000000005"],
+  ])("migrates stale RSS positional IDs without regressing data (%s)", async (_name, incomingBinding) => {
+    const canonicalUrl = "https://example.test/rss/edited";
+    const stableId = `${canonicalUrl}#rss2-${"b".repeat(24)}`;
+    const latest: PrismaSourceItemRecord = {
+      ...record(`${canonicalUrl}#0`, "00000000-0000-7000-8000-000000000101"),
+      providerKey: "rss",
+      canonicalUrl,
+      title: "Latest article",
+      body: "Latest provider body",
+      publishedAt: new Date("2026-07-10T12:00:00.000Z"),
+      providerContentHash: "latest-content-hash",
+      lastObservedAt: new Date("2026-07-12T00:00:00.000Z"),
+      contentUpdatedAt: new Date("2026-07-12T00:00:00.000Z"),
+    };
+    let persisted = latest;
+    const updates: object[] = [];
+    const sourceItem: PrismaIngestionClient["sourceItem"] = {
+      findMany: async (args) => {
+        const where = args.where as typeof args.where & {
+          readonly canonicalUrl?: { readonly in: readonly string[] };
+        };
+        return where.canonicalUrl !== undefined
+          ? (where.canonicalUrl.in.includes(persisted.canonicalUrl) ? [persisted] : [])
+          : (where.providerItemId.in.includes(persisted.providerItemId) ? [persisted] : []);
+      },
+      findFirst: async () => null,
+      create: async () => { throw new Error("stale RSS item must not duplicate"); },
+      update: async (args) => {
+        updates.push(args.data);
+        persisted = { ...persisted, ...args.data };
+        return persisted;
+      },
+    };
+    const repository = new PrismaSourceItemRepository({ sourceItem } as unknown as PrismaIngestionClient);
+    const incoming = SourceItem.ingest({
+      id: "00000000-0000-7000-8000-000000000202",
+      tenantId: tenantId("00000000-0000-7000-8000-000000000001"),
+      workspaceId: workspaceId("00000000-0000-7000-8000-000000000002"),
+      sourceBindingId: incomingBinding,
+      externalId: stableId,
+      canonicalUrl,
+      title: latest.title,
+      body: "Older provider body",
+      publishedAt: latest.publishedAt,
+      ingestedAt: new Date("2026-07-11T00:00:00.000Z"),
+    });
+    const result = await repository.saveBatch({
+      tenantId: tenantId("00000000-0000-7000-8000-000000000001"),
+      workspaceId: workspaceId("00000000-0000-7000-8000-000000000002"),
+      providerKey: "rss",
+      items: [incoming],
+    });
+    expect(updates).toEqual([{ providerItemId: stableId }]);
+    expect(persisted).toEqual({ ...latest, providerItemId: stableId });
+    expect(result).toMatchObject({
+      inserted: 0, contentUpdated: 0, skippedDuplicates: 1,
+      items: [{ sourceItemId: latest.id, mutationKind: "unchanged" }],
+    });
+    expect(result.items[0]?.persistedItem.toSnapshot()).toMatchObject({
+      sourceBindingId: latest.sourceBindingId, title: latest.title, body: latest.body,
+    });
+    if (incomingBinding === latest.sourceBindingId) {
+      expect(result.items[0]?.projectionItem).toBeUndefined();
+    } else {
+      expect(result.items[0]?.projectionItem?.toSnapshot().sourceBindingId).toBe(incomingBinding);
+    }
+  });
+
   it("never overwrites a newer persisted source observation with an older retry", async () => {
     const persisted: PrismaSourceItemRecord = {
       ...record("older-retry", "00000000-0000-7000-8000-000000000101"),

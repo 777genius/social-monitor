@@ -122,14 +122,19 @@ const normalizeAtomEntry = (entry: Readonly<Record<string, unknown>>, rawEntry: 
   const summaryReadable = isReadableAtomConstruct(summary, entry.summary);
   const contentName = primaryReadable ? 'content' : 'summary';
   const content = primaryReadable ? primaryContent : summaryReadable ? summary : primaryContent ?? summary;
+  const guid = readText(entry.id);
+  const published = parseDate(readText(entry.published));
+  const updated = parseDate(readText(entry.updated));
   const common = {
-    guid: readText(entry.id),
+    guid,
     link: readAtomLink(entry.link),
     title: title?.text,
     content: content?.text,
     author: readAtomAuthor(entry.author),
     ...atomMediaFields(entry),
-    publishedAt: parseDate(readText(entry.published) ?? readText(entry.updated)),
+    publishedAt: published ?? updated,
+    ...(guid === undefined && published === undefined && updated !== undefined
+      ? { publishedAtFromUpdated: true } : {}),
   };
   if (title?.type === 'xhtml' || content?.type === 'xhtml') {
     const xhtmlReadability = {

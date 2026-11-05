@@ -186,7 +186,7 @@ export type PrismaIngestionClient = {
         readonly publishedAt?: Date;
         readonly contentHash?: string;
         readonly providerContentHash?: string;
-        readonly lastObservedAt: Date;
+        readonly lastObservedAt?: Date;
         readonly contentUpdatedAt?: Date;
         readonly metadata?: Readonly<Record<string, unknown>>;
       };
