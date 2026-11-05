@@ -23,6 +23,8 @@ import {
   type ReaderSummaryJobRepositoryPort,
   type ReaderSummaryGitHubProjectionReaderPort,
   type ReaderSummaryModelPort,
+  type ReaderSummaryModelInput,
+  type ReaderSummaryModelEstimate,
   type ReaderSummaryPolicyRepositoryPort,
   type ReaderSummaryPublicationPort,
   type ReaderSummaryV3PreflightPort,
@@ -403,7 +405,7 @@ export class ExecuteReaderSummaryJobUseCase {
     }
     const basePolicy =
       policy?.toGenerationPolicy() ?? defaultReaderSummaryGenerationPolicy();
-    const input: import("../../ports").ReaderSummaryModelInput = {
+    const input: ReaderSummaryModelInput = {
       tenantId: snapshot.tenantId,
       workspaceId: snapshot.workspaceId,
       scope: snapshot.scope,
@@ -417,9 +419,9 @@ export class ExecuteReaderSummaryJobUseCase {
         ...(modelEvidence.dailyGenerationInput === undefined ? {} : { maxStories: 10 }) },
       requestedAt: snapshot.requestedAt,
     };
-    let writerInput: import("../../ports").ReaderSummaryModelInput = input;
+    let writerInput: ReaderSummaryModelInput = input;
     let editorReceipt: ReaderSummaryDailyEditorialReceipt | undefined;
-    let editorUsage: import("../../ports").ReaderSummaryModelEstimate | undefined;
+    let editorUsage: ReaderSummaryModelEstimate | undefined;
     if (modelEvidence.dailyGenerationInput !== undefined) {
       if (this.readerSummaryModel.planDaily === undefined) {
         return err(this.readerSummaryModel.classifyError(

@@ -3,8 +3,7 @@ import { buildReaderSummaryDailyEditorPayload, dailyEditorReceipt, dailyEditoria
   assertDailyEditorialRawWriter } from "./reader-summary-daily-editor";
 import { readReaderSummaryDailyEditorialPlan, readerSummaryDailyEditorialCoveragePlan,
   READER_SUMMARY_DAILY_EDITORIAL_VERSION,
-  assertReaderSummaryDailyEditorialArticle, type ReaderSummaryDailyEditorialPlan,
-  type ReaderSummaryDailyEditorialProof } from "../../domain";
+  assertReaderSummaryDailyEditorialArticle, type ReaderSummaryDailyEditorialProof } from "../../domain";
 
 const topic = (ids: readonly string[], depth: "detailed" | "brief" = "brief") => ({
   title: `Development from ${ids[0]}`, why: "Specific new capability and source evidence",

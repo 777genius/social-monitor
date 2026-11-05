@@ -167,7 +167,6 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
 
   async planDaily(
     input: ReaderSummaryModelInput,
-    _selectedRoute: ReaderSummaryModelRoute,
   ): Promise<ReaderSummaryDailyEditorialAttempt> {
     if (input.evidence.dailyGenerationInput === undefined) {
       throw new Error("Daily editorial planning requires frozen daily evidence");

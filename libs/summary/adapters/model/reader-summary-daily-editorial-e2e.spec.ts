@@ -47,7 +47,7 @@ it("editor and writer use the same thirty inputs; the saved plan guards publicat
     };
   };
   const requests: { name: string; prompt: string }[] = [];
-  let writerInput: ReaderSummaryModelInput | undefined;
+  const writerInput = { current: undefined as ReaderSummaryModelInput | undefined };
   const adapter = new OpenAiResponsesReaderSummaryModelAdapter({
     apiKey: "fixture-only-key",
     fetchFn: async (_url, init) => {
@@ -57,7 +57,7 @@ it("editor and writer use the same thirty inputs; the saved plan guards publicat
       requests.push({ name: request.text.format.name, prompt: request.input });
       return jsonResponse({ output_text: JSON.stringify(
         request.text.format.name === "social_monitor_reader_summary_daily_editor"
-          ? rawPlan : providerDraft(writerInput!),
+          ? rawPlan : providerDraft(writerInput.current!),
       ) });
     },
   });
@@ -66,14 +66,14 @@ it("editor and writer use the same thirty inputs; the saved plan guards publicat
   const budget = { remainingTokens: 120000, remainingCostUsd: 10 };
   const editor = await adapter.planDaily(input, adapter.route(input, policy, budget));
   expect(editor.plan).toEqual(plan);
-  writerInput = { ...input, dailyEditorialPlan: editor.plan,
+  writerInput.current = { ...input, dailyEditorialPlan: editor.plan,
     coveragePlan: readerSummaryDailyEditorialCoveragePlan(evidence, editor.plan),
     policy: { ...input.policy, maxStories: 10 } };
-  const attempt = await adapter.generate(writerInput, adapter.route(writerInput, policy, budget));
+  const attempt = await adapter.generate(writerInput.current, adapter.route(writerInput.current, policy, budget));
   expect(requests).toHaveLength(2);
   expect(JSON.parse(requests[0]!.prompt).evidence).toHaveLength(30);
   expect(JSON.parse(requests[1]!.prompt).evidence).toHaveLength(30);
-  expect(writerInput.coveragePlan.lead?.clusterId).toBe(picked[0]!.storyId);
+  expect(writerInput.current.coveragePlan.lead?.clusterId).toBe(picked[0]!.storyId);
   const draft = buildReaderSummaryDraftWithPromotionContent(evidence, attempt.draft);
   const proof = { plan: editor.plan,
     inputSha256: createHash("sha256").update(JSON.stringify(frozen.selected)).digest("hex"),
