@@ -29,10 +29,6 @@ const ignoredPathPatterns = [
 ];
 
 const legacyLineCapDebt = new Map([
-  [
-    "libs/monitoring/features/list-interest-source-daily-history/list-interest-source-daily-history.use-case.spec.ts",
-    1055,
-  ],
   ["scripts/capture-durable-backend-e2e-loop.ts", 2348],
   ["scripts/check-credential-secret-runtime-flow.mjs", 1122],
   ["scripts/check-delivery-prisma-persistence.ts", 1291],
