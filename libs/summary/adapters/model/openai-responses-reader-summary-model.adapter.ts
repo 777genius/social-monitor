@@ -1,5 +1,6 @@
 export { resolveOpenAiResponsesReaderSummaryModelOptions } from "./openai-responses-reader-summary-options";
 import { readerSummaryDailyInputReceipt } from "./reader-summary-daily-input-receipt";
+import { attachFailedDailyEditorUsage } from "./reader-summary-failed-daily-editor-usage";
 import { validateDailyEditorialPlan } from "../../domain";
 import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import {
@@ -185,30 +186,37 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
         strict: true, schema: dailyEditorialOutputSchema,
       } },
     });
-    const output = extractOpenAiOutputText(response);
-    if (output === undefined) {
-      throw new Error("Daily editorial plan response is empty");
-    }
-    const plan = validateDailyEditorialPlan(
-      parseOpenAiReaderSummaryJsonObject(output),
-      input.evidence.dailyGenerationInput,
-    );
-    const estimate = { inputTokens: Math.ceil(prompt.length / this.inputTokenDivisor),
+    const estimate: ReaderSummaryModelEstimate = {
+      inputTokens: Math.ceil(prompt.length / this.inputTokenDivisor),
       outputTokens: 3_000,
       estimatedCostUsd: (Math.ceil(prompt.length / this.inputTokenDivisor) *
         this.estimatedInputCostUsdPerMillionTokens + 3_000 *
-        this.estimatedOutputCostUsdPerMillionTokens) / 1_000_000 };
-    return {
-      plan,
-      usage: (() => {
-        const actual = resolveOpenAiReaderSummaryUsage(response, estimate);
-        return { inputTokens: actual.inputTokens ?? estimate.inputTokens,
-          outputTokens: actual.outputTokens ?? estimate.outputTokens,
-          estimatedCostUsd: actual.estimatedCostUsd };
-      })(),
-      editorRequestSha256: dailyEditorialSha256(prompt),
-      editorOutputSha256: canonicalJsonSha256(plan),
+        this.estimatedOutputCostUsdPerMillionTokens) / 1_000_000,
     };
+    const actual = resolveOpenAiReaderSummaryUsage(response, estimate);
+    const usage: ReaderSummaryModelEstimate = {
+      inputTokens: actual.inputTokens ?? estimate.inputTokens,
+      outputTokens: actual.outputTokens ?? estimate.outputTokens,
+      estimatedCostUsd: actual.estimatedCostUsd,
+    };
+    try {
+      const output = extractOpenAiOutputText(response);
+      if (output === undefined) {
+        throw new Error("Daily editorial plan response is empty");
+      }
+      const plan = validateDailyEditorialPlan(
+        parseOpenAiReaderSummaryJsonObject(output),
+        input.evidence.dailyGenerationInput,
+      );
+      return {
+        plan, usage,
+        editorRequestSha256: dailyEditorialSha256(prompt),
+        editorOutputSha256: canonicalJsonSha256(plan),
+      };
+    } catch (error) {
+      attachFailedDailyEditorUsage(error, usage);
+      throw error;
+    }
   }
 
   async generate(
