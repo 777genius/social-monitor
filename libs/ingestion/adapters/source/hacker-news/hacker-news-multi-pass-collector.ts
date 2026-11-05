@@ -57,20 +57,28 @@ export async function collectHackerNewsScanPasses(client: HackerNewsClientPort, 
   let failedPasses = 0;
   let historicalPassTruncated = false;
   let firstFailure: unknown;
+  // One deadline for all historical search passes, not a new budget per pass.
+  const searchOptions = params.targetWindow === undefined ? params.searchOptions : {
+    ...params.searchOptions,
+    deadline: params.searchOptions?.deadline ?? AbortSignal.timeout(120_000),
+  };
 
   for (const pass of params.passes) {
+    if (searchOptions?.deadline?.aborted) {
+      throw new Error('Hacker News historical scan incomplete: duration budget exhausted');
+    }
     const limit = pass.maxItems ?? perPassFallbackLimit;
     let stories: readonly HackerNewsStory[];
 
     try {
       if (
         pass.mode === "listing" &&
-        isTargetPublishedSearchOptions(params.searchOptions)
+        isTargetPublishedSearchOptions(searchOptions)
       ) {
         stories = await client.searchStories(
           historicalListingSearchQuery(pass, params.plan.query.query),
           limit,
-          params.searchOptions,
+          searchOptions,
         );
       } else if (pass.mode === "listing") {
         stories = await client.listStories(pass.listing, limit);
@@ -78,13 +86,13 @@ export async function collectHackerNewsScanPasses(client: HackerNewsClientPort, 
         stories = await client.searchComments(
           pass.query,
           limit,
-          params.searchOptions,
+          searchOptions,
         );
       } else {
         stories = await client.searchStories(
           pass.query,
           limit,
-          params.searchOptions,
+          searchOptions,
         );
       }
     } catch (error) {
@@ -165,6 +173,10 @@ export async function collectHackerNewsScanPasses(client: HackerNewsClientPort, 
 
     warnings.push(...normalized.warnings);
     warnings.push(...hackerNewsWarnings(filteredStories));
+  }
+
+  if (searchOptions?.deadline?.aborted) {
+    throw new Error('Hacker News historical scan incomplete: duration budget exhausted');
   }
 
   // A missing historical lane must not be recorded as a complete backfill.

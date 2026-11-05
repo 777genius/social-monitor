@@ -46,6 +46,24 @@ describe('source query lane candidate matching', () => {
     })).toBe(false);
   });
 
+  it('ignores stopwords in low-signal fallback and normalizes Unicode canonically', () => {
+    expect(matches('search', 'the AI', {
+      ...baseCandidate, title: 'The latest release', body: 'Tooling',
+    })).toBe(false);
+    expect(matches('search', 'the AI', {
+      ...baseCandidate, title: 'AI tools', body: 'Tooling',
+    })).toBe(true);
+    expect(matches('search', 'the', {
+      ...baseCandidate, title: 'The latest', body: 'Tools',
+    })).toBe(false);
+    expect(matches('search', 'café', {
+      ...baseCandidate, title: 'Le cafe\u0301', body: '',
+    })).toBe(true);
+    expect(matches('search', 'प्रौद्योगिकी', {
+      ...baseCandidate, title: 'नई प्रौद्योगिकी', body: '',
+    })).toBe(true);
+  });
+
   it('handles Unicode terms and low-signal queries without substring false hits', () => {
     expect(matches('search', 'машинное обучение', {
       ...baseCandidate, title: 'Новости: машинное обучение',

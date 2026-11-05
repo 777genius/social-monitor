@@ -54,8 +54,8 @@ const searchLaneMatchesCandidate = (
   const tokens = tokenizeQuery(query);
   if (tokens.length === 0) {
     // All low-signal terms (e.g. "AI") still match as whole words, not substrings.
-    const candidateWords: readonly string[] = text.match(/[\p{L}\p{N}]+/gu) ?? [];
-    return rawQueryTokens(query).some((token) => candidateWords.includes(token));
+    const candidateWords: readonly string[] = text.match(/[\p{L}\p{N}][\p{L}\p{N}\p{M}]*/gu) ?? [];
+    return rawQueryTokens(query).filter((token) => !stopWords.has(token)).some((token) => candidateWords.includes(token));
   }
 
   const matched = tokens.filter((token) => text.includes(token)).length;
@@ -101,7 +101,7 @@ const normalizeHandle = (value: string | undefined): string | undefined =>
   value === undefined ? undefined : value.replace(/^@/u, '').toLowerCase();
 
 const rawQueryTokens = (query: string): readonly string[] =>
-  compactUnique(query.toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}_.-]*/gu) ?? []);
+  compactUnique(normalizeText(query).match(/[\p{L}\p{N}][\p{L}\p{N}\p{M}_.-]*/gu) ?? []);
 
 const tokenizeQuery = (query: string): readonly string[] =>
   rawQueryTokens(query).filter((token) => !lowSignalQueryTokens.has(token));
@@ -112,22 +112,17 @@ const quotedPhrases = (value: string): readonly string[] =>
   );
 
 const normalizeText = (value: string): string =>
-  value.toLowerCase().replace(/\s+/gu, ' ').trim();
+  value.normalize('NFC').toLowerCase().replace(/\s+/gu, ' ').trim();
 
 const compactUnique = (values: readonly string[]): readonly string[] => [
   ...new Set(values.map((value) => value.trim()).filter(Boolean)),
 ];
 
+const stopWords = new Set([
+  'and', 'or', 'not', 'the', 'with', 'from', 'since', 'until', 'filter', 'lang',
+]);
+
 const lowSignalQueryTokens = new Set([
   'ai',
-  'and',
-  'or',
-  'not',
-  'the',
-  'with',
-  'from',
-  'since',
-  'until',
-  'filter',
-  'lang',
+  ...stopWords,
 ]);

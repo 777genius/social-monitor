@@ -66,6 +66,23 @@ describe("RegistrySourceFetcherAdapter collection telemetry", () => {
     });
   });
 
+  it("retains content incompleteness if a later page fails retryably", async () => {
+    const provider = new TelemetryProvider([{
+      ...page([item("partial", "2026-07-09T08:00:00.000Z")], "page-2"),
+      collection: { complete: false, backfillPending: true, contentComplete: false },
+    }], 1);
+    const result = await fetchWith(provider, {
+      adaptivePagination: {
+        enabled: true, targetItems: 4, maxPages: 3,
+        minNewItemsPerPage: 1, maxDuplicateRate: 0.9,
+      },
+    });
+    expect(result.telemetry).toMatchObject({
+      collectionComplete: false, backfillPending: true, contentComplete: false,
+      paginationStopReason: "partial_retryable_failure",
+    });
+  });
+
   it("reports a partial pagination rate limit without discarding accepted items", async () => {
     const provider = new TelemetryProvider(
       [page([item("inside-1", "2026-07-09T08:00:00.000Z")], "page-2")],

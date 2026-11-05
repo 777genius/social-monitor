@@ -12,12 +12,13 @@ export async function searchCompleteHackerNewsWindow(
   from: Date,
   to: Date,
   fetchJson: (url: string, signal?: AbortSignal) => Promise<AlgoliaSearchResponse>,
+  scanDeadline?: AbortSignal,
 ): Promise<readonly AlgoliaHit[]> {
   const startSecond = Math.ceil(from.getTime() / 1000);
   const endSecond = Math.ceil(to.getTime() / 1000);
   if (startSecond >= endSecond) return [];
   let requests = 0;
-  const deadline = AbortSignal.timeout(historicalDurationBudgetMs);
+  const deadline = scanDeadline ?? AbortSignal.timeout(historicalDurationBudgetMs);
   const fetchPage = async (url: URL): Promise<AlgoliaSearchResponse> => {
     if (deadline.aborted) {
       throw new Error('Hacker News historical search incomplete: duration budget exhausted');

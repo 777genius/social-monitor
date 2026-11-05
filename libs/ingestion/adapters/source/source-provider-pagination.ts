@@ -88,7 +88,12 @@ export async function scanSourceProviderPages(
           items: state.items,
           conversationUnits: state.conversationUnits,
           nextCursor: cursor,
-          collection: { complete: false, backfillPending: true },
+          collection: {
+            complete: false, backfillPending: true,
+            ...(aggregateCollection?.contentComplete === undefined ? {} : {
+              contentComplete: aggregateCollection.contentComplete,
+            }),
+          },
           warnings: compactUnique([
             ...state.warnings,
             adaptivePaginationFailureWarning({

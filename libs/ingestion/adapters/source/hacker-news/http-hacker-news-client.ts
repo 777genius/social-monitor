@@ -181,7 +181,7 @@ export class HttpHackerNewsClient implements HackerNewsClientPort {
       if (options.from === undefined || options.to === undefined) {
         throw new Error('Hacker News historical search requires a bounded window');
       }
-      const hits = await searchCompleteHackerNewsWindow(url, options.from, options.to, (targetUrl, signal) => this.fetchJson<AlgoliaSearchResponse>(targetUrl, signal));
+      const hits = await searchCompleteHackerNewsWindow(url, options.from, options.to, (targetUrl, signal) => this.fetchJson<AlgoliaSearchResponse>(targetUrl, signal), options.deadline);
       return filterAlgoliaHits(hits, kind, normalizedQuery)
         .flatMap((hit) => normalizeAlgoliaHit(hit, kind));
     }
