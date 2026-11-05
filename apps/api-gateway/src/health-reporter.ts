@@ -1,53 +1,16 @@
-import { Inject, Injectable, Optional } from "@nestjs/common";
-import {
-  resolveDeliveryEnabledChannels,
-  resolveDeliveryPersistenceMode,
-  resolveDeliveryWebhookProviderMode,
-} from "@social-monitor/delivery/interfaces/rest/delivery-provider-tokens";
-import { resolveFeedPersistenceMode } from "@social-monitor/feed/interfaces/rest/feed-provider-tokens";
-import { resolveIdentityPersistenceMode } from "@social-monitor/identity/interfaces/rest/identity-provider-tokens";
-import { resolveIngestionSupportPersistenceMode } from "@social-monitor/ingestion/interfaces/rest/ingestion-provider-tokens";
-import type { SourceReadinessProfile } from "@social-monitor/ingestion/ports";
-import {
-  resolveMonitoringPersistenceMode,
-  resolveMonitoringScanQueueMode,
-} from "@social-monitor/monitoring/interfaces/rest/monitoring-provider-tokens";
-import { resolveRuntimeProfile } from "@social-monitor/platform-config";
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import type { SourceReadinessProfile } from '@social-monitor/ingestion/ports';
+import { resolveRuntimeProfile } from '@social-monitor/platform-config';
 import {
   MetricsRuntime,
   type MetricsRuntimeHealth,
   resolveMetricsRuntimeConfig,
-} from "@social-monitor/platform-metrics";
-import { resolveRelevancePersistenceMode } from "@social-monitor/relevance/interfaces/rest/relevance-provider-tokens";
-import type { Clock } from "@social-monitor/shared-kernel";
-import { resolveSubscriptionsPersistenceMode } from "@social-monitor/subscriptions/interfaces/rest/subscriptions-provider-tokens";
+} from '@social-monitor/platform-metrics';
+import type { Clock } from '@social-monitor/shared-kernel';
 import {
-  resolveSummaryJobQueueMode,
-  resolveSummaryPersistenceMode,
-} from "@social-monitor/summary/interfaces/rest/summary-provider-tokens";
-import { resolveUsagePersistenceMode } from "@social-monitor/usage/interfaces/rest/usage-provider-tokens";
-
-import {
-  resolveDeliveryAttemptDispatchLoopOptions,
-  resolveDeliveryAttemptDispatchQueueMode,
-  resolveDeliveryAttemptQueueDrainLoopOptions,
-  resolveDeliveryAttemptQueueReaderMode,
-  resolveDeliveryDigestSchedulerLoopOptions,
-  resolveDeliverySummaryReadyEventDrainLoopOptions,
-  resolveDeliverySummaryReadyEventReaderMode,
-} from "../../delivery-service/src/delivery-service-provider-tokens";
-import { resolveEventRelayLoopOptions } from "../../event-relay/src/event-relay-provider-tokens";
-import {
-  resolveIngestionScanQueueDrainLoopOptions,
-  resolveIngestionScanQueueReaderMode,
-  resolveIngestionScanSchedulerLoopOptions,
-} from "../../ingestion-worker/src/ingestion-worker-provider-tokens";
-import {
-  resolveIntelligenceSummaryJobLoopOptions,
-  resolveIntelligenceSummaryQueueDrainLoopOptions,
-  resolveIntelligenceSummaryQueueReaderMode,
-} from "../../intelligence-worker/src/intelligence-worker-provider-tokens";
-import { resolveSocialResearchRuntimeSettings } from "../../social-research-runtime/src/social-research-runtime-settings";
+  apiGatewayUsesPrismaPersistence,
+  readApiGatewayRuntimeModes,
+} from './api-gateway-runtime-readiness';
 
 export type HealthResponse = {
   readonly status: "ok";
@@ -150,21 +113,6 @@ export function createApiGatewayDatabaseReadiness(
   };
 }
 
-function apiGatewayUsesPrismaPersistence(env: NodeJS.ProcessEnv): boolean {
-  return [
-    resolveMonitoringPersistenceMode(env),
-    resolveFeedPersistenceMode(env),
-    resolveIngestionSupportPersistenceMode(env),
-    resolveSummaryPersistenceMode(env),
-    resolveDeliveryPersistenceMode(env),
-    resolveIdentityPersistenceMode(env),
-    resolveUsagePersistenceMode(env),
-    resolveRelevancePersistenceMode(env),
-    resolveSubscriptionsPersistenceMode(env),
-    resolveSocialResearchRuntimeSettings(env).resultCache.mode,
-  ].includes("prisma");
-}
-
 @Injectable()
 export class ApiGatewayHealthReporter {
   constructor(
@@ -190,62 +138,8 @@ export class ApiGatewayHealthReporter {
   async ready(): Promise<ReadinessResponse> {
     const databaseReadiness = await this.checkDatabaseReadiness();
     const runtimeProfile = resolveRuntimeProfile(this.env);
-    const persistence = {
-      monitoring: resolveMonitoringPersistenceMode(this.env),
-      feed: resolveFeedPersistenceMode(this.env),
-      ingestionSupport: resolveIngestionSupportPersistenceMode(this.env),
-      summary: resolveSummaryPersistenceMode(this.env),
-      delivery: resolveDeliveryPersistenceMode(this.env),
-      identity: resolveIdentityPersistenceMode(this.env),
-      usage: resolveUsagePersistenceMode(this.env),
-    };
-    const workerLoops = {
-      ingestionScanScheduler: this.loopMode(
-        resolveIngestionScanSchedulerLoopOptions(this.env).enabled,
-      ),
-      ingestionScanQueueDrain: this.loopMode(
-        resolveIngestionScanQueueDrainLoopOptions(this.env).enabled,
-      ),
-      intelligenceSummaryJob: this.loopMode(
-        resolveIntelligenceSummaryJobLoopOptions(this.env).enabled,
-      ),
-      intelligenceSummaryQueueDrain: this.loopMode(
-        resolveIntelligenceSummaryQueueDrainLoopOptions(this.env).enabled,
-      ),
-      deliveryDigestScheduler: this.loopMode(
-        resolveDeliveryDigestSchedulerLoopOptions(this.env).enabled,
-      ),
-      deliveryAttemptDispatch: this.loopMode(
-        resolveDeliveryAttemptDispatchLoopOptions(this.env).enabled,
-      ),
-      deliveryAttemptQueueDrain: this.loopMode(
-        resolveDeliveryAttemptQueueDrainLoopOptions(this.env).enabled,
-      ),
-      deliverySummaryReadyEventDrain: this.loopMode(
-        resolveDeliverySummaryReadyEventDrainLoopOptions(this.env).enabled,
-      ),
-      eventRelay: this.loopMode(resolveEventRelayLoopOptions(this.env).enabled),
-    };
-    const queues = {
-      monitoringScanPublisher: resolveMonitoringScanQueueMode(this.env),
-      ingestionScanReader: resolveIngestionScanQueueReaderMode(this.env),
-      summaryJobPublisher: resolveSummaryJobQueueMode(this.env),
-      intelligenceSummaryReader: resolveIntelligenceSummaryQueueReaderMode(
-        this.env,
-      ),
-      deliveryAttemptPublisher: resolveDeliveryAttemptDispatchQueueMode(
-        this.env,
-      ),
-      deliveryAttemptReader: resolveDeliveryAttemptQueueReaderMode(this.env),
-      deliverySummaryReadyEventReader:
-        resolveDeliverySummaryReadyEventReaderMode(this.env),
-    };
-    const providers = {
-      deliveryWebhook: resolveDeliveryWebhookProviderMode(this.env),
-      deliveryEnabledChannels: resolveDeliveryEnabledChannels(this.env).join(
-        ",",
-      ),
-    };
+    const { persistence, workerLoops, queues, providers } =
+      readApiGatewayRuntimeModes(this.env);
     const metricsReadiness = this.metricsReadiness();
     return {
       ...this.ok(),
@@ -408,7 +302,5 @@ export class ApiGatewayHealthReporter {
     return undefined;
   }
 
-  private loopMode(enabled: boolean): "enabled" | "disabled" {
-    return enabled ? "enabled" : "disabled";
-  }
+
 }
