@@ -61,17 +61,18 @@ it("records spent OpenAI editor tokens even when its JSON plan fails validation"
 
   await expect(model.planDaily(input, route)).rejects.toThrow();
   expect(metrics.counterValue("summary_model_tokens_total", {
-    model: route.model, provider: route.provider, token_type: "input",
+    job_type: "reader_summary", model: route.model, provider: route.provider, token_type: "input",
   })).toBe(120);
   expect(metrics.counterValue("summary_model_tokens_total", {
-    model: route.model, provider: route.provider, token_type: "output",
+    job_type: "reader_summary", model: route.model, provider: route.provider, token_type: "output",
   })).toBe(30);
   expect(metrics.counterValue("summary_model_estimated_cost_usd", {
-    model: route.model, provider: route.provider,
+    job_type: "reader_summary", model: route.model, provider: route.provider,
   })).toBeGreaterThan(0);
-  expect(metrics.counterValue("summary_model_requests_total", {
-    model: route.model, provider: route.provider, status: "failed",
-  })).toBe(1);
+  expect(metrics.counters("summary_model_requests_total").filter(metric =>
+    metric.labels.job_type === "reader_summary" &&
+    metric.labels.model === route.model && metric.labels.provider === route.provider &&
+    metric.labels.status === "failed")).toHaveLength(1);
 });
 
 it("records failed agent-runtime editor usage without changing its failure", async () => {
@@ -93,15 +94,16 @@ it("records failed agent-runtime editor usage without changing its failure", asy
   await expect(model.planDaily(input, route)).rejects.toThrow();
   expect(client.commands).toHaveLength(1);
   expect(metrics.counterValue("summary_model_tokens_total", {
-    model: route.model, provider: route.provider, token_type: "input",
+    job_type: "reader_summary", model: route.model, provider: route.provider, token_type: "input",
   })).toBe(240);
   expect(metrics.counterValue("summary_model_tokens_total", {
-    model: route.model, provider: route.provider, token_type: "output",
+    job_type: "reader_summary", model: route.model, provider: route.provider, token_type: "output",
   })).toBe(50);
   expect(metrics.counterValue("summary_model_estimated_cost_usd", {
-    model: route.model, provider: route.provider,
+    job_type: "reader_summary", model: route.model, provider: route.provider,
   })).toBeCloseTo(0.27);
-  expect(metrics.counterValue("summary_model_requests_total", {
-    model: route.model, provider: route.provider, status: "failed",
-  })).toBe(1);
+  expect(metrics.counters("summary_model_requests_total").filter(metric =>
+    metric.labels.job_type === "reader_summary" &&
+    metric.labels.model === route.model && metric.labels.provider === route.provider &&
+    metric.labels.status === "failed")).toHaveLength(1);
 });
