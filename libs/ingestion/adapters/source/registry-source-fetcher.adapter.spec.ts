@@ -438,6 +438,27 @@ describe('RegistrySourceFetcherAdapter', () => {
     );
   });
 
+  it('retains incomplete provider coverage and raw rate-limit count across adaptive pages', async () => {
+    class PartialPagingProvider extends PagingProvider {
+      override async scan(plan: SourceProviderScanPlan): Promise<SourceProviderScanResult> {
+        const result = await super.scan(plan);
+        return {
+          ...result,
+          ...(plan.cursor === 'page-2'
+            ? { collection: { complete: false, backfillPending: true } }
+            : {}),
+          warnings: [...result.warnings, 'partial_rate_limit:test', 'partial_rate_limit:test'],
+        };
+      }
+    }
+    const result = await fetchPagingSource(new PartialPagingProvider('opaque'));
+    expect(result.telemetry).toEqual(expect.objectContaining({
+      collectionComplete: false,
+      backfillPending: true,
+      rateLimitEventCount: 4,
+    }));
+  });
+
   it('does not adaptively paginate time-cursor providers', async () => {
     const provider = new PagingProvider('time');
     const result = await fetchPagingSource(provider);

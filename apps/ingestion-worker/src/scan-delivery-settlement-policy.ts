@@ -7,6 +7,9 @@ import { DomainError } from '@social-monitor/shared-kernel';
  */
 export type FailedScanDeliveryAction = 'acknowledge' | 'requeue' | 'reject';
 
+// Only known connection, pool and transaction retry codes are safe to redeliver.
+const transientPrismaCodes = new Set(['P1001', 'P1002', 'P1017', 'P2024', 'P2034']);
+
 const transientFailureReasons = new Set([
   'scan_lease_held',
   'scan_lease_release_failed',
@@ -22,7 +25,11 @@ export function decideFailedScanDeliveryAction(
     return 'acknowledge';
   }
 
+  const databaseCode = error !== null && typeof error === 'object' &&
+    'code' in error ? error.code : undefined;
+
   if (shuttingDown ||
+      (typeof databaseCode === 'string' && transientPrismaCodes.has(databaseCode)) ||
       (error instanceof DomainError &&
         (error.code === 'operation.backpressure' ||
           (typeof error.details.reason === 'string' &&

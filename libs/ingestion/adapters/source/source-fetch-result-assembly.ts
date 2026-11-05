@@ -38,7 +38,8 @@ export const buildSourceFetchTelemetry = (params: {
     pageCount: params.scanned.pageCount,
     paginationDuplicateItemCount: params.scanned.paginationDuplicateItemCount,
     paginationStopReason: params.scanned.paginationStopReason,
-    rateLimitEventCount: countRateLimitWarnings(params.scanned.result.warnings),
+    rateLimitEventCount: params.scanned.rateLimitEventCount ??
+      countRateLimitWarnings(params.scanned.result.warnings),
     ...(targetPublishedWindow === undefined
       ? {}
       : {
@@ -54,7 +55,7 @@ export const buildSourceFetchTelemetry = (params: {
   };
 };
 
-const countRateLimitWarnings = (warnings: readonly string[]): number =>
+export const countRateLimitWarnings = (warnings: readonly string[]): number =>
   warnings.filter((warning) => {
     const normalized = warning.toLowerCase();
 

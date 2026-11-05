@@ -12,7 +12,7 @@ import {
   readAdaptivePaginationPolicy,
   type AdaptivePaginationStopReason,
 } from './adaptive-source-pagination';
-import { compactUnique } from './source-fetch-result-assembly';
+import { compactUnique, countRateLimitWarnings } from './source-fetch-result-assembly';
 
 export type ScanWithTelemetryResult = {
   readonly result: SourceProviderScanResult;
@@ -20,6 +20,8 @@ export type ScanWithTelemetryResult = {
   readonly pageCount: number;
   readonly paginationDuplicateItemCount: number;
   readonly paginationStopReason: SourcePaginationStopReason;
+  /** Count raw events before warning deduplication. */
+  readonly rateLimitEventCount?: number;
 };
 
 export async function scanSourceProviderPages(
@@ -52,6 +54,7 @@ export async function scanSourceProviderPages(
       pageCount: result.pagination?.pageCount ?? 1,
       paginationDuplicateItemCount: result.pagination?.duplicateItemCount ?? 0,
       paginationStopReason: result.pagination?.stopReason ?? "single_page",
+      rateLimitEventCount: countRateLimitWarnings(result.warnings),
     };
   }
 
@@ -59,6 +62,8 @@ export async function scanSourceProviderPages(
   let cursor = initialPlan.cursor;
   let nextCursor: string | undefined;
   let stopReason: AdaptivePaginationStopReason = "max_pages";
+  let aggregateCollection: SourceProviderScanResult['collection'];
+  let rateLimitEventCount = 0;
 
   for (let page = 0; page < policyResult.policy.maxPages; page += 1) {
     let result: SourceProviderScanResult;
@@ -76,12 +81,14 @@ export async function scanSourceProviderPages(
       }
 
       stopReason = "partial_retryable_failure";
+      if (failure.kind === "rate_limited") rateLimitEventCount += 1;
       const state = accumulator.state(stopReason);
       return {
         result: {
           items: state.items,
           conversationUnits: state.conversationUnits,
           nextCursor: cursor,
+          collection: { complete: false, backfillPending: true },
           warnings: compactUnique([
             ...state.warnings,
             adaptivePaginationFailureWarning({
@@ -95,10 +102,24 @@ export async function scanSourceProviderPages(
         pageCount: state.pageCount,
         paginationDuplicateItemCount: state.duplicateItemCount,
         paginationStopReason: state.stopReason,
+        rateLimitEventCount,
       };
     }
 
+    rateLimitEventCount += countRateLimitWarnings(result.warnings);
     const pageStats = accumulator.appendPage(result);
+    if (result.collection !== undefined) {
+      aggregateCollection = {
+        complete: (aggregateCollection?.complete ?? true) && result.collection.complete,
+        backfillPending: (aggregateCollection?.backfillPending ?? false) ||
+          result.collection.backfillPending,
+        ...(aggregateCollection?.contentComplete !== undefined ||
+            result.collection.contentComplete !== undefined
+          ? { contentComplete: (aggregateCollection?.contentComplete ?? true) &&
+              (result.collection.contentComplete ?? true) }
+          : {}),
+      };
+    }
     nextCursor = result.nextCursor;
 
     if (accumulator.uniqueItemCount() >= policyResult.policy.targetItems) {
@@ -136,6 +157,7 @@ export async function scanSourceProviderPages(
       items: state.items,
       conversationUnits: state.conversationUnits,
       nextCursor,
+      ...(aggregateCollection === undefined ? {} : { collection: aggregateCollection }),
       warnings: compactUnique([
         ...state.warnings,
         adaptivePaginationStatsWarning(state),
@@ -145,5 +167,6 @@ export async function scanSourceProviderPages(
     pageCount: state.pageCount,
     paginationDuplicateItemCount: state.duplicateItemCount,
     paginationStopReason: state.stopReason,
+    rateLimitEventCount,
   };
 }

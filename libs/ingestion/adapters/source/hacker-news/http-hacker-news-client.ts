@@ -181,7 +181,7 @@ export class HttpHackerNewsClient implements HackerNewsClientPort {
       if (options.from === undefined || options.to === undefined) {
         throw new Error('Hacker News historical search requires a bounded window');
       }
-      const hits = await searchCompleteHackerNewsWindow(url, options.from, options.to, (targetUrl) => this.fetchJson<AlgoliaSearchResponse>(targetUrl));
+      const hits = await searchCompleteHackerNewsWindow(url, options.from, options.to, (targetUrl, signal) => this.fetchJson<AlgoliaSearchResponse>(targetUrl, signal));
       return filterAlgoliaHits(hits, kind, normalizedQuery)
         .flatMap((hit) => normalizeAlgoliaHit(hit, kind));
     }
@@ -218,13 +218,15 @@ export class HttpHackerNewsClient implements HackerNewsClientPort {
     return normalizeFirebaseStory(story);
   }
 
-  private async fetchJson<TValue>(url: string): Promise<TValue> {
+  private async fetchJson<TValue>(url: string, deadline?: AbortSignal): Promise<TValue> {
     const response = await fetch(url, {
       headers: {
         accept: 'application/json',
         'user-agent': 'social-monitor-mvp/0.1',
       },
-      signal: AbortSignal.timeout(this.timeoutMs),
+      signal: deadline === undefined
+        ? AbortSignal.timeout(this.timeoutMs)
+        : AbortSignal.any([deadline, AbortSignal.timeout(this.timeoutMs)]),
     });
 
     if (!response.ok) {

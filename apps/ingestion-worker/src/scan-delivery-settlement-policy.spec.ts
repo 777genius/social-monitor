@@ -32,6 +32,18 @@ describe('scan delivery settlement policy', () => {
     expect(decideFailedScanDeliveryAction(undefined, false)).toBe('reject');
   });
 
+  it.each(['P1001', 'P1002', 'P1017', 'P2024', 'P2034'])(
+    'requeues known transient Prisma failures %s', (code) => {
+      expect(decideFailedScanDeliveryAction(Object.assign(new Error('DB unavailable'), { code }), false))
+        .toBe('requeue');
+    },
+  );
+
+  it('rejects nontransient Prisma constraint failures', () => {
+    expect(decideFailedScanDeliveryAction(Object.assign(new Error('Constraint'), { code: 'P2003' }), false))
+      .toBe('reject');
+  });
+
   it('requeues unsettled work while shutting down', () => {
     expect(decideFailedScanDeliveryAction(new Error('Interrupted'), true)).toBe('requeue');
   });

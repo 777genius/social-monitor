@@ -4,24 +4,36 @@ import { hasExhaustiveHitCount } from './hacker-news-algolia-policy';
 const historicalPageSize = 100;
 const historicalPageCeiling = 10;
 const historicalRequestBudget = 512;
+const historicalDurationBudgetMs = 120_000; // below the worker's 300s scan lease
 
 /** Recursively split crowded Algolia result windows until page completeness is provable. */
 export async function searchCompleteHackerNewsWindow(
   baseUrl: URL,
   from: Date,
   to: Date,
-  fetchJson: (url: string) => Promise<AlgoliaSearchResponse>,
+  fetchJson: (url: string, signal?: AbortSignal) => Promise<AlgoliaSearchResponse>,
 ): Promise<readonly AlgoliaHit[]> {
   const startSecond = Math.ceil(from.getTime() / 1000);
   const endSecond = Math.ceil(to.getTime() / 1000);
   if (startSecond >= endSecond) return [];
   let requests = 0;
+  const deadline = AbortSignal.timeout(historicalDurationBudgetMs);
   const fetchPage = async (url: URL): Promise<AlgoliaSearchResponse> => {
+    if (deadline.aborted) {
+      throw new Error('Hacker News historical search incomplete: duration budget exhausted');
+    }
     if (requests >= historicalRequestBudget) {
       throw new Error('Hacker News historical search incomplete: request budget exhausted');
     }
     requests += 1;
-    return fetchJson(url.toString());
+    try {
+      return await fetchJson(url.toString(), deadline);
+    } catch (error) {
+      if (deadline.aborted) {
+        throw new Error('Hacker News historical search incomplete: duration budget exhausted');
+      }
+      throw error;
+    }
   };
   const searchInterval = async (start: number, end: number): Promise<readonly AlgoliaHit[]> => {
     const url = new URL(baseUrl);
