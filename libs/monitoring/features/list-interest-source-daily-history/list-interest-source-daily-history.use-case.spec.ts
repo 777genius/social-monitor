@@ -1,4 +1,4 @@
-import { makeBinding, makeFixture, makePolicy, now, tenant, workspace } from "./list-interest-source-daily-history.spec-support";
+import { makeBinding, makeFixture, makePolicy, tenant, workspace } from "./list-interest-source-daily-history.spec-support";
 
 describe("ListInterestSourceDailyHistoryUseCase", () => {
   it("aggregates scan history by day and provider for an interest", async () => {

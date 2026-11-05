@@ -1,6 +1,6 @@
 import { ScanJob } from '@social-monitor/monitoring/domain';
 import type { ScanJobRepositoryPort, ScanPolicyRepositoryPort } from '@social-monitor/monitoring/ports';
-import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import type { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import request from 'supertest';
 
 type HttpServer = Parameters<typeof request>[0];
