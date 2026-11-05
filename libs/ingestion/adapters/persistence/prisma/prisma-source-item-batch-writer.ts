@@ -137,6 +137,12 @@ async function updateExistingSourceItem(
   readonly record: PrismaSourceItemRecord;
   readonly contentChanged: boolean;
 }> {
+  // Serializable replays can observe a newer committed value than the scan
+  // being retried. Do not let an older observation regress content or clocks.
+  const persistedObservedAt = params.existing.lastObservedAt ?? params.existing.observedAt;
+  if (params.snapshot.ingestedAt.getTime() < persistedObservedAt.getTime()) {
+    return { record: params.existing, contentChanged: false };
+  }
   const contentChanged =
     params.existing.providerContentHash === null ||
     params.existing.providerContentHash !== params.providerContentHash;
@@ -185,7 +191,8 @@ async function updateExistingSourceItem(
           metadata: params.snapshot.metadata ?? {},
         },
   });
-  return { record, contentChanged };
+  // A binding provenance change is not a new content revision.
+  return { record, contentChanged: contentChanged && !bindingOnlyChange };
 }
 
 async function findExistingSourceItems(

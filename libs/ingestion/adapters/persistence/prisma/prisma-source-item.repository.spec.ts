@@ -76,6 +76,43 @@ describe("PrismaSourceItemRepository", () => {
     expect(createCalls).toBe(1);
   });
 
+  it("never overwrites a newer persisted source observation with an older retry", async () => {
+    const persisted: PrismaSourceItemRecord = {
+      ...record("older-retry", "00000000-0000-7000-8000-000000000101"),
+      title: "Latest provider title",
+      body: "Latest provider body",
+      providerContentHash: "latest-provider-hash",
+      lastObservedAt: new Date("2026-07-12T00:00:00.000Z"),
+      contentUpdatedAt: new Date("2026-07-12T00:00:00.000Z"),
+    };
+    let updates = 0;
+    const sourceItem: PrismaIngestionClient["sourceItem"] = {
+      findMany: async () => [persisted],
+      findFirst: async () => persisted,
+      create: async () => { throw new Error("create not expected"); },
+      update: async () => { updates += 1; throw new Error("stale update not expected"); },
+    };
+    const repository = new PrismaSourceItemRepository({
+      sourceItem,
+    } as unknown as PrismaIngestionClient);
+    const result = await repository.saveBatch({
+      tenantId: tenantId("00000000-0000-7000-8000-000000000001"),
+      workspaceId: workspaceId("00000000-0000-7000-8000-000000000002"),
+      providerKey: "x-twitter",
+      items: [source("older-retry", "00000000-0000-7000-8000-000000000201")],
+    });
+
+    expect(updates).toBe(0);
+    expect(result).toMatchObject({
+      inserted: 0, contentUpdated: 0, skippedDuplicates: 1,
+      items: [{ mutationKind: "unchanged" }],
+    });
+    expect(result.items[0]?.persistedItem.toSnapshot()).toMatchObject({
+      title: "Latest provider title",
+      ingestedAt: new Date("2026-07-11T00:00:00.000Z"),
+    });
+  });
+
   it("rolls back pending rows before exact P2002 replay of a multi-item batch", async () => {
     const prisma = new RacingTransactionalSourceItemClient();
     const repository = new PrismaSourceItemRepository(
