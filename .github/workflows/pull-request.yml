@@ -391,6 +391,12 @@ jobs:
       - name: Prove reader workflow and publication HTTP fixtures
         run: npm run check:reader-summary-workflow
 
+      - name: Prove refactored delivery and source-health smoke contracts
+        run: |
+          set -euo pipefail
+          npm run check:delivery-persistence
+          npm run check:source-binding-health-rest
+
       - name: Run backend end-to-end tests
         run: npm run test:e2e
 

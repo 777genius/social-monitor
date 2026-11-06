@@ -194,11 +194,20 @@ comment, bot summary or empty automated review is not approval.
   reader-summary REST smoke fixtures/assertions and delivery Prisma smoke fake client.
   Each original test or main scenario body was retained. Matching LOC exceptions
   removed: **4**, reducing the baseline from **15 to 11**.
-- Stage 1–2 verification: **pending exact-head CI and E2E**; pushing a commit
-  is not the same as passing the corresponding test. Backend test/E2E jobs
-  explicitly skip Draft pull requests under `.github/workflows/pull-request.yml`.
-  Before asserting completion, they must be executed against the same HEAD
-  through the repository's supported ready-for-review or workflow-dispatch
-  route; neither is claimed here.
+- The first full CI/E2E run on `2112ac9eea74fbcc6931a80c8aee9485fbfec97e` passed **20/20 jobs**:
+  [GitHub Actions #42133172982](https://github.com/777genius/social-monitor/actions/runs/42133172982).
+  Backend E2E: **78/78 suites, 154/154 tests passed**; all six backend unit
+  shards, PostgreSQL 18, security, static architecture, Flutter, immutable
+  candidate and production lifecycle fixture checks passed. Production was
+  **not deployed**.
+- Independent coverage gap found after the green run: the existing E2E job
+  runs `check:reader-summary-workflow` (which includes the moved reader-summary
+  REST smoke code), but did not invoke `check:delivery-persistence` or
+  `check:source-binding-health-rest`. Both scripts contain extracted test-only
+  fixtures that must execute rather than merely compile. Add those two
+  **existing commands** to the existing backend E2E job, in that order; no
+  new workflow, framework, environment or production behavior is introduced.
+  Repeat full CI on the resulting final HEAD; until then this addition is
+  **unverified** and the draft is **not merge-ready**.
 - Stage 2–5 implementation and review: **not yet complete**.
 - No production deployment, merge, or external agent review is claimed.
