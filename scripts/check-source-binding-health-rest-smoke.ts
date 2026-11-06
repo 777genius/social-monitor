@@ -8,6 +8,7 @@ import {
   MONITORING_SCAN_POLICY_REPOSITORY,
 } from '@social-monitor/monitoring/interfaces/rest/monitoring-provider-tokens';
 import { MonitoringRestModule } from '@social-monitor/monitoring/interfaces/rest/monitoring-rest.module';
+import { MetricsRuntimeModule } from '@social-monitor/platform-metrics/nest/metrics-runtime.module';
 import type {
   ScanJobRepositoryPort,
   ScanPolicyRepositoryPort,
@@ -25,7 +26,10 @@ const assert = (condition: unknown, message: string): void => {
 
 async function main(): Promise<void> {
   const moduleRef = await Test.createTestingModule({
-    imports: [MonitoringRestModule],
+    imports: [
+      MetricsRuntimeModule.register({ serviceName: 'source-binding-health-rest-smoke' }),
+      MonitoringRestModule,
+    ],
     providers: [
       {
         provide: APP_FILTER,

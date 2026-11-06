@@ -209,5 +209,16 @@ comment, bot summary or empty automated review is not approval.
   new workflow, framework, environment or production behavior is introduced.
   Repeat full CI on the resulting final HEAD; until then this addition is
   **unverified** and the draft is **not merge-ready**.
+- Targeted E2E attempt on `505a71b266bbaa0e38c71bdbdbe143767aaa3b18`:
+  [GitHub Actions #42134406766](https://github.com/777genius/social-monitor/actions/runs/42134406766)
+  discovered a previously unexecuted test-harness DI defect:
+  `check:delivery-persistence` **passed**; `check:source-binding-health-rest`
+  failed before HTTP assertions because the isolated `MonitoringRestModule`
+  lacked global `METRICS_RECORDER` from `MetricsRuntimeModule`.
+  Root `AppModule` already registers `MetricsRuntimeModule.register(...)` as
+  a global import. Reuse that exact production composition pattern **only in
+  this isolated smoke's testing module**, with a synthetic service name.
+  No prod module/wiring, broker, or metrics policy changed. Repeat exact-HEAD
+  E2E on this change; do not claim it fixed until the smoke succeeds.
 - Stage 2–5 implementation and review: **not yet complete**.
 - No production deployment, merge, or external agent review is claimed.
