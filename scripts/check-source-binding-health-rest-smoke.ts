@@ -1,12 +1,14 @@
+import { createInterest, createBindingWithPolicy, readHealth, seedCompletedScan, movePolicyNextRunForward } from './lib/source-binding-health-rest-smoke-support';
 import { ValidationPipe } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
-import { ScanJob, ScanPolicy } from '@social-monitor/monitoring/domain';
+import { ScanPolicy } from '@social-monitor/monitoring/domain';
 import {
   MONITORING_SCAN_JOB_REPOSITORY,
   MONITORING_SCAN_POLICY_REPOSITORY,
 } from '@social-monitor/monitoring/interfaces/rest/monitoring-provider-tokens';
 import { MonitoringRestModule } from '@social-monitor/monitoring/interfaces/rest/monitoring-rest.module';
+import { MetricsRuntimeModule } from '@social-monitor/platform-metrics/nest/metrics-runtime.module';
 import type {
   ScanJobRepositoryPort,
   ScanPolicyRepositoryPort,
@@ -22,135 +24,12 @@ const assert = (condition: unknown, message: string): void => {
   }
 };
 
-type HttpServer = Parameters<typeof request>[0];
-type RequestHeaders = Record<string, string>;
-
-type SourceBindingFixture = {
-  readonly sourceBindingId: string;
-  readonly scanPolicyId: string;
-};
-
-const createInterest = async (params: {
-  readonly httpServer: HttpServer;
-  readonly headers: RequestHeaders;
-  readonly idempotencyKey: string;
-  readonly name: string;
-  readonly query: string;
-}): Promise<string> => {
-  const topic = await request(params.httpServer)
-    .post('/interests')
-    .set(params.headers)
-    .set('idempotency-key', params.idempotencyKey)
-    .send({
-      name: params.name,
-      query: params.query,
-    })
-    .expect(201);
-
-  return topic.body.interestId;
-};
-
-const createBindingWithPolicy = async (params: {
-  readonly httpServer: HttpServer;
-  readonly interestId: string;
-  readonly headers: RequestHeaders;
-  readonly idempotencyKey: string;
-  readonly intervalSeconds: number;
-  readonly freshnessSeconds: number;
-  readonly providerKey?: string;
-  readonly config?: Record<string, unknown>;
-}): Promise<SourceBindingFixture> => {
-  const binding = await request(params.httpServer)
-    .post(`/interests/${params.interestId}/source-bindings`)
-    .set(params.headers)
-    .set('idempotency-key', `binding-${params.idempotencyKey}`)
-    .send({
-      providerKey: params.providerKey ?? 'fake-source',
-      config: params.config ?? { mode: 'search', query: `health ${params.idempotencyKey}` },
-    })
-    .expect(201);
-
-  const policy = await request(params.httpServer)
-    .post(`/source-bindings/${binding.body.sourceBindingId}/scan-policy`)
-    .set(params.headers)
-    .set('idempotency-key', `policy-${params.idempotencyKey}`)
-    .send({
-      intervalSeconds: params.intervalSeconds,
-      freshnessSeconds: params.freshnessSeconds,
-      retryBudget: 3,
-    })
-    .expect(201);
-
-  return {
-    sourceBindingId: binding.body.sourceBindingId,
-    scanPolicyId: policy.body.scanPolicyId,
-  };
-};
-
-const readHealth = async (params: {
-  readonly httpServer: HttpServer;
-  readonly interestId: string;
-  readonly sourceBindingId: string;
-  readonly headers: RequestHeaders;
-}) =>
-  request(params.httpServer)
-    .get(`/interests/${params.interestId}/source-bindings/${params.sourceBindingId}/health`)
-    .set(params.headers)
-    .expect(200);
-
-const seedCompletedScan = async (params: {
-  readonly scanJobs: ScanJobRepositoryPort;
-  readonly tenant: ReturnType<typeof tenantId>;
-  readonly workspace: ReturnType<typeof workspaceId>;
-  readonly sourceBindingId: string;
-  readonly scanPolicyId: string;
-  readonly scanJobId: string;
-  readonly completedAt: Date;
-  readonly failureReason?: string;
-}): Promise<void> => {
-  const requestedAt = new Date(params.completedAt.getTime() - 2_000);
-  const enqueuedAt = new Date(params.completedAt.getTime() - 1_000);
-  const enqueued = ScanJob.request({
-    id: params.scanJobId,
-    tenantId: params.tenant,
-    workspaceId: params.workspace,
-    sourceBindingId: params.sourceBindingId,
-    scanPolicyId: params.scanPolicyId,
-    idempotencyKey: `seed-${params.scanJobId}`,
-    requestedAt,
-  }).markEnqueued({ enqueuedAt });
-  const completed =
-    params.failureReason === undefined
-      ? enqueued.markSucceeded({ completedAt: params.completedAt })
-      : enqueued.markFailed({
-          completedAt: params.completedAt,
-          failureReason: params.failureReason,
-        });
-
-  await params.scanJobs.save(completed);
-};
-
-const movePolicyNextRunForward = async (params: {
-  readonly scanPolicies: ScanPolicyRepositoryPort;
-  readonly tenant: ReturnType<typeof tenantId>;
-  readonly workspace: ReturnType<typeof workspaceId>;
-  readonly sourceBindingId: string;
-  readonly nextRunAt: Date;
-}): Promise<void> => {
-  const policy = await params.scanPolicies.findBySourceBinding({
-    tenantId: params.tenant,
-    workspaceId: params.workspace,
-    sourceBindingId: params.sourceBindingId,
-  });
-  if (policy === null) {
-    throw new Error('scheduled-later fixture must have scan policy');
-  }
-  await params.scanPolicies.save(policy.scheduleNext({ nextRunAt: params.nextRunAt }));
-};
-
 async function main(): Promise<void> {
   const moduleRef = await Test.createTestingModule({
-    imports: [MonitoringRestModule],
+    imports: [
+      MetricsRuntimeModule.register({ serviceName: 'source-binding-health-rest-smoke' }),
+      MonitoringRestModule,
+    ],
     providers: [
       {
         provide: APP_FILTER,
