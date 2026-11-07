@@ -14,7 +14,10 @@ test("host storage retains three service sections, paths and ordering", () => {
     "  postgres:", "  redis:", "  rabbitmq:",
   ]);
   assert.ok(sections[0].includes(`source: ${JSON.stringify(join("/tmp/a space", "postgres"))}`));
+  assert.ok(sections[0].includes('target: "/var/lib/postgresql"'));
+  assert.ok(sections[1].includes(`source: ${JSON.stringify(join("/tmp/a space", "redis"))}`));
   assert.ok(sections[1].includes('target: "/data"'));
+  assert.ok(sections[2].includes(`source: ${JSON.stringify(join("/tmp/a space", "rabbitmq"))}`));
   assert.ok(sections[2].includes('target: "/var/lib/rabbitmq"'));
 });
 

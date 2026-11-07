@@ -1,5 +1,6 @@
 import { join } from "node:path";
 
+/** Render the ordered host-bind volumes for the evidence Compose services. */
 export function hostBindStorageServiceSections(hostStorageRoot) {
   if (hostStorageRoot === undefined) {
     return [];
@@ -16,6 +17,7 @@ export function hostBindStorageServiceSections(hostStorageRoot) {
   ];
 }
 
+/** Render a Compose service's bind mounts with JSON-escaped source and target paths. */
 function serviceVolumes(service, entries) {
   return [
     `  ${service}:`,
@@ -28,6 +30,7 @@ function serviceVolumes(service, entries) {
   ].join("\n");
 }
 
+/** Render nonblank string environment entries while preserving caller order. */
 export function serviceEnvironment(service, entries) {
   const normalizedEntries = entries.filter(
     ([, value]) => typeof value === "string" && value.trim().length > 0,
