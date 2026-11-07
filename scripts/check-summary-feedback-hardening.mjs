@@ -9,6 +9,7 @@ import {
   validateRealEvidenceIdentityStrings,
 } from './lib/evidence-provenance.mjs';
 import { readPrivateEvidenceJsonFile } from './lib/evidence-env-file.mjs';
+import { isIsoDateString, parseIsoTimestampMs, sampleSignalFingerprint } from './lib/summary-feedback-evidence-values.mjs';
 
 const evidencePath = 'ops/release/summary-feedback-hardening-evidence.json';
 const feedbackPath = 'ops/release/beta-feedback-classification-report.json';
@@ -1024,31 +1025,6 @@ function readKnownFixtureSampleGuards(examplePath) {
   return { feedbackIds, signalFingerprints };
 }
 
-function sampleSignalFingerprint(sample) {
-  if (sample === null || typeof sample !== 'object' || Array.isArray(sample)) {
-    return undefined;
-  }
-  if (
-    typeof sample.category !== 'string' ||
-    typeof sample.sanitizedSignal !== 'string' ||
-    typeof sample.redactedComment !== 'string'
-  ) {
-    return undefined;
-  }
-
-  return JSON.stringify([
-    sample.category.trim(),
-    sample.sanitizedSignal.trim(),
-    sample.redactedComment.trim(),
-  ]);
-}
-
-function isIsoDateString(value) {
-  return typeof value === 'string'
-    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
-    && !Number.isNaN(Date.parse(value));
-}
-
 function validateGeneratedAtCoversSampleWindow(artifact, path) {
   const generatedAtMs = parseIsoTimestampMs(artifact.generatedAt);
   const endedAtMs = parseIsoTimestampMs(artifact.source?.sampleWindow?.endedAt);
@@ -1078,14 +1054,6 @@ function validateSerializedPatterns(content, label) {
     }
     pattern.regex.lastIndex = 0;
   }
-}
-
-function parseIsoTimestampMs(value) {
-  if (typeof value !== 'string') {
-    return undefined;
-  }
-  const parsed = Date.parse(value);
-  return Number.isNaN(parsed) ? undefined : parsed;
 }
 
 function validateAction(action, coveredIds, field) {
