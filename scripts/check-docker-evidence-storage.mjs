@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { statfsSync } from 'node:fs';
 
 import { assertDockerEvidencePrerequisites } from './lib/docker-backend-evidence-harness.mjs';
+import { danglingObjectSignals, prioritizeDanglingRows } from './lib/docker-evidence-dangling-signals.mjs';
 
 const args = new Set(process.argv.slice(2));
 const reportOnly = args.has('--report-only');
@@ -224,63 +225,6 @@ function inspectDanglingVolumeMetadata(name) {
     metadata,
     signals: danglingObjectSignals(`${name}\n${metadata}`),
   };
-}
-
-function prioritizeDanglingRows({ rows, inspect }) {
-  if (rows === undefined) {
-    return undefined;
-  }
-
-  return rows
-    .map((row, index) => ({
-      row,
-      index,
-      priority: danglingSignalPriority(inspect(row).signals),
-    }))
-    .sort((left, right) => right.priority - left.priority || left.index - right.index)
-    .map((candidate) => candidate.row);
-}
-
-function danglingSignalPriority(signals) {
-  if (signals.includes('social-monitor marker')) {
-    return 50;
-  }
-  if (signals.includes('backend evidence marker')) {
-    return 40;
-  }
-  if (signals.includes('backend build layer marker')) {
-    return 30;
-  }
-  if (signals.includes('node build layer marker')) {
-    return 20;
-  }
-  if (signals.includes('compose project label')) {
-    return 10;
-  }
-
-  return 0;
-}
-
-function danglingObjectSignals(text) {
-  const lowerText = text.toLowerCase();
-  const signals = [];
-  if (lowerText.includes('social-monitor')) {
-    signals.push('social-monitor marker');
-  }
-  if (lowerText.includes('backend-evidence') || lowerText.includes('staging-evidence')) {
-    signals.push('backend evidence marker');
-  }
-  if (lowerText.includes('com.docker.compose.project')) {
-    signals.push('compose project label');
-  }
-  if (lowerText.includes('npm ci') || lowerText.includes('package-lock.json')) {
-    signals.push('node build layer marker');
-  }
-  if (lowerText.includes('tsc -p tsconfig.build.json') || lowerText.includes('prisma generate')) {
-    signals.push('backend build layer marker');
-  }
-
-  return signals.length > 0 ? signals : ['no obvious project marker'];
 }
 
 function printDanglingInspection(inspection) {
