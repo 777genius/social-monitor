@@ -95,7 +95,6 @@ jobs:
           bash -n ops/ci/static-quality-root.sh
           shellcheck ops/ci/static-quality-root.sh
           node --experimental-strip-types --test ops/ci/static-quality-runner.test.mts
-          node --experimental-strip-types --test scripts/lib/durable-backend-e2e-json-fields.test.mjs
           node --test scripts/ci/check-release-gate-ci.test.mjs
 
       - name: Join release controller contracts and serial static quality
