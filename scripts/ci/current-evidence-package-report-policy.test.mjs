@@ -14,6 +14,7 @@ const requiredArtifacts = [
   'SUMMARY_REAL_FEEDBACK_SAMPLES_PATH',
 ];
 
+/** Build a complete deterministic report fixture for validation tests. */
 function validReport() {
   return {
     artifactFormat: 'external-beta-current-evidence-package-v1',
@@ -36,6 +37,7 @@ function validReport() {
   };
 }
 
+/** Collect validator diagnostics without changing the supplied report. */
 function diagnose(report, expectedCommit = commitSha) {
   const violations = [];
   validateCurrentEvidencePackageReport(report, expectedCommit, violations);
