@@ -10,6 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 import { URL } from "node:url";
+import { hostBindStorageServiceSections, serviceEnvironment } from "./docker-backend-evidence-compose-render.mjs";
 
 const DEFAULT_DOCKER_PREFLIGHT_TIMEOUT_MS = 5_000;
 const DEFAULT_DOCKER_SOCKET_PING_TIMEOUT_MS = 3_000;
@@ -978,48 +979,6 @@ function dockerReachableHttpUrl(value, name) {
   }
 
   return url.toString().replace(/\/$/u, "");
-}
-
-function hostBindStorageServiceSections(hostStorageRoot) {
-  if (hostStorageRoot === undefined) {
-    return [];
-  }
-
-  return [
-    serviceVolumes("postgres", [
-      [join(hostStorageRoot, "postgres"), "/var/lib/postgresql"],
-    ]),
-    serviceVolumes("redis", [[join(hostStorageRoot, "redis"), "/data"]]),
-    serviceVolumes("rabbitmq", [
-      [join(hostStorageRoot, "rabbitmq"), "/var/lib/rabbitmq"],
-    ]),
-  ];
-}
-
-function serviceVolumes(service, entries) {
-  return [
-    `  ${service}:`,
-    "    volumes:",
-    ...entries.flatMap(([source, target]) => [
-      "      - type: bind",
-      `        source: ${JSON.stringify(source)}`,
-      `        target: ${JSON.stringify(target)}`,
-    ]),
-  ].join("\n");
-}
-
-function serviceEnvironment(service, entries) {
-  const normalizedEntries = entries.filter(
-    ([, value]) => typeof value === "string" && value.trim().length > 0,
-  );
-
-  return [
-    `  ${service}:`,
-    "    environment:",
-    ...normalizedEntries.map(
-      ([name, value]) => `      ${name}: ${JSON.stringify(value)}`,
-    ),
-  ].join("\n");
 }
 
 function waitForReady(apiBaseUrl) {
