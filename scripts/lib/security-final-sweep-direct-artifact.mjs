@@ -1,3 +1,7 @@
+/**
+ * Build a deterministic security-sweep artifact for the local direct-path guard tests.
+ * The verifier supplies contract values; this fixture builder performs no I/O.
+ */
 export function buildDirectSecurityArtifact({ exportPathsByEnv, exportHashesByEnv }, {
   securityFinalSweepArtifactFormat,
   securityFinalSweepEvidenceKind,
@@ -64,6 +68,7 @@ export function buildDirectSecurityArtifact({ exportPathsByEnv, exportHashesByEn
   };
 }
 
+/** Describe one captured source export in the deterministic fixture. */
 function directSourceExport(surfaceId, envVar, path, sha256, collectedAt) {
   return {
     surfaceId,
@@ -77,6 +82,7 @@ function directSourceExport(surfaceId, envVar, path, sha256, collectedAt) {
   };
 }
 
+/** Preserve the direct fixture's per-surface leak-class records in input order. */
 function directSurface(surfaceId, requiredLeakClasses) {
   return {
     surfaceId,
