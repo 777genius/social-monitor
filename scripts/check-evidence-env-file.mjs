@@ -134,6 +134,7 @@ function validatePrivateEnvRead() {
   );
 }
 
+/** Exercise current evidence packaging and validate its report against sandbox fixtures. */
 function validateCurrentEvidencePackage() {
   const dockerEnvPath = join(tempDirectory, 'docker-import.env');
   const liveOpenEnvPath = join(tempDirectory, 'live-open.env');
