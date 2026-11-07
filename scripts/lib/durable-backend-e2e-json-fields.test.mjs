@@ -70,3 +70,12 @@ test('isRecord keeps existing object/null/array semantics', () => {
   assert.equal(isRecord(null), false);
   assert.equal(isRecord('text'), false);
 });
+
+test('readRecord rejects missing or inherited keys but accepts an own __proto__', () => {
+  const parsed = JSON.parse('{}');
+  assert.throws(() => readRecord(parsed, '__proto__'), /^Error: Expected __proto__ to be an object$/);
+  const own = JSON.parse('{"__proto__": {"id": "own"}}');
+  assert.equal(readRecord(own, '__proto__'), Object.getOwnPropertyDescriptor(own, '__proto__').value);
+  const inherited = Object.create({ payload: { id: 'inherited' } });
+  assert.throws(() => readRecord(inherited, 'payload'), /^Error: Expected payload to be an object$/);
+});

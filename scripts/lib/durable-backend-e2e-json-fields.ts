@@ -3,7 +3,7 @@ export type JsonRecord = Record<string, unknown>;
 /** Require a record-valued response field. */
 export function readRecord(source: JsonRecord, field: string): JsonRecord {
   const value = source[field];
-  if (!isRecord(value)) {
+  if (!Object.hasOwn(source, field) || !isRecord(value)) {
     throw new Error(`Expected ${field} to be an object`);
   }
 
