@@ -30,7 +30,7 @@ test('trending fixture is stable and includes parsing markers', () => {
 
 test('header reader handles undefined and Headers with case-insensitive names', () => {
   assert.equal(readHeader(undefined, 'x-token'), undefined);
-  const headers = new Headers({ 'X-Request-Id': 'test-request' });
+  const headers = new globalThis.Headers({ 'X-Request-Id': 'test-request' });
   assert.equal(readHeader(headers, 'x-request-id'), 'test-request');
   assert.equal(readHeader(headers, 'not-present'), undefined);
 });
