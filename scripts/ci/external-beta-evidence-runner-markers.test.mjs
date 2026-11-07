@@ -35,12 +35,12 @@ test('a missing selection diagnostic fails closed at the extracted helper', () =
 test('legacy runner and checker markers are still enforced', () => {
   const missingRunner = validateRunnerImplementationMarkers({
     ...sources,
-    runnerSource: sources.runnerSource.replace('unknownJobIds', 'missing-marker'),
+    runnerSource: sources.runnerSource.replaceAll('unknownJobIds', 'missing-marker'),
   });
   assert.ok(missingRunner.some((message) => message.startsWith(`${runnerFile}:`)));
   const missingCheck = validateRunnerImplementationMarkers({
     ...sources,
-    checkSource: sources.checkSource.replace('strictSemanticNegativeSmokeLabels', 'missing-marker'),
+    checkSource: sources.checkSource.replaceAll('strictSemanticNegativeSmokeLabels', 'missing-marker'),
   });
   assert.ok(missingCheck.some((message) => message.startsWith(`${checkFile}:`)));
 });
