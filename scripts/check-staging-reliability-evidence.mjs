@@ -21,12 +21,10 @@ import {
   hasNonEmptyEvidence,
   getPath,
   matchesEvidenceType,
-  isIsoTimestamp,
   parseIsoTimestampMs,
   isSupportedEvidenceType,
   isRecord,
   objectsEqual,
-  sortObject,
 } from "./lib/staging-reliability-evidence-shape.mjs";
 
 const evidencePath = "ops/drills/staging-reliability-evidence.json";
