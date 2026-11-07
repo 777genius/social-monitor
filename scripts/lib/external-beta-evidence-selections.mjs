@@ -1,3 +1,9 @@
+/**
+ * Collects --job and --jobs values in argument order without deduplicating them.
+ * Reports missing values but keeps scanning; job-ID validation belongs to the runner.
+ * @param {string[]} argv
+ * @returns {{jobIds: string[], errors: string[]}}
+ */
 export function readSelectedJobSelection(argv) {
   const jobIds = [];
   const errors = [];
@@ -28,6 +34,12 @@ export function readSelectedJobSelection(argv) {
   return { jobIds, errors };
 }
 
+/**
+ * Collects --env-file values without validating or opening their paths.
+ * The runner performs path and security checks after this selection step.
+ * @param {string[]} argv
+ * @returns {{paths: string[], errors: string[]}}
+ */
 export function readEnvFileSelection(argv) {
   const paths = [];
   const errors = [];
@@ -48,6 +60,11 @@ export function readEnvFileSelection(argv) {
   return { paths, errors };
 }
 
+/**
+ * Recognizes absent, blank and following-option tokens as missing values.
+ * @param {string | undefined} value
+ * @returns {boolean}
+ */
 function isMissingSelectionValue(value) {
   return value === undefined || value.trim() === '' || value.startsWith('--');
 }
