@@ -14,6 +14,7 @@ const nullModel = () => ({
 
 test('not_executed requires every original null field and zero completed tasks', () => {
   assert.equal(validNotExecutedModelFields(nullModel(), { execution: 'not_executed' }), true);
+  assert.equal(validNotExecutedModelFields({ ...nullModel(), summaryModel: 'agent-runtime' }, { execution: 'not_executed' }), false);
   for (const field of Object.keys(nullModel())) {
     const mutated = { ...nullModel(), [field]: undefined };
     assert.equal(validNotExecutedModelFields(mutated, { execution: 'not_executed' }), false, field);
