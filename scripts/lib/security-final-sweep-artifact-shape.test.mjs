@@ -180,5 +180,5 @@ test('checker scans private exports with the real artifact wiring', () => {
     mutateExports: (documents) => { documents.LOG_EXPORT_PATH.records[0].rawsource = 'redacted'; },
   });
   assert.notEqual(result.status, 0, result.stderr);
-  assert.match(result.stderr, /export file: forbidden sensitive field "rawsource"/);
+  assert.match(result.stderr, /export file\.records\[0\]: forbidden sensitive field "rawsource"/);
 });
