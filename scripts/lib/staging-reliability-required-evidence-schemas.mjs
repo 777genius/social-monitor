@@ -1,4 +1,5 @@
 // Canonical staging reliability signal IDs and required evidence shapes. No I/O.
+/** Exact staging signal IDs required for a complete acceptance artifact. */
 export const requiredSignalIds = new Set([
   "rabbitmq-publisher-confirms",
   "rabbitmq-persistent-publish",
@@ -24,6 +25,7 @@ export const requiredSignalIds = new Set([
   "backend-loop-tenant-isolation",
   "backend-loop-idempotency",
 ]);
+/** Original ordered field/type requirements for each staging signal. */
 export const requiredEvidenceShapeBySignalId = new Map([
   [
     "rabbitmq-publisher-confirms",

@@ -90,12 +90,12 @@ test('PostgreSQL restore RPO/RTO retains its strict durations and paused worker 
 
 test('memory evidence fields keep privacy, provider scope and matching constraints', () => {
   const fields = requiredEvidenceShapeBySignalId.get('backend-loop-summary-memory');
-  assert.deepEqual(fields.slice(-5), [
+  assert.deepEqual(fields.slice(-4), [
     ['memory.sourceRefCount', 'non_negative_integer'],
     ['memory.renderedTextChars', 'positive_integer'],
     ['memory.memoryEffectMatched', 'boolean_true'],
     ['rawMemoryTextIncluded', 'boolean_false'],
-  ].slice(-4));
+  ]);
   assert.deepEqual(fields.find(([key]) => key === 'memory.providerScopeExternalRef'), [
     'memory.providerScopeExternalRef', 'non_empty_string',
   ]);
