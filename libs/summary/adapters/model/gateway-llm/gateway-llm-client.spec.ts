@@ -515,7 +515,7 @@ describe("GatewayLlmClient preparation and completion boundaries", () => {
     const result = await fake.client.runTask(command({ outputSchema: {} }));
     expect(result).toMatchObject({ status: "completed", outputText: "plain provider output" });
     expect(result.structuredOutput).toBeUndefined();
-    expect(result.executionAttestation).toMatchObject({ selectedOutputKind: "text" });
+    expect(result.executionAttestation).toMatchObject({ selectedOutputKind: "output_text" });
     expect(fake.requests()).toBe(1);
   });
 });
