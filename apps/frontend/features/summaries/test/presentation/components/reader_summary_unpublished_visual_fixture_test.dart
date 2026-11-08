@@ -71,8 +71,10 @@ Future<void> _captureFallbackFixture(
         home: Scaffold(
           body: RepaintBoundary(
             key: const ValueKey('source-only-screenshot'),
-            child: CustomScrollView(
-              slivers: [
+            child: ColoredBox(
+              color: theme.scaffoldBackgroundColor,
+              child: CustomScrollView(
+                slivers: [
                 SliverToBoxAdapter(
                   child: WorkspaceSummaryPeriodShell(
                     selectedPeriod: period,
@@ -103,7 +105,8 @@ Future<void> _captureFallbackFixture(
                   contentPadding: const EdgeInsets.all(AppSpacing.md),
                   onOpenUrl: (_) {},
                 ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
