@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,6 +22,21 @@ void main() {
     final loader = FontLoader('Roboto')
       ..addFont(Future<ByteData>.value(ByteData.sublistView(bytes)));
     await loader.load();
+    final flutterRoot = Platform.environment['FLUTTER_ROOT'];
+    if (flutterRoot != null) {
+      final materialIcons = File(
+        '$flutterRoot/bin/cache/artifacts/material_fonts/'
+        'MaterialIcons-Regular.otf',
+      );
+      if (materialIcons.existsSync()) {
+        final iconBytes = materialIcons.readAsBytesSync();
+        await (FontLoader('MaterialIcons')
+              ..addFont(
+                Future<ByteData>.value(ByteData.sublistView(iconBytes)),
+              ))
+            .load();
+      }
+    }
   });
 
   testWidgets('desktop visual fixture of 7 November missing-summary page', (
