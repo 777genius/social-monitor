@@ -20,11 +20,11 @@ import {
 import {
   asRecord,
   knownStringSubset,
+  normalizeStringArrayLike,
   normalizeSetValue,
   optionalString,
   requiredOptionalStringArray,
   requiredString,
-  requiredStringArray,
   uniqueNonEmptyStrings,
 } from "./openai-responses-reader-summary-json";
 import {
@@ -365,22 +365,6 @@ const normalizeRecordArray = (
   return value
     .map(asRecord)
     .filter((record): record is Record<string, unknown> => record !== null);
-};
-
-const normalizeStringArrayLike = (
-  value: unknown,
-  label: string,
-): readonly string[] => {
-  if (Array.isArray(value)) {
-    return requiredStringArray(value, label);
-  }
-
-  const scalar = optionalString(value);
-  if (scalar === undefined) {
-    return [];
-  }
-
-  return uniqueNonEmptyStrings(scalar.split(","));
 };
 
 const normalizeRisks = (

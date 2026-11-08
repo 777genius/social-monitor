@@ -1,8 +1,7 @@
 import type { ReaderSummaryTopStory } from "../../domain";
 import {
   optionalString,
-  requiredStringArray,
-  uniqueNonEmptyStrings,
+  normalizeStringArrayLike,
 } from "./openai-responses-reader-summary-json";
 
 export const normalizeTopStory = (
@@ -41,21 +40,5 @@ export const normalizeTopStory = (
           originalSummary: modelSummary,
         },
   };
-};
-
-const normalizeStringArrayLike = (
-  value: unknown,
-  label: string,
-): readonly string[] => {
-  if (Array.isArray(value)) {
-    return requiredStringArray(value, label);
-  }
-
-  const scalar = optionalString(value);
-  if (scalar === undefined) {
-    return [];
-  }
-
-  return uniqueNonEmptyStrings(scalar.split(","));
 };
 
