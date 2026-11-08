@@ -60,7 +60,7 @@ test('commented-out identity call sites cannot satisfy the quality guard', () =>
     [
       '  validateRealArtifactIdentity(',
       '    artifact,',
-      '    `${evidencePath}: stagingEvidenceArtifacts.${artifact.artifactId}`',
+      '    `${evidencePath}: stagingEvidenceArtifacts.${artifact.artifactId}`,',
       '  );',
     ].join('\n'),
     '  validateRealArtifactIdentity(content, artifact.path);',
