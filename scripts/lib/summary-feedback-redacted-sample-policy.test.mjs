@@ -213,8 +213,8 @@ test('nested forbidden fields retain ordered diagnostic traversal', () => {
   data.summaryEvidence.extra = [{ 'raw-payload': 'redacted' }, { 'access-token': 'redacted' }];
   validateRedactedSample(data, 'sample', new Set(), ctx);
   assert.deepEqual(ctx.violations.slice(0, 2), [
-    'sample: forbidden sensitive field "raw-payload"',
-    'sample: forbidden sensitive field "access-token"',
+    'sample.summaryEvidence.extra[0]: forbidden sensitive field "raw-payload"',
+    'sample.summaryEvidence.extra[1]: forbidden sensitive field "access-token"',
   ]);
 });
 test('wrong-fact category requires explicit source and citation identity fields', () => {
