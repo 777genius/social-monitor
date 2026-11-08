@@ -61,6 +61,11 @@ test('checker rejects a missing env artifact policy rule through the real entryp
   const checkerScript = fileURLToPath(new URL('../check-source-live-certification-evidence.mjs', import.meta.url));
   const fixturePath = join(repoRoot, 'ops/ingestion/source-live-certification-evidence.json');
   const originalFixture = readFileSync(fixturePath, 'utf8');
+  const originalRules = JSON.parse(originalFixture).passedArtifactContentSchema.envArtifactValidation;
+  assert.ok(
+    Array.isArray(originalRules) && originalRules.some((rule) => rule.envVar === 'GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH'),
+    'the baseline fixture must contain the rule removed by the negative test',
+  );
   const directory = mkdtempSync(join(tmpdir(), 'source-live-env-regression-'));
 
   try {
