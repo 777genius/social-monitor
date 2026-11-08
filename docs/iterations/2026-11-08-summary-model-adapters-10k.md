@@ -79,4 +79,16 @@ Decision: **conditional pass**; implement only after the inventory and remaining
 
 Decision: **conditional pass**. The final implementation must preserve strict/negative behavior; remaining round 3 and baseline inventory are prerequisites.
 
-Round 3 pending. No implementation has started.
+### Round 3 — testability, review and operability critic (internal adversarial review)
+
+**Finding C1 (critical):** a green CI attempt on an earlier commit does not qualify a multi-commit refactor; a draft/plan-only CI success proves nothing about the later model code. **Resolution:** establish baseline tests first; track last changed SHA, then require full *exact-final-HEAD* jobs and final main CI, six native PostgreSQL 18 shards, image/candidate and security. Repeat after fixing review feedback. Transient PGDG/curl runner failures can be rerun normally; never weaken the PG gate.
+
+**Finding C2 (high):** a 10k+ single PR is difficult to review. **Resolution:** keep it single PR per user instruction, but stage coherent commits and explicit per-slice diff, tests, risk, original-LOC ledger and revert plan. Avoid changing generated code, core product workflow, deploy scripts and unrelated formatting.
+
+**Finding C3 (high):** TypeScript exports/import resolution and Jest mocks can break even when runtime snapshots seem equal. **Resolution:** collect before/after public symbol inventory and direct-import consumers; add import boundary tests, run TS build, Jest and architecture/type checks. Avoid transient compatibility facades; delete them before final acceptance.
+
+**Finding C4 (high):** the current working environment can read/write through the GitHub connector but has no network checkout or repository dependencies, so local full tests cannot be honestly claimed. **Resolution:** code delivery can proceed through branch commits, but implementation and E2E completion must be independently verified by GitHub Actions and review. Do not mark a check successful without its exact run conclusion.
+
+Decision: **conditional pass**. The three internal critical rounds are complete, but these are NOT independent CodeRabbit/ReviewRouter/human approvals and are NOT final acceptance. First collect the exact source LOC + consumer inventory, then begin implementation.
+
+**All three internal rounds recorded. Baseline LOC inventory is still pending; implementation has NOT started.**
