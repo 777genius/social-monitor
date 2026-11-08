@@ -169,7 +169,7 @@ class _SummariesBody extends StatelessWidget {
     final selectedPeriod = store.selectedSummaryPeriod;
     final selectedPreset = store.selectedSummaryPeriodPreset;
     final allowUnpublishedDays = store.allowUnpublishedDays;
-    final refresh = () => unawaited(store.loadWorkspaceSummary());
+    void refresh() => unawaited(store.loadWorkspaceSummary());
     void openSource(String summaryId, String url) => unawaited(
       store.openReaderSourceUrl(summaryId: summaryId, canonicalUrl: url),
     );
