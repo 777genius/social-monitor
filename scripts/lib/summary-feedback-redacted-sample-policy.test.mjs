@@ -250,16 +250,35 @@ test('real feedback cannot reuse fixture ID or exact signal fingerprint', () => 
 });
 test('serialized redacted artifact rejects forbidden literals and invokes the original pattern gate', () => {
   const calls = [], ctx = context([], calls);
-  validateSerializedArtifact({ message: syntheticAuthorization('redacted-value') }, 'artifact', ctx);
+  const payload = { message: syntheticAuthorization('redacted-value') };
+  validateSerializedArtifact(payload, 'artifact', ctx);
   assert.ok(ctx.violations.includes('artifact: redacted sample artifact must not contain "bearer "'));
-  assert.deepEqual(calls.map((item) => item[0]), ['patterns']);
+  assert.deepEqual(calls, [['patterns', JSON.stringify(payload), 'artifact: redacted sample artifact']]);
 });
 
 test('raw serialized evidence passes the same pre-parse privacy and regex gates', () => {
   const calls = [], ctx = context([], calls);
-  validateSerializedArtifactContent(JSON.stringify({ message: syntheticAuthorization('raw-secret') }), 'artifact', ctx);
+  const raw = JSON.stringify({ message: syntheticAuthorization('raw-secret') });
+  validateSerializedArtifactContent(raw, 'artifact', ctx);
   assert.deepEqual(ctx.violations, [
     'artifact: redacted sample artifact must not contain "bearer "',
   ]);
-  assert.deepEqual(calls.map((item) => item[0]), ['patterns']);
+  assert.deepEqual(calls, [['patterns', raw, 'artifact: redacted sample artifact']]);
+});
+
+test('regex-only query credential reaches the caller-owned fail-closed serialized pattern gate', () => {
+  const calls = [], ctx = context([], calls);
+  const signatureName = ['sig', 'nature'].join('');
+  const raw = JSON.stringify({ url: 'https://redacted.example/?' + signatureName + '=synthetic-value' });
+  ctx.validateSerializedPatterns = (value, label) => {
+    calls.push(['patterns', value, label]);
+    if (new RegExp('[?&]' + signatureName + '=').test(value)) {
+      ctx.violations.push(label + ' must not contain sensitive query credential');
+    }
+  };
+  validateSerializedArtifactContent(raw, 'artifact', ctx);
+  assert.deepEqual(ctx.violations, [
+    'artifact: redacted sample artifact must not contain sensitive query credential',
+  ]);
+  assert.deepEqual(calls, [['patterns', raw, 'artifact: redacted sample artifact']]);
 });
