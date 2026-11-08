@@ -14,6 +14,7 @@ Widget _denseTopPostRow(
   Widget rating,
   Widget menu,
   _TopPostSupportSignal supportSignal, {
+  required bool sourceOnly,
   required bool showOriginal,
   required bool showOriginalControl,
   required bool originalExpanded,
@@ -36,20 +37,26 @@ Widget _denseTopPostRow(
       _TopPostProviderTile(providerKey: item.providerKey),
       const SizedBox(width: AppSpacing.sm + 4),
       Expanded(
-        child: _TopPostTextBody(
-          item: item,
-          showOriginal: showOriginal,
-          showOriginalControl: showOriginalControl,
-          originalExpanded: originalExpanded,
-          onOriginalChanged: onOriginalChanged,
-          onOriginalExpandedChanged: onOriginalExpandedChanged,
-        ),
+        child: sourceOnly
+            ? _TopPostSourceOnlyCopy(
+                item: item,
+                expanded: originalExpanded,
+                onExpandedChanged: onOriginalExpandedChanged,
+              )
+            : _TopPostTextBody(
+                item: item,
+                showOriginal: showOriginal,
+                showOriginalControl: showOriginalControl,
+                originalExpanded: originalExpanded,
+                onOriginalChanged: onOriginalChanged,
+                onOriginalExpandedChanged: onOriginalExpandedChanged,
+              ),
       ),
       if (showMetric && primaryMetric != null) ...[
         const SizedBox(width: AppSpacing.md),
         _DensePrimaryMetric(metric: primaryMetric),
       ],
-      if (showChip) ...[
+      if (showChip && !sourceOnly) ...[
         const SizedBox(width: AppSpacing.md),
         _DenseRelevanceChip(item: item, supportSignal: supportSignal),
       ],
