@@ -178,6 +178,7 @@ test('complete placeholders stay supported with optional matching wrappers', () 
   }
   assert.deepEqual(structured({ token: '[masked>', secret: '<redacted]' }), [
     'job-a: artifact must not contain unredacted sensitive key "token"',
+    'job-a: artifact must not contain unredacted sensitive key "secret"',
   ]);
 });
 
