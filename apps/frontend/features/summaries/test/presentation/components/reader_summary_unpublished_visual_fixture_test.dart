@@ -137,8 +137,8 @@ Future<void> _captureFallbackFixture(
     final data = await image.toByteData(format: ui.ImageByteFormat.png);
     expect(data, isNotNull);
     final dir = Directory('reader-fallback-visuals');
-    await dir.create(recursive: true);
-    await File('${dir.path}/$filename').writeAsBytes(
+    dir.createSync(recursive: true);
+    File('${dir.path}/$filename').writeAsBytesSync(
       data!.buffer.asUint8List(),
       flush: true,
     );
