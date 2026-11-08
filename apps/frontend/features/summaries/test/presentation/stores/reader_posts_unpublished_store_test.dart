@@ -70,7 +70,7 @@ void main() {
 
 SummaryPeriod _day(int day) => SummaryPeriodPreset.daily.resolveForCalendarDate(
   DateTime(2026, 11, day),
-  now: DateTime.utc(2026, 11, 8, 12),
+  now: DateTime.utc(2026, 11, 9, 12),
 );
 
 Future<void> _settle() => Future<void>.delayed(Duration.zero);
