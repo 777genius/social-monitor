@@ -47,12 +47,21 @@ test('webhook staging provenance retains the exact original capture runner', () 
   });
 });
 
-test('source staging environment is unchanged except for the one sampled timestamp', () => {
-  const before = Date.now(), value = buildSource(), after = Date.now();
-  assert.deepEqual([value.environment.environmentId, value.environment.secretStoreId, value.environment.operator],
-    ['staging-secret-rotation-alpha-1', 'secret-store-staging-alpha-1', 'security-owner-1']);
-  assert.ok(Date.parse(value.environment.sampledAt) >= before - 1_000);
-  assert.ok(Date.parse(value.environment.sampledAt) <= after + 1_000);
+test('rotation evidence uses the exact mocked clock and restores it after verification', (t) => {
+  const instant = new Date('2026-11-08T12:34:56.789Z');
+  t.mock.timers.enable({ apis: ['Date'], now: instant });
+  try {
+    for (const value of [buildSource(), buildWebhook()]) {
+      assert.deepEqual(
+        [value.environment.environmentId, value.environment.secretStoreId, value.environment.operator],
+        ['staging-secret-rotation-alpha-1', 'secret-store-staging-alpha-1', 'security-owner-1'],
+      );
+      assert.equal(value.environment.sampledAt, instant.toISOString());
+      assert.ok(value.operations.every((operation) => operation.observedAt === instant.toISOString()));
+    }
+  } finally {
+    t.mock.timers.reset();
+  }
 });
 
 test('webhook staging environment retains the same secret store and operator', () => {

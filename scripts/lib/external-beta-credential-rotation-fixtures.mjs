@@ -1,4 +1,5 @@
 // Synthetic credential rotation evidence builders; the caller loads each fixture.
+/** Build the original staging source-credential rotation evidence from a caller-owned fixture. */
 export function sourceCredentialRotationArtifact(artifact) {
   applyCredentialRotationRealEvidence(artifact, {
     evidenceKind: 'staging_source_credential_rotation',
@@ -8,6 +9,7 @@ export function sourceCredentialRotationArtifact(artifact) {
   return artifact;
 }
 
+/** Build the original staging webhook-secret rotation evidence from a caller-owned fixture. */
 export function webhookSecretRotationArtifact(artifact) {
   applyCredentialRotationRealEvidence(artifact, {
     evidenceKind: 'staging_webhook_secret_rotation',
@@ -17,6 +19,7 @@ export function webhookSecretRotationArtifact(artifact) {
   return artifact;
 }
 
+/** Stamp existing provenance, environment and operation timestamps without changing evidence data. */
 function applyCredentialRotationRealEvidence(artifact, provenance) {
   const now = new Date().toISOString();
   artifact.provenance = {
