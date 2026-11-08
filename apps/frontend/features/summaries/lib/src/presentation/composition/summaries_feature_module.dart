@@ -110,6 +110,7 @@ final class SummariesFeatureModule extends Module {
         ),
         scope: scope,
         userId: userId,
+        allowUnpublishedDays: generatedApiRuntime != null,
       ),
     );
   }
@@ -142,6 +143,7 @@ final class SummariesFeatureModule extends Module {
       ),
       scope: scope,
       userId: userId,
+      allowUnpublishedDays: generatedApiRuntime != null,
     );
   }
 
