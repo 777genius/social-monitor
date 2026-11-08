@@ -52,7 +52,7 @@ test('pattern scans remain deterministic across repeated calls', () => {
 });
 
 test('forbidden literal fragments precede pattern diagnostics', () => {
-  const hits = literal('Bearer rawvalue; authorization: rawvalue');
+  const hits = literal('Bearer ...; authorization: rawvalue');
   assert.ok(hits[0].includes('literal fragment "bearer "'));
   assert.ok(hits.some((x) => x.includes('pattern "header credential"')));
 });
