@@ -7,7 +7,7 @@ import {
 
 export type OpenAiReaderSummaryFetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
-class ReaderSummaryModelProviderError extends Error {
+export class ReaderSummaryModelProviderError extends Error {
   constructor(readonly failure: ReaderSummaryModelFailure) {
     super(failure.message);
   }
