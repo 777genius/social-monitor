@@ -1,20 +1,27 @@
 import {
-  READER_SUMMARY_TOPIC_MAP_MAX_SEMANTIC_GROUPS,
+  normalizeSemanticGroupId,
+  semanticGroupLabelFromId,
+  retainedSemanticGroupIds,
+} from "./agent-runtime-reader-summary-topic-group-policy";
+import {
+  readRecordArray,
+  readStringArray,
+  stringValue,
+  optionalString,
+  semanticLabelFromRaw,
+} from "./agent-runtime-reader-summary-topic-raw-decoder";
+import { recoverSemanticGroupAnchors } from "./agent-runtime-reader-summary-topic-anchor-recovery";
+import {
   READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID,
   READER_SUMMARY_TOPIC_SEMANTIC_CONFIDENCE_MIN,
-  readerSummaryTopicClaimTypes,
   renderReaderSummaryTopicSemanticLabel,
-  type ReaderSummaryTopicClaimType,
   type ReaderSummaryTopicSemanticLabel,
   type ReaderSummaryTopicLabelPlan,
 } from "../../domain";
 import type { ReaderSummaryTopicLabelerInput } from "../../ports";
-import { evaluateTopicLabelQuality, meaningfulTopicLabelTokens } from "../../domain/services/reader-summary-topic-map-label-quality";
-import {
-  formatReaderSummaryTopicToken,
-  normalizeTopicLabel,
-  readerSummaryTopicLabelFromSlug,
-} from "../../domain/services/reader-summary-topic-map-text";
+
+
+import { evaluateTopicLabelQuality } from "../../domain/services/reader-summary-topic-map-label-quality";
 import { completeRequiredGroundedTopicCohorts } from "./agent-runtime-reader-summary-topic-cohort-completion";
 
 export const normalizeAgentRuntimeReaderSummaryTopicLabelPlan = (
@@ -199,199 +206,3 @@ export const parseAgentRuntimeReaderSummaryTopicLabelerJsonObject = (
   return parsed as Record<string, unknown>;
 };
 
-const normalizeSemanticGroupId = (value: string | undefined): string =>
-  value !== undefined &&
-  /^group:[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(value) &&
-  value !== READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID
-    ? value
-    : READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID;
-
-const semanticGroupLabelFromId = (groupId: string): string => {
-  const [, rawValue = groupId] = groupId.split(":");
-
-  return readerSummaryTopicLabelFromSlug(rawValue ?? "other-topics");
-};
-
-const retainedSemanticGroupIds = (
-  nodeLabels: readonly { readonly nodeId: string; readonly groupId: string }[],
-  candidates: readonly ReaderSummaryTopicLabelerInput["candidates"][number][],
-): ReadonlySet<string> => {
-  const candidateScoreById = new Map(
-    candidates.map((candidate) => [candidate.nodeId, candidate.score] as const),
-  );
-  const stats = new Map<string, { count: number; score: number }>();
-  for (const label of nodeLabels) {
-    if (label.groupId === READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID) {
-      continue;
-    }
-    const current = stats.get(label.groupId) ?? { count: 0, score: 0 };
-    stats.set(label.groupId, {
-      count: current.count + 1,
-      score: current.score + (candidateScoreById.get(label.nodeId) ?? 0),
-    });
-  }
-
-  return new Set(
-    [...stats.entries()]
-      .filter(([, stats]) => stats.count >= 2)
-      .sort((left, right) => {
-        const byCount = right[1].count - left[1].count;
-        if (byCount !== 0) {
-          return byCount;
-        }
-        const byScore = right[1].score - left[1].score;
-
-        return byScore !== 0 ? byScore : left[0].localeCompare(right[0]);
-      })
-      .slice(0, READER_SUMMARY_TOPIC_MAP_MAX_SEMANTIC_GROUPS)
-      .map(([groupId]) => groupId),
-  );
-};
-
-const readRecordArray = (value: unknown): readonly Record<string, unknown>[] =>
-  Array.isArray(value)
-    ? value.filter(
-        (item): item is Record<string, unknown> =>
-          item !== null && typeof item === "object" && !Array.isArray(item),
-      )
-    : [];
-
-const readStringArray = (value: unknown): readonly string[] =>
-  Array.isArray(value)
-    ? value
-        .filter((item): item is string => typeof item === "string")
-        .map((item) => item.trim())
-        .filter((item) => item.length > 0)
-    : [];
-
-const stringValue = (value: unknown): string =>
-  typeof value === "string" ? value.trim() : "";
-
-const optionalString = (value: unknown): string | undefined => {
-  const text = stringValue(value);
-
-  return text.length > 0 ? text : undefined;
-};
-
-const numberValue = (value: unknown): number | undefined =>
-  typeof value === "number" && Number.isFinite(value) ? value : undefined;
-
-const semanticLabelFromRaw = (
-  value: Record<string, unknown>,
-  fallbackSubject: string | undefined,
-): ReaderSummaryTopicSemanticLabel => ({
-  subject: optionalString(value.subject) ?? fallbackSubject ?? "Topic",
-  parentSubject: optionalString(value.parentSubject),
-  claimType: claimTypeValue(value.claimType),
-  qualifier: optionalString(value.qualifier),
-  confidenceScore: Math.min(
-    1,
-    Math.max(0, numberValue(value.confidenceScore) ?? 0),
-  ),
-});
-
-const claimTypeValue = (value: unknown): ReaderSummaryTopicClaimType => {
-  const candidate = optionalString(value);
-
-  return readerSummaryTopicClaimTypes.includes(
-    candidate as ReaderSummaryTopicClaimType,
-  )
-    ? (candidate as ReaderSummaryTopicClaimType)
-    : "other";
-};
-
-const recoverSemanticGroupAnchors = (params: {
-  readonly groupId: string;
-  readonly nodeLabels: readonly {
-    readonly nodeId: string;
-    readonly label?: string;
-    readonly groupId?: string;
-    readonly keywords?: readonly string[];
-  }[];
-  readonly candidates: readonly ReaderSummaryTopicLabelerInput["candidates"][number][];
-}): readonly string[] => {
-  const candidateByNodeId = new Map(
-    params.candidates.map(
-      (candidate) => [candidate.nodeId, candidate] as const,
-    ),
-  );
-  const support = new Map<
-    string,
-    { readonly display: string; count: number }
-  >();
-
-  for (const nodeLabel of params.nodeLabels.filter(
-    (label) => label.groupId === params.groupId,
-  )) {
-    const candidate = candidateByNodeId.get(nodeLabel.nodeId);
-    const nodeAnchors = new Map<string, string>();
-    for (const value of [
-      nodeLabel.label,
-      ...(nodeLabel.keywords ?? []),
-      candidate?.fallbackLabel,
-      ...(candidate?.keywords ?? []),
-      ...(candidate?.labelCandidates.map((item) => item.label) ?? []),
-    ]) {
-      if (value === undefined) {
-        continue;
-      }
-      for (const anchor of recoverableSemanticAnchors(value)) {
-        nodeAnchors.set(normalizeTopicLabel(anchor), anchor);
-      }
-    }
-    for (const [key, display] of nodeAnchors) {
-      const current = support.get(key);
-      support.set(key, {
-        display: current?.display ?? display,
-        count: (current?.count ?? 0) + 1,
-      });
-    }
-  }
-
-  return [...support.entries()]
-    .filter(([, value]) => value.count >= 2)
-    .sort((left, right) => {
-      const byCount = right[1].count - left[1].count;
-
-      return byCount !== 0 ? byCount : left[0].localeCompare(right[0]);
-    })
-    .map(([, value]) => value.display)
-    .slice(0, 8);
-};
-
-const recoverableSemanticAnchors = (value: string): readonly string[] => {
-  const normalized = normalizeTopicLabel(value);
-  const tokens = meaningfulTopicLabelTokens(value).filter(
-    (token) => !recoveryNoiseTokens.has(token),
-  );
-  const phrase =
-    tokens.length >= 2 && tokens.length <= 3 ? normalized : undefined;
-
-  return uniqueStrings([phrase, ...tokens.map(formatReaderSummaryTopicToken)]);
-};
-
-const recoveryNoiseTokens = new Set([
-  "com",
-  "http",
-  "https",
-  "item",
-  "reddit",
-  "status",
-  "topic",
-  "twitter",
-  "url",
-  "ycombinator",
-]);
-
-const uniqueStrings = (
-  values: readonly (string | undefined)[],
-): readonly string[] => [
-  ...new Map(
-    values
-      .map((value) => value?.trim())
-      .filter(
-        (value): value is string => value !== undefined && value.length > 0,
-      )
-      .map((value) => [normalizeTopicLabel(value), value] as const),
-  ).values(),
-];
