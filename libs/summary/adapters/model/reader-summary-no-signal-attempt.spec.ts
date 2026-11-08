@@ -3,7 +3,17 @@ import { buildReaderSummaryNoSignalAttempt } from "./reader-summary-no-signal-at
 
 describe("provider-neutral reader summary no-signal draft", () => {
   it("preserves the same no-signal copy and lineage across provider routes", () => {
-    const input = readerSummaryInput();
+    const fixture = readerSummaryInput();
+    const input = {
+      ...fixture,
+      evidence: {
+        ...fixture.evidence,
+        selectedEvidence: [],
+        clusters: [],
+        editorialSlate: undefined,
+      },
+      coveragePlan: { ...fixture.coveragePlan, lead: undefined, secondary: [] },
+    };
     const usage = { inputTokens: 0, outputTokens: 64, estimatedCostUsd: 0 };
     const route = {
       provider: "agent-runtime",
