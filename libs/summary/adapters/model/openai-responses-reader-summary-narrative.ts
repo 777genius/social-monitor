@@ -12,6 +12,7 @@ import {
   isReaderSummaryWatchEligibleEvidence,
   readerSummaryNarrativeSectionKinds,
   type ReaderSummaryCitation,
+  type ReaderSummaryCoverageMode,
   type ReaderSummaryNarrativeSection,
 } from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
