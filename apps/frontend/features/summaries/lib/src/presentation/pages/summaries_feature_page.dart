@@ -259,7 +259,7 @@ class _SummariesBody extends StatelessWidget {
               ),
             ),
           ),
-        if (showSummaryHistory)
+        if (showSummaryHistory && !showPostFallback)
           SliverPadding(
             padding: EdgeInsets.fromLTRB(
               pageInsets.left,
