@@ -155,48 +155,14 @@ final class SummariesReviewStore extends ChangeNotifier {
     );
   }
 
-  bool get isSelectedSummaryPeriodCurrent {
-    if (allowUnpublishedDays &&
-        selectedSummaryPeriodPreset == SummaryPeriodPreset.daily) {
-      return selectedSummaryPeriod.endedAt ==
-          SummaryPeriodPreset.daily.currentPeriodEndedAt();
-    }
-    if (_selectedSummaryPeriodEndedAt == null) {
-      return true;
-    }
-    final latestAvailable = _latestAvailableSummaryPeriodForSelectedPreset;
-    if (latestAvailable != null) {
-      return _sameSummaryPeriodWindow(selectedSummaryPeriod, latestAvailable);
-    }
-    return selectedSummaryPeriod.endedAt ==
-        selectedSummaryPeriodPreset.currentPeriodEndedAt();
-  }
+  bool get isSelectedSummaryPeriodCurrent =>
+      _isSelectedSummaryPeriodCurrent(this);
 
-  bool get canShowPreviousSummaryPeriod {
-    if (allowUnpublishedDays &&
-        selectedSummaryPeriodPreset == SummaryPeriodPreset.daily) {
-      return selectedSummaryPeriod.startedAt.isAfter(DateTime.utc(2020));
-    }
-    if (availableWorkspaceSummaryPeriods.isNotEmpty) {
-      return _previousAvailableSummaryPeriodForSelectedPreset != null;
-    }
-    return false;
-  }
+  bool get canShowPreviousSummaryPeriod =>
+      _canShowPreviousSummaryPeriod(this);
 
-  bool get canShowNextSummaryPeriod {
-    if (allowUnpublishedDays &&
-        selectedSummaryPeriodPreset == SummaryPeriodPreset.daily) {
-      return selectedSummaryPeriodPreset.canNavigateNext(
-        selectedSummaryPeriod.endedAt,
-      );
-    }
-    if (availableWorkspaceSummaryPeriods.isNotEmpty) {
-      return _nextAvailableSummaryPeriodForSelectedPreset != null;
-    }
-    return selectedSummaryPeriodPreset.canNavigateNext(
-      selectedSummaryPeriod.endedAt,
-    );
-  }
+  bool get canShowNextSummaryPeriod =>
+      _canShowNextSummaryPeriod(this);
 
   List<SummaryPeriod> get availableWorkspaceSummaryPeriods {
     final periodsByKey = <String, SummaryPeriod>{};
