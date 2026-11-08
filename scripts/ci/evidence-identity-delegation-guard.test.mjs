@@ -53,3 +53,26 @@ test('unrelated provenance checker cannot reuse the staging-only exception', () 
     'validateEvidenceArtifactProvenance();', policy,
   ), false);
 });
+
+test('removing manifest artifact identity validation fails the quality gate', () => {
+  const originalCall = [
+    '  validateRealArtifactIdentity(',
+    '    artifact,',
+    '    `${evidencePath}: stagingEvidenceArtifacts.${artifact.artifactId}`,',
+    '  );',
+  ].join('\n');
+  assert.ok(checker.includes(originalCall));
+  assert.equal(delegated(checker.replace(originalCall, '  removedManifestIdentity();')), false);
+});
+
+test('removing passed artifact content identity validation fails the quality gate', () => {
+  const originalCall = '  validateRealArtifactIdentity(content, artifact.path);';
+  assert.ok(checker.includes(originalCall));
+  assert.equal(delegated(checker.replace(originalCall, '  removedPassedIdentity();')), false);
+});
+
+test('removing required-env artifact identity validation fails the quality gate', () => {
+  const originalCall = '  validateRealArtifactIdentity(content, artifactLabel);';
+  assert.ok(checker.includes(originalCall));
+  assert.equal(delegated(checker.replace(originalCall, '  removedEnvIdentity();')), false);
+});
