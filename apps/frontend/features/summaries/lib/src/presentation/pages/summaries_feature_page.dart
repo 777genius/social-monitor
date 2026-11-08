@@ -220,6 +220,8 @@ class _SummariesBody extends StatelessWidget {
             ),
             includeTopPosts: false,
             showPostFallback: showPostFallback,
+            allowUnpublishedDates:
+                store.allowUnpublishedDays && readerPostsBrowseStore != null,
             showRefreshSchedule: store.isViewingLatestWorkspaceSummary,
             onRefreshDue: () => unawaited(store.loadWorkspaceSummary()),
             contentPadding: contentPadding,
