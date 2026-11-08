@@ -58,6 +58,7 @@ final class SummariesReviewStore extends ChangeNotifier {
     OperationGenerationGuard? postRatingGenerationGuard,
     OperationGenerationGuard? topicRecommendationGenerationGuard,
     Duration workspaceSummaryLoadTimeout = const Duration(seconds: 20),
+    this.allowUnpublishedDays = false,
     ReaderActionTargetResolver readerActionTargetResolver =
         const ReaderActionTargetResolver(),
   }) : _dependencies = dependencies,
@@ -98,6 +99,7 @@ final class SummariesReviewStore extends ChangeNotifier {
   final OperationGenerationGuard _postRatingGenerationGuard;
   final OperationGenerationGuard _topicRecommendationGenerationGuard;
   final Duration _workspaceSummaryLoadTimeout;
+  final bool allowUnpublishedDays;
   WorkspaceScope _scope;
   final String _userId;
   SummaryId? _selectedSummaryId;
@@ -154,6 +156,11 @@ final class SummariesReviewStore extends ChangeNotifier {
   }
 
   bool get isSelectedSummaryPeriodCurrent {
+    if (allowUnpublishedDays &&
+        selectedSummaryPeriodPreset == SummaryPeriodPreset.daily) {
+      return selectedSummaryPeriod.endedAt ==
+          SummaryPeriodPreset.daily.currentPeriodEndedAt();
+    }
     if (_selectedSummaryPeriodEndedAt == null) {
       return true;
     }
@@ -166,6 +173,10 @@ final class SummariesReviewStore extends ChangeNotifier {
   }
 
   bool get canShowPreviousSummaryPeriod {
+    if (allowUnpublishedDays &&
+        selectedSummaryPeriodPreset == SummaryPeriodPreset.daily) {
+      return selectedSummaryPeriod.startedAt.isAfter(DateTime.utc(2020));
+    }
     if (availableWorkspaceSummaryPeriods.isNotEmpty) {
       return _previousAvailableSummaryPeriodForSelectedPreset != null;
     }
@@ -173,6 +184,12 @@ final class SummariesReviewStore extends ChangeNotifier {
   }
 
   bool get canShowNextSummaryPeriod {
+    if (allowUnpublishedDays &&
+        selectedSummaryPeriodPreset == SummaryPeriodPreset.daily) {
+      return selectedSummaryPeriodPreset.canNavigateNext(
+        selectedSummaryPeriod.endedAt,
+      );
+    }
     if (availableWorkspaceSummaryPeriods.isNotEmpty) {
       return _nextAvailableSummaryPeriodForSelectedPreset != null;
     }
