@@ -166,11 +166,18 @@ class _SummariesBody extends StatelessWidget {
     };
 
     final reviewStore = store;
+    final selectedPeriod = store.selectedSummaryPeriod;
+    final selectedPreset = store.selectedSummaryPeriodPreset;
+    final allowUnpublishedDays = store.allowUnpublishedDays;
+    final refresh = () => unawaited(store.loadWorkspaceSummary());
+    void openSource(String summaryId, String url) => unawaited(
+      store.openReaderSourceUrl(summaryId: summaryId, canonicalUrl: url),
+    );
 
     final topPostsSummary = _summaryForTopPosts(workspaceSummaryState);
-    final showPostFallback = store.allowUnpublishedDays &&
+    final showPostFallback = allowUnpublishedDays &&
         readerPostsBrowseStore != null &&
-        store.selectedSummaryPeriodPreset == SummaryPeriodPreset.daily &&
+        selectedPreset == SummaryPeriodPreset.daily &&
         _isMissingWorkspaceSummary(workspaceSummaryState);
     return SliverMainAxisGroup(
       slivers: [
@@ -184,8 +191,8 @@ class _SummariesBody extends StatelessWidget {
                 store.activeReaderActionIdempotencyKey,
             lastReaderActionIdempotencyKey:
                 store.lastReaderActionIdempotencyKey,
-            selectedPeriod: store.selectedSummaryPeriod,
-            selectedPeriodPreset: store.selectedSummaryPeriodPreset,
+            selectedPeriod: selectedPeriod,
+            selectedPeriodPreset: selectedPreset,
             availableSummaryPeriods: store.availableWorkspaceSummaryPeriods,
             canNavigateToPreviousPeriod: store.canShowPreviousSummaryPeriod,
             canNavigateToNextPeriod: store.canShowNextSummaryPeriod,
@@ -197,7 +204,7 @@ class _SummariesBody extends StatelessWidget {
                 unawaited(store.showNextWorkspaceSummaryPeriod()),
             onCalendarDateSelected: (date) =>
                 unawaited(store.selectWorkspaceSummaryCalendarDate(date)),
-            onRetry: () => unawaited(store.loadWorkspaceSummary()),
+            onRetry: refresh,
             onGenerate: () => unawaited(store.requestWorkspaceSummary()),
             intentForAction: store.readerActionIntentFor,
             onAction: (summary, action, [feedbackReason]) => unawaited(
@@ -211,32 +218,22 @@ class _SummariesBody extends StatelessWidget {
                 action: _topicRecommendationDecisionAction(status),
               );
             },
-            onOpenUrl: (summary, url) => unawaited(
-              store.openReaderSourceUrl(
-                summaryId: summary.id,
-                canonicalUrl: url,
-              ),
-            ),
+            onOpenUrl: (summary, url) => openSource(summary.id, url),
             includeTopPosts: false,
             showPostFallback: showPostFallback,
             allowUnpublishedDates:
-                store.allowUnpublishedDays && readerPostsBrowseStore != null,
+                allowUnpublishedDays && readerPostsBrowseStore != null,
             showRefreshSchedule: store.isViewingLatestWorkspaceSummary,
-            onRefreshDue: () => unawaited(store.loadWorkspaceSummary()),
+            onRefreshDue: refresh,
             contentPadding: contentPadding,
           ),
         ),
         if (showPostFallback)
           ReaderSummaryUnpublishedPostsSliver(
             store: readerPostsBrowseStore!,
-            period: store.selectedSummaryPeriod,
+            period: selectedPeriod,
             contentPadding: horizontalPadding,
-            onOpenUrl: (url) => unawaited(
-              store.openReaderSourceUrl(
-                summaryId: store.scope.workspaceId,
-                canonicalUrl: url,
-              ),
-            ),
+            onOpenUrl: (url) => openSource(store.scope.workspaceId, url),
           ),
         if (topPostsSummary != null)
           ReaderSummaryTopPostsSectionSliver(
@@ -252,12 +249,7 @@ class _SummariesBody extends StatelessWidget {
               rating,
               reason,
             ),
-            onOpenUrl: (url) => unawaited(
-              store.openReaderSourceUrl(
-                summaryId: topPostsSummary.id,
-                canonicalUrl: url,
-              ),
-            ),
+            onOpenUrl: (url) => openSource(topPostsSummary.id, url),
           ),
         if (showSummaryHistory && !showPostFallback)
           SliverPadding(
