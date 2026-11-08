@@ -107,4 +107,13 @@ Count source: physical, newline-normalized LOC fetched from GitHub at this exact
 
 ## Refactor verification ledger (must be filled by implementation)
 
-For each slice record original source paths, before/after architectural responsibility and test evidence, meaningful original *code* lines refactored, exact HEAD SHA, and review/CI results. Never count the same original code twice. File movement without a real responsibility/dependency improvement does not count. This ledger is empty until code changes are qualified.
+For each slice record original source paths, before/after architectural responsibility and test evidence, meaningful original *code* lines refactored, exact HEAD SHA, and review/CI results. Never count the same original code twice. File movement without a real responsibility/dependency improvement does not count. Provisional source-to-destination ledger (move-size only; **NOT** yet accepted meaningful LOC):
+
+| Slice | Original module | New responsibility boundary | Original physical lines moved | Qualifying implementation LOC |
+|---|---|---|---:|---|
+| OpenAI weekly response parsing | `openai-responses-reader-summary-weekly-model.adapter.ts` | `openai-responses-reader-summary-weekly-response-contract.ts` | 269 | Pending tests/review and implementation-only count |
+| gRPC Agent Runtime response/attestation codec | `grpc-agent-runtime-client.ts` | `grpc-agent-runtime-wire-codec.ts` | 218 | Pending tests/review and implementation-only count |
+| OpenAI summary transport | `openai-responses-summary-model.adapter.ts` | `openai-responses-summary-transport.ts` | 55 | Pending tests/review and implementation-only count |
+| **Total provisional** | | | **542** | **0 accepted yet** |
+
+These are unique *source text* lines from pinned main, including comments/blank lines and wrapper text, not automatically 542 meaningful implementation LOC. CI attempts on superseded SHAs do not prove final acceptance. Latest code fix: `8729ac2b70c2d4e06bb91db1bfd9732ecfe2e6d5`, exact-head draft 3-check CI pending at ledger entry.
