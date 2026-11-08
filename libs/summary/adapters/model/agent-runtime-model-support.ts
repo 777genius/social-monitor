@@ -1,43 +1,20 @@
-import { status } from "@grpc/grpc-js";
+import type { AgentRuntimeTaskResult } from "../../ports";
 import {
-  grpcStatusCodeOf,
-  isGrpcRetryableStatus,
-} from "@social-monitor/platform-grpc";
-
-import type {
-  AgentRuntimeFailure,
-  AgentRuntimeTaskResult,
-  AgentRuntimeUsage,
-  ReaderSummaryModelBudget,
-} from "../../ports";
-
-export type AgentRuntimeModelFailureKind =
-  | "budget_exceeded"
-  | "provider_rate_limited"
-  | "provider_unavailable"
-  | "invalid_schema"
-  | "citation_validation_failed"
-  | "context_too_large"
-  | "unsafe_or_refused"
-  | "unknown";
-
-export type AgentRuntimeModelFailure = {
-  readonly kind: AgentRuntimeModelFailureKind;
-  readonly retryable: boolean;
-  readonly message: string;
-};
-
-export class AgentRuntimeModelProviderError extends Error {
-  constructor(readonly failure: AgentRuntimeModelFailure) {
-    super(failure.message);
-  }
-}
-
-export type AgentRuntimeModelEstimate = {
-  readonly inputTokens: number;
-  readonly outputTokens: number;
-  readonly estimatedCostUsd: number;
-};
+  AgentRuntimeModelProviderError,
+  mapAgentRuntimeFailure,
+} from "./agent-runtime-model-failure";
+export {
+  AgentRuntimeModelProviderError,
+  classifyAgentRuntimeError,
+  type AgentRuntimeModelFailure,
+  type AgentRuntimeModelFailureKind,
+} from "./agent-runtime-model-failure";
+export {
+  usageFromAgentRuntime,
+  sumReaderSummaryUsage,
+  assertReaderSummaryRepairWithinBudget,
+  type AgentRuntimeModelEstimate,
+} from "./agent-runtime-model-usage";
 
 export const readAgentRuntimeObjectOutput = (
   result: AgentRuntimeTaskResult,
@@ -71,75 +48,6 @@ export const readAgentRuntimeObjectOutput = (
     retryable: false,
     message: `${label} agent task returned no structured output`,
   });
-};
-
-export const usageFromAgentRuntime = (
-  usage: AgentRuntimeUsage | undefined,
-  estimate: AgentRuntimeModelEstimate,
-): AgentRuntimeModelEstimate => {
-  if (usage === undefined) {
-    return estimate;
-  }
-
-  return {
-    inputTokens: nonNegativeIntegerOrFallback(
-      usage.inputTokens,
-      estimate.inputTokens,
-    ),
-    outputTokens: nonNegativeIntegerOrFallback(
-      usage.outputTokens,
-      estimate.outputTokens,
-    ),
-    estimatedCostUsd:
-      Number.isFinite(usage.estimatedCostUsd) && usage.estimatedCostUsd >= 0
-        ? usage.estimatedCostUsd
-        : estimate.estimatedCostUsd,
-  };
-};
-
-export const classifyAgentRuntimeError = (
-  error: unknown,
-  fallbackMessage: string,
-): AgentRuntimeModelFailure => {
-  if (error instanceof AgentRuntimeModelProviderError) {
-    return error.failure;
-  }
-
-  const grpcStatus = grpcStatusCodeOf(error);
-  if (grpcStatus !== undefined) {
-    return {
-      kind:
-        grpcStatus === status.RESOURCE_EXHAUSTED
-          ? "provider_rate_limited"
-          : "provider_unavailable",
-      retryable: isGrpcRetryableStatus(grpcStatus),
-      message:
-        error instanceof Error && error.message.trim().length > 0
-          ? error.message
-          : fallbackMessage,
-    };
-  }
-
-  const message =
-    error instanceof Error && error.message.trim().length > 0
-      ? error.message
-      : fallbackMessage;
-  const lower = message.toLowerCase();
-
-  if (lower.includes("budget")) {
-    return { kind: "budget_exceeded", retryable: false, message };
-  }
-  if (lower.includes("citation")) {
-    return { kind: "citation_validation_failed", retryable: false, message };
-  }
-  if (lower.includes("schema") || lower.includes("json")) {
-    return { kind: "invalid_schema", retryable: false, message };
-  }
-  if (lower.includes("rate") || lower.includes("quota")) {
-    return { kind: "provider_rate_limited", retryable: true, message };
-  }
-
-  return { kind: "unknown", retryable: false, message };
 };
 
 export const buildAgentRuntimeRequestId = (
@@ -179,112 +87,3 @@ export const parsePositiveInteger = (
   return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 };
 
-const mapAgentRuntimeFailure = (
-  failure: AgentRuntimeFailure | undefined,
-  fallbackMessage: string,
-): AgentRuntimeModelFailure => {
-  if (failure === undefined) {
-    return {
-      kind: "provider_unavailable",
-      retryable: true,
-      message: fallbackMessage,
-    };
-  }
-
-  const marker = [
-    failure.code,
-    failure.causeCategory,
-    failure.safeMessage,
-  ].join(" ").toLowerCase();
-  // The rejected schema path names the broken field in the job failure reason;
-  // it stays out of the marker so a field name cannot change the failure kind.
-  const violationPath = failure.details?.outputValidationPath;
-  const message =
-    (failure.safeMessage.trim().length > 0
-      ? failure.safeMessage
-      : fallbackMessage) + (violationPath === undefined ? "" : ` at ${violationPath}`);
-
-  if (marker.includes("rate") || marker.includes("quota")) {
-    return {
-      kind: "provider_rate_limited",
-      retryable: failure.retryable,
-      message,
-    };
-  }
-
-  if (
-    marker.includes("context") ||
-    marker.includes("too_large") ||
-    marker.includes("token")
-  ) {
-    return {
-      kind: "context_too_large",
-      retryable: false,
-      message,
-    };
-  }
-
-  if (marker.includes("schema") || marker.includes("json")) {
-    return {
-      kind: "invalid_schema",
-      retryable: false,
-      message,
-    };
-  }
-
-  if (
-    marker.includes("refus") ||
-    marker.includes("safety") ||
-    marker.includes("interactive")
-  ) {
-    return {
-      kind: "unsafe_or_refused",
-      retryable: false,
-      message,
-    };
-  }
-
-  return {
-    kind: failure.retryable ? "provider_unavailable" : "unknown",
-    retryable: failure.retryable || failure.reconnectRequired,
-    message,
-  };
-};
-
-const nonNegativeIntegerOrFallback = (
-  value: number,
-  fallback: number,
-): number =>
-  Number.isInteger(value) && value >= 0
-    ? value
-    : fallback;
-
-/** Aggregate the physical usage of primary and repair attempts. */
-export const sumReaderSummaryUsage = (
-  accumulated: AgentRuntimeModelEstimate | undefined,
-  attempt: AgentRuntimeModelEstimate,
-): AgentRuntimeModelEstimate => accumulated === undefined
-  ? attempt
-  : {
-      inputTokens: accumulated.inputTokens + attempt.inputTokens,
-      outputTokens: accumulated.outputTokens + attempt.outputTokens,
-      estimatedCostUsd: accumulated.estimatedCostUsd + attempt.estimatedCostUsd,
-    };
-
-/** Refuse a paid retry when already-spent usage and its estimate cannot fit. */
-export const assertReaderSummaryRepairWithinBudget = (
-  spent: AgentRuntimeModelEstimate,
-  estimate: AgentRuntimeModelEstimate,
-  budget: ReaderSummaryModelBudget | undefined,
-): void => {
-  if (budget !== undefined &&
-      (spent.inputTokens + spent.outputTokens + estimate.inputTokens +
-        estimate.outputTokens > budget.remainingTokens ||
-       spent.estimatedCostUsd >= budget.remainingCostUsd ||
-       spent.estimatedCostUsd + estimate.estimatedCostUsd > budget.remainingCostUsd)) {
-    throw new AgentRuntimeModelProviderError({
-      kind: "budget_exceeded", retryable: false,
-      message: "Daily editorial writer cannot repair within the shared model budget",
-    });
-  }
-};
