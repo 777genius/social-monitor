@@ -9,8 +9,9 @@ import {
   stringValue,
   optionalString,
   semanticLabelFromRaw,
+  numberValue,
 } from "./agent-runtime-reader-summary-topic-raw-decoder";
-import { recoverSemanticGroupAnchors } from "./agent-runtime-reader-summary-topic-anchor-recovery";
+import { recoverSemanticGroupAnchors, uniqueStrings } from "./agent-runtime-reader-summary-topic-anchor-recovery";
 import {
   READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID,
   READER_SUMMARY_TOPIC_SEMANTIC_CONFIDENCE_MIN,

@@ -88,7 +88,7 @@ const recoveryNoiseTokens = new Set([
   "ycombinator",
 ]);
 
-const uniqueStrings = (
+export const uniqueStrings = (
   values: readonly (string | undefined)[],
 ): readonly string[] => [
   ...new Map(
