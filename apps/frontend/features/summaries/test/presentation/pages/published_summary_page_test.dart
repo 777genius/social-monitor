@@ -22,8 +22,8 @@ import 'package:social_monitor_summaries/src/presentation/stores/published_summa
 
 import '../../support/deferred_summary_review_catalog.dart';
 import '../../support/reader_posts_browse_test_catalog.dart';
-import '../../support/top_posts_test_fixtures.dart';
 import '../../support/summaries_test_fixtures.dart';
+import '../../support/top_posts_test_fixtures.dart';
 
 void main() {
   testWidgets('guest reuses summary view without review mutations', (
