@@ -18,6 +18,11 @@ import {
   stagingReliabilitySmokeConfigs,
 } from './lib/external-beta-staging-reliability-fixtures.mjs';
 
+import {
+  securityFinalSweepExportDocuments,
+  securityFinalSweepArtifact,
+} from './lib/external-beta-security-final-sweep-fixtures.mjs';
+
 import { execFileSync } from 'node:child_process';
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
@@ -1931,7 +1936,7 @@ function writeSecurityFinalSweepArtifact(tempDirectory, options = {}) {
   options.mutateExports?.(exportDocuments);
   const exportPaths = writeSecurityFinalSweepExports(tempDirectory, exportDocuments);
   const artifactPath = join(tempDirectory, 'security-final-sweep.json');
-  const artifact = securityFinalSweepArtifact(exportPaths);
+  const artifact = securityFinalSweepArtifact(exportPaths, readJson('ops/security/fixtures/security-final-sweep-staging-artifact-examples.json'));
   options.mutateArtifact?.(artifact, exportPaths);
   const artifactContent = typeof options.artifactContent === 'function'
     ? options.artifactContent(artifact, exportPaths)
@@ -1942,85 +1947,6 @@ function writeSecurityFinalSweepArtifact(tempDirectory, options = {}) {
     { mode: 0o600 },
   );
   return { artifactPath, exportPaths };
-}
-
-function securityFinalSweepExportDocuments() {
-  return {
-    logs: {
-      records: [
-        {
-          requestId: 'req-sec-1',
-          tenantId: 'tenant-alpha-1',
-          workspaceId: 'workspace-alpha-1',
-          service: 'api-gateway',
-          operation: 'create-interest',
-          status: 'ok',
-        },
-        {
-          requestId: 'req-sec-2',
-          tenantId: 'tenant-alpha-1',
-          workspaceId: 'workspace-alpha-1',
-          service: 'ingestion-worker',
-          operation: 'scan-complete',
-          status: 'ok',
-        },
-      ],
-    },
-    metrics: {
-      records: [
-        {
-          metricName: 'queue_lag_seconds',
-          tenantId: 'tenant-alpha-1',
-          workspaceId: 'workspace-alpha-1',
-          service: 'delivery-service',
-          status: 'ok',
-        },
-        {
-          metricName: 'summary_cost_units',
-          tenantId: 'tenant-alpha-1',
-          workspaceId: 'workspace-alpha-1',
-          service: 'intelligence-worker',
-          status: 'ok',
-        },
-      ],
-    },
-    publicErrors: {
-      records: [
-        {
-          requestId: 'req-sec-3',
-          statusCode: 401,
-          errorCode: 'workspace_access_denied',
-          operation: 'list-feed',
-        },
-        {
-          requestId: 'req-sec-4',
-          statusCode: 429,
-          errorCode: 'rate_limit_exceeded',
-          operation: 'create-scan',
-        },
-      ],
-    },
-    auditMetadata: {
-      records: [
-        {
-          auditEventId: 'audit-sec-1',
-          tenantId: 'tenant-alpha-1',
-          workspaceId: 'workspace-alpha-1',
-          actorId: 'user-alpha-1',
-          operation: 'create-source-binding',
-          status: 'recorded',
-        },
-        {
-          auditEventId: 'audit-sec-2',
-          tenantId: 'tenant-alpha-1',
-          workspaceId: 'workspace-alpha-1',
-          actorId: 'api-key-alpha-1',
-          operation: 'request-summary',
-          status: 'recorded',
-        },
-      ],
-    },
-  };
 }
 
 function writeSecurityFinalSweepExports(tempDirectory, exportDocuments) {
@@ -2049,70 +1975,6 @@ function writeSecurityFinalSweepExport(tempDirectory, filename, document) {
     sha256: createHash('sha256').update(content).digest('hex'),
     sampleCount: document.records.length,
   };
-}
-
-function securityFinalSweepArtifact(exportPaths) {
-  const artifact = readJson('ops/security/fixtures/security-final-sweep-staging-artifact-examples.json');
-  const now = new Date().toISOString();
-  artifact.provenance = {
-    evidenceKind: 'staging_security_final_sweep',
-    collectionMethod: 'Deploy log metric and public error samples captured from staging backend release.',
-    runner: 'scripts/capture-security-final-sweep.ts',
-    fixtureOnly: false,
-  };
-  artifact.environment = {
-    environmentId: 'staging-security-alpha-1',
-    imageDigest: `sha256:${'f'.repeat(64)}`,
-    sampledAt: now,
-    operator: 'security-owner-1',
-  };
-  artifact.sourceExports = [
-    securityFinalSweepSourceExport('logs', 'LOG_EXPORT_PATH', exportPaths.logs, now),
-    securityFinalSweepSourceExport('metrics', 'METRICS_EXPORT_PATH', exportPaths.metrics, now),
-    securityFinalSweepSourceExport(
-      'public-errors',
-      'PUBLIC_ERROR_EXPORT_PATH',
-      exportPaths.publicErrors,
-      now,
-    ),
-    securityFinalSweepSourceExport(
-      'audit-metadata',
-      'AUDIT_EVENT_EXPORT_PATH',
-      exportPaths.auditMetadata,
-      now,
-    ),
-  ];
-  updateSecurityFinalSweepSurface(artifact, 'logs', exportPaths.logs.sampleCount);
-  updateSecurityFinalSweepSurface(artifact, 'metrics', exportPaths.metrics.sampleCount);
-  updateSecurityFinalSweepSurface(artifact, 'public-errors', exportPaths.publicErrors.sampleCount);
-  updateSecurityFinalSweepSurface(artifact, 'audit-metadata', exportPaths.auditMetadata.sampleCount);
-  artifact.review = {
-    reviewer: 'security-owner-1',
-    decision: 'passed',
-    notes: 'Staging redaction review completed for logs, metrics, public errors and audit metadata.',
-  };
-  return artifact;
-}
-
-function securityFinalSweepSourceExport(surfaceId, envVar, exportFile, collectedAt) {
-  return {
-    surfaceId,
-    envVar,
-    path: exportFile.path,
-    sha256: exportFile.sha256,
-    sampleCount: exportFile.sampleCount,
-    redactedOnly: true,
-    sanitized: true,
-    collectedAt,
-  };
-}
-
-function updateSecurityFinalSweepSurface(artifact, surfaceId, sampleCount) {
-  const surface = artifact.surfaces.find((item) => item.surfaceId === surfaceId);
-  surface.sampleCount = sampleCount;
-  for (const result of surface.leakClassResults) {
-    result.sampleCount = sampleCount;
-  }
 }
 
 function validateRunnerPositiveRedditArtifactSmoke() {
