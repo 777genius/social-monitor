@@ -92,6 +92,11 @@ test('nested provider smoke evidence retains redaction and signal ordering', () 
 
 test('sampledAt and environment timestamps remain bound in live-open fixture', () => {
   const artifact = liveOpenConnectorsArtifact(testContext());
+  for (const result of artifact.providerResults) {
+    for (const signal of result.signalResults) {
+      assert.equal(signal.observedAt, artifact.sampledAt);
+    }
+  }
   assert.equal(artifact.environment.sampledAt, artifact.sampledAt);
   assert.equal(artifact.environment.environmentId, artifact.environmentId);
   assert.equal(artifact.environment.imageDigest, artifact.imageDigest);
@@ -151,6 +156,11 @@ test('live reddit preserves fail-closed authentication smoke and rate-limit evid
 test('live reddit preserves provider-specific freshness and matching environment', () => {
   const ctx = testContext();
   const artifact = liveRedditArtifact('hash', ctx);
+  for (const result of artifact.providerResults) {
+    for (const signal of result.signalResults) {
+      assert.equal(signal.observedAt, artifact.sampledAt);
+    }
+  }
   assert.deepEqual(artifact.providerResults[0].freshnessGuard, ctx.sourceCertification.certifiedProviders[3].freshnessGuard);
   assert.equal(artifact.environment.sampledAt, artifact.sampledAt);
   assert.equal(artifact.environment.environmentId, artifact.environmentId);
