@@ -399,7 +399,11 @@ for (const testFile of testFiles) {
   }
 }
 
-for (const file of globSync("scripts/check-*.mjs")) {
+// Keep the real-evidence identity invariant when the validator moves to its policy module.
+for (const file of [
+  ...globSync("scripts/check-*.mjs"),
+  ...globSync("scripts/lib/credential-secret-rotation-policy.mjs"),
+]) {
   const normalized = normalizedPath(file);
   if (evidenceProvenanceGuardIgnoredFiles.has(normalized)) {
     continue;
