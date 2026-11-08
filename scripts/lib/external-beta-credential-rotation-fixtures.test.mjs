@@ -76,14 +76,14 @@ test('all webhook observedAt timestamps exactly equal their artifact sampledAt',
 
 test('source operation evidence payloads remain identical after timestamp refresh', () => {
   const before = source(), value = buildSource();
-  assert.deepEqual(value.operations.map(({ observedAt, ...rest }) => rest),
-    before.operations.map(({ observedAt, ...rest }) => rest));
+  assert.deepEqual(value.operations.map((operation) => ({ ...operation, observedAt: undefined })),
+    before.operations.map((operation) => ({ ...operation, observedAt: undefined })));
 });
 
 test('webhook operation evidence payloads remain identical after timestamp refresh', () => {
   const before = webhook(), value = buildWebhook();
-  assert.deepEqual(value.operations.map(({ observedAt, ...rest }) => rest),
-    before.operations.map(({ observedAt, ...rest }) => rest));
+  assert.deepEqual(value.operations.map((operation) => ({ ...operation, observedAt: undefined })),
+    before.operations.map((operation) => ({ ...operation, observedAt: undefined })));
 });
 
 test('original redaction fields remain unchanged for both rotation artifacts', () => {
