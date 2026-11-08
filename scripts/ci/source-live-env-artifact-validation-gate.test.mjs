@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -52,4 +54,49 @@ test('source-live certification checker entrypoint preserves the existing fixtur
     [],
     'checker may only fail for previously confirmed, unchanged main fixture/provider violations',
   );
+});
+
+test('checker rejects a missing env artifact policy rule through the real entrypoint', () => {
+  const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
+  const checkerScript = fileURLToPath(new URL('../check-source-live-certification-evidence.mjs', import.meta.url));
+  const fixturePath = join(repoRoot, 'ops/ingestion/source-live-certification-evidence.json');
+  const originalFixture = readFileSync(fixturePath, 'utf8');
+  const directory = mkdtempSync(join(tmpdir(), 'source-live-env-regression-'));
+
+  try {
+    // Patch only this child process's fixture read. Never alter the tracked
+    // evidence JSON, production checker, environment variables, or git workspace.
+    const preloadPath = join(directory, 'invalid-env-rule.cjs');
+    const preload = [
+      "const fs = require('node:fs');",
+      "const { syncBuiltinESMExports } = require('node:module');",
+      "const original = fs.readFileSync;",
+      "fs.readFileSync = function (path, ...options) {",
+      "  const content = original.call(this, path, ...options);",
+      "  if (path !== 'ops/ingestion/source-live-certification-evidence.json') return content;",
+      "  const fixture = JSON.parse(content);",
+      "  fixture.passedArtifactContentSchema.envArtifactValidation = fixture.passedArtifactContentSchema.envArtifactValidation.filter((rule) => rule.envVar !== 'GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH');",
+      "  return JSON.stringify(fixture);",
+      "};",
+      "syncBuiltinESMExports();",
+    ].join('\n');
+    writeFileSync(preloadPath, preload, { mode: 0o600 });
+
+    const result = spawnSync(process.execPath, ['--require', preloadPath, checkerScript], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      timeout: 120_000,
+      maxBuffer: 1024 * 1024,
+    });
+    assert.ifError(result.error);
+    assert.equal(result.status, 1, 'invalid env artifact policy must fail closed');
+    assert.match(
+      result.stderr,
+      /envArtifactValidation must include GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH/,
+      'the real checker must execute the extracted environment policy',
+    );
+    assert.equal(readFileSync(fixturePath, 'utf8'), originalFixture, 'tracked fixtures must stay unchanged');
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
