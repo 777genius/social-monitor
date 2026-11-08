@@ -11,6 +11,10 @@ import {
 } from './lib/evidence-provenance.mjs';
 import { readPrivateEvidenceJsonFile } from './lib/evidence-env-file.mjs';
 import { buildDirectSecurityArtifact } from './lib/security-final-sweep-direct-artifact.mjs';
+import {
+  scanForbiddenArtifactKeys,
+  validateNoRealArtifactFixtureMarkers,
+} from './lib/security-final-sweep-artifact-shape.mjs';
 
 const evidencePath = 'ops/security/security-final-sweep-evidence.json';
 const packagePath = 'package.json';
@@ -153,6 +157,7 @@ const requiredRealArtifactGuardFragments = [
   'must not contain example, fixture, synthetic, mock or test markers',
 ];
 const forbiddenRealArtifactMarkerPattern = /(?:^|[-_:.\s])(example|fixture|synthetic|mock|test)(?:$|[-_:.\s])/i;
+const artifactShapeContext = { forbiddenArtifactKeys, forbiddenRealArtifactMarkerPattern, violations };
 
 if (evidence.schemaVersion !== 1) {
   violations.push(`${evidencePath}: schemaVersion must be 1`);
@@ -323,9 +328,9 @@ function validateSecurityFinalSweepArtifact(artifact, path, options) {
   validateArtifactSurfaces(artifact.surfaces, path, sourceExports);
   validateArtifactReview(artifact.review, path);
   if (options.allowExample !== true) {
-    validateNoRealArtifactFixtureMarkers(artifact, path);
+    validateNoRealArtifactFixtureMarkers(artifact, path, artifactShapeContext);
   }
-  scanForbiddenArtifactKeys(artifact, path);
+  scanForbiddenArtifactKeys(artifact, path, artifactShapeContext);
   validateNoSensitiveArtifactLiterals(artifact, path);
 }
 
@@ -488,7 +493,7 @@ function validateSourceExportPath(sourceExport, exportLabel, expectedEnv, option
     violations.push(`${exportLabel}: sampleCount must match export records length`);
   }
   if (options.allowExample !== true) {
-    validateNoRealArtifactFixtureMarkers(parsedExport ?? exportContent, `${exportLabel}: export file`);
+    validateNoRealArtifactFixtureMarkers(parsedExport ?? exportContent, `${exportLabel}: export file`, artifactShapeContext);
   }
 }
 
@@ -503,7 +508,7 @@ function validateNoSensitiveExportLiterals(content, exportLabel) {
 
   const parsed = parseJsonContent(content);
   if (parsed !== undefined) {
-    scanForbiddenArtifactKeys(parsed, `${exportLabel}: export file`);
+    scanForbiddenArtifactKeys(parsed, `${exportLabel}: export file`, artifactShapeContext);
   }
 }
 
@@ -669,25 +674,6 @@ function validateArtifactReview(review, path) {
   }
 }
 
-function scanForbiddenArtifactKeys(value, label) {
-  if (value === null || typeof value !== 'object') {
-    return;
-  }
-  if (Array.isArray(value)) {
-    for (const [index, item] of value.entries()) {
-      scanForbiddenArtifactKeys(item, `${label}[${index}]`);
-    }
-    return;
-  }
-
-  for (const [key, nested] of Object.entries(value)) {
-    const normalizedKey = key.toLowerCase().replace(/[^a-z0-9_]/g, '');
-    if (forbiddenArtifactKeys.has(normalizedKey)) {
-      violations.push(`${label}: forbidden sensitive field "${key}"`);
-    }
-    scanForbiddenArtifactKeys(nested, `${label}.${key}`);
-  }
-}
 
 function validateNoSensitiveArtifactLiterals(artifact, path) {
   validateNoSensitiveArtifactContent(JSON.stringify(artifact), path);
@@ -703,31 +689,6 @@ function validateNoSensitiveArtifactContent(content, path) {
   validateNoSensitivePatterns(content, `${path}: artifact`);
 }
 
-function validateNoRealArtifactFixtureMarkers(value, label, path = []) {
-  if (typeof value === 'string') {
-    const marker = forbiddenRealArtifactMarkerPattern.exec(value);
-    if (marker !== null) {
-      const fieldPath = path.length === 0 ? '<root>' : path.join('.');
-      violations.push(`${label}: ${fieldPath} must not contain fixture marker "${marker[1]}"`);
-    }
-    return;
-  }
-
-  if (Array.isArray(value)) {
-    for (const [index, item] of value.entries()) {
-      validateNoRealArtifactFixtureMarkers(item, label, [...path, `[${index}]`]);
-    }
-    return;
-  }
-
-  if (value === null || typeof value !== 'object') {
-    return;
-  }
-
-  for (const [key, item] of Object.entries(value)) {
-    validateNoRealArtifactFixtureMarkers(item, label, [...path, key]);
-  }
-}
 
 function isIsoDateString(value) {
   return typeof value === 'string'
