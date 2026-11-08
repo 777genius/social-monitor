@@ -9,6 +9,7 @@ class ReaderSummaryAllPostsSliver extends StatefulWidget {
     required this.sortOrder,
     required this.onSortChanged,
     required this.onOpenUrl,
+    this.sourceOnly = false,
   });
 
   final ReaderPostsBrowseStore store;
@@ -16,6 +17,7 @@ class ReaderSummaryAllPostsSliver extends StatefulWidget {
   final TopPostsSortOrder sortOrder;
   final ValueChanged<TopPostsSortOrder>? onSortChanged;
   final ValueChanged<String> onOpenUrl;
+  final bool sourceOnly;
 
   @override
   State<ReaderSummaryAllPostsSliver> createState() =>
@@ -51,7 +53,8 @@ class _ReaderSummaryAllPostsSliverState
             onDenseViewChanged: (value) => setState(() => _dense = value),
             onSortOrderChanged: widget.onSortChanged,
             selectedOnly: false,
-            onSelectedOnlyChanged: store.selectOnly,
+            onSelectedOnlyChanged: widget.sourceOnly ? null : store.selectOnly,
+            titleOverride: widget.sourceOnly ? 'Top posts by likes' : null,
           ),
         ),
         const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.sm)),
@@ -81,13 +84,14 @@ class _ReaderSummaryAllPostsSliverState
               key: _topPostRowKey(item),
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Padding(
-                  padding: const EdgeInsets.only(top: AppSpacing.sm),
-                  child: Text(
-                    item.reason,
-                    style: Theme.of(context).textTheme.labelSmall,
+                if (!widget.sourceOnly)
+                  Padding(
+                    padding: const EdgeInsets.only(top: AppSpacing.sm),
+                    child: Text(
+                      item.reason,
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
                   ),
-                ),
                 _TopPostRow(
                   index: index ~/ 2,
                   item: item,
@@ -98,6 +102,7 @@ class _ReaderSummaryAllPostsSliverState
                   onOpenUrl: widget.onOpenUrl,
                   dense: _dense,
                   showSignal: false,
+                  sourceOnly: widget.sourceOnly,
                 ),
               ],
             );
