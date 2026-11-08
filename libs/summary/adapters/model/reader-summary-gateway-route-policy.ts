@@ -1,11 +1,11 @@
 import { gatewayLlmRuntimeEngine } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import {
   activeReaderSummaryModel,
-  codexReaderSummaryBackend,
+  type codexReaderSummaryBackend,
   isCodexGatewayOnlyReaderSummaryModel,
   isCodexGatewayReaderSummaryRoute,
 } from "./codex-reader-summary-route";
-import { mimoReaderSummaryBackend, mimoReaderSummaryModel } from "./reader-summary-runtime-contract";
+import { type mimoReaderSummaryBackend, mimoReaderSummaryModel } from "./reader-summary-runtime-contract";
 
 /**
  * Gateway-only backends. They run through account-gateway profiles, so their
