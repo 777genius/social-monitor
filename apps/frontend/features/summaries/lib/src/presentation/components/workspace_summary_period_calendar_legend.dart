@@ -1,9 +1,13 @@
 part of 'workspace_summary_period_toolbar.dart';
 
 class _CalendarLegend extends StatelessWidget {
-  const _CalendarLegend({required this.hasAvailabilityData});
+  const _CalendarLegend({
+    required this.hasAvailabilityData,
+    required this.allowUnpublishedDates,
+  });
 
   final bool hasAvailabilityData;
+  final bool allowUnpublishedDates;
 
   @override
   Widget build(BuildContext context) {
@@ -13,9 +17,11 @@ class _CalendarLegend extends StatelessWidget {
       fontWeight: FontWeight.w600,
       letterSpacing: 0,
     );
-    final label = hasAvailabilityData
-        ? 'Blue dot marks days with a saved summary'
-        : 'Summary history has not loaded yet';
+    final label = allowUnpublishedDates
+        ? 'Blue dot: AI summary available. Other days show original posts.'
+        : hasAvailabilityData
+            ? 'Blue dot marks days with a saved summary'
+            : 'Summary history has not loaded yet';
 
     return Row(
       children: [
