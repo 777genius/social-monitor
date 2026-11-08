@@ -6,7 +6,7 @@ import { parse as parseDotenv } from 'dotenv';
 import { readEnvFileSelection, readSelectedJobSelection } from './lib/external-beta-evidence-selections.mjs';
 import {
   validateArtifactLiteralRedaction,
-  validateArtifactStructuredRedaction,
+  validateArtifactStructuredRedaction, validateArtifactDecodedRedaction,
   parseJsonEvidenceContent,
   isStructuredJsonEvidence,
 } from './lib/external-beta-evidence-artifact-redaction.mjs';
@@ -1439,7 +1439,7 @@ function validateEvidencePathFileContent(path, jobId, envName, violations) {
     }
     return;
   }
-  validateArtifactStructuredRedaction(parsed.value, jobId, `evidence path env ${envName}`, violations);
+  validateArtifactDecodedRedaction(parsed.value, jobId, `evidence path env ${envName}`, violations);
 }
 
 function isFixtureLikeArtifactPath(path) {

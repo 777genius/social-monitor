@@ -214,6 +214,7 @@ export function validateRunnerImplementationMarkers({
     'STAGING_SECRET_STORE_ID',
     'validateArtifactLiteralRedaction',
     'validateArtifactStructuredRedaction',
+    'validateArtifactDecodedRedaction',
 
   ]) {
     if (!runnerSource.includes(marker)) {
@@ -223,6 +224,7 @@ export function validateRunnerImplementationMarkers({
 
   // The extracted security-policy module, not the CLI runner, now owns these guards.
   for (const marker of [
+    'validateArtifactDecodedRedaction',
     'forbiddenArtifactValueFragments',
     'forbiddenArtifactValuePatterns',
     'sensitive literal pattern',

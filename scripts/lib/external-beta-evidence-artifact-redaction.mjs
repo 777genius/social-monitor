@@ -99,6 +99,18 @@ export function validateArtifactLiteralRedaction(content, jobId, label, violatio
   }
 }
 
+// Scan JSON's decoded values as well as the raw bytes, retaining one diagnostic per rule.
+export function validateArtifactDecodedRedaction(content, jobId, label, violations) {
+  const decodedViolations = [];
+  validateArtifactLiteralRedaction(JSON.stringify(content), jobId, label, decodedViolations);
+  for (const message of decodedViolations) {
+    if (!violations.includes(message)) {
+      violations.push(message);
+    }
+  }
+  validateArtifactStructuredRedaction(content, jobId, label, violations);
+}
+
 export function validateArtifactStructuredRedaction(content, jobId, label, violations) {
   if (containsFixtureProvenance(content)) {
     violations.push(`${jobId}: ${label} must not contain fixture provenance`);
@@ -214,11 +226,10 @@ function isRedactedArtifactValue(value) {
   if (normalized.includes('not-redacted') || normalized.includes('not redacted') || normalized.includes('unredacted')) {
     return false;
   }
-  return normalized.length === 0
-    || normalized.includes('redacted')
-    || normalized.includes('masked')
-    || normalized.includes('omitted')
-    || normalized.includes('absent')
-    || normalized.includes('unavailable');
+  // Only complete markers, optionally bracketed, may stand in for credential values.
+  const placeholder = /^(?:redacted|masked|omitted|absent|unavailable)$/;
+  return normalized.length === 0 || placeholder.test(normalized)
+    || (normalized.startsWith('[') && normalized.endsWith(']') && placeholder.test(normalized.slice(1, -1)))
+    || (normalized.startsWith('<') && normalized.endsWith('>') && placeholder.test(normalized.slice(1, -1)));
 }
 

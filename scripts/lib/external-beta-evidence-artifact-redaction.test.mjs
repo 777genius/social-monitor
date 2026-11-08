@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   validateArtifactLiteralRedaction,
   validateArtifactStructuredRedaction,
+  validateArtifactDecodedRedaction,
   parseJsonEvidenceContent,
   isStructuredJsonEvidence,
 } from './external-beta-evidence-artifact-redaction.mjs';
@@ -136,4 +137,55 @@ test('security validation does not mutate the source document', () => {
   const original = globalThis.structuredClone(obj);
   structured(obj);
   assert.deepEqual(obj, original);
+});
+
+test('escaped JSON literal credentials are rejected after decoding', () => {
+  const raw = '{"note":"\\u0042earer visible-credential"}';
+  assert.deepEqual(literal(raw), []);
+  const parsed = parseJsonEvidenceContent(raw);
+  assert.equal(parsed.ok, true);
+  const violations = [];
+  validateArtifactDecodedRedaction(parsed.value, 'job-a', 'artifact', violations);
+  assert.deepEqual(violations, [
+    'job-a: artifact must not contain sensitive literal fragment "bearer "',
+  ]);
+});
+
+test('raw and decoded evidence scans preserve diagnostic order without duplicates', () => {
+  const raw = '{"note":"Bearer visible-credential"}';
+  const violations = literal(raw);
+  validateArtifactDecodedRedaction(JSON.parse(raw), 'job-a', 'artifact', violations);
+  assert.deepEqual(violations, [
+    'job-a: artifact must not contain sensitive literal fragment "bearer "',
+  ]);
+});
+
+test('a redaction word embedded in a secret value does not become a placeholder', () => {
+  for (const value of ['live-token-masked-9', 'value-redacted-123', 'unavailable-but-live']) {
+    assert.deepEqual(structured({ token: value }), [
+      'job-a: artifact must not contain unredacted sensitive key "token"',
+    ]);
+  }
+  assert.deepEqual(literal('access_token=live-token-masked-9'), [
+    'job-a: artifact must not contain sensitive literal pattern "query credential"',
+  ]);
+});
+
+test('complete placeholders stay supported with optional matching wrappers', () => {
+  for (const value of ['', 'redacted', 'masked', 'omitted', 'absent', 'unavailable',
+    '[REDACTED]', '<masked>']) {
+    assert.deepEqual(structured({ token: value }), []);
+  }
+  assert.deepEqual(structured({ token: '[masked>', secret: '<redacted]' }), [
+    'job-a: artifact must not contain unredacted sensitive key "token"',
+  ]);
+});
+
+test('decoded credential checking still applies structured fixture and sensitive-key guards', () => {
+  const violations = [];
+  validateArtifactDecodedRedaction({ fixtureOnly: true, password: 'plain-value' }, 'job-a', 'artifact', violations);
+  assert.deepEqual(violations, [
+    'job-a: artifact must not contain fixture provenance',
+    'job-a: artifact must not contain unredacted sensitive key "password"',
+  ]);
 });
