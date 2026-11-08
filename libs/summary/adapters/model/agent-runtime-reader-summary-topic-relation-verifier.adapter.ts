@@ -1,7 +1,9 @@
+import { buildAgentRuntimeTopicRelationCommand } from "./agent-runtime-reader-summary-topic-relation-command";
 import {
-  readerSummaryScopeKey,
-  type ReaderSummaryTopicRelationDecision,
-} from "../../domain";
+  normalizeDecisions,
+  parseJsonObject,
+} from "./agent-runtime-reader-summary-topic-relation-decisions";
+import type { ReaderSummaryTopicRelationDecision } from "../../domain";
 import type {
   AgentRuntimeClientPort,
   ReaderSummaryTopicMapAttemptContext,
@@ -9,7 +11,6 @@ import type {
   ReaderSummaryTopicRelationVerifierPort,
 } from "../../ports";
 import {
-  buildAgentRuntimeRequestId,
   nonEmptyOrFallback,
   parsePositiveInteger,
   positiveIntegerOrFallback,
@@ -20,22 +21,15 @@ import {
   type AgentRuntimeReaderSummaryTopicLabelerOptions,
 } from "./agent-runtime-reader-summary-topic-labeler.adapter";
 import {
-  agentRuntimeReaderSummaryTopicRelationVerifierInstructions,
-  agentRuntimeReaderSummaryTopicRelationVerifierJsonSchema,
-  buildAgentRuntimeReaderSummaryTopicRelationVerifierPrompt,
-} from "./agent-runtime-reader-summary-topic-relation-verifier-prompt";
-import {
   verifyAndRecordReaderSummaryExecution,
   type VerifiedReaderSummaryExecutionAttestationSink,
 } from "./reader-summary-execution-attestation";
 import { assertStoryRelationResponseSchema } from "./story-relation-response-schema";
 import {
   activeReaderSummaryModel,
-  activeReaderSummaryPurposes,
   activeReaderSummaryReasoningEffort,
   assertReaderSummaryBackendModel,
   mimoReaderSummaryBackend,
-  readerSummaryRouteControls,
   resolveReaderSummaryBackendEffort,
   resolveReaderSummaryDailyTaskIdentityFromEnv,
   type ReaderSummaryGenerationBackend,
@@ -102,48 +96,18 @@ export class AgentRuntimeReaderSummaryTopicRelationVerifier implements ReaderSum
     if (input.relations.length === 0) {
       return [];
     }
-    const command = {
-      requestId: buildAgentRuntimeRequestId(
-        `reader-summary-topic-relations-attempt-${attemptContext.attemptNumber}`,
-        input.tenantId,
-        input.workspaceId,
-        readerSummaryScopeKey(input.scope),
-        input.requestedAt,
-      ),
-      tenantId: input.tenantId,
-      workspaceId: input.workspaceId,
-      correlationId: buildAgentRuntimeRequestId(
-        "reader-summary-topic-relations-correlation",
-        input.tenantId,
-        input.workspaceId,
-        readerSummaryScopeKey(input.scope),
-        input.requestedAt,
-      ),
+    const command = buildAgentRuntimeTopicRelationCommand({
+      input,
+      attemptContext,
       provider: this.provider,
       providerInstanceId: this.providerInstanceId,
-      purpose: activeReaderSummaryPurposes.topicRelations,
-      systemPrompt: agentRuntimeReaderSummaryTopicRelationVerifierInstructions,
-      prompt: buildAgentRuntimeReaderSummaryTopicRelationVerifierPrompt(input),
-      outputSchema: agentRuntimeReaderSummaryTopicRelationVerifierJsonSchema,
-      controls: {
-        interactive: false,
-        outputSchemaName: "social_monitor_reader_summary_topic_relations",
-        schemaVersion: "reader_summary.topic_relation.v1",
-        model: this.model,
-        ...(this.modelBackend === mimoReaderSummaryBackend
-          ? { modelBackend: this.modelBackend, toolsEnabled: false, toolPolicy: "none" }
-          : {}),
-        ...readerSummaryRouteControls(this.modelBackend, this.reasoningEffort),
-        maxOutputTokens: this.maxOutputTokens,
-      },
+      model: this.model,
+      modelBackend: this.modelBackend,
+      reasoningEffort: this.reasoningEffort,
+      promptVersion: this.promptVersion,
       timeoutMs: this.timeoutMs,
-      metadata: {
-        adapter: "agent-runtime-reader-summary-topic-relation-verifier",
-        promptVersion: this.promptVersion,
-        attemptNumber: String(attemptContext.attemptNumber),
-        totalAttempts: String(attemptContext.totalAttempts),
-      },
-    } as const;
+      maxOutputTokens: this.maxOutputTokens,
+    });
     const result = await this.client.runTask(command);
     const raw = readAgentRuntimeObjectOutput(
       result,
@@ -204,74 +168,3 @@ export const resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions = (
   };
 };
 
-const normalizeDecisions = (
-  raw: Record<string, unknown>,
-  relations: ReaderSummaryTopicRelationVerifierInput["relations"],
-): readonly ReaderSummaryTopicRelationDecision[] => {
-  const expectedPairs = new Set(relations.map(relationPairKey));
-  const decisions = Array.isArray(raw.decisions)
-    ? raw.decisions.flatMap((value) => {
-        if (!isRecord(value)) {
-          return [];
-        }
-        const sourceNodeId = stringValue(value.sourceNodeId);
-        const targetNodeId = stringValue(value.targetNodeId);
-        const sameTopic = value.sameTopic;
-        const confidenceScore = value.confidenceScore;
-        if (
-          sourceNodeId === undefined ||
-          targetNodeId === undefined ||
-          typeof sameTopic !== "boolean" ||
-          typeof confidenceScore !== "number" ||
-          confidenceScore < 0 ||
-          confidenceScore > 1
-        ) {
-          return [];
-        }
-
-        return [
-          {
-            sourceNodeId,
-            targetNodeId,
-            sameTopic,
-            confidenceScore,
-            rationale: stringValue(value.rationale),
-          },
-        ];
-      })
-    : [];
-  const returnedPairs = new Set(decisions.map(relationPairKey));
-  if (
-    decisions.length !== expectedPairs.size ||
-    returnedPairs.size !== expectedPairs.size ||
-    [...expectedPairs].some((pair) => !returnedPairs.has(pair))
-  ) {
-    throw new Error(
-      "Reader summary topic relation response must decide every requested pair exactly once",
-    );
-  }
-
-  return decisions;
-};
-
-const relationPairKey = (pair: {
-  readonly sourceNodeId: string;
-  readonly targetNodeId: string;
-}): string => [pair.sourceNodeId, pair.targetNodeId].sort().join("\u0000");
-
-const parseJsonObject = (value: string): Record<string, unknown> => {
-  const parsed: unknown = JSON.parse(value);
-  if (!isRecord(parsed)) {
-    throw new Error("Reader summary topic relation response must be an object");
-  }
-
-  return parsed;
-};
-
-const stringValue = (value: unknown): string | undefined =>
-  typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : undefined;
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === "object" && !Array.isArray(value);
