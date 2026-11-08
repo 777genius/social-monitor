@@ -74,7 +74,7 @@ export const genericAnchors = new Set([
   "workflow",
 ]);
 
-const noiseAnchors = new Set([
+export const noiseAnchors = new Set([
   "com",
   "http",
   "https",

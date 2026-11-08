@@ -10,6 +10,7 @@ import {
   identityAnchors,
   intersects,
   genericAnchors,
+  noiseAnchors,
 } from "./agent-runtime-reader-summary-topic-anchor-keys";
 
 export const recoverIntoExistingGroups = (params: {
