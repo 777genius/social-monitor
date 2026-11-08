@@ -57,44 +57,44 @@ bool _periodMatchesPreset(SummaryPeriod period, SummaryPeriodPreset preset) {
 
 /// Navigation policy shared by a published day and an original-posts fallback.
 bool _isSelectedSummaryPeriodCurrent(SummariesReviewStore store) {
-    if (store.allowUnpublishedDays &&
-        store.selectedSummaryPeriodPreset == SummaryPeriodPreset.daily) {
-      return store.selectedSummaryPeriod.endedAt ==
-          SummaryPeriodPreset.daily.currentPeriodEndedAt();
-    }
-    if (store._selectedSummaryPeriodEndedAt == null) {
-      return true;
-    }
-    final latestAvailable = store._latestAvailableSummaryPeriodForSelectedPreset;
-    if (latestAvailable != null) {
-      return _sameSummaryPeriodWindow(store.selectedSummaryPeriod, latestAvailable);
-    }
+  if (store.allowUnpublishedDays &&
+      store.selectedSummaryPeriodPreset == SummaryPeriodPreset.daily) {
     return store.selectedSummaryPeriod.endedAt ==
-        store.selectedSummaryPeriodPreset.currentPeriodEndedAt();
+        SummaryPeriodPreset.daily.currentPeriodEndedAt();
   }
+  if (store._selectedSummaryPeriodEndedAt == null) {
+    return true;
+  }
+  final latestAvailable = store._latestAvailableSummaryPeriodForSelectedPreset;
+  if (latestAvailable != null) {
+    return _sameSummaryPeriodWindow(store.selectedSummaryPeriod, latestAvailable);
+  }
+  return store.selectedSummaryPeriod.endedAt ==
+      store.selectedSummaryPeriodPreset.currentPeriodEndedAt();
+}
 
 bool _canShowPreviousSummaryPeriod(SummariesReviewStore store) {
-    if (store.allowUnpublishedDays &&
-        store.selectedSummaryPeriodPreset == SummaryPeriodPreset.daily) {
-      return store.selectedSummaryPeriod.startedAt.isAfter(DateTime.utc(2020));
-    }
-    if (store.availableWorkspaceSummaryPeriods.isNotEmpty) {
-      return store._previousAvailableSummaryPeriodForSelectedPreset != null;
-    }
-    return false;
+  if (store.allowUnpublishedDays &&
+      store.selectedSummaryPeriodPreset == SummaryPeriodPreset.daily) {
+    return store.selectedSummaryPeriod.startedAt.isAfter(DateTime.utc(2020));
   }
+  if (store.availableWorkspaceSummaryPeriods.isNotEmpty) {
+    return store._previousAvailableSummaryPeriodForSelectedPreset != null;
+  }
+  return false;
+}
 
 bool _canShowNextSummaryPeriod(SummariesReviewStore store) {
-    if (store.allowUnpublishedDays &&
-        store.selectedSummaryPeriodPreset == SummaryPeriodPreset.daily) {
-      return store.selectedSummaryPeriodPreset.canNavigateNext(
-        store.selectedSummaryPeriod.endedAt,
-      );
-    }
-    if (store.availableWorkspaceSummaryPeriods.isNotEmpty) {
-      return store._nextAvailableSummaryPeriodForSelectedPreset != null;
-    }
+  if (store.allowUnpublishedDays &&
+      store.selectedSummaryPeriodPreset == SummaryPeriodPreset.daily) {
     return store.selectedSummaryPeriodPreset.canNavigateNext(
       store.selectedSummaryPeriod.endedAt,
     );
   }
+  if (store.availableWorkspaceSummaryPeriods.isNotEmpty) {
+    return store._nextAvailableSummaryPeriodForSelectedPreset != null;
+  }
+  return store.selectedSummaryPeriodPreset.canNavigateNext(
+    store.selectedSummaryPeriod.endedAt,
+  );
+}
