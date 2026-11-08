@@ -102,8 +102,11 @@ test('real staging marker-free records and primitives are accepted', () => {
 
 test('real evidence identities reject fixture-like values with original provenance diagnostics', () => {
   const { guards, violations } = context();
-  guards.validateRealArtifactIdentity({ environmentId: 'prod-staging-fixture-1', operator: 'security-owner' }, 'artifact');
-  assert.ok(violations.some(x => x.includes('artifact.environmentId') && x.includes('fixture')));
+  guards.validateRealArtifactIdentity({ environmentId: 'prod-staging-fixture-1', operator: 'security-fixture-1' }, 'artifact');
+  assert.deepEqual(violations, [
+    'artifact.environmentId must not contain "fixture" for real staging artifacts',
+    'artifact.operator must not contain "fixture" for real staging artifacts',
+  ]);
 });
 
 test('real evidence identities accept non-fixture staging metadata', () => {
