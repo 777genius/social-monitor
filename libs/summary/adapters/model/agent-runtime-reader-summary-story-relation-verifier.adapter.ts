@@ -1,16 +1,15 @@
-import { createHash } from "node:crypto";
+import { buildAgentRuntimeStoryRelationCommand } from "./agent-runtime-reader-summary-story-relation-command";
 import {
-  readerSummaryScopeKey,
-} from "../../domain";
+  readDecisionEnvelope,
+  normalizeBinaryDecisions,
+  parseJsonObject,
+} from "./agent-runtime-reader-summary-story-relation-decoder";
 import type {
   AgentRuntimeClientPort,
   ReaderSummaryStoryRelationVerifierInput,
   ReaderSummaryStoryRelationVerifierPort,
 } from "../../ports";
-import { InvalidStoryRelationDecisionBatchError } from "../../ports";
 import {
-  AgentRuntimeModelProviderError,
-  buildAgentRuntimeRequestId,
   nonEmptyOrFallback,
   parsePositiveInteger,
   positiveIntegerOrFallback,
@@ -21,26 +20,15 @@ import {
   type AgentRuntimeReaderSummaryModelAdapterOptions,
 } from "./agent-runtime-reader-summary-model.adapter";
 import {
-  agentRuntimeReaderSummaryStoryRelationVerifierInstructions,
-  agentRuntimeReaderSummaryIndependentNewsVerifierInstructions,
-  agentRuntimeReaderSummaryStoryRelationVerifierJsonSchema,
-  agentRuntimeReaderSummaryRelatedTopicVerifierInstructions,
-  agentRuntimeReaderSummaryRelatedTopicVerifierJsonSchema,
-  buildAgentRuntimeReaderSummaryStoryRelationVerifierPrompt,
-  buildAgentRuntimeReaderSummaryRelatedTopicVerifierPrompt,
-} from "./agent-runtime-reader-summary-story-relation-verifier-prompt";
-import {
   verifyAndRecordReaderSummaryExecution,
   type VerifiedReaderSummaryExecutionAttestationSink,
 } from "./reader-summary-execution-attestation";
 import {
   activeReaderSummaryModel,
-  activeReaderSummaryPurposes,
   activeReaderSummaryReasoningEffort,
   assertActiveReaderSummaryProvider,
   assertReaderSummaryBackendModel,
   mimoReaderSummaryBackend,
-  readerSummaryRouteControls,
   resolveReaderSummaryBackendEffort,
   resolveReaderSummaryDailyTaskIdentityFromEnv,
   type ReaderSummaryGenerationBackend,
@@ -123,89 +111,20 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
     if (input.candidates.length === 0) {
       return [];
     }
-    const scopeKey = readerSummaryScopeKey(input.scope);
-    const requestScopeKey = input.verificationLane === "safe_recall_shadow"
-      ? `${scopeKey}:safe-recall-shadow`
-      : input.verificationLane === "related_topic"
-        ? `${scopeKey}:related-topic`
-        : input.verificationLane === "independent_news"
-          ? `${scopeKey}:independent-news:${createHash("sha256")
-            .update(buildAgentRuntimeReaderSummaryStoryRelationVerifierPrompt(input))
-            .digest("hex").slice(0, 24)}`
-          : scopeKey;
     const relatedTopicLane = input.verificationLane === "related_topic";
-    const command = {
-      requestId: buildAgentRuntimeRequestId(
-        relatedTopicLane
-          ? "reader-summary-related-topic-relations"
-          : "reader-summary-story-relations",
-        input.tenantId,
-        input.workspaceId,
-        requestScopeKey,
-        input.requestedAt,
-      ),
-      tenantId: input.tenantId,
-      workspaceId: input.workspaceId,
-      correlationId: buildAgentRuntimeRequestId(
-        relatedTopicLane
-          ? "reader-summary-related-topic-relations-correlation"
-          : "reader-summary-story-relations-correlation",
-        input.tenantId,
-        input.workspaceId,
-        requestScopeKey,
-        input.requestedAt,
-      ),
+    const command = buildAgentRuntimeStoryRelationCommand({
+      input,
       provider: this.provider,
       providerInstanceId: this.providerInstanceId,
-      purpose: relatedTopicLane
-        ? activeReaderSummaryPurposes.relatedTopicRelations
-        : activeReaderSummaryPurposes.storyRelations,
-      systemPrompt: relatedTopicLane
-        ? agentRuntimeReaderSummaryRelatedTopicVerifierInstructions
-        : input.verificationLane === "independent_news"
-          ? agentRuntimeReaderSummaryIndependentNewsVerifierInstructions
-          : agentRuntimeReaderSummaryStoryRelationVerifierInstructions,
-      prompt: relatedTopicLane
-        ? buildAgentRuntimeReaderSummaryRelatedTopicVerifierPrompt(input)
-        : buildAgentRuntimeReaderSummaryStoryRelationVerifierPrompt(input),
-      outputSchema: relatedTopicLane
-        ? agentRuntimeReaderSummaryRelatedTopicVerifierJsonSchema
-        : agentRuntimeReaderSummaryStoryRelationVerifierJsonSchema,
-      controls: {
-        interactive: false,
-        outputSchemaName: relatedTopicLane
-          ? "social_monitor_reader_summary_related_topic_relations"
-          : "social_monitor_reader_summary_story_relations",
-        schemaVersion: relatedTopicLane
-          ? "reader_summary.related_topic_relation.v1"
-          : "reader_summary.story_relation.v1",
-        model: this.model,
-        ...(this.modelBackend === mimoReaderSummaryBackend
-          ? { modelBackend: this.modelBackend, toolsEnabled: false, toolPolicy: "none" }
-          : {}),
-        ...readerSummaryRouteControls(this.modelBackend, this.reasoningEffort),
-        maxOutputTokens: this.maxOutputTokens,
-      },
-      timeoutMs: relatedTopicLane
-        ? (input.timeoutMs ?? this.relatedTopicTimeoutMs)
-        : input.verificationLane !== undefined
-          ? (input.timeoutMs ?? this.timeoutMs)
-          : this.timeoutMs,
-      metadata: {
-        adapter: "agent-runtime-reader-summary-story-relation-verifier",
-        promptVersion: relatedTopicLane
-          ? this.relatedTopicPromptVersion
-          : input.verificationLane === "independent_news"
-            ? `${this.promptVersion}.independent_news.v1`
-            : this.promptVersion,
-        ...(relatedTopicLane
-          ? { taskRole: "related_topic_relation" }
-          : {}),
-        ...(input.verificationLane === undefined
-          ? {}
-          : { verificationLane: input.verificationLane }),
-      },
-    } as const;
+      model: this.model,
+      modelBackend: this.modelBackend,
+      reasoningEffort: this.reasoningEffort,
+      promptVersion: this.promptVersion,
+      relatedTopicPromptVersion: this.relatedTopicPromptVersion,
+      timeoutMs: this.timeoutMs,
+      relatedTopicTimeoutMs: this.relatedTopicTimeoutMs,
+      maxOutputTokens: this.maxOutputTokens,
+    });
     const result = await this.client.runTask(command, { signal: input.signal });
     const raw = readAgentRuntimeObjectOutput(
       result,
@@ -266,67 +185,3 @@ export const resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions = (
   };
 };
 
-const readDecisionEnvelope = (
-  raw: Record<string, unknown>,
-): readonly unknown[] => {
-  const properties = Object.keys(raw);
-  if (properties.some((property) => property !== "decisions")) {
-    throw invalidDecisionEnvelope("envelope_unknown_property");
-  }
-  if (!Array.isArray(raw.decisions)) {
-    throw invalidDecisionEnvelope("envelope_missing_decisions");
-  }
-  return raw.decisions;
-};
-
-const normalizeBinaryDecisions = (
-  raw: Record<string, unknown>,
-): readonly unknown[] =>
-  Array.isArray(raw.decisions)
-    ? raw.decisions.map(normalizeBinaryDecision)
-    : [];
-
-const normalizeBinaryDecision = (
-  value: unknown,
-): unknown => {
-  if (!isRecord(value)) return value;
-  const { rationale, ...properties } = value;
-  const leftFeedItemId = stringValue(value.leftFeedItemId);
-  const rightFeedItemId = stringValue(value.rightFeedItemId);
-  return {
-    ...properties,
-    ...(leftFeedItemId === undefined ? {} : { leftFeedItemId }),
-    ...(rightFeedItemId === undefined ? {} : { rightFeedItemId }),
-    ...(rationale === undefined
-      ? {}
-      : typeof rationale === "string"
-        ? { rationale: rationale.trim() }
-        : { rationale }),
-  };
-};
-
-const stringValue = (value: unknown): string | undefined =>
-  typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : undefined;
-
-const invalidDecisionEnvelope = (
-  reason: ConstructorParameters<typeof InvalidStoryRelationDecisionBatchError>[0],
-): Error => new InvalidStoryRelationDecisionBatchError(reason);
-
-const parseJsonObject = (value: string, schema: Record<string, unknown>): Record<string, unknown> => {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(value);
-  } catch {
-    throw new AgentRuntimeModelProviderError({
-      kind: "invalid_schema", retryable: false,
-      message: "Reader summary story relation response is not valid JSON",
-    });
-  }
-  assertStoryRelationResponseSchema(parsed, schema);
-  return parsed as Record<string, unknown>;
-};
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === "object" && !Array.isArray(value);
