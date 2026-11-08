@@ -276,9 +276,7 @@ Future<void> _loadWorkspaceSummaryForStore(
     _ => null,
   };
   final selectedPeriod = store.selectedSummaryPeriod;
-  final enforceExactWindow = store.allowUnpublishedDays &&
-      store.selectedSummaryPeriodPreset == SummaryPeriodPreset.daily &&
-      store._selectedSummaryPeriodEndedAt != null;
+  final enforceExactWindow = _requiresExactUnpublishedDay(store);
   final previous = _summarySnapshotForSelectedDailyWindow(
     _summarySnapshotForSelectedPreset(
       previousSnapshot,
