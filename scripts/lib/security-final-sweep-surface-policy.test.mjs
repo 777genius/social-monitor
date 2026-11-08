@@ -226,3 +226,31 @@ test('missing and invalid review records fail closed', () => {
     'artifact: review.notes must explain the staging redaction review',
   ]);
 });
+
+test('malformed non-iterable diagnostic field object fails closed without short-circuiting later surfaces', () => {
+  const rows = surfaces();
+  rows[0].safeDiagnosticFields = { unexpected: 'not-an-array' };
+  rows[0].leakClassResults = [];
+  rows[1].scanStatus = 'failed';
+  const ctx = context();
+  validateArtifactSurfaces(rows, 'artifact', exportMap(), ctx);
+  assert.deepEqual(ctx.violations, [
+    'artifact: surfaces[0]: safeDiagnosticFields must be a non-empty array',
+    'artifact: surfaces[0]: leakClassResults must include secret-values',
+    'artifact: surfaces[0]: leakClassResults must include raw-provider-payloads',
+    'artifact: surfaces[0]: leakClassResults must include raw-prompt-or-source-text',
+    'artifact: surfaces[1]: scanStatus must be passed',
+  ]);
+});
+
+test('numeric and string diagnostic field values are rejected without reading individual characters', () => {
+  const rows = surfaces();
+  rows[0].safeDiagnosticFields = 7;
+  rows[1].safeDiagnosticFields = 'access-token';
+  const ctx = context();
+  validateArtifactSurfaces(rows, 'artifact', exportMap(), ctx);
+  assert.deepEqual(ctx.violations, [
+    'artifact: surfaces[0]: safeDiagnosticFields must be a non-empty array',
+    'artifact: surfaces[1]: safeDiagnosticFields must be a non-empty array',
+  ]);
+});
