@@ -2,12 +2,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { validateRunnerImplementationMarkers } from '../lib/external-beta-evidence-runner-markers.mjs';
+import { validateRunnerImplementationMarkers, redactionPolicyPath } from '../lib/external-beta-evidence-runner-markers.mjs';
 
 const runnerFile = 'scripts/external-beta-evidence-runner.mjs';
 const checkFile = 'scripts/check-external-beta-evidence-runner.mjs';
 const selectionHelperPath = 'scripts/lib/external-beta-evidence-selections.mjs';
-const redactionPolicyPath = 'scripts/lib/external-beta-evidence-artifact-redaction.mjs';
 const sources = {
   runnerSource: readFileSync(runnerFile, 'utf8'),
   checkSource: readFileSync(checkFile, 'utf8'),
@@ -16,7 +15,6 @@ const sources = {
   runnerFile,
   checkFile,
   selectionHelperPath,
-  redactionPolicyPath,
 };
 
 test('every runner and checker implementation marker exists at its owning source', () => {

@@ -5,8 +5,7 @@ import {
   rabbitmqDrillPreflightEnv,
   redditOAuthPreflightEnv,
 } from './lib/external-beta-evidence-preflight-fixtures.mjs';
-
-import { validateRunnerImplementationMarkers } from './lib/external-beta-evidence-runner-markers.mjs';
+import { validateRunnerImplementationMarkers, redactionPolicyPath } from './lib/external-beta-evidence-runner-markers.mjs';
 import {
   liveOpenConnectorsArtifact,
   redditCredentialLifecycleArtifact,
@@ -37,7 +36,6 @@ const backendSafePath = 'ops/release/backend-safe-verify-contract.json';
 const baselinePath = 'ops/release/release-baseline-contract.json';
 const packagePath = 'package.json';
 const selectionHelperPath = 'scripts/lib/external-beta-evidence-selections.mjs';
-const redactionPolicyPath = 'scripts/lib/external-beta-evidence-artifact-redaction.mjs';
 const sourceCertificationPath = 'ops/ingestion/source-provider-certification.json';
 
 const contract = readJson(contractPath);
@@ -50,7 +48,6 @@ const sourceCertification = readJson(sourceCertificationPath);
 const sourceLiveArtifactContext = { sourceCertification, sourceCertificationPath };
 const runnerSource = readFileSync(contract.runnerFile, 'utf8');
 const selectionHelperSource = readFileSync(selectionHelperPath, 'utf8');
-const redactionPolicySource = readFileSync(redactionPolicyPath, 'utf8');
 const envExampleSource = typeof contract.envExample === 'string' && existsSync(contract.envExample)
   ? readFileSync(contract.envExample, 'utf8')
   : '';
@@ -781,11 +778,10 @@ function validateRunnerImplementation() {
     runnerSource,
     checkSource,
     selectionHelperSource,
-    redactionPolicySource,
+    redactionPolicySource: readFileSync(redactionPolicyPath, 'utf8'),
     runnerFile: contract.runnerFile,
     checkFile: contract.checkFile,
     selectionHelperPath,
-    redactionPolicyPath,
   }));
 }
 

@@ -1,3 +1,5 @@
+export const redactionPolicyPath = 'scripts/lib/external-beta-evidence-artifact-redaction.mjs';
+
 export function validateRunnerImplementationMarkers({
   runnerSource,
   checkSource,
@@ -6,7 +8,6 @@ export function validateRunnerImplementationMarkers({
   runnerFile,
   checkFile,
   selectionHelperPath,
-  redactionPolicyPath,
 }) {
   const violations = [];
   for (const marker of [
