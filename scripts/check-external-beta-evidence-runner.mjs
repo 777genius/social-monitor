@@ -24,6 +24,11 @@ import {
 
 import { summaryFeedbackSamplesArtifact } from './lib/external-beta-summary-feedback-fixtures.mjs';
 
+import {
+  sourceCredentialRotationArtifact,
+  webhookSecretRotationArtifact,
+} from './lib/external-beta-credential-rotation-fixtures.mjs';
+
 import { execFileSync } from 'node:child_process';
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
@@ -1665,8 +1670,8 @@ function validateRunnerNegativeCredentialRotationArtifactSmokes() {
 function writeCredentialRotationArtifactPair(tempDirectory, options = {}) {
   const sourceArtifactPath = join(tempDirectory, 'source-credential-rotation.json');
   const webhookArtifactPath = join(tempDirectory, 'webhook-secret-rotation.json');
-  const sourceArtifact = sourceCredentialRotationArtifact();
-  const webhookArtifact = webhookSecretRotationArtifact();
+  const sourceArtifact = sourceCredentialRotationArtifact(readJson('ops/security/fixtures/source-credential-rotation-redacted-examples.json'));
+  const webhookArtifact = webhookSecretRotationArtifact(readJson('ops/security/fixtures/webhook-secret-rotation-redacted-examples.json'));
   options.mutateSource?.(sourceArtifact);
   options.mutateWebhook?.(webhookArtifact);
   writeFileSync(
@@ -1684,44 +1689,6 @@ function writeCredentialRotationArtifactPair(tempDirectory, options = {}) {
     { mode: 0o600 },
   );
   return { sourceArtifactPath, webhookArtifactPath };
-}
-
-function sourceCredentialRotationArtifact() {
-  const artifact = readJson('ops/security/fixtures/source-credential-rotation-redacted-examples.json');
-  applyCredentialRotationRealEvidence(artifact, {
-    evidenceKind: 'staging_source_credential_rotation',
-    collectionMethod: 'Rotation drill captured from staging source credential boundary.',
-    runner: 'scripts/capture-source-credential-rotation.ts',
-  });
-  return artifact;
-}
-
-function webhookSecretRotationArtifact() {
-  const artifact = readJson('ops/security/fixtures/webhook-secret-rotation-redacted-examples.json');
-  applyCredentialRotationRealEvidence(artifact, {
-    evidenceKind: 'staging_webhook_secret_rotation',
-    collectionMethod: 'Rotation drill captured from staging webhook secret boundary.',
-    runner: 'scripts/capture-webhook-secret-rotation.ts',
-  });
-  return artifact;
-}
-
-function applyCredentialRotationRealEvidence(artifact, provenance) {
-  const now = new Date().toISOString();
-  artifact.provenance = {
-    ...provenance,
-    fixtureOnly: false,
-  };
-  artifact.environment = {
-    environmentId: 'staging-secret-rotation-alpha-1',
-    secretStoreId: 'secret-store-staging-alpha-1',
-    sampledAt: now,
-    operator: 'security-owner-1',
-  };
-  artifact.operations = artifact.operations.map((operation) => ({
-    ...operation,
-    observedAt: now,
-  }));
 }
 
 function validateRunnerPositiveSecurityFinalSweepArtifactSmoke() {
