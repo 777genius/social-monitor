@@ -1,5 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { buildDirectSecurityArtifact } from './security-final-sweep-direct-artifact.mjs';
+
 import {
   scanForbiddenArtifactKeys,
   validateNoRealArtifactFixtureMarkers,
@@ -94,4 +102,83 @@ test('repeated marker scans do not leak regex state', () => {
     'first: <root> must not contain fixture marker "mock"',
     'second: <root> must not contain fixture marker "mock"',
   ]);
+});
+
+const checkerRoot = fileURLToPath(new URL('../../', import.meta.url));
+const checkerScript = fileURLToPath(new URL('../check-security-final-sweep.mjs', import.meta.url));
+
+// Exercise the real checker with synthetic, private, temporary staging artifacts.
+function runCheckerWithArtifacts({ mutateArtifact = () => {}, mutateExports = () => {} } = {}) {
+  const directory = mkdtempSync(join(tmpdir(), 'security-final-sweep-integration-'));
+  try {
+    const exportsByEnv = {
+      LOG_EXPORT_PATH: { records: [{ requestId: 'req-1', status: 'ok' }] },
+      METRICS_EXPORT_PATH: { records: [{ metricName: 'queue_lag_seconds', status: 'ok' }] },
+      PUBLIC_ERROR_EXPORT_PATH: { records: [{ errorCode: 'rate_limited', status: 'handled' }] },
+      AUDIT_EVENT_EXPORT_PATH: { records: [{ auditEventId: 'audit-1', status: 'recorded' }] },
+    };
+    mutateExports(exportsByEnv);
+    const exportPathsByEnv = {};
+    const exportHashesByEnv = {};
+    for (const [envName, document] of Object.entries(exportsByEnv)) {
+      const path = join(directory, `${envName.toLowerCase()}.json`);
+      const content = `${JSON.stringify(document)}\n`;
+      writeFileSync(path, content, { mode: 0o600 });
+      exportPathsByEnv[envName] = path;
+      exportHashesByEnv[envName] = createHash('sha256').update(content).digest('hex');
+    }
+    const artifact = buildDirectSecurityArtifact(
+      { exportPathsByEnv, exportHashesByEnv },
+      {
+        securityFinalSweepArtifactFormat: 'security-final-sweep-staging-artifact-v1',
+        securityFinalSweepEvidenceKind: 'staging_security_final_sweep',
+        requiredLeakClasses: new Set(['secret-values', 'raw-provider-payloads', 'raw-prompt-or-source-text']),
+      },
+    );
+    mutateArtifact(artifact);
+    const artifactPath = join(directory, 'security-final-sweep.json');
+    writeFileSync(artifactPath, `${JSON.stringify(artifact)}\n`, { mode: 0o600 });
+    chmodSync(artifactPath, 0o600);
+    return spawnSync(process.execPath, [checkerScript], {
+      cwd: checkerRoot,
+      env: {
+        ...process.env,
+        SECURITY_FINAL_SWEEP_ARTIFACT_PATH: artifactPath,
+        SECURITY_FINAL_SWEEP_DIRECT_PATH_GUARD_TEST: '1',
+        STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
+        STAGING_OPERATOR: 'security-owner-1',
+        BACKEND_IMAGE_DIGEST: `sha256:${'e'.repeat(64)}`,
+        ...exportPathsByEnv,
+      },
+      encoding: 'utf8',
+      timeout: 30_000,
+      maxBuffer: 1024 * 1024,
+    });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+test('checker rejects sensitive artifact keys through the real entrypoint', () => {
+  const result = runCheckerWithArtifacts({
+    mutateArtifact: (artifact) => { artifact.extra = { rawsource: 'redacted' }; },
+  });
+  assert.notEqual(result.status, 0, result.stderr);
+  assert.match(result.stderr, /forbidden sensitive field "rawsource"/);
+});
+
+test('checker rejects fixture markers through the real artifact entrypoint', () => {
+  const result = runCheckerWithArtifacts({
+    mutateArtifact: (artifact) => { artifact.review.evidence = 'production-synthetic'; },
+  });
+  assert.notEqual(result.status, 0, result.stderr);
+  assert.match(result.stderr, /must not contain fixture marker "synthetic"/);
+});
+
+test('checker scans private exports with the real artifact wiring', () => {
+  const result = runCheckerWithArtifacts({
+    mutateExports: (documents) => { documents.LOG_EXPORT_PATH.records[0].rawsource = 'redacted'; },
+  });
+  assert.notEqual(result.status, 0, result.stderr);
+  assert.match(result.stderr, /export file: forbidden sensitive field "rawsource"/);
 });
