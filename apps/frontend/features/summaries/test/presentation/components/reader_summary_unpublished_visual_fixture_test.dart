@@ -1,5 +1,7 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
@@ -13,6 +15,16 @@ import '../../support/reader_posts_browse_test_catalog.dart';
 import '../../support/top_posts_test_fixtures.dart';
 
 void main() {
+  setUpAll(() async {
+    // Use the application's checked-in OFL Roboto asset. Flutter widget
+    // tests otherwise render text in the rectangular Ahem placeholder font.
+    final bytes =
+        File('app/assets/fonts/Roboto[wdth,wght].ttf').readAsBytesSync();
+    final loader = FontLoader('Roboto')
+      ..addFont(Future<ByteData>.value(ByteData.sublistView(bytes)));
+    await loader.load();
+  });
+
   testWidgets('desktop visual fixture of 7 November missing-summary page', (
     tester,
   ) async {
