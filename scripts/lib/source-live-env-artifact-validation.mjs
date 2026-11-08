@@ -1,5 +1,6 @@
 import { isRecord } from './source-live-certification-evidence-shape.mjs';
 
+/** Validate live environment artifact rules and append diagnostics to the caller-owned list. */
 export function validateEnvArtifactValidation(validationRules, context) {
   const { evidencePath, liveArtifactFormat, violations } = context;
   if (!Array.isArray(validationRules)) {
@@ -61,6 +62,7 @@ export function validateEnvArtifactValidation(validationRules, context) {
   }
 }
 
+/** Report required provider keys absent from the current artifact coverage. */
 function requireProviderSetCoverage(actual, expected, label, { evidencePath, violations }) {
   for (const providerKey of expected) {
     if (!actual.has(providerKey)) {
