@@ -73,7 +73,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final showMore = find.text('Show more');
+    final showMore = find.byKey(
+      const ValueKey('reader-summary-top-posts-show-more'),
+    );
     expect(showMore, findsOneWidget);
     await tester.tap(showMore);
     await tester.pump();
@@ -101,7 +103,7 @@ void main() {
 
 SummaryPeriod _day(int day) => SummaryPeriodPreset.daily.resolveForCalendarDate(
   DateTime(2026, 11, day),
-  now: DateTime.utc(2026, 11, 8, 12),
+  now: DateTime.utc(2026, 11, 9, 12),
 );
 
 TopRead get _redditPost => topPostFixture(
