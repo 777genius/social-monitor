@@ -6,6 +6,7 @@ import '../formatters/summary_period_formats.dart';
 import 'reader_summary_collection_stats.dart';
 
 part 'workspace_summary_period_calendar_dialog.dart';
+part 'workspace_summary_period_calendar_date_utils.dart';
 part 'workspace_summary_period_calendar_legend.dart';
 part 'workspace_summary_period_preset_selector.dart';
 part 'workspace_summary_period_toolbar_controls.dart';
