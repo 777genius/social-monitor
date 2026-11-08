@@ -46,6 +46,15 @@ test('valid fixture-only and pending RSS certification remains accepted', () => 
   assert.deepEqual(run().violations, []);
 });
 
+test('passed original live evidence permits a truly ready provider', () => {
+  const result = run(({ sourceCertification, evidence }) => {
+    evidence.externalBetaStatus = 'passed';
+    sourceCertification.certifiedProviders[0].liveBetaReady = true;
+    sourceCertification.certifiedProviders[0].liveBetaBlockers = [];
+  });
+  assert.deepEqual(result.violations, []);
+});
+
 test('expected live command is still validated through caller-owned script guard', () => {
   const result = run();
   assert.deepEqual(result.commands, [{
@@ -81,6 +90,28 @@ test('live beta ready requires passed live evidence status', () => {
   assert.deepEqual(run(({ sourceCertification }) => {
     sourceCertification.certifiedProviders[0].liveBetaReady = true;
   }).violations, [path + ': provider "rss" cannot be liveBetaReady before evidence passes']);
+});
+
+test('duplicate certified keys cannot hide an earlier live-beta claim', () => {
+  const result = run(({ sourceCertification }) => {
+    sourceCertification.certifiedProviders.unshift({
+      ...sourceCertification.certifiedProviders[0], liveBetaReady: true,
+    });
+  });
+  assert.ok(result.violations.includes(path + ': duplicate certified provider key'));
+  assert.ok(result.violations.includes(path + ': provider "rss" cannot be liveBetaReady before evidence passes'));
+});
+
+test('unmapped certification-ready providers cannot claim live beta before evidence passes', () => {
+  const result = run(({ sourceCertification }) => {
+    sourceCertification.certifiedProviders.push({
+      providerKey: 'unmapped', readinessState: 'certification_ready',
+      runtimeReadiness: 'fixture_ready', liveBetaReady: true,
+    });
+  });
+  assert.deepEqual(result.violations, [
+    path + ': provider "unmapped" cannot be liveBetaReady before evidence passes',
+  ]);
 });
 
 test('pending live beta always requires explicit blockers', () => {
@@ -119,6 +150,16 @@ test('empty requirement description remains invalid', () => {
   assert.deepEqual(run(({ sourceCertification }) => {
     sourceCertification.certifiedProviders[0].liveEvidenceRequirements[0].description = '';
   }).violations, [path + ': provider "rss" requirement "' + signalId + '" must define description']);
+});
+
+test('missing artifactEnv fails even without an expected mapping', () => {
+  const result = run(({ sourceCertification, expectedCertificationArtifactEnvs }) => {
+    expectedCertificationArtifactEnvs.delete('rss');
+    delete sourceCertification.certifiedProviders[0].liveEvidenceRequirements[0].artifactEnv;
+  });
+  assert.deepEqual(result.violations, [
+    path + ': provider "rss" requirement "' + signalId + '" artifactEnv must end with _EVIDENCE_PATH',
+  ]);
 });
 
 test('incorrect verification command, approval scope and artifact env remain invalid', () => {
@@ -160,7 +201,10 @@ test('fake fixture provider may not claim live beta readiness', () => {
   const result = run(({ sourceCertification }) => {
     sourceCertification.certifiedProviders[1].liveBetaReady = true;
   });
-  assert.deepEqual(result.violations, [path + ': fake-source must never claim live beta readiness']);
+  assert.deepEqual(result.violations, [
+    path + ': provider "fake-source" cannot be liveBetaReady before evidence passes',
+    path + ': fake-source must never claim live beta readiness',
+  ]);
 });
 
 test('fake source must remain present and fixture-only', () => {

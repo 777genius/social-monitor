@@ -15,9 +15,13 @@ export function createSourceCertificationRequirementPolicy({
       violations.push(`${sourceCertificationPath}: fixture certification must remain deterministic_no_network`);
     }
 
+    const certifiedProviders = sourceCertification.certifiedProviders ?? [];
     const certified = new Map(
-      (sourceCertification.certifiedProviders ?? []).map((provider) => [provider.providerKey, provider]),
+      certifiedProviders.map((provider) => [provider.providerKey, provider]),
     );
+    if (certified.size !== certifiedProviders.length) {
+      violations.push(`${sourceCertificationPath}: duplicate certified provider key`);
+    }
 
     for (const providerKey of requiredProviderSignals.keys()) {
       const provider = certified.get(providerKey);
@@ -32,9 +36,6 @@ export function createSourceCertificationRequirementPolicy({
       if (!['fixture_ready', 'live_beta_ready'].includes(provider.runtimeReadiness)) {
         violations.push(`${sourceCertificationPath}: provider "${providerKey}" has unsupported runtimeReadiness`);
       }
-      if (provider.liveBetaReady === true && evidence.externalBetaStatus !== 'passed') {
-        violations.push(`${sourceCertificationPath}: provider "${providerKey}" cannot be liveBetaReady before evidence passes`);
-      }
       if (
         provider.liveBetaReady !== true &&
         (!Array.isArray(provider.liveBetaBlockers) || provider.liveBetaBlockers.length === 0)
@@ -45,7 +46,10 @@ export function createSourceCertificationRequirementPolicy({
       validateSourceCertificationLiveEvidenceRequirements(providerKey, provider);
     }
 
-    for (const provider of sourceCertification.certifiedProviders ?? []) {
+    for (const provider of certifiedProviders) {
+      if (provider.liveBetaReady === true && evidence.externalBetaStatus !== 'passed') {
+        violations.push(`${sourceCertificationPath}: provider "${provider.providerKey}" cannot be liveBetaReady before evidence passes`);
+      }
       if (
         provider.readinessState === 'enabled_beta' &&
         provider.runtimeReadiness !== 'deferred' &&
@@ -116,7 +120,6 @@ export function createSourceCertificationRequirementPolicy({
         violations.push(`${sourceCertificationPath}: provider "${providerKey}" requirement "${requirement.signalId}" must use expected artifactEnv`);
       }
       if (
-        requirement.artifactEnv !== undefined &&
         (typeof requirement.artifactEnv !== 'string' || !requirement.artifactEnv.endsWith('_EVIDENCE_PATH'))
       ) {
         violations.push(`${sourceCertificationPath}: provider "${providerKey}" requirement "${requirement.signalId}" artifactEnv must end with _EVIDENCE_PATH`);
