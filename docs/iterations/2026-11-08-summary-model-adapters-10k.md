@@ -4,7 +4,7 @@ Status: **PLAN ONLY — implementation is prohibited until the critical-review r
 
 ## Why / exact bounded context
 
-The `libs/summary/adapters/model/` infrastructure boundary contains 93 non-`*.spec.ts` / `*.test.ts` TypeScript files (~601 KB of source), including OpenAI Responses (~249 KB), agent-runtime (~186 KB), deterministic (~37 KB), gateway-LLM (~43 KB), and shared support (~86 KB). These are **inventory byte counts, not verified LOC**. This is a substantial enough area to target ≥10,000 unique original implementation LOC without touching unrelated bounded contexts.
+The `libs/summary/adapters/model/` infrastructure boundary contains 93 non-`*.spec.ts` / `*.test.ts` TypeScript files (~601 KB of source), including OpenAI Responses (~249 KB), agent-runtime (~186 KB), deterministic (~37 KB), gateway-LLM (~43 KB), and shared support (~86 KB). These preliminary inventory byte counts were followed by the exact pinned-SHA physical-LOC inventory below. This is a substantial enough area to target ≥10,000 unique original implementation LOC without touching unrelated bounded contexts.
 
 The code is already partly modular; this is **not** permission to create generic provider frameworks or move code just to inflate a diff. The desired outcome is clear responsibility and import boundaries for provider transport, provider-specific prompting/schema/parsing, execution attestation, budgets and model orchestration, with unchanged public ports and runtime behavior.
 
@@ -19,7 +19,7 @@ The code is already partly modular; this is **not** permission to create generic
 
 ## Qualification: minimum 10,000 original implementation LOC
 
-Before implementation, produce a file-level baseline inventory from the pinned main SHA, excluding generated, test, fixture and documentation LOC. Record actual physical LOC for each targeted source file, export surface and dependent consumers. After each slice, record **unique original LOC whose implementation responsibility or dependency boundary was materially refactored**; count each original line at most once. Mechanical formatting, comments, duplicate copies, renamed-but-otherwise-unimproved files and newly added tests do **not** contribute. Qualify the PR only with auditable ≥10,000 unique original implementation LOC and source-to-destination mapping, accompanied by `git diff --find-renames` and imports/export parity checks. Do not claim the threshold based on this preliminary byte estimate.
+The pinned baseline inventory is available at `docs/iterations/2026-11-08-summary-model-adapters-10k-inventory.md`: **84 eligible source files, 15,318 physical LOC**, after excluding tests, `*.spec-support.ts`, `*.fixture.ts`, and `*-test-fixture.ts`. Physical LOC (including comments/blanks) is **not** meaningful original implementation LOC, and none of it is claimed as refactored yet. Before implementation, use the file-level baseline inventory from the pinned main SHA, excluding generated, test, fixture and documentation LOC. Record actual physical LOC for each targeted source file, export surface and dependent consumers. After each slice, record **unique original LOC whose implementation responsibility or dependency boundary was materially refactored**; count each original line at most once. Mechanical formatting, comments, duplicate copies, renamed-but-otherwise-unimproved files and newly added tests do **not** contribute. Qualify the PR only with auditable ≥10,000 unique original implementation LOC and source-to-destination mapping, accompanied by `git diff --find-renames` and imports/export parity checks. Do not claim the threshold based on this preliminary byte estimate.
 
 If real audited scope cannot reach 10k while remaining cohesive, expand **only within this bounded context** with another justified responsibility slice; do not include unrelated work or pad code.
 
@@ -91,4 +91,4 @@ Decision: **conditional pass**. The final implementation must preserve strict/ne
 
 Decision: **conditional pass**. The three internal critical rounds are complete, but these are NOT independent CodeRabbit/ReviewRouter/human approvals and are NOT final acceptance. First collect the exact source LOC + consumer inventory, then begin implementation.
 
-**All three internal rounds recorded. Baseline LOC inventory is still pending; implementation has NOT started.**
+**All three internal rounds recorded; pinned baseline inventory complete (84 source files / 15,318 physical LOC). PRE-IMPLEMENTATION GATES COMPLETE. Implementation may now begin, with zero refactored LOC accepted until code/test evidence exists.**
