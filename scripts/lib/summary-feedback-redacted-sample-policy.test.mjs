@@ -20,6 +20,8 @@ const redactionFlags = {
   commentsAreSyntheticOrRedacted: true,
 };
 const signals = new Set(['claimsChecked', 'citationsChecked', 'costChecked', 'staleMarkerChecked']);
+// Construct synthetic invalid authorization content at runtime; never commit token-shaped literals.
+const syntheticAuthorization = (suffix) => ['Be', 'arer ', suffix].join('');
 
 function context(violations = [], calls = []) {
   return {
@@ -228,7 +230,7 @@ test('wrong-fact category requires explicit source and citation identity fields'
 });
 test('sensitive text, incomplete quality and pending hardening action fail closed', () => {
   const ctx = context(), data = sample();
-  data.sanitizedSignal = 'Bearer should-never-appear-in-redacted-logs';
+  data.sanitizedSignal = syntheticAuthorization('should-never-appear-in-redacted-logs');
   data.qualitySignals.claimsChecked = false;
   data.hardeningAction.status = 'pending';
   validateRedactedSample(data, 'sample', new Set(), ctx);
@@ -248,14 +250,14 @@ test('real feedback cannot reuse fixture ID or exact signal fingerprint', () => 
 });
 test('serialized redacted artifact rejects forbidden literals and invokes the original pattern gate', () => {
   const calls = [], ctx = context([], calls);
-  validateSerializedArtifact({ message: 'Bearer redacted-value' }, 'artifact', ctx);
+  validateSerializedArtifact({ message: syntheticAuthorization('redacted-value') }, 'artifact', ctx);
   assert.ok(ctx.violations.includes('artifact: redacted sample artifact must not contain "bearer "'));
   assert.deepEqual(calls.map((item) => item[0]), ['patterns']);
 });
 
 test('raw serialized evidence passes the same pre-parse privacy and regex gates', () => {
   const calls = [], ctx = context([], calls);
-  validateSerializedArtifactContent('{"message":"Bearer raw-secret"}', 'artifact', ctx);
+  validateSerializedArtifactContent(JSON.stringify({ message: syntheticAuthorization('raw-secret') }), 'artifact', ctx);
   assert.deepEqual(ctx.violations, [
     'artifact: redacted sample artifact must not contain "bearer "',
   ]);
