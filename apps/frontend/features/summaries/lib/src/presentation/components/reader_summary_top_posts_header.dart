@@ -12,10 +12,12 @@ class _TopPostsHeader extends StatelessWidget {
     required this.onDenseViewChanged,
     required this.onSortOrderChanged,
     this.selectedOnly = true,
+    this.titleOverride,
     this.onSelectedOnlyChanged,
   });
 
   final bool selectedOnly;
+  final String? titleOverride;
   final ValueChanged<bool>? onSelectedOnlyChanged;
   final int visibleCount;
   final int availableCount;
@@ -78,7 +80,7 @@ class _TopPostsHeader extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          selectedOnly ? 'Top posts' : 'All posts',
+          titleOverride ?? (selectedOnly ? 'Top posts' : 'All posts'),
           style: textTheme.titleMedium?.copyWith(
             fontWeight: FontWeight.w800,
             letterSpacing: 0,
