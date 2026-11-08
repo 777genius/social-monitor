@@ -32,7 +32,7 @@ test('forbidden literal prefixes are rejected without losing the original diagno
 
 test('authorization and query credential patterns detect unmasked values', () => {
   assert.ok(literal('Authorization: unreplaced').some((x) => x.endsWith('pattern "header credential"')));
-  assert.ok(literal('access_token=unmasked').some((x) => x.endsWith('pattern "query credential"')));
+  assert.ok(literal('access_token=visible-value').some((x) => x.endsWith('pattern "query credential"')));
 });
 
 test('masked query and authorization values are allowed', () => {
@@ -90,7 +90,7 @@ test('real nested arrays retain original diagnostic path format and order', () =
 });
 
 test('sensitive field keys are checked recursively and identify their full paths', () => {
-  const v = structured({ items: [{ raw_access_token: 'unmasked' }] });
+  const v = structured({ items: [{ raw_access_token: 'visible-value' }] });
   assert.deepEqual(v, ['job-a: artifact must not contain unredacted sensitive key "items.0.raw_access_token"']);
 });
 
