@@ -1,8 +1,5 @@
 import 'dart:io';
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
@@ -130,23 +127,11 @@ Future<void> _captureFallbackFixture(
   expect(find.text('Top posts by likes'), findsOneWidget);
   expect(tester.takeException(), isNull);
 
-  if (Platform.environment['CAPTURE_READER_FALLBACK'] != '1') return;
-
-  final boundary = tester.renderObject<RenderRepaintBoundary>(
-    find.byKey(const ValueKey('source-only-screenshot')),
-  );
-  final image = await boundary.toImage(pixelRatio: 1);
-  try {
-    final data = await image.toByteData(format: ui.ImageByteFormat.png);
-    expect(data, isNotNull);
-    final dir = Directory('reader-fallback-visuals');
-    dir.createSync(recursive: true);
-    File('${dir.path}/$filename').writeAsBytesSync(
-      data!.buffer.asUint8List(),
-      flush: true,
+  if (Platform.environment['CAPTURE_READER_FALLBACK'] == '1') {
+    await expectLater(
+      find.byKey(const ValueKey('source-only-screenshot')),
+      matchesGoldenFile('reader-fallback-visuals/$filename'),
     );
-  } finally {
-    image.dispose();
   }
 }
 
