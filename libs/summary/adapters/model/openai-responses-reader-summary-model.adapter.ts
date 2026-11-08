@@ -13,14 +13,12 @@ import type {
   ProviderReaderSummaryAttempt,
   ReaderSummaryDailyEditorialAttempt,
 } from "../../ports";
-import { buildReaderSummary, primaryReaderSummaryEvidence } from "../../domain";
+import { primaryReaderSummaryEvidence } from "../../domain";
 import {
   assertOpenAiReaderSummaryClaimCitationIds,
   assertOpenAiReaderSummaryDraftShape,
-  buildOpenAiReaderSummaryLineage,
   extractOpenAiOutputText,
   normalizeOpenAiReaderSummaryDraft,
-  OpenAiReaderSummaryOutputParseError,
   parseOpenAiReaderSummaryJsonObject,
   resolveOpenAiReaderSummaryUsage,
 } from "./openai-responses-reader-summary-model-support";
@@ -29,8 +27,9 @@ import {
   buildOpenAiReaderSummaryPromptPayload,
   currentReaderSummaryPromptRelease,
 } from "./openai-responses-reader-summary-prompt";
-import { buildReaderSummaryEvidenceCitationMap } from "./reader-summary-evidence-citation-map";
 import { readerSummaryWriterSchema } from "./openai-responses-reader-summary-schema";
+import { classifyOpenAiReaderSummaryModelError } from "./openai-responses-reader-summary-error-policy";
+import { buildOpenAiReaderSummaryNoSignalAttempt } from "./openai-responses-reader-summary-no-signal";
 
 import {
   ReaderSummaryModelProviderError,
@@ -272,43 +271,7 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
   }
 
   classifyError(error: unknown): ReaderSummaryModelFailure {
-    if (error instanceof ReaderSummaryModelProviderError) {
-      return error.failure;
-    }
-
-    if (error instanceof OpenAiReaderSummaryOutputParseError) {
-      return {
-        kind: "invalid_schema",
-        retryable: true,
-        message: error.message,
-      };
-    }
-
-    if (error instanceof Error && error.name === "AbortError") {
-      return {
-        kind: "provider_unavailable",
-        retryable: true,
-        message: "OpenAI reader summary request timed out",
-      };
-    }
-
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Unknown reader summary model error";
-    const lower = message.toLowerCase();
-
-    if (lower.includes("budget")) {
-      return { kind: "budget_exceeded", retryable: false, message };
-    }
-    if (lower.includes("citation")) {
-      return { kind: "citation_validation_failed", retryable: false, message };
-    }
-    if (lower.includes("schema") || lower.includes("json")) {
-      return { kind: "invalid_schema", retryable: false, message };
-    }
-
-    return { kind: "unknown", retryable: false, message };
+    return classifyOpenAiReaderSummaryModelError(error);
   }
 
   private buildRoute(): ReaderSummaryModelRoute {
@@ -324,53 +287,12 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
     input: ReaderSummaryModelInput,
     selectedRoute: ReaderSummaryModelRoute,
   ): ProviderReaderSummaryAttempt {
-    const citationMap = buildReaderSummaryEvidenceCitationMap(
-      input.evidence.selectedEvidence,
-    );
-    const noSignalDraft = {
-      headline: "No reliable workspace signal yet",
-      executiveSummary:
-        "No eligible evidence items were available for this summary window.",
-      topStories: [],
-      interestHighlights: [],
-      repeatedSignals: [],
-      risksAndUnknowns: [
-        {
-          description:
-            "The summary window did not contain enough primary evidence to produce claims.",
-          reason: "insufficient_evidence" as const,
-        },
-      ],
-      citationMap,
-      qualityFlags: ["no_signal", "limited_sources"] as const,
-      confidence: {
-        level: "none" as const,
-        score: 0,
-        rationale: "No primary evidence was selected for the summary window.",
-      },
-      lineage: buildOpenAiReaderSummaryLineage(
-        input,
-        selectedRoute,
-        this.evalDatasetVersion,
-      ),
+    return buildOpenAiReaderSummaryNoSignalAttempt({
+      input,
+      selectedRoute,
+      evalDatasetVersion: this.evalDatasetVersion,
       usage: this.estimate(input, selectedRoute),
-      noSignalReason:
-        "No eligible evidence items selected for this summary scope.",
-    };
-
-    return {
-      route: selectedRoute,
-      draft: {
-        ...noSignalDraft,
-        content: buildReaderSummary({
-          ...noSignalDraft,
-          storyClusters: input.evidence.clusters,
-          sourceWindow: input.evidence.sourceWindow,
-          selectedEvidence: input.evidence.selectedEvidence,
-          editorialSlate: input.evidence.editorialSlate,
-        }),
-      },
-    };
+    });
   }
 
   private async createResponse(
