@@ -5,7 +5,7 @@ import {
   validateNoRealArtifactFixtureMarkers,
 } from './security-final-sweep-artifact-shape.mjs';
 
-const forbiddenArtifactKeys = new Set(['token', 'api_key', 'rawpayload']);
+const forbiddenArtifactKeys = new Set(['token', 'api_key', 'apikey', 'rawpayload']);
 const forbiddenRealArtifactMarkerPattern = /(?:^|[-_:.\s])(example|fixture|synthetic|mock|test)(?:$|[-_:.\s])/i;
 function context(violations) {
   return { forbiddenArtifactKeys, forbiddenRealArtifactMarkerPattern, violations };
