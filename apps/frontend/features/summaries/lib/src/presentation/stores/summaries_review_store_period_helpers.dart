@@ -98,3 +98,23 @@ bool _canShowNextSummaryPeriod(SummariesReviewStore store) {
     store.selectedSummaryPeriod.endedAt,
   );
 }
+
+/// Keep a previously loaded article only when its exact day is selected.
+/// Preserves history periods for the calendar while withholding stale content.
+WorkspaceSummarySnapshot? _summarySnapshotForSelectedDailyWindow(
+  WorkspaceSummarySnapshot? snapshot,
+  SummaryPeriod selectedPeriod, {
+  required bool enforceExactWindow,
+}) {
+  final current = snapshot?.current;
+  if (!enforceExactWindow ||
+      snapshot == null ||
+      current == null ||
+      _sameSummaryPeriodWindow(current.period, selectedPeriod)) {
+    return snapshot;
+  }
+  return WorkspaceSummarySnapshot(
+    availablePeriods: _snapshotSummaryPeriods(snapshot),
+    availablePeriodsAreComplete: snapshot.availablePeriodsAreComplete,
+  );
+}
