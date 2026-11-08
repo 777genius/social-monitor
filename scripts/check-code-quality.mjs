@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { globSync } from "node:fs";
 import { relative } from "node:path";
+import { hasStagingRealEvidenceIdentityDelegation } from "./lib/evidence-identity-delegation-guard.mjs";
 
 const violations = [];
 
@@ -419,9 +420,17 @@ for (const file of [
       "evidence provenance validators must use scripts/lib/evidence-provenance.mjs instead of local copies",
     );
   }
+  const delegatedIdentityValidation =
+    normalized === "scripts/check-staging-reliability-evidence.mjs" &&
+    existsSync("scripts/lib/staging-reliability-artifact-guards.mjs") &&
+    hasStagingRealEvidenceIdentityDelegation(
+      source,
+      readFileSync("scripts/lib/staging-reliability-artifact-guards.mjs", "utf8"),
+    );
   if (
     source.includes("validateEvidenceArtifactProvenance") &&
-    !source.includes("validateRealEvidenceIdentityStrings")
+    !source.includes("validateRealEvidenceIdentityStrings") &&
+    !delegatedIdentityValidation
   ) {
     addViolation(
       file,
