@@ -8,7 +8,9 @@ import '../../application/commands/decide_topic_recommendation_command.dart';
 import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/generated_summary.dart';
 import '../../domain/entities/reader_summary_topic_recommendation.dart';
+import '../../domain/value_objects/summary_period.dart';
 import '../components/reader_summary_top_posts_section_sliver.dart';
+import '../components/reader_summary_unpublished_posts_sliver.dart';
 import '../components/summary_detail_panel.dart';
 import '../components/summary_generation_status_presenter.dart';
 import '../components/workspace_summary_panel.dart';
@@ -167,6 +169,10 @@ class _SummariesBody extends StatelessWidget {
     final reviewStore = store;
 
     final topPostsSummary = _summaryForTopPosts(workspaceSummaryState);
+    final showPostFallback = store.allowUnpublishedDays &&
+        readerPostsBrowseStore != null &&
+        store.selectedSummaryPeriodPreset == SummaryPeriodPreset.daily &&
+        _isMissingWorkspaceSummary(workspaceSummaryState);
     return SliverMainAxisGroup(
       slivers: [
         SliverToBoxAdapter(
@@ -213,11 +219,24 @@ class _SummariesBody extends StatelessWidget {
               ),
             ),
             includeTopPosts: false,
+            showPostFallback: showPostFallback,
             showRefreshSchedule: store.isViewingLatestWorkspaceSummary,
             onRefreshDue: () => unawaited(store.loadWorkspaceSummary()),
             contentPadding: contentPadding,
           ),
         ),
+        if (showPostFallback)
+          ReaderSummaryUnpublishedPostsSliver(
+            store: readerPostsBrowseStore!,
+            period: store.selectedSummaryPeriod,
+            contentPadding: horizontalPadding,
+            onOpenUrl: (url) => unawaited(
+              store.openReaderSourceUrl(
+                summaryId: store.scope.workspaceId,
+                canonicalUrl: url,
+              ),
+            ),
+          ),
         if (topPostsSummary != null)
           ReaderSummaryTopPostsSectionSliver(
             summary: topPostsSummary,
@@ -253,6 +272,15 @@ class _SummariesBody extends StatelessWidget {
     );
   }
 }
+
+bool _isMissingWorkspaceSummary(
+  AsyncViewState<WorkspaceSummarySnapshot> state,
+) => switch (state) {
+  ReadyViewState<WorkspaceSummarySnapshot>(:final value) =>
+    value.current == null,
+  EmptyViewState<WorkspaceSummarySnapshot>() => true,
+  _ => false,
+};
 
 ReaderSummary? _summaryForTopPosts(
   AsyncViewState<WorkspaceSummarySnapshot> state,
