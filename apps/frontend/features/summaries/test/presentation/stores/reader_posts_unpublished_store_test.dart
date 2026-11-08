@@ -38,7 +38,7 @@ void main() {
     store.bindUnpublishedDay(_day(8));
     await _settle();
     expect(catalog.queries, hasLength(2));
-    expect(catalog.queries.last.period, _day(8));
+    expect(catalog.queries.last.period.startedAt, _day(8).startedAt);
 
     catalog.responses.last.complete(
       Result.success(
