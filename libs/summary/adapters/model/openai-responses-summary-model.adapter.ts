@@ -23,8 +23,6 @@ import {
   resolveOpenAiApiKey,
 } from './openai-api-key-source';
 import {
-  classifyOpenAiHttpFailure,
-  readOpenAiResponseBody,
   SummaryModelProviderError,
 } from './openai-responses-summary-model-error';
 import {
@@ -34,7 +32,6 @@ import {
 } from './openai-responses-summary-response-parser';
 import { openAiSummaryJsonSchema } from './openai-responses-summary-schema';
 import {
-  asRecord,
   nonEmptyOrFallback,
   nonNegativeNumberOrFallback,
   parseNonNegativeNumber,
@@ -42,7 +39,10 @@ import {
   positiveIntegerOrFallback,
 } from './openai-responses-summary-json';
 
-type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
+import {
+  createOpenAiSummaryResponse,
+  type OpenAiSummaryFetchLike as FetchLike,
+} from './openai-responses-summary-transport';
 
 export type OpenAiResponsesSummaryModelAdapterOptions = {
   readonly apiKey?: string;
@@ -204,7 +204,13 @@ export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
       },
     };
 
-    const responseJson = await this.createResponse(request);
+    const responseJson = await createOpenAiSummaryResponse({
+      request,
+      endpointUrl: this.endpointUrl,
+      apiKey: this.apiKey,
+      timeoutMs: this.timeoutMs,
+      fetchFn: this.fetchFn,
+    });
     const outputText = extractOpenAiSummaryOutputText(responseJson);
 
     if (outputText === undefined) {
@@ -358,61 +364,7 @@ export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
     };
   }
 
-  private async createResponse(
-    request: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 
-    try {
-      const response = await this.fetchFn(this.endpointUrl, {
-        method: 'POST',
-        headers: {
-          authorization: `Bearer ${this.apiKey}`,
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify(request),
-        signal: controller.signal,
-      });
-      const body = await readOpenAiResponseBody(response);
-
-      if (!response.ok) {
-        throw new SummaryModelProviderError(
-          classifyOpenAiHttpFailure(response.status, body),
-        );
-      }
-
-      const record = asRecord(body);
-
-      if (record === null) {
-        throw new SummaryModelProviderError({
-          kind: 'invalid_schema',
-          retryable: false,
-          message: 'OpenAI response body must be a JSON object',
-        });
-      }
-
-      return record;
-    } catch (error) {
-      if (
-        error instanceof SummaryModelProviderError ||
-        (error instanceof Error && error.name === 'AbortError')
-      ) {
-        throw error;
-      }
-
-      throw new SummaryModelProviderError({
-        kind: 'provider_unavailable',
-        retryable: true,
-        message:
-          error instanceof Error
-            ? error.message
-            : 'OpenAI summary request failed',
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
 }
 
 export const resolveOpenAiResponsesSummaryModelOptions = (
