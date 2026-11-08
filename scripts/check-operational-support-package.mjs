@@ -1,4 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs';
+import {
+  validateDiagnosticFieldAttachment,
+  validateSafeDiagnosticFields,
+} from './lib/operational-support-diagnostic-fields.mjs';
 
 const contractPath = 'ops/release/operational-support-package.json';
 const packagePath = 'package.json';
@@ -171,7 +175,7 @@ function validateTriageFlows() {
       if (typeof alert.userVisibleState !== 'string' || alert.userVisibleState.trim().length === 0) {
         violations.push(`${contract.alertArtifact}: alert "${flow.alertId}" must expose userVisibleState`);
       }
-      validateDiagnosticFieldAttachment(alert.safeDiagnosticFields, flow, `${contract.alertArtifact}: alert "${flow.alertId}"`);
+      validateDiagnosticFieldAttachment(alert.safeDiagnosticFields, flow, `${contract.alertArtifact}: alert "${flow.alertId}"`, contract, violations);
     }
 
     if (panel === undefined) {
@@ -182,7 +186,7 @@ function validateTriageFlows() {
     ) {
       violations.push(`${contract.dashboardArtifact}: panel "${flow.dashboardPanelId}" must define safeDiagnosticQuestion`);
     } else {
-      validateDiagnosticFieldAttachment(panel.safeDiagnosticFields, flow, `${contract.dashboardArtifact}: panel "${flow.dashboardPanelId}"`);
+      validateDiagnosticFieldAttachment(panel.safeDiagnosticFields, flow, `${contract.dashboardArtifact}: panel "${flow.dashboardPanelId}"`, contract, violations);
     }
 
     if (drill === undefined) {
@@ -202,52 +206,12 @@ function validateTriageFlows() {
     if (!runbook.includes(flow.runbookAnchor.replaceAll('-', ' '))) {
       violations.push(`${contract.runbook}: missing runbook anchor text for "${flow.runbookAnchor}"`);
     }
-    validateSafeDiagnosticFields(flow);
+    validateSafeDiagnosticFields(flow, contract, contractPath, violations);
   }
 
   for (const flowId of requiredFlowIds) {
     if (!flowIds.has(flowId)) {
       violations.push(`${contractPath}: missing required triage flow "${flowId}"`);
-    }
-  }
-}
-
-function validateSafeDiagnosticFields(flow) {
-  if (!Array.isArray(flow.safeDiagnosticFields) || flow.safeDiagnosticFields.length === 0) {
-    violations.push(`${contractPath}: flow "${flow.flowId}" must define safeDiagnosticFields`);
-    return;
-  }
-
-  validateSafeDiagnosticFieldList(flow.safeDiagnosticFields, `${contractPath}: flow "${flow.flowId}"`);
-}
-
-function validateDiagnosticFieldAttachment(fields, flow, label) {
-  if (!Array.isArray(fields) || fields.length === 0) {
-    violations.push(`${label} must define safeDiagnosticFields`);
-    return;
-  }
-
-  validateSafeDiagnosticFieldList(fields, label);
-  const attachedFields = new Set(fields);
-  for (const field of flow.safeDiagnosticFields ?? []) {
-    if (!attachedFields.has(field)) {
-      violations.push(`${label} safeDiagnosticFields missing "${field}" from flow "${flow.flowId}"`);
-    }
-  }
-}
-
-function validateSafeDiagnosticFieldList(fields, label) {
-  const forbidden = new Set(contract.forbiddenDiagnosticFields ?? []);
-
-  for (const field of fields) {
-    const normalized = String(field).toLowerCase();
-    if (!/^[a-z0-9_]+$/.test(normalized)) {
-      violations.push(`${label}: unsafe diagnostic field "${field}"`);
-    }
-    for (const forbiddenField of forbidden) {
-      if (normalized.includes(String(forbiddenField).toLowerCase())) {
-        violations.push(`${label}: contains forbidden diagnostic field "${field}"`);
-      }
     }
   }
 }
