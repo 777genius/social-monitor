@@ -27,6 +27,29 @@ test('staging smoke configurations retain canonical order and unique artifact ID
 });
 
 test('known smoke configurations return exactly the declared env and runner values', () => {
+  assert.deepEqual(stagingReliabilitySmokeConfigs().map(({ artifactId, runner, requiredEnv }) => ({
+    artifactId, runner, requiredEnv,
+  })), [
+    {
+      artifactId: 'rabbitmq-staging-drill-output',
+      runner: 'scripts/capture-rabbitmq-reliability-drill.ts',
+      requiredEnv: { RABBITMQ_URL: 'amqps://release:...@rabbitmq.staging.social-monitor.invalid:5671' },
+    },
+    {
+      artifactId: 'postgres-restore-drill-output',
+      runner: 'scripts/capture-postgres-restore-drill.ts',
+      requiredEnv: { DATABASE_URL: 'postgresql://release:...@db.staging.social-monitor.invalid:5432/social_monitor' },
+    },
+    {
+      artifactId: 'durable-backend-e2e-output',
+      runner: 'scripts/capture-durable-backend-e2e-loop.ts',
+      requiredEnv: {
+        API_BASE_URL: 'https://api.staging.social-monitor.invalid',
+        INFINITY_CONTEXT_TOKEN: 'secret-ref:infinity-context-token',
+        INFINITY_CONTEXT_URL: 'https://memory.staging.social-monitor.invalid',
+      },
+    },
+  ]);
   for (const item of stagingReliabilitySmokeConfigs()) {
     assert.deepEqual(config(item.artifactId), item);
   }
