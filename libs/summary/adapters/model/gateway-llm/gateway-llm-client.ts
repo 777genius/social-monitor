@@ -135,13 +135,6 @@ export class GatewayLlmClient implements AgentRuntimeClientPort {
   }
 }
 
-const objectOutput = (value: unknown): Record<string, unknown> => {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("Gateway structured output is not an object");
-  }
-  return value as Record<string, unknown>;
-};
-
 const observation = (failure: LlmFailure): "busy" | "unauthorized" | "other" =>
   failure.code === "busy" ? "busy" : failure.code === "unauthorized" ? "unauthorized" : "other";
 
