@@ -32,6 +32,7 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
     this.onExport,
     this.collectionStatsSummary,
     this.calendarNow,
+    this.allowUnpublishedDates = false,
   });
 
   final SummaryPeriod selectedPeriod;
@@ -48,6 +49,7 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
   final VoidCallback? onExport;
   final ReaderSummary? collectionStatsSummary;
   final DateTime? calendarNow;
+  final bool allowUnpublishedDates;
 
   @override
   Widget build(BuildContext context) {
@@ -176,6 +178,8 @@ class WorkspaceSummaryPeriodToolbar extends StatelessWidget {
         selectedPreset: selectedPreset,
         selectablePeriods: selectablePeriods,
         calendarNow: calendarNow,
+        allowUnpublishedDates: allowUnpublishedDates &&
+            selectedPreset == SummaryPeriodPreset.daily,
       ),
     );
 
