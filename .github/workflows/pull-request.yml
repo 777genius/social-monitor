@@ -779,21 +779,6 @@ jobs:
       - name: Verify generated Flutter client contract
         run: npm run check:flutter-client-contract
 
-      - name: Render no-summary source-post visual fixtures
-        working-directory: apps/frontend
-        env:
-          CAPTURE_READER_FALLBACK: '1'
-        run: flutter test --update-goldens features/summaries/test/presentation/components/reader_summary_unpublished_visual_fixture_test.dart
-
-      - name: Upload no-summary reader visual fixtures
-        if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
-        with:
-          name: reader-fallback-visual-fixtures
-          path: apps/frontend/features/summaries/test/presentation/components/reader-fallback-visuals/*.png
-          if-no-files-found: warn
-          retention-days: 7
-
       - name: Verify frontend architecture and behavior
         working-directory: apps/frontend
         run: |
