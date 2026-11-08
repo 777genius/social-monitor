@@ -42,6 +42,7 @@ class WorkspaceSummaryPanel extends StatelessWidget {
     required this.onOpenUrl,
     this.includeTopPosts = true,
     this.showPostFallback = false,
+    this.allowUnpublishedDates = false,
     this.showRefreshSchedule = false,
     this.onRefreshDue,
     this.contentPadding = const EdgeInsets.only(top: AppSpacing.md),
@@ -89,6 +90,7 @@ class WorkspaceSummaryPanel extends StatelessWidget {
   final void Function(ReaderSummary summary, String url) onOpenUrl;
   final bool includeTopPosts;
   final bool showPostFallback;
+  final bool allowUnpublishedDates;
   final bool showRefreshSchedule;
   final VoidCallback? onRefreshDue;
   final EdgeInsets contentPadding;
@@ -261,6 +263,7 @@ class WorkspaceSummaryPanel extends StatelessWidget {
       isLoading: state is LoadingViewState<WorkspaceSummarySnapshot>,
       exportSummary: exportSummary,
       showRefreshSchedule: showRefreshSchedule,
+      allowUnpublishedDates: allowUnpublishedDates,
       onRefreshDue: onRefreshDue,
       contentPadding: contentPadding,
       child: child,
