@@ -125,7 +125,7 @@ function validateArtifactSurface(surface, surfaceLabel, surfaceIds, sourceExport
     violations.push(`${surfaceLabel}: safeDiagnosticFields must be a non-empty array`);
   }
 
-  for (const field of surface.safeDiagnosticFields ?? []) {
+  for (const field of Array.isArray(surface.safeDiagnosticFields) ? surface.safeDiagnosticFields : []) {
     if (typeof field !== 'string' || field.trim().length === 0) {
       violations.push(`${surfaceLabel}: safeDiagnosticFields must contain non-empty strings`);
       continue;
