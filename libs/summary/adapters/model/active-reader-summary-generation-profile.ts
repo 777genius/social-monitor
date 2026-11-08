@@ -1,16 +1,25 @@
 import {
-  canonicalJsonSha256,
-  executionAttestationOutputMatches,
   gatewayLlmRuntimeEngine,
-  isConcreteRuntimePackageVersion,
-  isSha256Hex,
-  subscriptionRuntimeEngine,
 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
-import type { AgentRuntimeTaskCommand, AgentRuntimeTaskResult } from "../../ports";
-import type {
-  ReaderSummaryAttestedTaskRole,
-  VerifiedReaderSummaryExecutionAttestationSink,
-} from "./reader-summary-execution-attestation";
+import {
+  activeReaderSummaryProvider,
+  mimoReaderSummaryBackend,
+  mimoReaderSummaryModel,
+} from "./reader-summary-runtime-contract";
+export {
+  activeReaderSummaryProvider,
+  mimoReaderSummaryBackend,
+  mimoReaderSummaryModel,
+  mimoPresentationReasoningEffort,
+  mimoPresentationMaxTimeoutMs,
+  activeReaderSummaryPurposes,
+  frozenLegacyReaderSummaryRecoveryContract,
+  type FrozenLegacyReaderSummaryRecoveryContract,
+} from "./reader-summary-runtime-contract";
+export {
+  assertMimoReaderSummaryExecution,
+  verifyAndRecordMimoDailyExecution,
+} from "./reader-summary-mimo-attestation";
 import {
   activeReaderSummaryModel,
   activeReaderSummaryReasoningEffort,
@@ -21,7 +30,6 @@ import {
   resolveCodexGatewayReaderSummaryRoute,
 } from "./codex-reader-summary-route";
 
-export const activeReaderSummaryProvider = "codex" as const;
 // Codex identities and gateway pairs live in their own module; re-exported here
 // so every adapter and verifier keeps one profile entry point.
 export {
@@ -33,12 +41,6 @@ export {
   readerSummaryGatewayTransport,
   resolveCodexGatewayReaderSummaryRoute,
 } from "./codex-reader-summary-route";
-export const mimoReaderSummaryBackend = "xiaomi-mimo-token-plan" as const;
-export const mimoReaderSummaryModel = "mimo-v2.6-pro" as const;
-export const mimoPresentationReasoningEffort = "none" as const;
-// At most 32 independent story tasks must fit inside the daily execution lease.
-export const mimoPresentationMaxTimeoutMs = 60_000;
-
 /**
  * Gateway-only backends. They run through account-gateway profiles, so their
  * physical model and reasoning policy come from the gateway route, never from
@@ -330,100 +332,6 @@ export const resolveReaderSummaryDailyTaskIdentityFromEnv = (
 
 const backendMessage =
   "AGENT_RUNTIME_READER_SUMMARY_BACKEND must be openai-chatgpt, xiaomi-mimo-token-plan, kimi-code or openrouter";
-
-export const activeReaderSummaryPurposes = Object.freeze({
-  generate: "social_monitor.reader_summary.generate.v2",
-  dailyEditorial: "social_monitor.reader_summary.daily_editorial.plan.v1",
-  repair: "social_monitor.reader_summary.repair.v2",
-  topicLabel: "social_monitor.reader_summary.topic_map.label.v2",
-  topicRelations:
-    "social_monitor.reader_summary.topic_map.verify_relations.v2",
-  storyRelations:
-    "social_monitor.reader_summary.verify_story_relations.v2",
-  relatedTopicRelations:
-    "social_monitor.reader_summary.verify_related_topic_relations.v2",
-  promotionPresentation:
-    "social_monitor.reader_summary.promotion_presentation.v3",
-  dailyCanonicalRecovery:
-    "social_monitor.reader_summary.daily.canonical_recovery.v2",
-  weeklyReview: "social_monitor.reader_summary.weekly.review.v2",
-  weeklyGenerate: "social_monitor.reader_summary.weekly.generate.v2",
-} as const);
-
-const mimoDailyPurposeByRole = Object.freeze({
-  topic_label: activeReaderSummaryPurposes.topicLabel,
-  topic_relation: activeReaderSummaryPurposes.topicRelations,
-  story_relation: activeReaderSummaryPurposes.storyRelations,
-  related_topic_relation: activeReaderSummaryPurposes.relatedTopicRelations,
-} as const);
-
-export const assertMimoReaderSummaryExecution = (params: {
-  readonly command: AgentRuntimeTaskCommand;
-  readonly result: AgentRuntimeTaskResult;
-  readonly purpose: string;
-}): NonNullable<AgentRuntimeTaskResult["executionAttestation"]> => {
-  const attestation = params.result.executionAttestation;
-  if (params.command.purpose !== params.purpose ||
-    params.command.provider !== activeReaderSummaryProvider ||
-    params.command.controls.model !== mimoReaderSummaryModel ||
-    params.command.controls.modelBackend !== mimoReaderSummaryBackend ||
-    params.result.status !== "completed" ||
-    attestation === undefined ||
-    attestation.schemaVersion !== 1 ||
-    attestation.requestId !== params.command.requestId ||
-    attestation.purpose !== params.purpose ||
-    attestation.provider !== activeReaderSummaryProvider ||
-    attestation.model !== mimoReaderSummaryModel ||
-    params.command.controls.reasoningEffort !== (params.purpose === activeReaderSummaryPurposes.promotionPresentation
-      ? mimoPresentationReasoningEffort : activeReaderSummaryReasoningEffort) ||
-    attestation.reasoningEffort !== (params.purpose === activeReaderSummaryPurposes.promotionPresentation
-      ? mimoPresentationReasoningEffort : activeReaderSummaryReasoningEffort) ||
-    attestation.runtimeEngine !== subscriptionRuntimeEngine ||
-    !isConcreteRuntimePackageVersion(attestation.runtimePackageVersion) ||
-    !isSha256Hex(attestation.canonicalRequestSha256) ||
-    !isSha256Hex(attestation.launcherSha256) ||
-    attestation.selectedOutputKind !== "structured_output" ||
-    !isSha256Hex(attestation.selectedOutputSha256) ||
-    !executionAttestationOutputMatches(attestation, params.result)) {
-    throw new Error("Reader summary execution attestation is invalid");
-  }
-  return attestation;
-};
-
-export const verifyAndRecordMimoDailyExecution = async (params: {
-  readonly command: AgentRuntimeTaskCommand;
-  readonly result: AgentRuntimeTaskResult;
-  readonly taskRole: ReaderSummaryAttestedTaskRole;
-  readonly attempt: string;
-  readonly normalizedOutput: unknown;
-  readonly sink?: VerifiedReaderSummaryExecutionAttestationSink;
-}): Promise<void> => {
-  const expectedPurpose = mimoDailyPurposeByRole[
-    params.taskRole as keyof typeof mimoDailyPurposeByRole
-  ];
-  if (expectedPurpose === undefined) {
-    throw new Error("Reader summary execution attestation is invalid");
-  }
-  const attestation = assertMimoReaderSummaryExecution({ ...params, purpose: expectedPurpose });
-  await params.sink?.record({
-    taskRole: params.taskRole,
-    attempt: params.attempt,
-    normalizedOutputSha256: canonicalJsonSha256(params.normalizedOutput),
-    attestation,
-  });
-};
-
-export const frozenLegacyReaderSummaryRecoveryContract = Object.freeze({
-  recoveryOnly: true,
-  reasoningEffort: "xhigh",
-  purposes: Object.freeze({
-    generate: "social_monitor.reader_summary.generate",
-    repair: "social_monitor.reader_summary.repair",
-  }),
-} as const);
-
-export type FrozenLegacyReaderSummaryRecoveryContract =
-  typeof frozenLegacyReaderSummaryRecoveryContract;
 
 export const parseActiveReaderSummaryModel = (
   value: string | undefined,
