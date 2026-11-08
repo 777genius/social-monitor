@@ -258,7 +258,7 @@
     "check:summary-evals": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-summary-evals.ts",
     "check:summary-scan-quality-report": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/check-summary-scan-quality-report.ts",
     "check:summary-quality-loop": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-summary-quality-loop.ts",
-    "check:summary-feedback-hardening": "node scripts/check-summary-feedback-hardening.mjs",
+    "check:summary-feedback-hardening": "node --test scripts/lib/summary-feedback-redacted-sample-policy.test.mjs && node scripts/check-summary-feedback-hardening.mjs",
     "check:summary-feedback-sample-capture": "node scripts/check-summary-feedback-sample-capture.mjs",
     "check:summary-feedback-eval-backlog": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-summary-feedback-eval-backlog.ts",
     "check:summary-memory-sdk": "node scripts/check-summary-memory-sdk.mjs",

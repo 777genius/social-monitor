@@ -9,6 +9,17 @@ import {
   validateRealEvidenceIdentityStrings,
 } from './lib/evidence-provenance.mjs';
 import { readPrivateEvidenceJsonFile } from './lib/evidence-env-file.mjs';
+import {
+  validateArtifactProvenance,
+  validateSampleSource,
+  validateSampleRedaction,
+  validateRedactedSample,
+  validateRealSampleDoesNotCopyFixtureExample,
+  incrementCount,
+  validateSampleRollup,
+  validateSerializedArtifact,
+  validateSerializedArtifactContent,
+} from './lib/summary-feedback-redacted-sample-policy.mjs';
 import { isIsoDateString, parseIsoTimestampMs, sampleSignalFingerprint } from './lib/summary-feedback-evidence-values.mjs';
 
 const evidencePath = 'ops/release/summary-feedback-hardening-evidence.json';
@@ -333,6 +344,32 @@ const blockerIds = new Set((feedback.findings ?? [])
   .map((finding) => finding.feedbackId));
 const evalFixtureIds = new Set((evalOutput.fixtureResults ?? []).map((fixture) => fixture.fixtureId));
 const costFixtureIds = new Set((cost.rows ?? []).map((row) => row.fixtureId));
+const redactedSamplePolicyContext = {
+  violations,
+  redactedSampleEvidenceKind,
+  validateEvidenceArtifactProvenance,
+  validateRealEvidenceIdentityStrings,
+  allowedRealSampleSourceKinds,
+  forbiddenRealSourceFragments,
+  isIsoDateString,
+  requiredSampleRedactionFlags,
+  knownFixtureSampleGuards,
+  sampleSignalFingerprint,
+  allowedSampleCategories,
+  allowedSampleClassifications,
+  allowedSampleSeverities,
+  forbiddenSerializedFragments,
+  requiredSampleSignals,
+  allowedActionTypes,
+  validateCommand,
+  requireExistingPath,
+  evalFixtureIds,
+  costFixtureIds,
+  evalOutputPath,
+  costPath,
+  forbiddenSampleKeys,
+  validateSerializedPatterns,
+};
 const coveredBlockerIds = new Set();
 
 validateRedactedSampleContentSchema(redactedSampleSchema);
@@ -447,7 +484,7 @@ function readPrivateRedactedSampleArtifact(path, label) {
 }
 
 function readRedactedSampleArtifactContent(rawContent, path) {
-  validateSerializedArtifactContent(rawContent, path);
+  validateSerializedArtifactContent(rawContent, path, redactedSamplePolicyContext);
   return JSON.parse(rawContent);
 }
 
@@ -596,9 +633,9 @@ function validateRedactedSampleArtifact(artifact, path, options) {
   if (!isIsoDateString(artifact.generatedAt)) {
     violations.push(`${path}: generatedAt must be an ISO timestamp`);
   }
-  validateSampleSource(artifact.source, path, options);
-  validateArtifactProvenance(artifact.provenance, path, options);
-  validateSampleRedaction(artifact.redaction, path);
+  validateSampleSource(artifact.source, path, options, redactedSamplePolicyContext);
+  validateArtifactProvenance(artifact.provenance, path, options, redactedSamplePolicyContext);
+  validateSampleRedaction(artifact.redaction, path, redactedSamplePolicyContext);
 
   if (!Array.isArray(artifact.samples)) {
     violations.push(`${path}: samples must be an array`);
@@ -624,9 +661,9 @@ function validateRedactedSampleArtifact(artifact, path, options) {
   };
   for (const [index, sample] of artifact.samples.entries()) {
     const sampleLabel = `${path}: samples[${index}]`;
-    validateRedactedSample(sample, sampleLabel, sampleIds);
+    validateRedactedSample(sample, sampleLabel, sampleIds, redactedSamplePolicyContext);
     if (options.allowExample !== true) {
-      validateRealSampleDoesNotCopyFixtureExample(sample, sampleLabel);
+      validateRealSampleDoesNotCopyFixtureExample(sample, sampleLabel, redactedSamplePolicyContext);
     }
     if (typeof sample.category === 'string') {
       incrementCount(rollupInput.categoryCounts, sample.category);
@@ -655,8 +692,8 @@ function validateRedactedSampleArtifact(artifact, path, options) {
     violations.push(`${path}: example artifact must include at least one blocker sample`);
   }
 
-  validateSampleRollup(artifact.rollup, path, artifact.samples.length, blockerIdsFromSamples, rollupInput);
-  validateSerializedArtifact(artifact, path);
+  validateSampleRollup(artifact.rollup, path, artifact.samples.length, blockerIdsFromSamples, rollupInput, redactedSamplePolicyContext);
+  validateSerializedArtifact(artifact, path, redactedSamplePolicyContext);
 }
 
 function validateProvenanceRequirements(requirements) {
@@ -667,341 +704,6 @@ function validateProvenanceRequirements(requirements) {
     sourcePath: evidencePath,
     violations,
   });
-}
-
-function validateArtifactProvenance(provenance, path, options) {
-  validateEvidenceArtifactProvenance({
-    provenance,
-    label: path,
-    expectedEvidenceKind: redactedSampleEvidenceKind,
-    allowFixture: options.allowExample === true,
-    violations,
-    realEvidenceLabel: 'real feedback artifacts',
-  });
-}
-
-function validateSampleSource(source, path, options) {
-  if (source === null || typeof source !== 'object' || Array.isArray(source)) {
-    violations.push(`${path}: source must be an object`);
-    return;
-  }
-  for (const field of ['kind', 'environmentId', 'operator', 'collectionMethod', 'redactedBy', 'approvedBy']) {
-    if (typeof source[field] !== 'string' || source[field].trim().length === 0) {
-      violations.push(`${path}: source.${field} must be a non-empty string`);
-    }
-  }
-  if (options.allowExample !== true) {
-    if (!allowedRealSampleSourceKinds.has(source.kind)) {
-      violations.push(`${path}: real sample source.kind must be one of ${[...allowedRealSampleSourceKinds].join(', ')}`);
-    }
-    validateRealEvidenceIdentityStrings({
-      source,
-      fields: ['kind', 'environmentId', 'operator', 'collectionMethod', 'redactedBy', 'approvedBy'],
-      label: `${path}: source`,
-      violations,
-      realEvidenceLabel: 'real feedback artifacts',
-      forbiddenRealFragments: forbiddenRealSourceFragments,
-    });
-    if (typeof source.collectionMethod === 'string' && source.collectionMethod.trim().length < 20) {
-      violations.push(`${path}: source.collectionMethod must describe the real export path`);
-    }
-  }
-  if (!Number.isInteger(source.sampleCount) || source.sampleCount <= 0) {
-    violations.push(`${path}: source.sampleCount must be a positive integer`);
-  }
-  if (!isIsoDateString(source.sampleWindow?.startedAt) || !isIsoDateString(source.sampleWindow?.endedAt)) {
-    violations.push(`${path}: source.sampleWindow must include ISO startedAt and endedAt`);
-  } else if (Date.parse(source.sampleWindow.startedAt) >= Date.parse(source.sampleWindow.endedAt)) {
-    violations.push(`${path}: source.sampleWindow.startedAt must be before endedAt`);
-  }
-  validateSourceExport(source.export, path, options);
-}
-
-function validateSourceExport(sourceExport, path, options) {
-  if (sourceExport === null || typeof sourceExport !== 'object' || Array.isArray(sourceExport)) {
-    violations.push(`${path}: source.export must be an object`);
-    return;
-  }
-
-  for (const field of ['sourceSystem', 'exportId', 'reviewQueue', 'redactionReviewId', 'approvalReference']) {
-    if (typeof sourceExport[field] !== 'string' || sourceExport[field].trim().length < 4) {
-      violations.push(`${path}: source.export.${field} must be a non-empty traceability string`);
-    }
-  }
-  if (!isIsoDateString(sourceExport.exportedAt)) {
-    violations.push(`${path}: source.export.exportedAt must be an ISO timestamp`);
-  }
-
-  if (options.allowExample === true) {
-    return;
-  }
-
-  validateRealEvidenceIdentityStrings({
-    source: sourceExport,
-    fields: ['sourceSystem', 'exportId', 'reviewQueue', 'redactionReviewId', 'approvalReference'],
-    label: `${path}: source.export`,
-    violations,
-    realEvidenceLabel: 'real feedback artifacts',
-    forbiddenRealFragments: forbiddenRealSourceFragments,
-  });
-}
-
-function validateSampleRedaction(redaction, path) {
-  if (redaction === null || typeof redaction !== 'object' || Array.isArray(redaction)) {
-    violations.push(`${path}: redaction must be an object`);
-    return;
-  }
-
-  for (const [field, expected] of Object.entries(requiredSampleRedactionFlags)) {
-    if (redaction[field] !== expected) {
-      violations.push(`${path}: redaction.${field} must be ${expected}`);
-    }
-  }
-
-  if (typeof redaction.method !== 'string' || redaction.method.trim().length < 20) {
-    violations.push(`${path}: redaction.method must describe how comments and identifiers were redacted`);
-  }
-}
-
-function validateSampleRollup(rollup, path, sampleCount, blockerIdsFromSamples, rollupInput) {
-  if (rollup === null || typeof rollup !== 'object' || Array.isArray(rollup)) {
-    violations.push(`${path}: rollup must be an object`);
-    return;
-  }
-
-  if (rollup.sampleCount !== sampleCount) {
-    violations.push(`${path}: rollup.sampleCount must match samples.length`);
-  }
-  validateCountObject(rollup.categoryCounts, rollupInput.categoryCounts, `${path}: rollup.categoryCounts`);
-  validateCountObject(rollup.classificationCounts, rollupInput.classificationCounts, `${path}: rollup.classificationCounts`);
-  validateCountObject(rollup.severityCounts, rollupInput.severityCounts, `${path}: rollup.severityCounts`);
-  validateCountObject(rollup.actionTypeCounts, rollupInput.actionTypeCounts, `${path}: rollup.actionTypeCounts`);
-
-  if (rollup.releaseBlockingSamples !== rollupInput.releaseBlockingSamples) {
-    violations.push(`${path}: rollup.releaseBlockingSamples must match releaseBlocking samples`);
-  }
-  if (rollup.evalFixtureEligibleSamples !== rollupInput.evalFixtureEligibleSamples) {
-    violations.push(`${path}: rollup.evalFixtureEligibleSamples must match eligibleForEvalFixture samples`);
-  }
-
-  if (!Array.isArray(rollup.blockerSampleIds)) {
-    violations.push(`${path}: rollup.blockerSampleIds must be an array`);
-  } else {
-    const actualBlockerIds = new Set(rollup.blockerSampleIds);
-    if (actualBlockerIds.size !== rollup.blockerSampleIds.length) {
-      violations.push(`${path}: rollup.blockerSampleIds must not contain duplicates`);
-    }
-    for (const blockerId of blockerIdsFromSamples) {
-      if (!actualBlockerIds.has(blockerId)) {
-        violations.push(`${path}: rollup.blockerSampleIds missing "${blockerId}"`);
-      }
-    }
-    for (const blockerId of actualBlockerIds) {
-      if (!blockerIdsFromSamples.has(blockerId)) {
-        violations.push(`${path}: rollup.blockerSampleIds contains non-blocker sample "${blockerId}"`);
-      }
-    }
-  }
-}
-
-function validateCountObject(actual, expected, label) {
-  if (actual === null || typeof actual !== 'object' || Array.isArray(actual)) {
-    violations.push(`${label} must be an object`);
-    return;
-  }
-
-  for (const [key, expectedCount] of expected.entries()) {
-    if (actual[key] !== expectedCount) {
-      violations.push(`${label}.${key} must be ${expectedCount}`);
-    }
-  }
-  for (const key of Object.keys(actual)) {
-    if (!expected.has(key)) {
-      violations.push(`${label}.${key} is not present in samples`);
-    }
-  }
-}
-
-function incrementCount(counts, key) {
-  counts.set(key, (counts.get(key) ?? 0) + 1);
-}
-
-function validateRedactedSample(sample, sampleLabel, sampleIds) {
-  if (sample === null || typeof sample !== 'object' || Array.isArray(sample)) {
-    violations.push(`${sampleLabel}: sample must be an object`);
-    return;
-  }
-
-  scanForbiddenSampleKeys(sample, sampleLabel);
-
-  if (typeof sample.feedbackId !== 'string' || sample.feedbackId.trim().length === 0) {
-    violations.push(`${sampleLabel}: feedbackId must be a non-empty string`);
-  } else if (sampleIds.has(sample.feedbackId)) {
-    violations.push(`${sampleLabel}: duplicate feedbackId "${sample.feedbackId}"`);
-  } else {
-    sampleIds.add(sample.feedbackId);
-  }
-
-  if (!allowedSampleCategories.has(sample.category)) {
-    violations.push(`${sampleLabel}: unsupported category "${sample.category}"`);
-  }
-  if (!allowedSampleClassifications.has(sample.classification)) {
-    violations.push(`${sampleLabel}: unsupported classification "${sample.classification}"`);
-  }
-  if (!allowedSampleSeverities.has(sample.severity)) {
-    violations.push(`${sampleLabel}: unsupported severity "${sample.severity}"`);
-  }
-  if (typeof sample.triageOwner !== 'string' || sample.triageOwner.trim().length === 0) {
-    violations.push(`${sampleLabel}: triageOwner must be a non-empty string`);
-  }
-  if (typeof sample.eligibleForEvalFixture !== 'boolean') {
-    violations.push(`${sampleLabel}: eligibleForEvalFixture must be boolean`);
-  }
-  if (sample.releaseBlocking !== true) {
-    violations.push(`${sampleLabel}: releaseBlocking must be true`);
-  }
-
-  validateSummaryEvidence(sample.summaryEvidence, sample.category, sampleLabel);
-  validateSanitizedText(sample.sanitizedSignal, `${sampleLabel}.sanitizedSignal`, 20);
-  validateSanitizedText(sample.redactedComment, `${sampleLabel}.redactedComment`, 20);
-  validateQualitySignals(sample.qualitySignals, sampleLabel);
-  validateSampleHardeningAction(sample, sampleLabel);
-}
-
-function validateRealSampleDoesNotCopyFixtureExample(sample, sampleLabel) {
-  const feedbackId = typeof sample.feedbackId === 'string' ? sample.feedbackId.trim() : '';
-  if (knownFixtureSampleGuards.feedbackIds.has(feedbackId)) {
-    violations.push(`${sampleLabel}: real feedback sample must not reuse fixture sample id "${feedbackId}"`);
-  }
-
-  const fingerprint = sampleSignalFingerprint(sample);
-  if (fingerprint !== undefined && knownFixtureSampleGuards.signalFingerprints.has(fingerprint)) {
-    violations.push(`${sampleLabel}: real feedback sample must not copy fixture sample signal text`);
-  }
-}
-
-function validateSummaryEvidence(summaryEvidence, category, sampleLabel) {
-  if (summaryEvidence === null || typeof summaryEvidence !== 'object' || Array.isArray(summaryEvidence)) {
-    violations.push(`${sampleLabel}: summaryEvidence must be an object`);
-    return;
-  }
-
-  for (const field of ['summaryId', 'interestId']) {
-    if (typeof summaryEvidence[field] !== 'string' || summaryEvidence[field].trim().length === 0) {
-      violations.push(`${sampleLabel}: summaryEvidence.${field} must be a non-empty string`);
-    }
-  }
-
-  if (['wrong_fact', 'missing_source', 'bad_citation'].includes(category)) {
-    for (const field of ['citationId', 'feedItemId', 'sourceItemId', 'providerKey']) {
-      if (typeof summaryEvidence[field] !== 'string' || summaryEvidence[field].trim().length === 0) {
-        violations.push(`${sampleLabel}: summaryEvidence.${field} is required for ${category}`);
-      }
-    }
-  }
-}
-
-function validateSanitizedText(value, label, minimumLength) {
-  if (typeof value !== 'string' || value.trim().length < minimumLength) {
-    violations.push(`${label} must be a redacted string with at least ${minimumLength} characters`);
-    return;
-  }
-
-  const normalized = value.toLowerCase();
-  for (const fragment of forbiddenSerializedFragments) {
-    if (normalized.includes(fragment)) {
-      violations.push(`${label} must not contain "${fragment}"`);
-    }
-  }
-}
-
-function validateQualitySignals(qualitySignals, sampleLabel) {
-  if (qualitySignals === null || typeof qualitySignals !== 'object' || Array.isArray(qualitySignals)) {
-    violations.push(`${sampleLabel}: qualitySignals must be an object`);
-    return;
-  }
-
-  for (const signal of requiredSampleSignals) {
-    if (qualitySignals[signal] !== true) {
-      violations.push(`${sampleLabel}: qualitySignals.${signal} must be true`);
-    }
-  }
-}
-
-function validateSampleHardeningAction(sample, sampleLabel) {
-  const action = sample.hardeningAction;
-  if (action === null || typeof action !== 'object' || Array.isArray(action)) {
-    violations.push(`${sampleLabel}: hardeningAction must be an object`);
-    return;
-  }
-
-  if (!allowedActionTypes.has(action.actionType)) {
-    violations.push(`${sampleLabel}: hardeningAction has unsupported actionType "${action.actionType}"`);
-  }
-  if (action.status !== 'passed') {
-    violations.push(`${sampleLabel}: hardeningAction.status must be passed for redacted samples`);
-  }
-  validateCommand(action.command, `${sampleLabel} hardeningAction`);
-  requireExistingPath(action.artifact, `${sampleLabel} hardeningAction artifact`);
-  if (typeof action.exitCondition !== 'string' || action.exitCondition.trim().length === 0) {
-    violations.push(`${sampleLabel}: hardeningAction.exitCondition must be a non-empty string`);
-  }
-
-  const fixtureIds = action.fixtureIds ?? [];
-  if (!Array.isArray(fixtureIds)) {
-    violations.push(`${sampleLabel}: hardeningAction.fixtureIds must be an array`);
-    return;
-  }
-  if (action.actionType === 'eval_fixture' && fixtureIds.length === 0) {
-    violations.push(`${sampleLabel}: eval_fixture hardeningAction must reference at least one fixture`);
-  }
-
-  for (const fixtureId of fixtureIds) {
-    if (!evalFixtureIds.has(fixtureId)) {
-      violations.push(`${evalOutputPath}: ${sampleLabel} references missing fixture "${fixtureId}"`);
-    }
-    if (!costFixtureIds.has(fixtureId)) {
-      violations.push(`${costPath}: ${sampleLabel} references fixture without cost row "${fixtureId}"`);
-    }
-  }
-
-  if (sample.classification === 'blocker' && !allowedActionTypes.has(action.actionType)) {
-    violations.push(`${sampleLabel}: blocker sample must map to eval, validator or runbook action`);
-  }
-}
-
-function scanForbiddenSampleKeys(value, label) {
-  if (value === null || typeof value !== 'object') {
-    return;
-  }
-  if (Array.isArray(value)) {
-    for (const [index, item] of value.entries()) {
-      scanForbiddenSampleKeys(item, `${label}[${index}]`);
-    }
-    return;
-  }
-
-  for (const [key, nested] of Object.entries(value)) {
-    const normalizedKey = key.toLowerCase().replace(/[^a-z0-9_]/g, '');
-    if (forbiddenSampleKeys.has(normalizedKey)) {
-      violations.push(`${label}: forbidden sensitive field "${key}"`);
-    }
-    scanForbiddenSampleKeys(nested, `${label}.${key}`);
-  }
-}
-
-function validateSerializedArtifact(artifact, path) {
-  validateSerializedArtifactContent(JSON.stringify(artifact), path);
-}
-
-function validateSerializedArtifactContent(content, path) {
-  const serializedArtifact = content.toLowerCase();
-  for (const fragment of forbiddenSerializedFragments) {
-    if (serializedArtifact.includes(fragment)) {
-      violations.push(`${path}: redacted sample artifact must not contain "${fragment}"`);
-    }
-  }
-  validateSerializedPatterns(content, `${path}: redacted sample artifact`);
 }
 
 function readKnownFixtureSampleGuards(examplePath) {
