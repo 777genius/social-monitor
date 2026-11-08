@@ -10,6 +10,7 @@ import {
   validateRealEvidenceIdentityStrings,
 } from './lib/evidence-provenance.mjs';
 import { readPrivateEvidenceJsonFile } from './lib/evidence-env-file.mjs';
+import { buildDirectSecurityArtifact } from './lib/security-final-sweep-direct-artifact.mjs';
 
 const evidencePath = 'ops/security/security-final-sweep-evidence.json';
 const packagePath = 'package.json';
@@ -1136,101 +1137,14 @@ function buildDirectSecurityArtifactContext(options = {}) {
   }
 
   const artifactPath = join(tempDirectory, 'security-final-sweep.json');
-  const artifact = buildDirectSecurityArtifact({ exportPathsByEnv, exportHashesByEnv });
+  const artifact = buildDirectSecurityArtifact(
+    { exportPathsByEnv, exportHashesByEnv },
+    { securityFinalSweepArtifactFormat, securityFinalSweepEvidenceKind, requiredLeakClasses },
+  );
   writeFileSync(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`, { mode: 0o600 });
   chmodSync(artifactPath, 0o600);
 
   return { artifactPath, exportPathsByEnv, tempDirectory };
-}
-
-function buildDirectSecurityArtifact({ exportPathsByEnv, exportHashesByEnv }) {
-  const sampledAt = new Date('2026-01-01T00:00:00.000Z').toISOString();
-  const sourceExports = [
-    directSourceExport('logs', 'LOG_EXPORT_PATH', exportPathsByEnv.LOG_EXPORT_PATH, exportHashesByEnv.LOG_EXPORT_PATH, sampledAt),
-    directSourceExport('metrics', 'METRICS_EXPORT_PATH', exportPathsByEnv.METRICS_EXPORT_PATH, exportHashesByEnv.METRICS_EXPORT_PATH, sampledAt),
-    directSourceExport(
-      'public-errors',
-      'PUBLIC_ERROR_EXPORT_PATH',
-      exportPathsByEnv.PUBLIC_ERROR_EXPORT_PATH,
-      exportHashesByEnv.PUBLIC_ERROR_EXPORT_PATH,
-      sampledAt,
-    ),
-    directSourceExport(
-      'audit-metadata',
-      'AUDIT_EVENT_EXPORT_PATH',
-      exportPathsByEnv.AUDIT_EVENT_EXPORT_PATH,
-      exportHashesByEnv.AUDIT_EVENT_EXPORT_PATH,
-      sampledAt,
-    ),
-  ];
-
-  return {
-    schemaVersion: 1,
-    artifactFormat: securityFinalSweepArtifactFormat,
-    scope: 'backend-only',
-    frontendPolicy: 'deferred_contract_only',
-    provenance: {
-      evidenceKind: securityFinalSweepEvidenceKind,
-      collectionMethod: 'staging security sweep capture',
-      runner: 'scripts/capture-security-final-sweep.mjs',
-      fixtureOnly: false,
-    },
-    environment: {
-      environmentId: 'staging-alpha-1',
-      imageDigest: `sha256:${'e'.repeat(64)}`,
-      sampledAt,
-      operator: 'security-owner-1',
-    },
-    redaction: {
-      secretValuesIncluded: false,
-      credentialUrlsIncluded: false,
-      rawProviderPayloadsIncluded: false,
-      rawPromptTextIncluded: false,
-      rawSourceTextIncluded: false,
-      piiIncluded: false,
-      method: 'Sanitized staging security sweep artifacts with redacted diagnostic fields.',
-    },
-    sourceExports,
-    surfaces: [
-      directSurface('logs'),
-      directSurface('metrics'),
-      directSurface('public-errors'),
-      directSurface('audit-metadata'),
-    ],
-    review: {
-      reviewer: 'security-owner-1',
-      decision: 'passed',
-      notes: 'Security final sweep review completed for sanitized staging evidence.',
-    },
-  };
-}
-
-function directSourceExport(surfaceId, envVar, path, sha256, collectedAt) {
-  return {
-    surfaceId,
-    envVar,
-    path,
-    sha256,
-    sampleCount: 1,
-    redactedOnly: true,
-    sanitized: true,
-    collectedAt,
-  };
-}
-
-function directSurface(surfaceId) {
-  return {
-    surfaceId,
-    sampleCount: 1,
-    scanStatus: 'passed',
-    redactedOnly: true,
-    safeDiagnosticFields: ['requestId', 'tenantId', 'workspaceId', 'status'],
-    leakClassResults: [...requiredLeakClasses].map((leakClass) => ({
-      leakClass,
-      found: false,
-      sampleCount: 1,
-    })),
-  };
 }
 
 function runSelfExpectingFailure(env) {

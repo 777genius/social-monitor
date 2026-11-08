@@ -1,3 +1,13 @@
+import {
+  completeExternalEvidencePreflightEnv,
+  durableBackendE2ePreflightEnv,
+  postgresRestorePreflightEnv,
+  rabbitmqDrillPreflightEnv,
+  redditOAuthPreflightEnv,
+} from './lib/external-beta-evidence-preflight-fixtures.mjs';
+
+import { validateRunnerImplementationMarkers } from './lib/external-beta-evidence-runner-markers.mjs';
+
 import { execFileSync } from 'node:child_process';
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
@@ -11,6 +21,7 @@ const auditPath = 'ops/release/backend-mvp-completion-audit.json';
 const backendSafePath = 'ops/release/backend-safe-verify-contract.json';
 const baselinePath = 'ops/release/release-baseline-contract.json';
 const packagePath = 'package.json';
+const selectionHelperPath = 'scripts/lib/external-beta-evidence-selections.mjs';
 const sourceCertificationPath = 'ops/ingestion/source-provider-certification.json';
 
 const contract = readJson(contractPath);
@@ -21,6 +32,7 @@ const baseline = readJson(baselinePath);
 const packageJson = readJson(packagePath);
 const sourceCertification = readJson(sourceCertificationPath);
 const runnerSource = readFileSync(contract.runnerFile, 'utf8');
+const selectionHelperSource = readFileSync(selectionHelperPath, 'utf8');
 const envExampleSource = typeof contract.envExample === 'string' && existsSync(contract.envExample)
   ? readFileSync(contract.envExample, 'utf8')
   : '';
@@ -757,261 +769,14 @@ function validateArtifactExamples() {
 }
 
 function validateRunnerImplementation() {
-  for (const marker of [
-    'unknownJobIds',
-    'Unknown external beta evidence job id(s)',
-    'Known jobs:',
-    'executableJobViolations',
-    'Refusing to execute external beta evidence jobs. Resolve all preflight violations first:',
-    'validateGeneratedArtifacts',
-    'Refusing to validate generated external beta evidence artifacts',
-    'post-run violations',
-    'printJsonPlan',
-    'printSummary',
-    'printHandoff',
-    'printJsonHandoff',
-    'buildHandoff',
-    'buildHandoffArtifactContracts',
-    'buildHandoffInputs',
-    'buildHandoffEnvArtifacts',
-    'runnerDescription',
-    'operatorAction',
-    'inputMetadataByEnv',
-    'external-beta-evidence-input-matrix.json',
-    'External Beta Evidence Handoff',
-    'handoffAction',
-    'formatHandoffArtifacts',
-    'artifactExamplePathByFormat',
-    'Artifact paths are printed by env name only',
-    'dockerBundleImportCommand',
-    'Import Docker bundle env',
-    'contractClosurePercent',
-    'externalEvidenceEnvReadinessPercent',
-    'liveArtifactReadyForValidationJobCount',
-    'readinessCounts',
-    'manualArtifactReadyForValidationJobCount',
-    'blockedMissingRequiredEnvJobCount',
-    'blockedInvalidInputJobCount',
-    'blockedLocalRuntimeEnvJobCount',
-    'Blocked by local runtime env',
-    'uniqueMissingEnv',
-    'readSelectedJobSelection',
-    'Invalid external beta evidence job selection:',
-    '--jobs requires at least one job id',
-    'readEnvFileSelection',
-    'Invalid external beta evidence env file selection:',
-    'loadExternalBetaEnvFiles',
-    'parseDotenv',
-    'EXTERNAL_BETA_EVIDENCE_CONFIRM must be set explicitly in the operator shell',
-    'conflicts with',
-    'refusing to merge evidence from different runs',
-    'Load env files: append --env-file',
-    'missingOptionalEnvCount',
-    'uniqueMissingOptionalEnv',
-    'requiredEnvAlternatives',
-    'satisfiedRequiredEnvAlternatives',
-    'requiredEnvAlternativeCoveredEnvNames',
-    'jobInputEnvNames',
-    'requiredAlternativeInputs',
-    'coversEnv',
-    'allowCapturedArtifactAlternatives',
-    'hasSatisfiedCapturedArtifactAlternative',
-    'captured_artifact',
-    'jobExecutionReadiness',
-    'blocked_missing_required_env',
-    'blocked_invalid_env',
-    'blocked_local_runtime_env',
-    'live_artifact_ready_for_validation',
-    'hasOnlyLocalRuntimeEnvViolations',
-    'localRuntimeEnvNames',
-    'isLocalRuntimeEnvValue',
-    'manualArtifactJobCount',
-    'executableLiveJobCount',
-    'validateArtifacts',
-    'contractSmokeArtifactOnly',
-    '--contract-smoke-artifact-only',
-    '!contractSmokeArtifactOnly',
-    'artifactValidationViolations',
-    'Refusing to validate external beta evidence artifacts',
-    'planPreflightViolations',
-    'jobPreflightViolations',
-    'preflightViolations',
-    'Refusing external beta evidence preflight',
-    'Blocked by invalid env/path',
-    'preflightRequiresEnvValueValidation',
-    'preflightRequiresEvidencePathValidation',
-    'validatePlannedEvidencePathEnv',
-    'before preflight',
-    'validateExecutableOutputArtifactPathEnv',
-    'liveExecutionValidatesOutputPathsBeforeRun',
-    'before live execution',
-    'validateEvidenceValueEnv',
-    'criticalEnvValuesMustBeTyped',
-    'immutable sha256 image digest',
-    'valid https URL',
-    'valid PostgreSQL URL',
-    'valid RabbitMQ URL',
-    'validateTypedUrlEnv',
-    'validateHttpsEvidenceUrlEnv',
-    'validateSecretTokenEnv',
-    'validateSecretReferenceEnv',
-    'postgresUrlEnvNames',
-    'rabbitmqUrlEnvNames',
-    'httpsEvidenceUrlEnvNames',
-    'tokenEvidenceEnvNames',
-    'secretReferenceEnvNames',
-    'isPlaceholderSecretValue',
-    'isRawSecretValueReference',
-    'non-placeholder secret value',
-    'non-placeholder secret reference',
-    'postgresql:',
-    'amqps:',
-    'realEvidenceIdentityEnvNames',
-    'isFixtureLikeEnvValue',
-    'output artifact env',
-    'readJsonArtifact',
-    'valid JSON artifact',
-    'artifactFormat',
-    'must use format',
-    'forbiddenEvidencePathFragments',
-    'isFixtureLikeArtifactPath',
-    'isFixtureLikePathSegment',
-    'must not point to fixture or example evidence',
-    'isGitTrackedPath',
-    'ls-files',
-    'git-tracked file',
-    'schemaVersion 1',
-    'validateEvidencePathEnv',
-    'evidence path env',
-    'absolute file path',
-    'evidencePathEnvRequiresRegularFile',
-    'evidencePathEnvRequiresPrivateFileMode',
-    'requiresPrivateEvidenceFileMode',
-    'isPrivateEvidenceFile',
-    '0600-style private file permissions',
-    'before preflight',
-    'before live execution',
-    'isRegularEvidenceFile',
-    'statSync',
-    'must point to a regular file',
-    'realpath must point to a regular file',
-    'evidencePathEnvMaxBytes',
-    'isOversizedEvidenceFile',
-    'must not exceed',
-    'Evidence path max size',
-    'evidencePathEnvRequiresJsonExtension',
-    'evidencePathEnvRequiresJsonContent',
-    'evidencePathEnvForbidsWorkspacePath',
-    'evidencePathEnvRequiresWritableParent',
-    'evidencePathEnvForbidsDuplicatePaths',
-    'requiresJsonEvidencePathEnv',
-    'requiresJsonEvidencePathContent',
-    'forbidsWorkspaceEvidencePaths',
-    'isForbiddenWorkspaceEvidencePath',
-    'inside the git workspace',
-    'isValidEvidencePathParentDirectory',
-    'isRegularDirectory',
-    'parent directory must exist',
-    'parent directory must be writable',
-    'parent directory must not be inside the git workspace',
-    'duplicateEvidencePathViolations',
-    'duplicateEvidencePathViolationsByJob',
-    'evidencePathDuplicateKey',
-    'must not duplicate another evidence artifact path in this run',
-    'outputArtifactPathEnvRequiresJsonExtension',
-    'isJsonEvidencePath',
-    'path must end with .json',
-    'realpath must end with .json',
-    'readEvidenceRealPath',
-    'realpathSync',
-    'realpath must not point to fixture or example evidence',
-    'realpath must not point to a git-tracked file',
-    'validateEvidencePathFileContent',
-    'must be readable',
-    'valid JSON evidence',
-    'JSON object or array evidence file',
-    'parseJsonEvidenceContent',
-    'isStructuredJsonEvidence',
-    'validateArtifactRedaction',
-    'validateArtifactIdentity',
-    'expectedArtifactId',
-    'must use artifactId',
-    'validateArtifactProviderKeys',
-    'expectedProviderKeys',
-    'must include providerKey',
-    'must not include providerKey',
-    'validateArtifactEnvConsistency',
-    'validateArtifactFreshness',
-    'artifactFreshness',
-    'isIso8601Timestamp',
-    'requiresIso8601Timestamp',
-    'maxArtifactAgeHours',
-    'maxArtifactFutureSkewMinutes',
-    'observedArtifactTimestampValues',
-    'release evidence timestamp',
-    'older than',
-    'must not be in the future',
-    'artifactEnvConsistencyRules',
-    'observedArtifactStringValues',
-    'must match ${rule.envName}',
-    'STAGING_ENVIRONMENT_ID',
-    'BACKEND_IMAGE_DIGEST',
-    'BACKEND_GIT_COMMIT_SHA',
-    'SOURCE_LIVE_ENVIRONMENT_ID',
-    'SOURCE_LIVE_OPERATOR',
-    'STAGING_SECRET_STORE_ID',
-    'validateArtifactLiteralRedaction',
-    'validateArtifactStructuredRedaction',
-    'forbiddenArtifactValueFragments',
-    'forbiddenArtifactValuePatterns',
-    'sensitive literal pattern',
-    'access_token',
-    'x-api-key',
-    'jwt credential',
-    'forbiddenArtifactKeyPatterns',
-    'isForbiddenArtifactKey',
-    'access|refresh|id|jwt|session',
-    'github_pat_',
-    'glpat-',
-    'xoxb-',
-    'mongodb+srv://',
-    'aws_secret_access_key',
-    'sk-proj-',
-    'forbiddenArtifactKeyNames',
-    'apikey',
-    'idtoken',
-    'sessiontoken',
-    'signingsecret',
-    'sensitive literal fragment',
-    'containsFixtureProvenance',
-    'fixture provenance',
-    'unredactedSensitiveKeyPaths',
-    'unredacted sensitive key',
-    'normalizeArtifactKey',
-    'isRedactedArtifactValue',
-    'not-redacted',
-    'unredacted',
-    'parseJsonEvidenceContent',
-    'realArtifactMarkerGuardFormats',
-    'requiresRealArtifactMarkerGuard',
-    'fixtureMarkerFindings',
-    'fixture marker',
-  ]) {
-    if (!runnerSource.includes(marker)) {
-      violations.push(`${contract.runnerFile}: runner must fail fast before executing unsafe job selections`);
-    }
-  }
-
-  for (const marker of [
-    'strictSemanticNegativeSmokeLabels',
-    'representativeSemanticNegativeSmokeLabels',
-    'negativeSmokeOptions',
-    'shouldRunNegativeSmoke',
-  ]) {
-    if (!checkSource.includes(marker)) {
-      violations.push(`${contract.checkFile}: checker must keep bounded semantic negative smoke coverage through ${marker}`);
-    }
-  }
+  violations.push(...validateRunnerImplementationMarkers({
+    runnerSource,
+    checkSource,
+    selectionHelperSource,
+    runnerFile: contract.runnerFile,
+    checkFile: contract.checkFile,
+    selectionHelperPath,
+  }));
 }
 
 function validateRunnerNegativeSmokes() {
@@ -3241,50 +3006,9 @@ function childProcessErrorOutput(error) {
     .join('\n');
 }
 
-function durableBackendE2ePreflightEnv(tempDirectory, overrides = {}) {
-  return {
-    API_BASE_URL: 'https://api.staging.social-monitor.invalid',
-    BACKEND_IMAGE_DIGEST: `sha256:${'b'.repeat(64)}`,
-    DURABLE_BACKEND_E2E_ARTIFACT_PATH: join(tempDirectory, 'durable-backend-e2e.json'),
-    INFINITY_CONTEXT_TOKEN: 'secret-ref:infinity-context-token',
-    INFINITY_CONTEXT_URL: 'https://memory.staging.social-monitor.invalid',
-    STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
-    ...overrides,
-  };
-}
 
-function postgresRestorePreflightEnv(tempDirectory, overrides = {}) {
-  return {
-    BACKEND_IMAGE_DIGEST: `sha256:${'c'.repeat(64)}`,
-    DATABASE_URL: 'postgresql://release:...@db.staging.social-monitor.invalid:5432/social_monitor',
-    POSTGRES_RESTORE_DRILL_ARTIFACT_PATH: join(tempDirectory, 'postgres-restore-drill.json'),
-    STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
-    ...overrides,
-  };
-}
 
-function rabbitmqDrillPreflightEnv(tempDirectory, overrides = {}) {
-  return {
-    BACKEND_IMAGE_DIGEST: `sha256:${'d'.repeat(64)}`,
-    RABBITMQ_STAGING_DRILL_ARTIFACT_PATH: join(tempDirectory, 'rabbitmq-staging-drill.json'),
-    RABBITMQ_URL: 'amqps://release:...@rabbitmq.staging.social-monitor.invalid:5671',
-    STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
-    ...overrides,
-  };
-}
 
-function redditOAuthPreflightEnv(tempDirectory, overrides = {}) {
-  return {
-    BACKEND_IMAGE_DIGEST: `sha256:${'e'.repeat(64)}`,
-    BACKEND_GIT_COMMIT_SHA: 'e'.repeat(40),
-    REDDIT_ACCESS_TOKEN: 'reddit-live-access-value-1234567890',
-    REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH: join(tempDirectory, 'reddit-credential-lifecycle.json'),
-    REDDIT_LIVE_EVIDENCE_PATH: join(tempDirectory, 'reddit-live-evidence.json'),
-    SOURCE_LIVE_ENVIRONMENT_ID: 'source-live-alpha-1',
-    SOURCE_LIVE_OPERATOR: 'source-operator-1',
-    ...overrides,
-  };
-}
 
 function validateRunnerPreflightPositiveSmoke() {
   const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-preflight-positive-'));
@@ -3360,44 +3084,6 @@ function runRunnerPreflightPositiveSmoke(env, jobId) {
   }
 }
 
-function completeExternalEvidencePreflightEnv(tempDirectory) {
-  return {
-    API_BASE_URL: 'https://api.staging.social-monitor.invalid',
-    BACKEND_IMAGE_DIGEST: `sha256:${'f'.repeat(64)}`,
-    BACKEND_GIT_COMMIT_SHA: 'f'.repeat(40),
-    DATABASE_URL: 'postgresql://release:...@db.staging.social-monitor.invalid:5432/social_monitor',
-    DURABLE_BACKEND_E2E_ARTIFACT_PATH: join(tempDirectory, 'durable-backend-e2e.json'),
-    DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH: join(tempDirectory, 'durable-runtime-selector.json'),
-    GITHUB_REPO_RADAR_BIGQUERY_PROJECT_ID: 'github-repo-radar-prod-project',
-    GITHUB_REPO_RADAR_LIVE_EVIDENCE_PATH: join(tempDirectory, 'github-repo-radar-live-evidence.json'),
-    GITHUB_REPO_RADAR_PRISMA_LIVE_E2E: '1',
-    GITHUB_TRENDING_PAGE_LIVE_EVIDENCE_PATH: join(tempDirectory, 'github-trending-page-live-evidence.json'),
-    INFINITY_CONTEXT_TOKEN: 'secret-ref:infinity-context-token',
-    INFINITY_CONTEXT_URL: 'https://memory.staging.social-monitor.invalid',
-    LIVE_OPEN_CONNECTORS_EVIDENCE_PATH: join(tempDirectory, 'live-open-connectors.json'),
-    AUDIT_EVENT_EXPORT_PATH: join(tempDirectory, 'security-audit-event-export.json'),
-    LOG_EXPORT_PATH: join(tempDirectory, 'security-log-export.json'),
-    METRICS_EXPORT_PATH: join(tempDirectory, 'security-metrics-export.json'),
-    POSTGRES_RESTORE_DRILL_ARTIFACT_PATH: join(tempDirectory, 'postgres-restore-drill.json'),
-    PUBLIC_ERROR_EXPORT_PATH: join(tempDirectory, 'security-public-error-export.json'),
-    RABBITMQ_STAGING_DRILL_ARTIFACT_PATH: join(tempDirectory, 'rabbitmq-staging-drill.json'),
-    RABBITMQ_URL: 'amqps://release:...@rabbitmq.staging.social-monitor.invalid:5671',
-    REDDIT_ACCESS_TOKEN: 'reddit-live-access-value-1234567890',
-    REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH: join(tempDirectory, 'reddit-credential-lifecycle.json'),
-    REDDIT_LIVE_EVIDENCE_PATH: join(tempDirectory, 'reddit-live-evidence.json'),
-    RELEVANCE_MEMORY_RUNTIME_CANARY_EVIDENCE_PATH: join(tempDirectory, 'relevance-memory-runtime-canary.json'),
-    RELEVANCE_MEMORY_RUNTIME_CANARY_PERSISTENCE: 'prisma',
-    RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH: join(tempDirectory, 'release-deploy-smoke.json'),
-    SECURITY_FINAL_SWEEP_ARTIFACT_PATH: join(tempDirectory, 'security-final-sweep.json'),
-    SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH: join(tempDirectory, 'source-credential-rotation.json'),
-    SOURCE_LIVE_ENVIRONMENT_ID: 'source-live-alpha-1',
-    SOURCE_LIVE_OPERATOR: 'source-operator-1',
-    STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
-    STAGING_SECRET_STORE_ID: 'secret-store-staging-alpha-1',
-    SUMMARY_REAL_FEEDBACK_SAMPLES_PATH: join(tempDirectory, 'summary-real-feedback-samples.json'),
-    WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH: join(tempDirectory, 'webhook-secret-rotation.json'),
-  };
-}
 
 function smokeOutputSnippet(output) {
   return String(output)

@@ -209,3 +209,48 @@ const sha256 = (value) => typeof value === "string" &&
 const concreteVersion = (value) => typeof value === "string" &&
   value !== "unknown" &&
   /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u.test(value);
+
+/** Retain the verifier's legacy no-execution field contract. */
+export function validNotExecutedModelFields(model, provenance) {
+  if (provenance.execution !== "not_executed") return true;
+  return (
+    model.summaryModel === null &&
+    model.physicalModel === null &&
+    model.provider === null &&
+    model.runtime === null &&
+    model.runtimeVersion === null &&
+    model.reasoningEffort === null &&
+    model.launcherSha256 === null &&
+    model.summaryContentSha256 === null &&
+    model.topicMapSha256 === null &&
+    model.attestationSetSha256 === null &&
+    model.completedTaskCount === 0 &&
+    model.topicLabeler === null
+  );
+}
+
+/** Project only the runtime-provenance fields required by the verifier. */
+export function runtimeFields(model, provenance) {
+  if (provenance.execution === "not_executed") {
+    return {
+      execution: model.runtimeExecution,
+      reason: model.runtimeExecutionReason,
+    };
+  }
+  return {
+    execution: model.runtimeExecution,
+    summaryModel: model.summaryModel,
+    physicalModel: model.physicalModel,
+    provider: model.provider,
+    runtime: model.runtime,
+    runtimeVersion: model.runtimeVersion,
+    reasoningEffort: model.reasoningEffort,
+    launcherSha256: model.launcherSha256,
+    summaryContentSha256: model.summaryContentSha256,
+    topicMapSha256: model.topicMapSha256,
+    attestationSetSha256: model.attestationSetSha256,
+    completedTaskCount: model.completedTaskCount,
+    topicLabeler: model.topicLabeler,
+  };
+}
+

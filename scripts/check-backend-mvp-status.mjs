@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { readPrivateEvidenceEnvEntries } from './lib/evidence-env-file.mjs';
+import { readStatusEnvFileSelection, statusEvidenceInputMode } from './lib/backend-mvp-status-evidence-input-policy.mjs';
 
 const contractPath = 'ops/release/backend-mvp-status-contract.json';
 const auditPath = 'ops/release/backend-mvp-completion-audit.json';
@@ -256,16 +257,6 @@ function isActiveEvidenceBlockerReadiness(readiness) {
     'blocked_invalid_env',
     'blocked_local_runtime_env',
   ].includes(readiness);
-}
-
-function statusEvidenceInputMode(options) {
-  if (options.cleanEnv === true) {
-    return 'clean_env';
-  }
-  if ((options.envFileCount ?? 0) > 0) {
-    return 'env_file';
-  }
-  return 'shell_env';
 }
 
 function validateContract() {
@@ -690,26 +681,6 @@ function countBy(values, callback) {
     counts[key] = (counts[key] ?? 0) + 1;
     return counts;
   }, {});
-}
-
-function readStatusEnvFileSelection(argv) {
-  const paths = [];
-  const errors = [];
-  for (let index = 0; index < argv.length; index += 1) {
-    if (argv[index] !== '--env-file') {
-      continue;
-    }
-
-    const value = argv[index + 1];
-    if (value === undefined || value.trim() === '' || value.startsWith('--')) {
-      errors.push('--env-file requires a non-empty absolute env file path');
-      continue;
-    }
-    paths.push(value.trim());
-    index += 1;
-  }
-
-  return { paths, errors };
 }
 
 function percent(numerator, denominator) {
