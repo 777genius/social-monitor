@@ -20,7 +20,7 @@ const freshnessGuards = providerKeys.map((providerKey, index) => ({
 function testContext() {
   return {
     sourceCertificationPath: 'fixture/source-provider-certification.json',
-    sourceCertification: { certifiedProviders: structuredClone(freshnessGuards) },
+    sourceCertification: { certifiedProviders: globalThis.structuredClone(freshnessGuards) },
   };
 }
 
@@ -165,7 +165,7 @@ test('missing reddit freshness policy causes the live builder to fail closed', (
 
 test('builder reads certification but does not mutate it', () => {
   const ctx = testContext();
-  const before = structuredClone(ctx.sourceCertification);
+  const before = globalThis.structuredClone(ctx.sourceCertification);
   liveOpenConnectorsArtifact(ctx);
   liveRedditArtifact('hash', ctx);
   assert.deepEqual(ctx.sourceCertification, before);
