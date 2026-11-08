@@ -117,6 +117,13 @@ describe("AgentRuntimeSummaryModelAdapter", () => {
         outputSchemaName: "social_monitor_summary_artifact",
       }),
     });
+    expect(command?.requestId).toContain(String(input.tenantId));
+    expect(command?.requestId).toContain(String(input.workspaceId));
+    expect(command?.correlationId).toContain("summary-correlation");
+    expect(command?.metadata).toMatchObject({
+      adapter: "agent-runtime-summary",
+      promptVersion: route.promptVersion,
+    });
     expect(command?.systemPrompt).toContain("Social Monitor");
     expect(command?.prompt).toContain("Backend signals are converging");
     expect(attempt.draft).toMatchObject({

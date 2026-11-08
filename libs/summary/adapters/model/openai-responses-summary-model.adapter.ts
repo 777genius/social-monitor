@@ -1,3 +1,4 @@
+import { buildSummaryNoSignalAttempt } from "./summary-no-signal-attempt";
 import type {
   ProviderSummaryAttempt,
   SummaryModelBudget,
@@ -15,7 +16,6 @@ import {
 } from './openai-responses-summary-prompt';
 import {
   assertOpenAiSummaryDraftShape,
-  buildOpenAiSummaryLineage,
   normalizeOpenAiSummaryDraft,
 } from './openai-responses-summary-draft-normalizer';
 import {
@@ -331,37 +331,12 @@ export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
     input: SummaryModelInput,
     selectedRoute: SummaryModelRoute,
   ): ProviderSummaryAttempt {
-    return {
-      route: selectedRoute,
-      draft: {
-        headline: 'No reliable signal yet',
-        executiveSummary:
-          'No eligible evidence items were available for this interest window.',
-        keyPoints: [],
-        risksAndUnknowns: [
-          {
-            description:
-              'The summary window did not contain enough source material to produce claims.',
-            reason: 'insufficient_evidence',
-          },
-        ],
-        sourceHighlights: [],
-        citationMap: [],
-        qualityFlags: ['no_signal', 'limited_sources'],
-        confidence: {
-          level: 'none',
-          score: 0,
-          rationale: 'No evidence was selected for the summary window.',
-        },
-        lineage: buildOpenAiSummaryLineage(
-          input,
-          selectedRoute,
-          this.evalDatasetVersion,
-        ),
-        usage: this.estimate(input, selectedRoute),
-        noSignalReason: 'No eligible evidence items selected for this interest.',
-      },
-    };
+    return buildSummaryNoSignalAttempt({
+      input,
+      selectedRoute,
+      evalDatasetVersion: this.evalDatasetVersion,
+      usage: this.estimate(input, selectedRoute),
+    });
   }
 
 

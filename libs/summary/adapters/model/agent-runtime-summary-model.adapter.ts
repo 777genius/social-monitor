@@ -1,3 +1,5 @@
+import { buildAgentRuntimeSummaryTaskCommand } from "./agent-runtime-summary-task-command";
+import { buildSummaryNoSignalAttempt } from "./summary-no-signal-attempt";
 import type {
   AgentRuntimeClientPort,
   AgentRuntimeProvider,
@@ -11,19 +13,14 @@ import type {
   SummaryModelRoute,
   SummaryModelValidationResult,
 } from "../../ports";
-import {
-  buildInstructions,
-  buildPromptPayload,
-} from "./openai-responses-summary-prompt";
+import { buildPromptPayload } from "./openai-responses-summary-prompt";
 import {
   assertOpenAiSummaryDraftShape,
-  buildOpenAiSummaryLineage,
   normalizeOpenAiSummaryDraft,
 } from "./openai-responses-summary-draft-normalizer";
 import {
   parseOpenAiSummaryJsonObject,
 } from "./openai-responses-summary-response-parser";
-import { openAiSummaryJsonSchema } from "./openai-responses-summary-schema";
 import {
   resolveReaderSummaryDailyTaskIdentityFromEnv,
   resolveReaderSummaryGenerationIdentityFromEnv,
@@ -33,7 +30,6 @@ import {
 } from "./active-reader-summary-generation-profile";
 import {
   AgentRuntimeModelProviderError,
-  buildAgentRuntimeRequestId,
   classifyAgentRuntimeError,
   nonEmptyOrFallback,
   parsePositiveInteger,
@@ -163,43 +159,17 @@ export class AgentRuntimeSummaryModelAdapter implements SummaryModelPort {
       return this.buildNoSignalAttempt(input, selectedRoute);
     }
 
-    const result = await this.client.runTask({
-      requestId: buildAgentRuntimeRequestId(
-        "summary",
-        input.tenantId,
-        input.workspaceId,
-        input.interestId,
-        input.requestedAt,
-      ),
-      tenantId: input.tenantId,
-      workspaceId: input.workspaceId,
-      correlationId: buildAgentRuntimeRequestId(
-        "summary-correlation",
-        input.tenantId,
-        input.workspaceId,
-        input.interestId,
-        input.requestedAt,
-      ),
-      provider: this.agentProvider,
+    const result = await this.client.runTask(buildAgentRuntimeSummaryTaskCommand({
+      input,
+      selectedRoute,
+      agentProvider: this.agentProvider,
       providerInstanceId: this.providerInstanceId,
-      purpose: "social_monitor.summary.generate",
-      systemPrompt: buildInstructions(input),
-      prompt: buildPromptPayload(input),
-      outputSchema: openAiSummaryJsonSchema,
-      controls: {
-        interactive: false,
-        outputSchemaName: "social_monitor_summary_artifact",
-        schemaVersion: selectedRoute.schemaVersion,
-        ...runtimeModelControl(this.model, defaultModel),
-        ...this.routeControls,
-        maxOutputTokens: this.maxOutputTokens,
-      },
+      model: this.model,
+      defaultModelAlias: defaultModel,
+      routeControls: this.routeControls,
+      maxOutputTokens: this.maxOutputTokens,
       timeoutMs: this.timeoutMs,
-      metadata: {
-        adapter: "agent-runtime-summary",
-        promptVersion: selectedRoute.promptVersion,
-      },
-    });
+    }));
     const rawDraft = readAgentRuntimeObjectOutput(
       result,
       parseOpenAiSummaryJsonObject,
@@ -271,37 +241,12 @@ export class AgentRuntimeSummaryModelAdapter implements SummaryModelPort {
     input: SummaryModelInput,
     selectedRoute: SummaryModelRoute,
   ): ProviderSummaryAttempt {
-    return {
-      route: selectedRoute,
-      draft: {
-        headline: "No reliable signal yet",
-        executiveSummary:
-          "No eligible evidence items were available for this interest window.",
-        keyPoints: [],
-        risksAndUnknowns: [
-          {
-            description:
-              "The summary window did not contain enough source material to produce claims.",
-            reason: "insufficient_evidence",
-          },
-        ],
-        sourceHighlights: [],
-        citationMap: [],
-        qualityFlags: ["no_signal", "limited_sources"],
-        confidence: {
-          level: "none",
-          score: 0,
-          rationale: "No evidence was selected for the summary window.",
-        },
-        lineage: buildOpenAiSummaryLineage(
-          input,
-          selectedRoute,
-          this.evalDatasetVersion,
-        ),
-        usage: this.estimate(input, selectedRoute),
-        noSignalReason: "No eligible evidence items selected for this interest.",
-      },
-    };
+    return buildSummaryNoSignalAttempt({
+      input,
+      selectedRoute,
+      evalDatasetVersion: this.evalDatasetVersion,
+      usage: this.estimate(input, selectedRoute),
+    });
   }
 }
 
@@ -352,8 +297,3 @@ const parseAgentRuntimeProvider = (
   throw new Error('AGENT_RUNTIME_PROVIDER must be "codex" or "claude"');
 };
 
-const runtimeModelControl = (
-  model: string,
-  defaultModelAlias: string,
-): { readonly model?: string } =>
-  model === defaultModelAlias ? {} : { model };
