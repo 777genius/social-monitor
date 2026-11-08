@@ -8,7 +8,7 @@ import type {
 import { buildOpenAiReaderSummaryLineage } from "./openai-responses-reader-summary-draft-normalizer";
 import { buildReaderSummaryEvidenceCitationMap } from "./reader-summary-evidence-citation-map";
 
-export const buildOpenAiReaderSummaryNoSignalAttempt = (params: Readonly<{
+export const buildReaderSummaryNoSignalAttempt = (params: Readonly<{
   input: ReaderSummaryModelInput;
   selectedRoute: ReaderSummaryModelRoute;
   evalDatasetVersion: string;

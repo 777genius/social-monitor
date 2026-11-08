@@ -2,10 +2,7 @@ import { buildAgentRuntimeReaderSummaryTaskCommand } from "./agent-runtime-reade
 import { isRepairableNarrativeError } from "./reader-summary-narrative-repair-contract";
 import { readerSummaryDailyInputReceipt } from "./reader-summary-daily-input-receipt";
 import { runAgentRuntimeDailyEditor } from "./agent-runtime-reader-summary-daily-editorial";
-import {
-  buildReaderSummary,
-  primaryReaderSummaryEvidence,
-} from "../../domain";
+import { primaryReaderSummaryEvidence } from "../../domain";
 import type {
   AgentRuntimeClientPort,
   AgentRuntimeProvider,
@@ -24,7 +21,6 @@ import type {
 } from "../../ports";
 import {
   assertOpenAiReaderSummaryDraftShape,
-  buildOpenAiReaderSummaryLineage,
   normalizeOpenAiReaderSummaryDraft,
 } from "./openai-responses-reader-summary-draft-normalizer";
 import {
@@ -33,7 +29,7 @@ import {
   currentReaderSummaryPromptRelease,
 } from "./openai-responses-reader-summary-prompt";
 import { parseOpenAiReaderSummaryJsonObject } from "./openai-responses-reader-summary-response-parser";
-import { buildReaderSummaryEvidenceCitationMap } from "./reader-summary-evidence-citation-map";
+import { buildReaderSummaryNoSignalAttempt } from "./reader-summary-no-signal-attempt";
 import {
   verifyAndRecordReaderSummaryExecution,
   type VerifiedReaderSummaryExecutionAttestationSink,
@@ -361,53 +357,12 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     input: ReaderSummaryModelInput,
     selectedRoute: ReaderSummaryModelRoute,
   ): ProviderReaderSummaryAttempt {
-    const citationMap = buildReaderSummaryEvidenceCitationMap(
-      input.evidence.selectedEvidence,
-    );
-    const noSignalDraft = {
-      headline: "No reliable workspace signal yet",
-      executiveSummary:
-        "No eligible evidence items were available for this summary window.",
-      topStories: [],
-      interestHighlights: [],
-      repeatedSignals: [],
-      risksAndUnknowns: [
-        {
-          description:
-            "The summary window did not contain enough primary evidence to produce claims.",
-          reason: "insufficient_evidence" as const,
-        },
-      ],
-      citationMap,
-      qualityFlags: ["no_signal", "limited_sources"] as const,
-      confidence: {
-        level: "none" as const,
-        score: 0,
-        rationale: "No primary evidence was selected for the summary window.",
-      },
-      lineage: buildOpenAiReaderSummaryLineage(
-        input,
-        selectedRoute,
-        this.evalDatasetVersion,
-      ),
+    return buildReaderSummaryNoSignalAttempt({
+      input,
+      selectedRoute,
+      evalDatasetVersion: this.evalDatasetVersion,
       usage: this.estimate(input, selectedRoute),
-      noSignalReason:
-        "No eligible evidence items selected for this summary scope.",
-    };
-
-    return {
-      route: selectedRoute,
-      draft: {
-        ...noSignalDraft,
-        content: buildReaderSummary({
-          ...noSignalDraft,
-          storyClusters: input.evidence.clusters,
-          sourceWindow: input.evidence.sourceWindow,
-          selectedEvidence: input.evidence.selectedEvidence,
-          editorialSlate: input.evidence.editorialSlate,
-        }),
-      },
-    };
+    });
   }
 }
 

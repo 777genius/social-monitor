@@ -29,7 +29,7 @@ import {
 } from "./openai-responses-reader-summary-prompt";
 import { readerSummaryWriterSchema } from "./openai-responses-reader-summary-schema";
 import { classifyOpenAiReaderSummaryModelError } from "./openai-responses-reader-summary-error-policy";
-import { buildOpenAiReaderSummaryNoSignalAttempt } from "./openai-responses-reader-summary-no-signal";
+import { buildReaderSummaryNoSignalAttempt } from "./reader-summary-no-signal-attempt";
 
 import {
   ReaderSummaryModelProviderError,
@@ -287,7 +287,7 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
     input: ReaderSummaryModelInput,
     selectedRoute: ReaderSummaryModelRoute,
   ): ProviderReaderSummaryAttempt {
-    return buildOpenAiReaderSummaryNoSignalAttempt({
+    return buildReaderSummaryNoSignalAttempt({
       input,
       selectedRoute,
       evalDatasetVersion: this.evalDatasetVersion,
