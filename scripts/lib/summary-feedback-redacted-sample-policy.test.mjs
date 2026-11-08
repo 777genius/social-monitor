@@ -4,6 +4,7 @@ import {
   validateArtifactProvenance, validateSampleSource, validateSampleRedaction,
   validateSampleRollup, incrementCount, validateRedactedSample,
   validateRealSampleDoesNotCopyFixtureExample, validateSerializedArtifact,
+  validateSerializedArtifactContent,
 } from './summary-feedback-redacted-sample-policy.mjs';
 import {
   validateEvidenceArtifactProvenance, validateRealEvidenceIdentityStrings,
@@ -249,5 +250,14 @@ test('serialized redacted artifact rejects forbidden literals and invokes the or
   const calls = [], ctx = context([], calls);
   validateSerializedArtifact({ message: 'Bearer redacted-value' }, 'artifact', ctx);
   assert.ok(ctx.violations.includes('artifact: redacted sample artifact must not contain "bearer "'));
+  assert.deepEqual(calls.map((item) => item[0]), ['patterns']);
+});
+
+test('raw serialized evidence passes the same pre-parse privacy and regex gates', () => {
+  const calls = [], ctx = context([], calls);
+  validateSerializedArtifactContent('{"message":"Bearer raw-secret"}', 'artifact', ctx);
+  assert.deepEqual(ctx.violations, [
+    'artifact: redacted sample artifact must not contain "bearer "',
+  ]);
   assert.deepEqual(calls.map((item) => item[0]), ['patterns']);
 });

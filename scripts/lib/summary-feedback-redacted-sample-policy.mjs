@@ -352,7 +352,7 @@ export function validateSerializedArtifact(artifact, path, context) {
   validateSerializedArtifactContent(JSON.stringify(artifact), path, context);
 }
 
-function validateSerializedArtifactContent(content, path, context) {
+export function validateSerializedArtifactContent(content, path, context) {
   const { forbiddenSerializedFragments, validateSerializedPatterns, violations } = context;
 
   const serializedArtifact = content.toLowerCase();

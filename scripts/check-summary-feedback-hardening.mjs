@@ -18,6 +18,7 @@ import {
   incrementCount,
   validateSampleRollup,
   validateSerializedArtifact,
+  validateSerializedArtifactContent,
 } from './lib/summary-feedback-redacted-sample-policy.mjs';
 import { isIsoDateString, parseIsoTimestampMs, sampleSignalFingerprint } from './lib/summary-feedback-evidence-values.mjs';
 
@@ -483,7 +484,7 @@ function readPrivateRedactedSampleArtifact(path, label) {
 }
 
 function readRedactedSampleArtifactContent(rawContent, path) {
-  validateSerializedArtifactContent(rawContent, path);
+  validateSerializedArtifactContent(rawContent, path, redactedSamplePolicyContext);
   return JSON.parse(rawContent);
 }
 
