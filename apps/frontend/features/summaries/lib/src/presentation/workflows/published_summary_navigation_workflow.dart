@@ -14,13 +14,15 @@ extension PublishedSummaryNavigationWorkflow on PublishedSummaryStore {
     _notifyChanged();
     await _refreshAvailablePeriods();
     final periods = availablePeriodsForPreset;
-    if (periods.isEmpty) {
+    if (periods.isEmpty && !canBrowseUnpublishedDaily) {
       selectedPeriodPreset = previousPreset;
       _selectedPeriodEndedAt = previousPeriodEndedAt;
       _notifyChanged();
       return;
     }
-    _selectedPeriodEndedAt = periods.last.endedAt;
+    _selectedPeriodEndedAt = periods.isEmpty
+        ? selectedPeriodPreset.currentPeriodEndedAt()
+        : periods.last.endedAt;
     await _loadSelectedPeriod();
   }
 
@@ -29,6 +31,11 @@ extension PublishedSummaryNavigationWorkflow on PublishedSummaryStore {
   Future<void> showNextPeriod() => _showAdjacentPeriod(1);
 
   Future<void> showCurrentPeriod() async {
+    if (canBrowseUnpublishedDaily) {
+      _selectedPeriodEndedAt = selectedPeriodPreset.currentPeriodEndedAt();
+      await _loadSelectedPeriod();
+      return;
+    }
     final periods = availablePeriodsForPreset;
     if (periods.isEmpty) {
       return;
@@ -42,14 +49,28 @@ extension PublishedSummaryNavigationWorkflow on PublishedSummaryStore {
     final available = availablePeriodsForPreset.where(
       (period) => sameSummaryPeriodWindow(period, requested),
     );
-    if (available.isEmpty) {
+    if (available.isEmpty && !canBrowseUnpublishedDaily) {
       return;
     }
-    _selectedPeriodEndedAt = available.first.endedAt;
+    _selectedPeriodEndedAt = canBrowseUnpublishedDaily
+        ? requested.endedAt
+        : available.first.endedAt;
     await _loadSelectedPeriod();
   }
 
   Future<void> _showAdjacentPeriod(int offset) async {
+    if (canBrowseUnpublishedDaily) {
+      if (offset < 0
+          ? !canNavigateToPreviousPeriod
+          : !canNavigateToNextPeriod) {
+        return;
+      }
+      _selectedPeriodEndedAt = offset < 0
+          ? selectedPeriodPreset.previousPeriodEndedAt(selectedPeriod.endedAt)
+          : selectedPeriodPreset.nextPeriodEndedAt(selectedPeriod.endedAt);
+      await _loadSelectedPeriod();
+      return;
+    }
     final adjacent = _adjacentAvailablePeriod(offset);
     if (adjacent == null) {
       return;
@@ -72,7 +93,11 @@ extension PublishedSummaryNavigationWorkflow on PublishedSummaryStore {
       return;
     }
 
-    state = LoadingViewState<ReaderSummary>(previousValue: previous);
+    state = LoadingViewState<ReaderSummary>(
+      previousValue: canBrowseUnpublishedDaily && reference == null
+          ? null
+          : previous,
+    );
     _notifyChanged();
     final prefetch = reference == null
         ? null
@@ -110,7 +135,9 @@ extension PublishedSummaryNavigationWorkflow on PublishedSummaryStore {
     state = result.fold(
       onSuccess: (snapshot) {
         final summary = snapshot.current;
-        if (summary == null) {
+        if (summary == null ||
+            (canBrowseUnpublishedDaily &&
+                !sameSummaryPeriodWindow(summary.period, selectedPeriod))) {
           return _fallbackState(previous);
         }
         selectedSummary = summary;
@@ -128,7 +155,7 @@ extension PublishedSummaryNavigationWorkflow on PublishedSummaryStore {
           isDegraded: summary.isDegraded,
         );
       },
-      onFailure: (failure) => previous == null
+      onFailure: (failure) => canBrowseUnpublishedDaily || previous == null
           ? FailureViewState<ReaderSummary>(failure: failure)
           : _fallbackState(previous),
     );
@@ -141,7 +168,7 @@ extension PublishedSummaryNavigationWorkflow on PublishedSummaryStore {
   }
 
   AsyncViewState<ReaderSummary> _fallbackState(ReaderSummary? previous) {
-    if (previous == null) {
+    if (canBrowseUnpublishedDaily || previous == null) {
       return const EmptyViewState<ReaderSummary>(
         reason: 'No published summary exists for this period.',
       );

@@ -8,6 +8,7 @@ class _SummaryPeriodDateDialog extends StatefulWidget {
     required this.selectedPreset,
     required this.selectablePeriods,
     required this.calendarNow,
+    required this.allowUnpublishedDates,
   });
 
   final DateTime initialDate;
@@ -16,6 +17,7 @@ class _SummaryPeriodDateDialog extends StatefulWidget {
   final SummaryPeriodPreset selectedPreset;
   final List<SummaryPeriod> selectablePeriods;
   final DateTime? calendarNow;
+  final bool allowUnpublishedDates;
 
   @override
   State<_SummaryPeriodDateDialog> createState() =>
@@ -38,6 +40,7 @@ class _SummaryPeriodDateDialogState extends State<_SummaryPeriodDateDialog> {
     final colorScheme = Theme.of(context).colorScheme;
     final hasAvailabilityData = widget.selectablePeriods.isNotEmpty;
     final canSubmit =
+        widget.allowUnpublishedDates ||
         !hasAvailabilityData ||
         _hasAvailablePeriodForDate(
           date: _selectedDate,
@@ -122,12 +125,16 @@ class _SummaryPeriodDateDialogState extends State<_SummaryPeriodDateDialog> {
                 selectedPreset: widget.selectedPreset,
                 selectablePeriods: widget.selectablePeriods,
                 calendarNow: widget.calendarNow,
+                allowUnpublishedDates: widget.allowUnpublishedDates,
                 onDateSelected: (date) => setState(() {
                   _selectedDate = date;
                 }),
               ),
               const SizedBox(height: AppSpacing.sm),
-              _CalendarLegend(hasAvailabilityData: hasAvailabilityData),
+              _CalendarLegend(
+                hasAvailabilityData: hasAvailabilityData,
+                allowUnpublishedDates: widget.allowUnpublishedDates,
+              ),
               const SizedBox(height: AppSpacing.md),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
@@ -174,6 +181,7 @@ class _CalendarMonthGrid extends StatelessWidget {
     required this.selectedPreset,
     required this.selectablePeriods,
     required this.calendarNow,
+    required this.allowUnpublishedDates,
     required this.onDateSelected,
   });
 
@@ -184,6 +192,7 @@ class _CalendarMonthGrid extends StatelessWidget {
   final SummaryPeriodPreset selectedPreset;
   final List<SummaryPeriod> selectablePeriods;
   final DateTime? calendarNow;
+  final bool allowUnpublishedDates;
   final ValueChanged<DateTime> onDateSelected;
 
   @override
@@ -219,6 +228,7 @@ class _CalendarMonthGrid extends StatelessWidget {
                       selectedPreset: selectedPreset,
                       selectablePeriods: selectablePeriods,
                       calendarNow: calendarNow,
+                      allowUnpublishedDates: allowUnpublishedDates,
                       onDateSelected: onDateSelected,
                     ),
                   ),
@@ -239,6 +249,7 @@ class _CalendarDayCell extends StatelessWidget {
     required this.selectedPreset,
     required this.selectablePeriods,
     required this.calendarNow,
+    required this.allowUnpublishedDates,
     required this.onDateSelected,
   });
 
@@ -249,6 +260,7 @@ class _CalendarDayCell extends StatelessWidget {
   final SummaryPeriodPreset selectedPreset;
   final List<SummaryPeriod> selectablePeriods;
   final DateTime? calendarNow;
+  final bool allowUnpublishedDates;
   final ValueChanged<DateTime> onDateSelected;
 
   @override
@@ -269,7 +281,8 @@ class _CalendarDayCell extends StatelessWidget {
           availablePeriods: selectablePeriods,
           calendarNow: calendarNow,
         );
-    final enabled = inRange && (!hasAvailabilityData || hasAvailableSummary);
+    final enabled = inRange &&
+        (allowUnpublishedDates || !hasAvailabilityData || hasAvailableSummary);
     final selected = _sameDate(date, selectedDate);
     final keyDate = _dateKey(date);
     final foreground = enabled
@@ -332,63 +345,4 @@ class _CalendarDayCell extends StatelessWidget {
       ),
     );
   }
-}
-
-String _monthLabel(DateTime month) {
-  const monthNames = [
-    'January',
-    'February',
-    'March',
-    'April',
-    'May',
-    'June',
-    'July',
-    'August',
-    'September',
-    'October',
-    'November',
-    'December',
-  ];
-  return '${monthNames[month.month - 1]} ${month.year}';
-}
-
-DateTime _previousMonth(DateTime month) {
-  return month.month == DateTime.january
-      ? DateTime(month.year - 1, DateTime.december)
-      : DateTime(month.year, month.month - 1);
-}
-
-DateTime _nextMonth(DateTime month) {
-  return month.month == DateTime.december
-      ? DateTime(month.year + 1, DateTime.january)
-      : DateTime(month.year, month.month + 1);
-}
-
-DateTime? _dateForCell(
-  DateTime firstOfMonth,
-  int cellIndex,
-  int leadingEmptyCells,
-) {
-  final day = cellIndex - leadingEmptyCells + 1;
-  final daysInMonth = DateTime(
-    firstOfMonth.year,
-    firstOfMonth.month + 1,
-    0,
-  ).day;
-  if (day < 1 || day > daysInMonth) {
-    return null;
-  }
-  return DateTime(firstOfMonth.year, firstOfMonth.month, day);
-}
-
-bool _sameDate(DateTime left, DateTime right) {
-  return left.year == right.year &&
-      left.month == right.month &&
-      left.day == right.day;
-}
-
-String _dateKey(DateTime date) {
-  final month = date.month.toString().padLeft(2, '0');
-  final day = date.day.toString().padLeft(2, '0');
-  return '${date.year}-$month-$day';
 }

@@ -25,6 +25,7 @@ final class PublishedSummaryStore extends ChangeNotifier {
     required LoadPublishedSummaryUseCase loadPublished,
     required OpenReaderSourceUseCase openReaderSource,
     this.summaryId,
+    this.allowUnpublishedDays = false,
     void Function(String summaryId)? onSummarySelected,
     OperationGenerationGuard? generationGuard,
     OperationGenerationGuard? historyGenerationGuard,
@@ -49,6 +50,11 @@ final class PublishedSummaryStore extends ChangeNotifier {
   final OperationGenerationGuard _prefetchGenerationGuard =
       OperationGenerationGuard();
   final String? summaryId;
+  final bool allowUnpublishedDays;
+
+  bool get canBrowseUnpublishedDaily => allowUnpublishedDays &&
+      selectedPeriodPreset == SummaryPeriodPreset.daily &&
+      (summaryId == null || summaryId!.trim().isEmpty);
   final Map<String, ReaderSummary> _summaryCache = {};
   final Map<String, Future<void>> _summaryPrefetches = {};
 
@@ -70,11 +76,19 @@ final class PublishedSummaryStore extends ChangeNotifier {
           .toList(growable: false)
         ..sort((left, right) => left.endedAt.compareTo(right.endedAt));
 
-  bool get canNavigateToPreviousPeriod => _adjacentAvailablePeriod(-1) != null;
+  bool get canNavigateToPreviousPeriod => canBrowseUnpublishedDaily
+      ? selectedPeriod.startedAt.isAfter(DateTime.utc(2020))
+      : _adjacentAvailablePeriod(-1) != null;
 
-  bool get canNavigateToNextPeriod => _adjacentAvailablePeriod(1) != null;
+  bool get canNavigateToNextPeriod => canBrowseUnpublishedDaily
+      ? selectedPeriodPreset.canNavigateNext(selectedPeriod.endedAt)
+      : _adjacentAvailablePeriod(1) != null;
 
   bool get isCurrentPeriod {
+    if (canBrowseUnpublishedDaily) {
+      return selectedPeriod.endedAt ==
+          SummaryPeriodPreset.daily.currentPeriodEndedAt();
+    }
     final periods = availablePeriodsForPreset;
     return periods.isEmpty ||
         sameSummaryPeriodWindow(selectedPeriod, periods.last);
@@ -209,16 +223,18 @@ final class PublishedSummaryStore extends ChangeNotifier {
       ReadyViewState<ReaderSummary>(:final value) => value,
       _ => null,
     };
-    if (current == null) {
+    if (current == null && !canBrowseUnpublishedDaily) {
       return;
     }
+    final sourceContextId = current?.id ?? _scope.workspaceId;
     await _openReaderSource(
       OpenReaderSourceCommand(
-        summaryId: current.id,
+        summaryId: sourceContextId,
         kind: 'read_source',
         label: 'Open source',
         canonicalUrl: canonicalUrl,
-        idempotencyKey: '${current.id}:public-source:${canonicalUrl.hashCode}',
+        idempotencyKey:
+            '$sourceContextId:public-source:${canonicalUrl.hashCode}',
       ),
     );
   }

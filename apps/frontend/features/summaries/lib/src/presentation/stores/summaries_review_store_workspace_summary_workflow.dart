@@ -188,8 +188,13 @@ extension SummariesReviewStoreWorkspaceSummaryWorkflow on SummariesReviewStore {
   }
 
   Future<void> showPreviousWorkspaceSummaryPeriod() async {
-    final previousAvailable = _previousAvailableSummaryPeriodForSelectedPreset;
-    if (availableWorkspaceSummaryPeriods.isNotEmpty &&
+    final browseUnpublished = allowUnpublishedDays &&
+        selectedSummaryPeriodPreset == SummaryPeriodPreset.daily;
+    final previousAvailable = browseUnpublished
+        ? null
+        : _previousAvailableSummaryPeriodForSelectedPreset;
+    if (!browseUnpublished &&
+        availableWorkspaceSummaryPeriods.isNotEmpty &&
         previousAvailable == null) {
       return;
     }
@@ -207,14 +212,18 @@ extension SummariesReviewStoreWorkspaceSummaryWorkflow on SummariesReviewStore {
       return;
     }
 
-    _selectedSummaryPeriodEndedAt =
-        _latestAvailableSummaryPeriodForSelectedPreset?.endedAt;
+    _selectedSummaryPeriodEndedAt = allowUnpublishedDays &&
+            selectedSummaryPeriodPreset == SummaryPeriodPreset.daily
+        ? selectedSummaryPeriodPreset.currentPeriodEndedAt()
+        : _latestAvailableSummaryPeriodForSelectedPreset?.endedAt;
     await _reloadSelectedWorkspaceSummaryPeriod();
   }
 
   Future<void> selectWorkspaceSummaryCalendarDate(DateTime date) async {
     final nextPeriod = selectedSummaryPeriodPreset.resolveForCalendarDate(date);
-    if (availableWorkspaceSummaryPeriods.isNotEmpty &&
+    if (!(allowUnpublishedDays &&
+            selectedSummaryPeriodPreset == SummaryPeriodPreset.daily) &&
+        availableWorkspaceSummaryPeriods.isNotEmpty &&
         !availableWorkspaceSummaryPeriods.any(
           (period) => _sameSummaryPeriodWindow(period, nextPeriod),
         )) {
@@ -233,8 +242,12 @@ extension SummariesReviewStoreWorkspaceSummaryWorkflow on SummariesReviewStore {
       return;
     }
 
+    final browseUnpublished = allowUnpublishedDays &&
+        selectedSummaryPeriodPreset == SummaryPeriodPreset.daily;
     _selectedSummaryPeriodEndedAt =
-        _nextAvailableSummaryPeriodForSelectedPreset?.endedAt ??
+        (browseUnpublished
+            ? null
+            : _nextAvailableSummaryPeriodForSelectedPreset?.endedAt) ??
         selectedSummaryPeriodPreset.nextPeriodEndedAt(
           selectedSummaryPeriod.endedAt,
         );
@@ -262,9 +275,15 @@ Future<void> _loadWorkspaceSummaryForStore(
       previousValue,
     _ => null,
   };
-  final previous = _summarySnapshotForSelectedPreset(
-    previousSnapshot,
-    store.selectedSummaryPeriodPreset,
+  final selectedPeriod = store.selectedSummaryPeriod;
+  final enforceExactWindow = _requiresExactUnpublishedDay(store);
+  final previous = _summarySnapshotForSelectedDailyWindow(
+    _summarySnapshotForSelectedPreset(
+      previousSnapshot,
+      store.selectedSummaryPeriodPreset,
+    ),
+    selectedPeriod,
+    enforceExactWindow: enforceExactWindow,
   );
   store.workspaceSummaryState = LoadingViewState<WorkspaceSummarySnapshot>(
     previousValue: previous,
@@ -305,10 +324,18 @@ Future<void> _loadWorkspaceSummaryForStore(
 
   store.workspaceSummaryState = result.fold(
     onSuccess: (snapshot) {
+      final selectedSnapshot = _summarySnapshotForSelectedDailyWindow(
+        snapshot,
+        selectedPeriod,
+        enforceExactWindow: enforceExactWindow,
+      )!;
       final mergedSnapshot = WorkspaceSummarySnapshot(
-        current: snapshot.current,
-        availablePeriods: _mergeSummarySnapshotPeriods(previous, snapshot),
-        availablePeriodsAreComplete: snapshot.availablePeriodsAreComplete,
+        current: selectedSnapshot.current,
+        availablePeriods: _mergeSummarySnapshotPeriods(
+          previous,
+          selectedSnapshot,
+        ),
+        availablePeriodsAreComplete: selectedSnapshot.availablePeriodsAreComplete,
       );
       final current = mergedSnapshot.current;
       if (current == null) {

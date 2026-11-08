@@ -41,15 +41,20 @@ Future<void> _loadWorkspaceSummaryHistoryForStore(
 
   final current =
       state.value.current ?? history.current ?? currentSnapshot.current;
+  final restoredSnapshot = WorkspaceSummarySnapshot(
+    current: current,
+    availablePeriods: [
+      ..._snapshotSummaryPeriods(currentSnapshot),
+      ..._snapshotSummaryPeriods(history),
+    ],
+    availablePeriodsAreComplete: true,
+  );
   store.workspaceSummaryState = ReadyViewState<WorkspaceSummarySnapshot>(
-    WorkspaceSummarySnapshot(
-      current: current,
-      availablePeriods: [
-        ..._snapshotSummaryPeriods(currentSnapshot),
-        ..._snapshotSummaryPeriods(history),
-      ],
-      availablePeriodsAreComplete: true,
-    ),
+    _summarySnapshotForSelectedDailyWindow(
+      restoredSnapshot,
+      store.selectedSummaryPeriod,
+      enforceExactWindow: _requiresExactUnpublishedDay(store),
+    )!,
   );
   store._notifyStateChanged();
 }

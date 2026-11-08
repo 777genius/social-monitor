@@ -285,6 +285,53 @@ void main() {
     expect(store.availableWorkspaceSummaryPeriods, hasLength(2));
   });
 
+  test('unpublished day withholds stale article during and after loading', () async {
+    final catalog = DeferredSummaryReviewCatalog(
+      const [],
+      deferWorkspaceSummary: true,
+    );
+    final store = _storeWithCatalog(catalog, allowUnpublishedDays: true);
+    addTearDown(store.dispose);
+    final published = const SummaryMapper().readerSummaryToDomain(
+      readerSummaryApiDto(
+        title: 'Previous day article',
+        period: summaryPeriodApiDto(
+          startedAt: DateTime.utc(2026, 11, 6),
+          endedAt: DateTime.utc(2026, 11, 7),
+          periodKey: null,
+        ),
+      ),
+    );
+
+    final initialLoad = store.loadWorkspaceSummary();
+    await Future<void>.delayed(Duration.zero);
+    catalog.pendingWorkspaceSummarys.single.complete(
+      Result.success(WorkspaceSummarySnapshot(current: published)),
+    );
+    await initialLoad;
+
+    final navigation = store.selectWorkspaceSummaryCalendarDate(
+      DateTime(2026, 11, 7),
+    );
+    await Future<void>.delayed(Duration.zero);
+    final loading =
+        store.workspaceSummaryState as LoadingViewState<WorkspaceSummarySnapshot>;
+    expect(loading.previousValue?.current, isNull);
+    expect(store.selectedSummaryPeriod.startedAt, DateTime.utc(2026, 11, 7));
+    expect(catalog.workspaceSummaryQueries.last.allowLatestFallback, isFalse);
+
+    // Even an incorrectly served older summary must not masquerade as
+    // the selected day or block the source-only posts fallback.
+    catalog.pendingWorkspaceSummarys.last.complete(
+      Result.success(WorkspaceSummarySnapshot(current: published)),
+    );
+    await navigation;
+    final ready =
+        store.workspaceSummaryState as ReadyViewState<WorkspaceSummarySnapshot>;
+    expect(ready.value.current, isNull);
+    expect(ready.value.availablePeriods, contains(published.period));
+  });
+
   test('does not inherit a daily window when switching to weekly', () async {
     final catalog = DeferredSummaryReviewCatalog(
       const [],
@@ -330,7 +377,10 @@ SummariesReviewStore _store(InMemorySummariesApiClient apiClient) {
   return _storeWithCatalog(catalog);
 }
 
-SummariesReviewStore _storeWithCatalog(SummaryReviewCatalog catalog) {
+SummariesReviewStore _storeWithCatalog(
+  SummaryReviewCatalog catalog, {
+  bool allowUnpublishedDays = false,
+}) {
   return SummariesReviewStore(
     dependencies: SummariesReviewStoreDependencies(
       listSummaries: ListSummariesUseCase(catalog),
@@ -355,6 +405,7 @@ SummariesReviewStore _storeWithCatalog(SummaryReviewCatalog catalog) {
     scope: summaryWorkspaceScope,
     userId: 'user-test',
     summaryPollInterval: Duration.zero,
+    allowUnpublishedDays: allowUnpublishedDays,
   );
 }
 

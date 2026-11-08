@@ -12,6 +12,7 @@ class _TopPostRow extends StatefulWidget {
     required this.onOpenUrl,
     this.dense = false,
     this.reservePreviewSpace = false,
+    this.sourceOnly = false,
     required this.showSignal,
   });
 
@@ -29,6 +30,7 @@ class _TopPostRow extends StatefulWidget {
   final ValueChanged<String> onOpenUrl;
   final bool dense;
   final bool reservePreviewSpace;
+  final bool sourceOnly;
 
   /// Top posts and Additional stories show the backend Signal alike; only a
   /// board of posts without a popularity rating opts out.
@@ -168,6 +170,7 @@ class _TopPostRowState extends State<_TopPostRow> {
             originalExpanded: _originalExpanded,
             onOriginalChanged: _setShowOriginal,
             onOriginalExpandedChanged: _setOriginalExpanded,
+            sourceOnly: widget.sourceOnly,
           );
         }
 
@@ -176,15 +179,21 @@ class _TopPostRowState extends State<_TopPostRow> {
           dateLabel: widget.dateLabel,
           rating: rating,
         );
-        final content = _TopPostContentColumn(
-          item: widget.item,
-          reservePreviewSpace: widget.reservePreviewSpace,
-          showOriginal: _showOriginal,
-          showOriginalControl: _hovered || _focused || _showOriginal || !wide,
-          originalExpanded: _originalExpanded,
-          onOriginalChanged: _setShowOriginal,
-          onOriginalExpandedChanged: _setOriginalExpanded,
-        );
+        final content = widget.sourceOnly
+            ? _TopPostSourceOnlyCopy(
+                item: widget.item,
+                expanded: _originalExpanded,
+                onExpandedChanged: _setOriginalExpanded,
+              )
+            : _TopPostContentColumn(
+                item: widget.item,
+                reservePreviewSpace: widget.reservePreviewSpace,
+                showOriginal: _showOriginal,
+                showOriginalControl: _hovered || _focused || _showOriginal || !wide,
+                originalExpanded: _originalExpanded,
+                onOriginalChanged: _setShowOriginal,
+                onOriginalExpandedChanged: _setOriginalExpanded,
+              );
         final metricsRow = _TopPostMetricsRow(metrics: metrics);
         final supportSignal = _topPostSupportSignal(
           item: widget.item,
@@ -213,8 +222,10 @@ class _TopPostRowState extends State<_TopPostRow> {
                 const SizedBox(width: AppSpacing.md),
                 metricsRow,
                 const SizedBox(width: AppSpacing.md),
-                SizedBox(width: 156, child: relevance),
-                const SizedBox(width: AppSpacing.sm),
+                if (!widget.sourceOnly) ...[
+                  SizedBox(width: 156, child: relevance),
+                  const SizedBox(width: AppSpacing.sm),
+                ],
                 menu,
               ],
             ),
@@ -231,7 +242,7 @@ class _TopPostRowState extends State<_TopPostRow> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(child: source),
-                  Flexible(child: relevance),
+                  if (!widget.sourceOnly) Flexible(child: relevance),
                   menu,
                 ],
               ),

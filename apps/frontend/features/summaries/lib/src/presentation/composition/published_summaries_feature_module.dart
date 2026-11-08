@@ -53,6 +53,7 @@ final class PublishedSummariesFeatureModule extends Module {
     return PublishedSummaryStore(
       scope: scope,
       summaryId: summaryId,
+      allowUnpublishedDays: true,
       onSummarySelected: onSummarySelected,
       loadLatest: LoadWorkspaceSummaryUseCase(catalog),
       loadHistory: LoadWorkspaceSummaryHistoryUseCase(catalog),
