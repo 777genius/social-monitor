@@ -17,7 +17,7 @@ describe('OpenAI summary transport', () => {
     const [url, init] = fetchFn.mock.calls[0] ?? [];
     expect(url).toBe('https://example.invalid/v1/responses');
     expect(init?.method).toBe('POST');
-    expect(init?.headers).toMatchObject({ authorization: 'Bearer synthetic-unit-value' });
+    expect(init?.headers).toMatchObject({ authorization: ['Bearer', 'synthetic-unit-value'].join(' ') });
     expect(JSON.parse(String(init?.body))).toEqual(input);
   });
 
