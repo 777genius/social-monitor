@@ -1,10 +1,10 @@
-import { readerSummaryRepairInstruction, isRepairableNarrativeError } from "./reader-summary-narrative-repair-contract";
+import { buildAgentRuntimeReaderSummaryTaskCommand } from "./agent-runtime-reader-summary-task-command";
+import { isRepairableNarrativeError } from "./reader-summary-narrative-repair-contract";
 import { readerSummaryDailyInputReceipt } from "./reader-summary-daily-input-receipt";
 import { runAgentRuntimeDailyEditor } from "./agent-runtime-reader-summary-daily-editorial";
 import {
   buildReaderSummary,
   primaryReaderSummaryEvidence,
-  readerSummaryScopeKey,
 } from "../../domain";
 import type {
   AgentRuntimeClientPort,
@@ -29,12 +29,10 @@ import {
 } from "./openai-responses-reader-summary-draft-normalizer";
 import {
   assertNoReaderSummaryPromptReleaseOverride,
-  buildOpenAiReaderSummaryInstructions,
   buildOpenAiReaderSummaryPromptPayload,
   currentReaderSummaryPromptRelease,
 } from "./openai-responses-reader-summary-prompt";
 import { parseOpenAiReaderSummaryJsonObject } from "./openai-responses-reader-summary-response-parser";
-import { readerSummaryWriterSchema } from "./openai-responses-reader-summary-schema";
 import { buildReaderSummaryEvidenceCitationMap } from "./reader-summary-evidence-citation-map";
 import {
   verifyAndRecordReaderSummaryExecution,
@@ -43,7 +41,6 @@ import {
 import {
   AgentRuntimeModelProviderError,
   assertReaderSummaryRepairWithinBudget,
-  buildAgentRuntimeRequestId,
   classifyAgentRuntimeError,
   nonEmptyOrFallback,
   parsePositiveInteger,
@@ -54,11 +51,8 @@ import {
 } from "./agent-runtime-model-support";
 import {
   type activeReaderSummaryProvider,
-  activeReaderSummaryPurposes,
   activeReaderSummaryReasoningEffort,
-  isGatewayReaderSummaryBackend,
   resolveReaderSummaryBackendEffort,
-  readerSummaryRouteControls,
   resolveReaderSummaryGenerationIdentity,
   resolveReaderSummaryGenerationIdentityFromEnv,
   resolveReaderSummaryReasoningEffortFromEnv,
@@ -68,7 +62,6 @@ import {
 } from "./active-reader-summary-generation-profile";
 import { maxReportedOutputViolations, safeOutputViolationPattern } from
   "./gateway-llm/gateway-llm-output-violations";
-import { gatewayOutputHardLimits } from "./gateway-llm/gateway-llm-schema-limits";
 
 export type AgentRuntimeReaderSummaryModelAdapterOptions = {
   readonly client: AgentRuntimeClientPort;
@@ -304,62 +297,20 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     attempt: "primary" | "repair",
     schemaViolations?: readonly string[],
   ): AgentRuntimeTaskCommand {
-    const isRepair = attempt === "repair";
-    const selectedSchema = readerSummaryWriterSchema(input);
-    const hardLimits = isGatewayReaderSummaryBackend(this.modelBackend)
-      ? `\n${gatewayOutputHardLimits(selectedSchema)}` : "";
-    const repairInstruction = !isRepair ? ""
-      : `\n${readerSummaryRepairInstruction(input, schemaViolations)}`;
-    return {
-      requestId: buildAgentRuntimeRequestId(
-        isRepair ? "reader-summary-repair" : "reader-summary",
-        input.tenantId,
-        input.workspaceId,
-        readerSummaryScopeKey(input.scope),
-        input.requestedAt,
-      ),
-      tenantId: input.tenantId,
-      workspaceId: input.workspaceId,
-      correlationId: buildAgentRuntimeRequestId(
-        "reader-summary-correlation",
-        input.tenantId,
-        input.workspaceId,
-        readerSummaryScopeKey(input.scope),
-        input.requestedAt,
-      ),
-      provider: this.agentProvider,
+    return buildAgentRuntimeReaderSummaryTaskCommand({
+      input,
+      selectedRoute,
+      attempt,
+      schemaViolations,
+      agentProvider: this.agentProvider,
       providerInstanceId: this.providerInstanceId,
-      purpose: isRepair
-        ? this.legacyRecovery
-          ? frozenLegacyReaderSummaryRecoveryContract.purposes.repair
-          : activeReaderSummaryPurposes.repair
-        : this.legacyRecovery
-          ? frozenLegacyReaderSummaryRecoveryContract.purposes.generate
-          : activeReaderSummaryPurposes.generate,
-      systemPrompt: `${buildOpenAiReaderSummaryInstructions(input)}${hardLimits}${repairInstruction}`,
-      prompt: buildOpenAiReaderSummaryPromptPayload(input),
-      outputSchema: selectedSchema,
-      controls: {
-        interactive: false,
-        outputSchemaName: "social_monitor_reader_summary_artifact",
-        schemaVersion: selectedRoute.schemaVersion,
-        model: this.model,
-        ...(this.modelBackend === "xiaomi-mimo-token-plan"
-          ? { modelBackend: this.modelBackend }
-          : {}),
-        ...readerSummaryRouteControls(this.modelBackend, this.reasoningEffort),
-        toolsEnabled: false,
-        toolPolicy: "none",
-        maxOutputTokens: this.maxOutputTokens,
-      },
+      legacyRecovery: this.legacyRecovery,
+      modelBackend: this.modelBackend,
+      reasoningEffort: this.reasoningEffort,
+      model: this.model,
+      maxOutputTokens: this.maxOutputTokens,
       timeoutMs: this.timeoutMs,
-      metadata: {
-        adapter: "agent-runtime-reader-summary",
-        promptVersion: selectedRoute.promptVersion,
-        reasoningEffort: this.reasoningEffort,
-        attempt,
-      },
-    };
+    });
   }
 
   validateRawProviderResponse(
