@@ -252,3 +252,24 @@ test('real provenance forbids fixture markers and retains exact field paths', ()
     'artifact: provenance.collectionMethod must not contain "mock" for rotation evidence',
   ]);
 });
+
+test('real rotation identities reject fixture-like fields without affecting examples', () => {
+  const environment = {
+    environmentId: 'fixture-stage',
+    secretStoreId: 'synthetic-store',
+    sampledAt: observedAt,
+    operator: 'mock-operator',
+  };
+  const unchanged = globalThis.structuredClone(environment);
+  const real = context();
+  validateArtifactEnvironment(environment, 'artifact', { ...sourceOptions, allowExample: false }, real);
+  assert.deepEqual(real.violations, [
+    'artifact: environment.environmentId must not contain "fixture" for rotation evidence',
+    'artifact: environment.secretStoreId must not contain "synthetic" for rotation evidence',
+    'artifact: environment.operator must not contain "mock" for rotation evidence',
+  ]);
+  const example = context();
+  validateArtifactEnvironment(environment, 'artifact', sourceOptions, example);
+  assert.deepEqual(example.violations, []);
+  assert.deepEqual(environment, unchanged);
+});
