@@ -67,4 +67,16 @@ Keep PR Draft whenever criteria are incomplete. On any behavior change not justi
 
 Decision: **conditional pass**; implement only after the inventory and remaining two rounds are complete.
 
-Rounds 2 and 3 pending. No implementation has started.
+### Round 2 — behavioral/security critic (internal adversarial review)
+
+**Finding B1 (critical):** OpenAI reader-summary, weekly and generic models share plumbing but not necessarily the same refusal/incomplete-output, editorial or citation rules. A universal parser or merged prompt builder would silently broaden acceptance. **Resolution:** keep per-workflow parsers and output shape contracts; extract only byte-for-byte equivalent predicates with direct golden/negative tests. No prompt string, model ID, version or JSON-schema edits.
+
+**Finding B2 (critical):** `AgentRuntimeReaderSummaryModelAdapter`, `GrpcAgentRuntimeClient`, `GatewayLlmClient` and execution-attestation support carry trust decisions about runtime model, task identity, recorded outputs, deadlines and credential-free observability. **Resolution:** map trust boundaries explicitly; keep attestation and fail-closed validation at the current integration point; test mismatched provider/model, missing execution evidence, timeout/deadline and bounded response values before changing shared helpers.
+
+**Finding B3 (high):** the deterministic model is the fallback contract; DRY across deterministic and external models may alter stable evidence selection, order or lineage. **Resolution:** deterministic semantics remain independent; only use shared citation/evidence primitives already contractually identical and compare exact normalized output fixtures.
+
+**Finding B4 (high):** new fixtures can leak private provider outputs or credentials. **Resolution:** use synthetic fixtures and hashed golden values; require `check:secrets`/security CI, never real account flows, test dangerous strings and escaped forms without storing plausible tokens.
+
+Decision: **conditional pass**. The final implementation must preserve strict/negative behavior; remaining round 3 and baseline inventory are prerequisites.
+
+Round 3 pending. No implementation has started.
