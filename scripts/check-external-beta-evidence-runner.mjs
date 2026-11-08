@@ -5,8 +5,7 @@ import {
   rabbitmqDrillPreflightEnv,
   redditOAuthPreflightEnv,
 } from './lib/external-beta-evidence-preflight-fixtures.mjs';
-
-import { validateRunnerImplementationMarkers } from './lib/external-beta-evidence-runner-markers.mjs';
+import { validateRunnerImplementationMarkers, redactionPolicyPath } from './lib/external-beta-evidence-runner-markers.mjs';
 import {
   liveOpenConnectorsArtifact,
   redditCredentialLifecycleArtifact,
@@ -779,6 +778,7 @@ function validateRunnerImplementation() {
     runnerSource,
     checkSource,
     selectionHelperSource,
+    redactionPolicySource: readFileSync(redactionPolicyPath, 'utf8'),
     runnerFile: contract.runnerFile,
     checkFile: contract.checkFile,
     selectionHelperPath,
