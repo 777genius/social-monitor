@@ -20,7 +20,7 @@ describe("provider-neutral reader summary no-signal draft", () => {
       model: "synthetic",
       promptVersion: "synthetic-prompt",
       schemaVersion: "reader_summary.artifact.v1",
-    };
+    } as const;
     const attempt = buildReaderSummaryNoSignalAttempt({
       input,
       selectedRoute: route,
