@@ -1,6 +1,5 @@
 import type {
   GeneratedReaderSummaryDraft,
-  ReaderSummaryCitation,
   ReaderSummaryQualityFlag,
 } from "../../domain";
 import { buildReaderSummary, readerSummaryHeadline } from "../../domain";

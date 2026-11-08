@@ -16,7 +16,6 @@ import {
   READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID,
   READER_SUMMARY_TOPIC_SEMANTIC_CONFIDENCE_MIN,
   renderReaderSummaryTopicSemanticLabel,
-  type ReaderSummaryTopicSemanticLabel,
   type ReaderSummaryTopicLabelPlan,
 } from "../../domain";
 import type { ReaderSummaryTopicLabelerInput } from "../../ports";
