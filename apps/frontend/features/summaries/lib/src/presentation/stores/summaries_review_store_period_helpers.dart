@@ -118,3 +118,9 @@ WorkspaceSummarySnapshot? _summarySnapshotForSelectedDailyWindow(
     availablePeriodsAreComplete: snapshot.availablePeriodsAreComplete,
   );
 }
+
+/// Explicit daily navigation must never reuse a different day's article.
+bool _requiresExactUnpublishedDay(SummariesReviewStore store) =>
+    store.allowUnpublishedDays &&
+    store.selectedSummaryPeriodPreset == SummaryPeriodPreset.daily &&
+    store._selectedSummaryPeriodEndedAt != null;
