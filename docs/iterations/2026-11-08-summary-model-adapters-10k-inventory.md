@@ -114,6 +114,13 @@ For each slice record original source paths, before/after architectural responsi
 | OpenAI weekly response parsing | `openai-responses-reader-summary-weekly-model.adapter.ts` | `openai-responses-reader-summary-weekly-response-contract.ts` | 269 | Pending tests/review and implementation-only count |
 | gRPC Agent Runtime response/attestation codec | `grpc-agent-runtime-client.ts` | `grpc-agent-runtime-wire-codec.ts` | 218 | Pending tests/review and implementation-only count |
 | OpenAI summary transport | `openai-responses-summary-model.adapter.ts` | `openai-responses-summary-transport.ts` | 55 | Pending tests/review and implementation-only count |
-| **Total provisional** | | | **542** | **0 accepted yet** |
+| Deterministic summary metadata/text ownership | `deterministic-summary-model.adapter.ts` | `deterministic-summary-source-highlights.ts` (metadata/reasons), `deterministic-summary-text.ts` (editorial/memory text); adapter retains budgets/orchestration | 150 | 121 provisional original nonblank code LOC; exact-head tests pending |
+| **Total provisional** | | | **692** | **121 candidate implementation LOC; earlier 542 physical remain unaudited** |
 
 These are unique *source text* lines from pinned main, including comments/blank lines and wrapper text, not automatically 542 meaningful implementation LOC. CI attempts on superseded SHAs do not prove final acceptance. Latest code fix: `8729ac2b70c2d4e06bb91db1bfd9732ecfe2e6d5`, exact-head draft 3-check CI pending at ledger entry.
+
+### Deterministic metadata/text source-to-destination audit (2026-11-09)
+
+- Parent commit: `a56fd2ff3ccca28bd54840ca56227266a11d3cf8`; implementation SHA recorded in PR conversation. Pinned original `deterministic-summary-model.adapter.ts` contains 357 physical LOC. 150 original physical lines reorganized: 18 executive summary, 103 metadata/highlights, 29 no-signal/memory. Of these, 121 source lines are nonblank, noncomment original implementation (15 + 83 + 23). No ledger overlap; these are **provisional**, not accepted toward 10k until exact-head checks and independent review.
+- Ownership: external GitHub repository metadata decoding / memory preference reason ordering moves to `deterministic-summary-source-highlights.ts`; deterministic narrative/no-signal/memory rendering to `deterministic-summary-text.ts`; adapter continues to own port, route/budget, usage, lineage and draft composition. Preserves output copy, provider/model IDs, schema, fallback and failure diagnostics. No schema, contract, dependency or deploy edits.
+- Regression coverage authored: `deterministic-summary-source-highlights.spec.ts` for preferences, trending/7d metadata, malformed/nonfinite payloads; existing `deterministic-summary-model.adapter.spec.ts` covers adapter rendering. Focused Jest and exact-HEAD full CI pending; revert this bounded code slice if contracts diverge.
