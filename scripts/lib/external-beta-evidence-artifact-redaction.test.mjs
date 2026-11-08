@@ -152,7 +152,7 @@ test('escaped JSON literal credentials are rejected after decoding', () => {
 });
 
 test('raw and decoded evidence scans preserve diagnostic order without duplicates', () => {
-  const raw = '{"note":"Bearer visible-credential"}';
+  const raw = JSON.stringify({ note: ['Bearer', ' visible-credential'].join('') });
   const violations = literal(raw);
   validateArtifactDecodedRedaction(JSON.parse(raw), 'job-a', 'artifact', violations);
   assert.deepEqual(violations, [
