@@ -15,16 +15,13 @@ import type {
 } from "../../ports";
 import { buildReaderSummary, primaryReaderSummaryEvidence } from "../../domain";
 import {
-  asRecord,
   assertOpenAiReaderSummaryClaimCitationIds,
   assertOpenAiReaderSummaryDraftShape,
   buildOpenAiReaderSummaryLineage,
-  classifyOpenAiReaderSummaryHttpFailure,
   extractOpenAiOutputText,
   normalizeOpenAiReaderSummaryDraft,
   OpenAiReaderSummaryOutputParseError,
   parseOpenAiReaderSummaryJsonObject,
-  readOpenAiResponseBody,
   resolveOpenAiReaderSummaryUsage,
 } from "./openai-responses-reader-summary-model-support";
 import {
@@ -35,7 +32,11 @@ import {
 import { buildReaderSummaryEvidenceCitationMap } from "./reader-summary-evidence-citation-map";
 import { readerSummaryWriterSchema } from "./openai-responses-reader-summary-schema";
 
-type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
+import {
+  ReaderSummaryModelProviderError,
+  createOpenAiReaderSummaryResponse,
+  type OpenAiReaderSummaryFetchLike as FetchLike,
+} from "./openai-responses-reader-summary-transport";
 
 export type OpenAiResponsesReaderSummaryModelAdapterOptions = {
   readonly apiKey?: string;
@@ -375,65 +376,16 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
   private async createResponse(
     request: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
-
-    try {
-      const response = await this.fetchFn(this.endpointUrl, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${this.apiKey}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(request),
-        signal: controller.signal,
-      });
-      const body = await readOpenAiResponseBody(response);
-
-      if (!response.ok) {
-        throw new ReaderSummaryModelProviderError(
-          classifyOpenAiReaderSummaryHttpFailure(response.status, body),
-        );
-      }
-
-      const record = asRecord(body);
-      if (record === null) {
-        throw new ReaderSummaryModelProviderError({
-          kind: "invalid_schema",
-          retryable: false,
-          message: "OpenAI response body must be a JSON object",
-        });
-      }
-
-      return record;
-    } catch (error) {
-      if (
-        error instanceof ReaderSummaryModelProviderError ||
-        (error instanceof Error && error.name === "AbortError")
-      ) {
-        throw error;
-      }
-
-      throw new ReaderSummaryModelProviderError({
-        kind: "provider_unavailable",
-        retryable: true,
-        message:
-          error instanceof Error
-            ? error.message
-            : "OpenAI reader summary request failed",
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
+    return createOpenAiReaderSummaryResponse({
+      request,
+      endpointUrl: this.endpointUrl,
+      apiKey: this.apiKey,
+      timeoutMs: this.timeoutMs,
+      fetchFn: this.fetchFn,
+    });
   }
 }
 
-
-class ReaderSummaryModelProviderError extends Error {
-  constructor(readonly failure: ReaderSummaryModelFailure) {
-    super(failure.message);
-  }
-}
 
 const nonEmptyOrFallback = (
   value: string | undefined,
