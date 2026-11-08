@@ -24,7 +24,7 @@ export const createOpenAiSummaryResponse = async (params: Readonly<{
           authorization: `Bearer ${params.apiKey}`,
           'content-type': 'application/json',
         },
-        body: JSON.stringify(request),
+        body: JSON.stringify(params.request),
         signal: controller.signal,
       });
       const body = await readOpenAiResponseBody(response);
