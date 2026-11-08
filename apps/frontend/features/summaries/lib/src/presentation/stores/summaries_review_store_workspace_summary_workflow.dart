@@ -188,8 +188,13 @@ extension SummariesReviewStoreWorkspaceSummaryWorkflow on SummariesReviewStore {
   }
 
   Future<void> showPreviousWorkspaceSummaryPeriod() async {
-    final previousAvailable = _previousAvailableSummaryPeriodForSelectedPreset;
-    if (availableWorkspaceSummaryPeriods.isNotEmpty &&
+    final browseUnpublished = allowUnpublishedDays &&
+        selectedSummaryPeriodPreset == SummaryPeriodPreset.daily;
+    final previousAvailable = browseUnpublished
+        ? null
+        : _previousAvailableSummaryPeriodForSelectedPreset;
+    if (!browseUnpublished &&
+        availableWorkspaceSummaryPeriods.isNotEmpty &&
         previousAvailable == null) {
       return;
     }
@@ -207,14 +212,18 @@ extension SummariesReviewStoreWorkspaceSummaryWorkflow on SummariesReviewStore {
       return;
     }
 
-    _selectedSummaryPeriodEndedAt =
-        _latestAvailableSummaryPeriodForSelectedPreset?.endedAt;
+    _selectedSummaryPeriodEndedAt = allowUnpublishedDays &&
+            selectedSummaryPeriodPreset == SummaryPeriodPreset.daily
+        ? selectedSummaryPeriodPreset.currentPeriodEndedAt()
+        : _latestAvailableSummaryPeriodForSelectedPreset?.endedAt;
     await _reloadSelectedWorkspaceSummaryPeriod();
   }
 
   Future<void> selectWorkspaceSummaryCalendarDate(DateTime date) async {
     final nextPeriod = selectedSummaryPeriodPreset.resolveForCalendarDate(date);
-    if (availableWorkspaceSummaryPeriods.isNotEmpty &&
+    if (!(allowUnpublishedDays &&
+            selectedSummaryPeriodPreset == SummaryPeriodPreset.daily) &&
+        availableWorkspaceSummaryPeriods.isNotEmpty &&
         !availableWorkspaceSummaryPeriods.any(
           (period) => _sameSummaryPeriodWindow(period, nextPeriod),
         )) {
@@ -233,8 +242,12 @@ extension SummariesReviewStoreWorkspaceSummaryWorkflow on SummariesReviewStore {
       return;
     }
 
+    final browseUnpublished = allowUnpublishedDays &&
+        selectedSummaryPeriodPreset == SummaryPeriodPreset.daily;
     _selectedSummaryPeriodEndedAt =
-        _nextAvailableSummaryPeriodForSelectedPreset?.endedAt ??
+        (browseUnpublished
+            ? null
+            : _nextAvailableSummaryPeriodForSelectedPreset?.endedAt) ??
         selectedSummaryPeriodPreset.nextPeriodEndedAt(
           selectedSummaryPeriod.endedAt,
         );
