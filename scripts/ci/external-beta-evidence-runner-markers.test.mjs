@@ -7,13 +7,16 @@ import { validateRunnerImplementationMarkers } from '../lib/external-beta-eviden
 const runnerFile = 'scripts/external-beta-evidence-runner.mjs';
 const checkFile = 'scripts/check-external-beta-evidence-runner.mjs';
 const selectionHelperPath = 'scripts/lib/external-beta-evidence-selections.mjs';
+const redactionPolicyPath = 'scripts/lib/external-beta-evidence-artifact-redaction.mjs';
 const sources = {
   runnerSource: readFileSync(runnerFile, 'utf8'),
   checkSource: readFileSync(checkFile, 'utf8'),
   selectionHelperSource: readFileSync(selectionHelperPath, 'utf8'),
+  redactionPolicySource: readFileSync(redactionPolicyPath, 'utf8'),
   runnerFile,
   checkFile,
   selectionHelperPath,
+  redactionPolicyPath,
 };
 
 test('every runner and checker implementation marker exists at its owning source', () => {
@@ -43,4 +46,16 @@ test('legacy runner and checker markers are still enforced', () => {
     checkSource: sources.checkSource.replaceAll('strictSemanticNegativeSmokeLabels', 'missing-marker'),
   });
   assert.ok(missingCheck.some((message) => message.startsWith(`${checkFile}:`)));
+});
+
+test('extracted redaction policy markers are independently fail-closed', () => {
+  const violations = validateRunnerImplementationMarkers({
+    ...sources,
+    redactionPolicySource: sources.redactionPolicySource.replaceAll(
+      'forbiddenArtifactValueFragments', 'removed-redaction-marker',
+    ),
+  });
+  assert.deepEqual(violations, [
+    `${redactionPolicyPath}: extracted redaction policy must preserve "forbiddenArtifactValueFragments"`,
+  ]);
 });

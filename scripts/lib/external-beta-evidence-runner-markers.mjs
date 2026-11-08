@@ -2,9 +2,11 @@ export function validateRunnerImplementationMarkers({
   runnerSource,
   checkSource,
   selectionHelperSource,
+  redactionPolicySource,
   runnerFile,
   checkFile,
   selectionHelperPath,
+  redactionPolicyPath,
 }) {
   const violations = [];
   for (const marker of [
@@ -211,6 +213,15 @@ export function validateRunnerImplementationMarkers({
     'STAGING_SECRET_STORE_ID',
     'validateArtifactLiteralRedaction',
     'validateArtifactStructuredRedaction',
+
+  ]) {
+    if (!runnerSource.includes(marker)) {
+      violations.push(`${runnerFile}: runner must fail fast before executing unsafe job selections`);
+    }
+  }
+
+  // The extracted security-policy module, not the CLI runner, now owns these guards.
+  for (const marker of [
     'forbiddenArtifactValueFragments',
     'forbiddenArtifactValuePatterns',
     'sensitive literal pattern',
@@ -246,8 +257,8 @@ export function validateRunnerImplementationMarkers({
     'fixtureMarkerFindings',
     'fixture marker',
   ]) {
-    if (!runnerSource.includes(marker)) {
-      violations.push(`${runnerFile}: runner must fail fast before executing unsafe job selections`);
+    if (!redactionPolicySource.includes(marker)) {
+      violations.push(`${redactionPolicyPath}: extracted redaction policy must preserve "${marker}"`);
     }
   }
 
