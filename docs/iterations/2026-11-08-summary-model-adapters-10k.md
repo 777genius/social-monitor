@@ -55,4 +55,16 @@ Keep PR Draft whenever criteria are incomplete. On any behavior change not justi
 
 ## Review rounds / audit log
 
-Pending. No implementation has started.
+### Round 1 — architecture / scope (internal adversarial review)
+
+**Finding A1 (high):** the existing 93-file adapter layer is *already split* by responsibility to a degree. Renaming directories, copying modules, or inserting one-use abstraction layers cannot count as a 10k architecture improvement. **Resolution:** qualification will count source only after a concrete responsibility/dependency improvement is recorded for that file. Keep existing public adapter entrypoints in place when they are the correct composition entrypoints. No mass relocation or hundreds of forwarding facades.
+
+**Finding A2 (high):** `ReaderSummaryModelPort` and `AgentRuntimeClientPort` are inner contracts used by multiple providers; moving provider concerns into a port would invert the dependency. **Resolution:** all transport/parsing/SDK types stay behind concrete infrastructure adapters; preserve ports and domain without changes unless a proven existing boundary violation requires a separate documented decision.
+
+**Finding A3 (medium):** this PR must not collide with active #663/#664 or the deploy fix #620. **Resolution:** implementation writes are confined to `libs/summary/adapters/model` and necessary direct wiring/tests, with an exact-main rebase/reconciliation gate before every final qualification. No staging/source-live or deployment paths.
+
+**Finding A4 (medium):** source byte size is not LOC evidence. **Resolution:** a complete baseline source manifest (excluding `*.spec-support.ts`, `*.fixture.ts`, tests and generated files), dependency map and per-slice unique-original-LOC tally are required before coding. Keep a safety margin above 10k; do not count a trivially unchanged file to hit a quota.
+
+Decision: **conditional pass**; implement only after the inventory and remaining two rounds are complete.
+
+Rounds 2 and 3 pending. No implementation has started.
