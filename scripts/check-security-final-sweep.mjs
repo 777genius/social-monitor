@@ -12,6 +12,13 @@ import {
 import { readPrivateEvidenceJsonFile } from './lib/evidence-env-file.mjs';
 import { buildDirectSecurityArtifact } from './lib/security-final-sweep-direct-artifact.mjs';
 import {
+  validateArtifactRedaction,
+  validateArtifactSourceExports,
+  validateArtifactSurfaces,
+  validateRequiredSourceExports,
+  validateArtifactReview,
+} from './lib/security-final-sweep-surface-policy.mjs';
+import {
   scanForbiddenArtifactKeys,
   validateNoRealArtifactFixtureMarkers,
 } from './lib/security-final-sweep-artifact-shape.mjs';
@@ -158,6 +165,17 @@ const requiredRealArtifactGuardFragments = [
 ];
 const forbiddenRealArtifactMarkerPattern = /(?:^|[-_:.\s])(example|fixture|synthetic|mock|test)(?:$|[-_:.\s])/i;
 const artifactShapeContext = { forbiddenArtifactKeys, forbiddenRealArtifactMarkerPattern, violations };
+const artifactSurfacePolicyContext = {
+  violations,
+  evidencePath,
+  requiredArtifactRedactionFlags,
+  requiredSurfaceIds,
+  requiredSourceExportEnvBySurface,
+  forbiddenArtifactKeys,
+  requiredLeakClasses,
+  isIsoDateString,
+  validateSourceExportPath,
+};
 
 if (evidence.schemaVersion !== 1) {
   violations.push(`${evidencePath}: schemaVersion must be 1`);
@@ -244,7 +262,7 @@ function validateDeploySampleContentSchema(schema) {
     requiredLeakClasses,
     'deploySampleContentSchema.requiredLeakClasses',
   );
-  validateRequiredSourceExports(schema.requiredSourceExports);
+  validateRequiredSourceExports(schema.requiredSourceExports, artifactSurfacePolicyContext);
   validateProvenanceRequirements(schema.provenanceRequirements);
 
   for (const fragment of requiredRealArtifactGuardFragments) {
@@ -323,10 +341,10 @@ function validateSecurityFinalSweepArtifact(artifact, path, options) {
 
   validateArtifactProvenance(artifact.provenance, path, options);
   validateArtifactEnvironment(artifact.environment, path, options);
-  validateArtifactRedaction(artifact.redaction, path);
-  const sourceExports = validateArtifactSourceExports(artifact.sourceExports, path, options);
-  validateArtifactSurfaces(artifact.surfaces, path, sourceExports);
-  validateArtifactReview(artifact.review, path);
+  validateArtifactRedaction(artifact.redaction, path, artifactSurfacePolicyContext);
+  const sourceExports = validateArtifactSourceExports(artifact.sourceExports, path, options, artifactSurfacePolicyContext);
+  validateArtifactSurfaces(artifact.surfaces, path, sourceExports, artifactSurfacePolicyContext);
+  validateArtifactReview(artifact.review, path, artifactSurfacePolicyContext);
   if (options.allowExample !== true) {
     validateNoRealArtifactFixtureMarkers(artifact, path, artifactShapeContext);
   }
@@ -380,75 +398,6 @@ function validateArtifactEnvironment(environment, path, options) {
       }
     }
   }
-}
-
-function validateArtifactRedaction(redaction, path) {
-  if (redaction === null || typeof redaction !== 'object' || Array.isArray(redaction)) {
-    violations.push(`${path}: redaction must be an object`);
-    return;
-  }
-
-  for (const [field, expected] of Object.entries(requiredArtifactRedactionFlags)) {
-    if (redaction[field] !== expected) {
-      violations.push(`${path}: redaction.${field} must be ${expected}`);
-    }
-  }
-
-  if (typeof redaction.method !== 'string' || redaction.method.trim().length < 20) {
-    violations.push(`${path}: redaction.method must explain how staging samples were sanitized`);
-  }
-}
-
-function validateArtifactSourceExports(sourceExports, path, options) {
-  const sourceExportMap = new Map();
-  if (!Array.isArray(sourceExports)) {
-    violations.push(`${path}: sourceExports must be an array`);
-    return sourceExportMap;
-  }
-
-  for (const [index, sourceExport] of sourceExports.entries()) {
-    const exportLabel = `${path}: sourceExports[${index}]`;
-    if (sourceExport === null || typeof sourceExport !== 'object' || Array.isArray(sourceExport)) {
-      violations.push(`${exportLabel}: source export must be an object`);
-      continue;
-    }
-
-    const expectedEnv = requiredSourceExportEnvBySurface.get(sourceExport.surfaceId);
-    if (expectedEnv === undefined) {
-      violations.push(`${exportLabel}: unsupported surfaceId "${sourceExport.surfaceId}"`);
-      continue;
-    }
-    if (sourceExportMap.has(sourceExport.surfaceId)) {
-      violations.push(`${exportLabel}: duplicate source export for surfaceId "${sourceExport.surfaceId}"`);
-      continue;
-    }
-    sourceExportMap.set(sourceExport.surfaceId, sourceExport);
-
-    if (sourceExport.envVar !== expectedEnv) {
-      violations.push(`${exportLabel}: envVar must be ${expectedEnv}`);
-    }
-    if (!Number.isInteger(sourceExport.sampleCount) || sourceExport.sampleCount <= 0) {
-      violations.push(`${exportLabel}: sampleCount must be a positive integer`);
-    }
-    if (sourceExport.redactedOnly !== true) {
-      violations.push(`${exportLabel}: redactedOnly must be true`);
-    }
-    if (sourceExport.sanitized !== true) {
-      violations.push(`${exportLabel}: sanitized must be true`);
-    }
-    if (!isIsoDateString(sourceExport.collectedAt)) {
-      violations.push(`${exportLabel}: collectedAt must be an ISO timestamp`);
-    }
-    validateSourceExportPath(sourceExport, exportLabel, expectedEnv, options);
-  }
-
-  for (const [surfaceId, expectedEnv] of requiredSourceExportEnvBySurface.entries()) {
-    if (!sourceExportMap.has(surfaceId)) {
-      violations.push(`${path}: sourceExports must include ${surfaceId} from ${expectedEnv}`);
-    }
-  }
-
-  return sourceExportMap;
 }
 
 function validateSourceExportPath(sourceExport, exportLabel, expectedEnv, options) {
@@ -511,169 +460,6 @@ function validateNoSensitiveExportLiterals(content, exportLabel) {
     scanForbiddenArtifactKeys(parsed, `${exportLabel}: export file`, artifactShapeContext);
   }
 }
-
-function validateArtifactSurfaces(surfaces, path, sourceExports) {
-  if (!Array.isArray(surfaces)) {
-    violations.push(`${path}: surfaces must be an array`);
-    return;
-  }
-
-  const surfaceIds = new Set();
-  for (const [index, surface] of surfaces.entries()) {
-    const surfaceLabel = `${path}: surfaces[${index}]`;
-    validateArtifactSurface(surface, surfaceLabel, surfaceIds, sourceExports);
-  }
-
-  for (const surfaceId of requiredSurfaceIds) {
-    if (!surfaceIds.has(surfaceId)) {
-      violations.push(`${path}: surfaces must include ${surfaceId}`);
-    }
-  }
-}
-
-function validateArtifactSurface(surface, surfaceLabel, surfaceIds, sourceExports) {
-  if (surface === null || typeof surface !== 'object' || Array.isArray(surface)) {
-    violations.push(`${surfaceLabel}: surface must be an object`);
-    return;
-  }
-
-  if (!requiredSurfaceIds.has(surface.surfaceId)) {
-    violations.push(`${surfaceLabel}: unsupported surfaceId "${surface.surfaceId}"`);
-  } else if (surfaceIds.has(surface.surfaceId)) {
-    violations.push(`${surfaceLabel}: duplicate surfaceId "${surface.surfaceId}"`);
-  } else {
-    surfaceIds.add(surface.surfaceId);
-  }
-
-  if (!Number.isInteger(surface.sampleCount) || surface.sampleCount <= 0) {
-    violations.push(`${surfaceLabel}: sampleCount must be a positive integer`);
-  }
-  if (surface.scanStatus !== 'passed') {
-    violations.push(`${surfaceLabel}: scanStatus must be passed`);
-  }
-  if (surface.redactedOnly !== true) {
-    violations.push(`${surfaceLabel}: redactedOnly must be true`);
-  }
-  const sourceExport = sourceExports.get(surface.surfaceId);
-  if (requiredSourceExportEnvBySurface.has(surface.surfaceId) && sourceExport === undefined) {
-    violations.push(`${surfaceLabel}: must have a matching sourceExports entry`);
-  } else if (sourceExport !== undefined && sourceExport.sampleCount !== surface.sampleCount) {
-    violations.push(`${surfaceLabel}: sampleCount must match sourceExports sampleCount`);
-  }
-  if (!Array.isArray(surface.safeDiagnosticFields) || surface.safeDiagnosticFields.length === 0) {
-    violations.push(`${surfaceLabel}: safeDiagnosticFields must be a non-empty array`);
-  }
-
-  for (const field of surface.safeDiagnosticFields ?? []) {
-    if (typeof field !== 'string' || field.trim().length === 0) {
-      violations.push(`${surfaceLabel}: safeDiagnosticFields must contain non-empty strings`);
-      continue;
-    }
-    const normalized = field.toLowerCase().replace(/[^a-z0-9_]/g, '');
-    if (forbiddenArtifactKeys.has(normalized)) {
-      violations.push(`${surfaceLabel}: unsafe diagnostic field "${field}"`);
-    }
-  }
-
-  validateLeakClassResults(surface.leakClassResults, surfaceLabel);
-}
-
-function validateLeakClassResults(results, surfaceLabel) {
-  if (!Array.isArray(results)) {
-    violations.push(`${surfaceLabel}: leakClassResults must be an array`);
-    return;
-  }
-
-  const resultIds = new Set();
-  for (const [index, result] of results.entries()) {
-    const resultLabel = `${surfaceLabel}.leakClassResults[${index}]`;
-    if (result === null || typeof result !== 'object' || Array.isArray(result)) {
-      violations.push(`${resultLabel}: result must be an object`);
-      continue;
-    }
-
-    if (!requiredLeakClasses.has(result.leakClass)) {
-      violations.push(`${resultLabel}: unsupported leakClass "${result.leakClass}"`);
-    } else if (resultIds.has(result.leakClass)) {
-      violations.push(`${resultLabel}: duplicate leakClass "${result.leakClass}"`);
-    } else {
-      resultIds.add(result.leakClass);
-    }
-    if (result.found !== false) {
-      violations.push(`${resultLabel}: found must be false`);
-    }
-    if (!Number.isInteger(result.sampleCount) || result.sampleCount <= 0) {
-      violations.push(`${resultLabel}: sampleCount must be a positive integer`);
-    }
-  }
-
-  for (const leakClass of requiredLeakClasses) {
-    if (!resultIds.has(leakClass)) {
-      violations.push(`${surfaceLabel}: leakClassResults must include ${leakClass}`);
-    }
-  }
-}
-
-function validateRequiredSourceExports(sourceExports) {
-  if (!Array.isArray(sourceExports)) {
-    violations.push(`${evidencePath}: deploySampleContentSchema.requiredSourceExports must be an array`);
-    return;
-  }
-
-  const surfaceIds = new Set();
-  for (const [index, sourceExport] of sourceExports.entries()) {
-    const exportLabel = `deploySampleContentSchema.requiredSourceExports[${index}]`;
-    if (sourceExport === null || typeof sourceExport !== 'object' || Array.isArray(sourceExport)) {
-      violations.push(`${evidencePath}: ${exportLabel} must be an object`);
-      continue;
-    }
-    const expectedEnv = requiredSourceExportEnvBySurface.get(sourceExport.surfaceId);
-    if (expectedEnv === undefined) {
-      violations.push(`${evidencePath}: ${exportLabel}.surfaceId is unsupported`);
-      continue;
-    }
-    if (surfaceIds.has(sourceExport.surfaceId)) {
-      violations.push(`${evidencePath}: duplicate required source export for "${sourceExport.surfaceId}"`);
-    }
-    surfaceIds.add(sourceExport.surfaceId);
-    if (sourceExport.envVar !== expectedEnv) {
-      violations.push(`${evidencePath}: ${exportLabel}.envVar must be ${expectedEnv}`);
-    }
-    if (sourceExport.pathRequired !== true) {
-      violations.push(`${evidencePath}: ${exportLabel}.pathRequired must be true`);
-    }
-    if (sourceExport.sha256Required !== true) {
-      violations.push(`${evidencePath}: ${exportLabel}.sha256Required must be true`);
-    }
-    if (sourceExport.redactedOnly !== true) {
-      violations.push(`${evidencePath}: ${exportLabel}.redactedOnly must be true`);
-    }
-  }
-
-  for (const surfaceId of requiredSourceExportEnvBySurface.keys()) {
-    if (!surfaceIds.has(surfaceId)) {
-      violations.push(`${evidencePath}: deploySampleContentSchema.requiredSourceExports must include ${surfaceId}`);
-    }
-  }
-}
-
-function validateArtifactReview(review, path) {
-  if (review === null || typeof review !== 'object' || Array.isArray(review)) {
-    violations.push(`${path}: review must be an object`);
-    return;
-  }
-
-  if (typeof review.reviewer !== 'string' || review.reviewer.trim().length === 0) {
-    violations.push(`${path}: review.reviewer must be a non-empty string`);
-  }
-  if (review.decision !== 'passed') {
-    violations.push(`${path}: review.decision must be passed`);
-  }
-  if (typeof review.notes !== 'string' || review.notes.trim().length < 20) {
-    violations.push(`${path}: review.notes must explain the staging redaction review`);
-  }
-}
-
 
 function validateNoSensitiveArtifactLiterals(artifact, path) {
   validateNoSensitiveArtifactContent(JSON.stringify(artifact), path);
