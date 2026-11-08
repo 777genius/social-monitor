@@ -54,6 +54,27 @@ test('unrelated provenance checker cannot reuse the staging-only exception', () 
   ), false);
 });
 
+
+test('commented-out identity call sites cannot satisfy the quality guard', () => {
+  const calls = [
+    [
+      '  validateRealArtifactIdentity(',
+      '    artifact,',
+      '    `${evidencePath}: stagingEvidenceArtifacts.${artifact.artifactId}`,',
+      '  );',
+    ].join('\n'),
+    '  validateRealArtifactIdentity(content, artifact.path);',
+    '  validateRealArtifactIdentity(content, artifactLabel);',
+  ];
+  for (const call of calls) {
+    assert.ok(checker.includes(call));
+    assert.equal(delegated(checker.replace(call, `/*\n${call}\n*/`)), false);
+    if (!call.includes('\n')) {
+      assert.equal(delegated(checker.replace(call, '// ' + call.trim())), false);
+    }
+  }
+});
+
 test('removing manifest artifact identity validation fails the quality gate', () => {
   const originalCall = [
     '  validateRealArtifactIdentity(',
