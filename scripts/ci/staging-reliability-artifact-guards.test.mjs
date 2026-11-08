@@ -137,7 +137,7 @@ test('guards do not mutate caller-provided artifact objects', () => {
       databaseUrlsIncluded: false, brokerUrlsIncluded: false },
     content: [{ sampleId: 'sample-valid-1' }],
   };
-  const before = structuredClone(artifact);
+  const before = globalThis.structuredClone(artifact);
   guards.validateRealArtifactIdentity(artifact, 'artifact');
   guards.validateNoRealArtifactFixtureMarkers(artifact, 'artifact');
   guards.validateRedaction(artifact, 'artifact');
