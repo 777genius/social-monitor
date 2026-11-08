@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
+import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.dart';
 import 'package:social_monitor_summaries/src/domain/value_objects/reader_posts_page.dart';
 import 'package:social_monitor_summaries/src/domain/value_objects/top_posts_sort_order.dart';
 
