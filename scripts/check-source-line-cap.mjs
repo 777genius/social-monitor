@@ -34,7 +34,7 @@ const legacyLineCapDebt = new Map([
   ["scripts/check-source-live-certification-evidence.mjs", 1680],
   ["scripts/check-source-provider-runtime-contract.ts", 1475],
   ["scripts/check-staging-reliability-evidence.mjs", 1716],
-  ["scripts/external-beta-evidence-runner.mjs", 2059],
+  ["scripts/external-beta-evidence-runner.mjs", 1842],
   ["scripts/lib/docker-backend-evidence-harness.mjs", 1174],
 ]);
 
