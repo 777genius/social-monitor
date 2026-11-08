@@ -58,10 +58,18 @@ test('original provenance and redaction-source flags are preserved', () => {
   });
 });
 
-test('generatedAt samples one minute before invocation clock', () => {
-  const before = Date.now(), x = build(), after = Date.now();
-  assert.ok(Date.parse(x.generatedAt) >= before - 60_000);
-  assert.ok(Date.parse(x.generatedAt) <= after - 60_000);
+test('generatedAt uses the exact injected clock and retains all timeline offsets', (t) => {
+  const timestamp = Date.UTC(2026, 10, 8, 12, 34, 56, 789);
+  const clock = t.mock.method(Date, 'now', () => timestamp);
+  try {
+    const value = build();
+    assert.equal(value.generatedAt, new Date(timestamp - 60_000).toISOString());
+    assert.equal(value.source.export.exportedAt, new Date(timestamp - 90_000).toISOString());
+    assert.equal(value.source.sampleWindow.endedAt, new Date(timestamp - 120_000).toISOString());
+    assert.equal(value.source.sampleWindow.startedAt, new Date(timestamp - 26 * 60 * 60_000).toISOString());
+  } finally {
+    clock.mock.restore();
+  }
 });
 
 test('source timeline preserves original export lag and 26-hour lookback', () => {

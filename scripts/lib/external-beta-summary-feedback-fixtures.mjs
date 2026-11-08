@@ -1,4 +1,5 @@
 // Synthetic summary-feedback staging evidence builders. Caller retains fixture I/O.
+/** Construct redacted summary feedback evidence from a caller-loaded fixture. */
 export function summaryFeedbackSamplesArtifact(artifact) {
   const now = Date.now();
   const generatedAt = new Date(now - 60 * 1000).toISOString();
@@ -43,6 +44,7 @@ export function summaryFeedbackSamplesArtifact(artifact) {
   return artifact;
 }
 
+/** Reassign sample identities and bounded commentary while preserving original fixture order. */
 function replaceSummaryFeedbackFixtureSamples(artifact) {
   const replacements = [
     {
