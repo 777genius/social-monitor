@@ -19,7 +19,8 @@ String _topPostOriginalText(TopRead item) {
   final body = source.body?.trim() ?? '';
   final provider = item.providerKey.trim().toLowerCase();
   final isX =
-      provider == 'x' || provider == 'twitter' || provider == 'x_twitter';
+      provider == 'x' || provider == 'twitter' ||
+      provider == 'x_twitter' || provider == 'x-twitter';
   if (isX) return body.isNotEmpty ? body : title;
   if (body.isEmpty) return title;
   if (title.isEmpty || body == title || body.startsWith(title)) return body;
@@ -113,6 +114,81 @@ class _TopPostOriginalBody extends StatelessWidget {
                 ],
               );
             },
+          ),
+      ],
+    );
+  }
+}
+
+
+/// Source-only card body. Never substitutes generated headlines or prose.
+class _TopPostSourceOnlyCopy extends StatelessWidget {
+  const _TopPostSourceOnlyCopy({
+    required this.item,
+    required this.expanded,
+    required this.onExpandedChanged,
+  });
+
+  final TopRead item;
+  final bool expanded;
+  final ValueChanged<bool> onExpandedChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = item.providerKey.trim().toLowerCase();
+    final isX = provider == 'x' || provider == 'twitter' ||
+        provider == 'x_twitter' || provider == 'x-twitter';
+    final source = item.capturedSource;
+    final title = (source?.title.trim().isNotEmpty ?? false)
+        ? source!.title.trim()
+        : item.title.trim();
+    final body = source?.body?.trim() ?? '';
+    // X has no separate title: show its original post text only.
+    final heading = isX ? (body.isNotEmpty ? body : title) : title;
+    final description = isX || body.isEmpty || body == title
+        ? ''
+        : body.startsWith(title) && title.isNotEmpty
+            ? body.substring(title.length).trim()
+            : body;
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final canExpand = heading.length > (isX ? 140 : 200) ||
+        description.length > 180;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (heading.isNotEmpty)
+          Text(
+            heading,
+            key: ValueKey('reader-source-original-${readerSummaryTopPostIdentity(item)}'),
+            maxLines: expanded ? null : (isX ? 5 : 2),
+            overflow: expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+            style: textTheme.bodyMedium?.copyWith(
+              fontWeight: isX ? FontWeight.w500 : FontWeight.w700,
+              height: 1.4,
+            ),
+          ),
+        if (description.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            description,
+            maxLines: expanded ? null : 4,
+            overflow: expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+            style: textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+              height: 1.4,
+            ),
+          ),
+        ],
+        if (heading.isEmpty && description.isEmpty)
+          Text('Original post text unavailable.',
+              style: textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant)),
+        if (canExpand)
+          TextButton(
+            onPressed: () => onExpandedChanged(!expanded),
+            child: Text(expanded ? 'Show less' : 'Show more'),
           ),
       ],
     );
