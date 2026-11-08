@@ -11,6 +11,9 @@ import 'package:social_monitor_summaries/src/application/use_cases/load_workspac
 import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_summary_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/open_reader_source_use_case.dart';
 import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.dart';
+import 'package:social_monitor_summaries/src/domain/value_objects/reader_captured_source.dart';
+import 'package:social_monitor_summaries/src/domain/value_objects/reader_posts_page.dart';
+import 'package:social_monitor_summaries/src/domain/value_objects/top_posts_sort_order.dart';
 import 'package:social_monitor_summaries/src/infrastructure/mappers/summary_mapper.dart';
 import 'package:social_monitor_summaries/src/presentation/components/reader_summary_brief_surface.dart';
 import 'package:social_monitor_summaries/src/presentation/components/reader_summary_view.dart';
@@ -18,6 +21,8 @@ import 'package:social_monitor_summaries/src/presentation/pages/published_summar
 import 'package:social_monitor_summaries/src/presentation/stores/published_summary_store.dart';
 
 import '../../support/deferred_summary_review_catalog.dart';
+import '../../support/reader_posts_browse_test_catalog.dart';
+import '../../support/top_posts_test_fixtures.dart';
 import '../../support/summaries_test_fixtures.dart';
 
 void main() {
@@ -165,6 +170,82 @@ void main() {
     await _selectAndCopy(tester, topPost, 4);
     expect(clipboardText, 'coding');
   });
+  testWidgets('unpublished public day shows original posts instead of article', (
+    tester,
+  ) async {
+    final catalog = DeferredSummaryReviewCatalog(const []);
+    final browseCatalog = ControlledReaderPostCatalog();
+    final browseStore = browseCatalog.createStore();
+    addTearDown(browseStore.dispose);
+    final store = PublishedSummaryStore(
+      scope: summaryWorkspaceScope,
+      loadLatest: LoadWorkspaceSummaryUseCase(catalog),
+      loadHistory: LoadWorkspaceSummaryHistoryUseCase(catalog),
+      loadPublished: LoadPublishedSummaryUseCase(catalog),
+      openReaderSource: const OpenReaderSourceUseCase(_SourceLauncher()),
+      allowUnpublishedDays: true,
+    );
+    addTearDown(store.dispose);
+    final theme = AppTheme.light();
+    await tester.pumpWidget(
+      AppHeadlessScope(
+        theme: theme,
+        appBuilder: (overlayBuilder) => MaterialApp(
+          theme: theme,
+          builder: overlayBuilder,
+          home: Scaffold(
+            body: PublishedSummaryPage(
+              store: store,
+              readerPostsBrowseStore: browseStore,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(browseCatalog.queries, hasLength(1));
+    expect(
+      browseCatalog.queries.single.order,
+      TopPostsSortOrder.engagement,
+    );
+    browseCatalog.responses.single.complete(
+      Result.success(
+        ReaderPostsPage(
+          items: [
+            topPostFixture(
+              title: 'Generated title must not appear',
+              summary: 'Generated description must not appear',
+              storyClusterId: 'source:public-unpublished',
+              providerKey: 'x-twitter',
+              capturedSource: const ReaderCapturedSource(
+                title: 'Generated title must not appear',
+                body: 'Original source post on an unpublished day',
+                captureAvailability: ReaderCaptureAvailability.available,
+                reviewAvailability: ReaderSourceReviewAvailability.bodyPresent,
+              ),
+            ),
+          ],
+          total: 1,
+          providerKeys: const ['x-twitter'],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('No AI summary for this day'), findsOneWidget);
+    expect(find.text('Top posts by likes'), findsOneWidget);
+    expect(
+      find.text('Original source post on an unpublished day'),
+      findsOneWidget,
+    );
+    expect(find.text('Generated title must not appear'), findsNothing);
+    expect(find.text('Generated description must not appear'), findsNothing);
+    expect(find.byType(ReaderSummaryView), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
 }
 
 Future<void> _selectAndCopy(
