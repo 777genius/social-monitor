@@ -275,9 +275,17 @@ Future<void> _loadWorkspaceSummaryForStore(
       previousValue,
     _ => null,
   };
-  final previous = _summarySnapshotForSelectedPreset(
-    previousSnapshot,
-    store.selectedSummaryPeriodPreset,
+  final selectedPeriod = store.selectedSummaryPeriod;
+  final enforceExactWindow = store.allowUnpublishedDays &&
+      store.selectedSummaryPeriodPreset == SummaryPeriodPreset.daily &&
+      store._selectedSummaryPeriodEndedAt != null;
+  final previous = _summarySnapshotForSelectedDailyWindow(
+    _summarySnapshotForSelectedPreset(
+      previousSnapshot,
+      store.selectedSummaryPeriodPreset,
+    ),
+    selectedPeriod,
+    enforceExactWindow: enforceExactWindow,
   );
   store.workspaceSummaryState = LoadingViewState<WorkspaceSummarySnapshot>(
     previousValue: previous,
@@ -318,10 +326,18 @@ Future<void> _loadWorkspaceSummaryForStore(
 
   store.workspaceSummaryState = result.fold(
     onSuccess: (snapshot) {
+      final selectedSnapshot = _summarySnapshotForSelectedDailyWindow(
+        snapshot,
+        selectedPeriod,
+        enforceExactWindow: enforceExactWindow,
+      )!;
       final mergedSnapshot = WorkspaceSummarySnapshot(
-        current: snapshot.current,
-        availablePeriods: _mergeSummarySnapshotPeriods(previous, snapshot),
-        availablePeriodsAreComplete: snapshot.availablePeriodsAreComplete,
+        current: selectedSnapshot.current,
+        availablePeriods: _mergeSummarySnapshotPeriods(
+          previous,
+          selectedSnapshot,
+        ),
+        availablePeriodsAreComplete: selectedSnapshot.availablePeriodsAreComplete,
       );
       final current = mergedSnapshot.current;
       if (current == null) {
