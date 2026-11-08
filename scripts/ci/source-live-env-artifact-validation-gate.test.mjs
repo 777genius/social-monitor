@@ -19,6 +19,10 @@ test('source-live certification checker accepts the tracked fixture policy', () 
     maxBuffer: 1024 * 1024,
   });
   assert.ifError(result.error);
-  assert.equal(result.status, 0, 'standalone source-live checker should accept tracked fixture policy');
+  assert.equal(result.status, 0, [
+    'standalone source-live checker should accept tracked fixture policy',
+    'stderr:', result.stderr.slice(0, 8_000),
+    'stdout:', result.stdout.slice(0, 2_000),
+  ].join('\n'));
   assert.match(result.stdout, /Source live certification evidence OK/);
 });
