@@ -43,7 +43,7 @@ function validate(rules, violations = []) {
 
 test('canonical provider and credential lifecycle requirements pass without mutation', () => {
   const rules = validRules();
-  const snapshot = structuredClone(rules);
+  const snapshot = globalThis.structuredClone(rules);
   assert.deepEqual(validate(rules), []);
   assert.deepEqual(rules, snapshot);
 });
@@ -109,7 +109,7 @@ test('lifecycle redaction policy, digest signal, and empty requiredEnv are enfor
 test('legacy compatibility: extra provider values and duplicate entries remain tolerated', () => {
   const rules = validRules();
   rules[0].requiredProviders.push('unlisted-provider');
-  rules.push(structuredClone(rules[0]));
+  rules.push(globalThis.structuredClone(rules[0]));
   assert.deepEqual(validate(rules), []);
 });
 
