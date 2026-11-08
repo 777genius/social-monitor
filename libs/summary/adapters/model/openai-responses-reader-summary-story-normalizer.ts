@@ -8,7 +8,20 @@ import {
   knownStringSubset,
   uniqueNonEmptyStrings,
 } from "./openai-responses-reader-summary-json";
-
+import {
+  clusterIdByFeedItemId,
+  clusterIdsFromCitations,
+  completeClusterCitationCoverage,
+  providerKeysCoveredByCitations,
+} from "./openai-responses-reader-summary-story-citations";
+export { clusterIdFromCitations } from "./openai-responses-reader-summary-story-citations";
+import { normalizeTopStory } from "./openai-responses-reader-summary-story-input";
+import {
+  fallbackTopStories,
+  immutableEditorialSlateTopStories,
+  topUpTopStories,
+  ensureCoveragePlanStories,
+} from "./openai-responses-reader-summary-story-fallback";
 
 export const normalizeTopStories = (
   values: readonly Record<string, unknown>[],
@@ -130,21 +143,6 @@ export const normalizeTopStories = (
 };
 
 /** The model cannot backfill topics from unplanned context in the new profile. */
-import {
-  clusterIdByFeedItemId,
-  clusterIdsFromCitations,
-  completeClusterCitationCoverage,
-  providerKeysCoveredByCitations,
-} from "./openai-responses-reader-summary-story-citations";
-export { clusterIdFromCitations } from "./openai-responses-reader-summary-story-citations";
-import { normalizeTopStory } from "./openai-responses-reader-summary-story-input";
-import {
-  fallbackTopStories,
-  immutableEditorialSlateTopStories,
-  topUpTopStories,
-  ensureCoveragePlanStories,
-} from "./openai-responses-reader-summary-story-fallback";
-
 const normalizeDailyEditorialStories = (
   values: readonly Record<string, unknown>[],
   input: ReaderSummaryModelInput,
