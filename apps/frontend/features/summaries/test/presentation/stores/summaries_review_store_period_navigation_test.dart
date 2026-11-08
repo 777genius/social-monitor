@@ -296,8 +296,8 @@ void main() {
       readerSummaryApiDto(
         title: 'Previous day article',
         period: summaryPeriodApiDto(
-          startedAt: DateTime.utc(2026, 11, 7),
-          endedAt: DateTime.utc(2026, 11, 8),
+          startedAt: DateTime.utc(2026, 11, 6),
+          endedAt: DateTime.utc(2026, 11, 7),
           periodKey: null,
         ),
       ),
@@ -311,13 +311,13 @@ void main() {
     await initialLoad;
 
     final navigation = store.selectWorkspaceSummaryCalendarDate(
-      DateTime(2026, 11, 8),
+      DateTime(2026, 11, 7),
     );
     await Future<void>.delayed(Duration.zero);
     final loading =
         store.workspaceSummaryState as LoadingViewState<WorkspaceSummarySnapshot>;
     expect(loading.previousValue?.current, isNull);
-    expect(store.selectedSummaryPeriod.startedAt, DateTime.utc(2026, 11, 8));
+    expect(store.selectedSummaryPeriod.startedAt, DateTime.utc(2026, 11, 7));
     expect(catalog.workspaceSummaryQueries.last.allowLatestFallback, isFalse);
 
     // Even an incorrectly served older summary must not masquerade as
