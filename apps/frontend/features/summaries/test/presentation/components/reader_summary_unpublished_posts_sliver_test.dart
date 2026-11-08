@@ -7,6 +7,7 @@ import 'package:social_monitor_summaries/src/domain/value_objects/reader_capture
 import 'package:social_monitor_summaries/src/domain/value_objects/reader_posts_page.dart';
 import 'package:social_monitor_summaries/src/domain/value_objects/top_posts_sort_order.dart';
 import 'package:social_monitor_summaries/src/presentation/components/reader_summary_unpublished_posts_sliver.dart';
+import 'package:social_monitor_summaries/src/presentation/stores/reader_posts_browse_store.dart';
 
 import '../../support/reader_posts_browse_test_catalog.dart';
 import '../../support/top_posts_test_fixtures.dart';
@@ -135,7 +136,7 @@ TopRead get _xPost => topPostFixture(
 
 Future<void> _pumpBoard(
   WidgetTester tester,
-  dynamic store,
+  ReaderPostsBrowseStore store,
   SummaryPeriod period,
 ) async {
   tester.view.physicalSize = const Size(1280, 820);
