@@ -1,3 +1,7 @@
+import {
+  estimateReaderSummaryTokenUsage,
+  isReaderSummaryBudgetExceeded,
+} from "./reader-summary-token-budget";
 import { buildAgentRuntimeReaderSummaryTaskCommand } from "./agent-runtime-reader-summary-task-command";
 import { isRepairableNarrativeError } from "./reader-summary-narrative-repair-contract";
 import { readerSummaryDailyInputReceipt } from "./reader-summary-daily-input-receipt";
@@ -25,7 +29,6 @@ import {
 } from "./openai-responses-reader-summary-draft-normalizer";
 import {
   assertNoReaderSummaryPromptReleaseOverride,
-  buildOpenAiReaderSummaryPromptPayload,
   currentReaderSummaryPromptRelease,
 } from "./openai-responses-reader-summary-prompt";
 import { parseOpenAiReaderSummaryJsonObject } from "./openai-responses-reader-summary-response-parser";
@@ -153,14 +156,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
       : input.evidence.dailyGenerationInput === undefined ? {} :
         { promptVersion: "reader_summary.prompt.2026-11-03.daily_likes_digest" }) };
     const estimate = this.estimate(input, route);
-
-    if (
-      estimate.inputTokens > policy.maxInputTokens ||
-      estimate.outputTokens > policy.maxOutputTokens ||
-      estimate.estimatedCostUsd > policy.maxEstimatedCostUsd ||
-      estimate.inputTokens + estimate.outputTokens > budget.remainingTokens ||
-      estimate.estimatedCostUsd > budget.remainingCostUsd
-    ) {
+    if (isReaderSummaryBudgetExceeded(estimate, policy, budget)) {
       throw new AgentRuntimeModelProviderError({
         kind: "budget_exceeded",
         retryable: false,
@@ -176,24 +172,10 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     selectedRoute: ReaderSummaryModelRoute,
   ): ReaderSummaryModelEstimate {
     void selectedRoute;
-
-    const inputTokens = Math.ceil(
-      buildOpenAiReaderSummaryPromptPayload(input).length /
-        this.inputTokenDivisor,
-    );
-    const outputTokens =
-      primaryReaderSummaryEvidence(input.evidence).selectedEvidence.length === 0
-        ? 128
-        : Math.min(
-            this.maxOutputTokens,
-            Math.max(768, input.policy.maxStories * 320),
-          );
-
-    return {
-      inputTokens,
-      outputTokens,
-      estimatedCostUsd: 0,
-    };
+    return estimateReaderSummaryTokenUsage(input, {
+      inputTokenDivisor: this.inputTokenDivisor,
+      maxOutputTokens: this.maxOutputTokens,
+    });
   }
 
   async planDaily(input: ReaderSummaryModelInput, route: ReaderSummaryModelRoute):

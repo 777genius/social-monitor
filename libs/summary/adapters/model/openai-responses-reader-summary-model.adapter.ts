@@ -1,3 +1,7 @@
+import {
+  estimateReaderSummaryTokenUsage,
+  isReaderSummaryBudgetExceeded,
+} from "./reader-summary-token-budget";
 export { resolveOpenAiResponsesReaderSummaryModelOptions } from "./openai-responses-reader-summary-options";
 import { runOpenAiDailyEditor } from "./openai-responses-reader-summary-daily-editor";
 import { readerSummaryDailyInputReceipt } from "./reader-summary-daily-input-receipt";
@@ -114,14 +118,7 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
       : input.evidence.dailyGenerationInput === undefined ? {} :
         { promptVersion: "reader_summary.prompt.2026-11-03.daily_likes_digest" }) };
     const estimate = this.estimate(input, route);
-
-    if (
-      estimate.inputTokens > policy.maxInputTokens ||
-      estimate.outputTokens > policy.maxOutputTokens ||
-      estimate.estimatedCostUsd > policy.maxEstimatedCostUsd ||
-      estimate.inputTokens + estimate.outputTokens > budget.remainingTokens ||
-      estimate.estimatedCostUsd > budget.remainingCostUsd
-    ) {
+    if (isReaderSummaryBudgetExceeded(estimate, policy, budget)) {
       throw new ReaderSummaryModelProviderError({
         kind: "budget_exceeded",
         retryable: false,
@@ -137,28 +134,14 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
     selectedRoute: ReaderSummaryModelRoute,
   ): ReaderSummaryModelEstimate {
     void selectedRoute;
-
-    const inputTokens = Math.ceil(
-      buildOpenAiReaderSummaryPromptPayload(input).length /
-        this.inputTokenDivisor,
-    );
-    const outputTokens =
-      primaryReaderSummaryEvidence(input.evidence).selectedEvidence.length === 0
-        ? 128
-        : Math.min(
-            this.maxOutputTokens,
-            Math.max(768, input.policy.maxStories * 320),
-          );
-    const estimatedCostUsd =
-      (inputTokens * this.estimatedInputCostUsdPerMillionTokens +
-        outputTokens * this.estimatedOutputCostUsdPerMillionTokens) /
-      1_000_000;
-
-    return {
-      inputTokens,
-      outputTokens,
-      estimatedCostUsd,
-    };
+    return estimateReaderSummaryTokenUsage(input, {
+      inputTokenDivisor: this.inputTokenDivisor,
+      maxOutputTokens: this.maxOutputTokens,
+      pricing: {
+        inputPerMillionUsd: this.estimatedInputCostUsdPerMillionTokens,
+        outputPerMillionUsd: this.estimatedOutputCostUsdPerMillionTokens,
+      },
+    });
   }
 
   async planDaily(
