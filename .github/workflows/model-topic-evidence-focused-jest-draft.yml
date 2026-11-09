@@ -36,6 +36,6 @@ jobs:
       - name: Run synthetic topic prompt and evidence regressions
         run: |
           set -euo pipefail
-          ./node_modules/.bin/jest --config jest.config.ts --runInBand --runTestsByPath \\
-            libs/summary/adapters/model/agent-runtime-reader-summary-topic-labeler-prompt.spec.ts \\
+          ./node_modules/.bin/jest --config jest.config.ts --runInBand --runTestsByPath \
+            libs/summary/adapters/model/agent-runtime-reader-summary-topic-labeler-prompt.spec.ts \
             libs/summary/adapters/model/agent-runtime-reader-summary-cohort-grouping.spec.ts
