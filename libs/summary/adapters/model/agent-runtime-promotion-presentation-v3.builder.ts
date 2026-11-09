@@ -1,13 +1,9 @@
 import { readerPostPresentationV3OutputSchema as baseSchema, readerPostPresentationCandidates } from "../../domain/services/reader-post-presentation-v3-proposal";
-import { readerPostPresentationCatalogReferenceFailure,
-  type ReaderPostPresentationCatalogReferences } from "../../domain/services/reader-post-presentation-reference-catalog";
 import { readerPostCanonicalPresentationInstructions } from "./reader-post-canonical-presentation-instructions";
 import { mimoQualifiedHeadlineOutputSchema } from "../../domain/services/mimo-qualified-headline-codec";
-import { decodeReaderPostPresentationBatch } from "../../domain/services/reader-post-presentation-batch-decode";
 import {
   READER_POST_PRESENTATION_V3_MAX_REQUEST_BYTES,
   readerPostPresentationV3InputDigest,
-  sealReaderPostPresentationV3,
   type PromotionPresentationBuilder,
   type ReaderPostPresentationV3Input,
   type ReaderPostPresentationV3Result,
@@ -49,9 +45,9 @@ import {
   parseObject,
 } from "./agent-runtime-promotion-presentation-v3-request";
 import {
-  contractProposals,
-  bind,
-} from "./agent-runtime-promotion-presentation-v3-proposal";
+  runtimePresentationValidationRejection,
+  completedPromotionPresentationResults,
+} from "./agent-runtime-promotion-presentation-v3-result-policy";
 
 
 export const defaultPresentationTimeoutMs = 90_000;
@@ -198,24 +194,9 @@ implements PromotionPresentationBuilder {
       const runtimeFailure = presentationRuntimeFailureIdentity(result);
       return inputs.map(() => withCleanup({ status: "unavailable", reason: "runtime_failure", runtimeFailure }));
     }
-    const failure = result.status === "failed" ? result.failure : undefined;
-    if (failure && (failure.code === "unknown_runtime_failure" ||
-        failure.code === "provider_output_invalid") &&
-        ((failure.details?.outputValidationStage === "schema_normalization" &&
-          failure.details?.outputValidationCode === "schema_normalization_failed") ||
-         (this.modelBackend === mimoReaderSummaryBackend &&
-          ((failure.details?.presentationValidationStage === "product_contract_rejected" &&
-            failure.details?.presentationOutputValidatorCalled === "true" &&
-            failure.details?.presentationOutputValidatorAccepted === "false") ||
-           (failure.details?.presentationValidationStage === "schema_parse_or_normalization" &&
-            failure.details?.presentationOutputValidatorCalled === "false" &&
-            failure.details?.presentationOutputValidatorAccepted === "not_returned"))))) {
-      const code = failure.details?.outputValidationCode === "schema_normalization_failed"
-        ? "schema_normalization_failed" as const
-        : failure.details?.presentationValidationStage === "product_contract_rejected"
-          ? "product_contract_rejected" as const : "schema_parse_or_normalization" as const;
-      return inputs.map(() => withCleanup({ status: "unavailable", reason: "invalid_presentation",
-        validation: { stage: "runtime_output", code } }));
+    const rejected = runtimePresentationValidationRejection(result, this.modelBackend);
+    if (rejected !== undefined) {
+      return inputs.map(() => withCleanup(rejected));
     }
     if (result.status !== "completed") {
       readAgentRuntimeObjectOutput(result, parseObject, "Reader promotion presentation");
@@ -226,27 +207,12 @@ implements PromotionPresentationBuilder {
     }
     const rawOutput = readAgentRuntimeObjectOutput(result, parseObject,
       "Reader promotion presentation");
-    const decoded = sourceCopyWire ? decodeReaderPostPresentationBatch(rawOutput, catalogCandidates) : undefined;
-    const proposals = decoded === undefined ? contractProposals(rawOutput.presentations, inputs) :
-      new Map(decoded.flatMap((row) => row.proposal === undefined ? [] :
-        [[row.candidateId, row.proposal] as const]));
-    const failures = new Map(decoded?.flatMap((row) => row.failure === undefined ? [] :
-      [[row.candidateId, row.failure] as const]));
-    return inputs.map((input, index) => {
-      const proposal = proposals.get(input.candidateId);
-      if (proposal === undefined) return withCleanup({ status: "unavailable", reason: "invalid_presentation",
-        validation: { stage: decoded === undefined ? "proposal_contract" : "source_copy_decode",
-          code: failures.get(input.candidateId)?.code ?? "proposal_missing_or_invalid" } });
-      // contractProposals already checked the canonical reference-array shape.
-      const catalogFailure = sourceCopyWire ? null : readerPostPresentationCatalogReferenceFailure(
-        proposal as unknown as ReaderPostPresentationCatalogReferences, catalogCandidates[index]!);
-      if (catalogFailure !== null) return withCleanup({ status: "unavailable", reason: "invalid_presentation",
-        validation: { stage: "proposal_contract", code: catalogFailure } });
-      if (proposal.status === "unavailable") {
-        return withCleanup({ status: "unavailable", reason: "insufficient_support" });
-      }
-      return withCleanup(sealReaderPostPresentationV3({ input, headline: bind(input, proposal) }));
-    });
+    return completedPromotionPresentationResults({
+      rawOutput,
+      inputs,
+      catalogCandidates,
+      sourceCopyWire,
+    }).map(withCleanup);
   }
 }
 
