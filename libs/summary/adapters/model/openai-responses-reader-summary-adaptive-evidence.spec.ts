@@ -9,6 +9,8 @@ import {
 } from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
 import { buildAdaptiveReaderSummaryEvidence } from "./openai-responses-reader-summary-adaptive-evidence";
+import { sourceHydrationLimitForSelection } from "./openai-responses-reader-summary-expansion-policy";
+import { projectReaderSummaryPromptEvidenceItem } from "./openai-responses-reader-summary-evidence-projection";
 import {
   buildOpenAiReaderSummaryInstructions,
   buildOpenAiReaderSummaryPromptPayload,
@@ -162,6 +164,44 @@ describe("adaptive reader summary evidence", () => {
       "never restate its claim without those qualifications",
     );
   });
+  it("reserves expanded candidate slots for grounded coverage before score ranking", () => {
+    const selection = evidenceSelection();
+    const plan: ReaderSummaryCoveragePlan = {
+      ...coveragePlan(),
+      lead: { ...coveragePlan().lead!, feedItemIds: ["feed-0", "feed-1"] },
+    };
+    const projected = buildAdaptiveReaderSummaryEvidence(selection, plan);
+
+    expect(projected[0]?.evidenceTier).toBe("expanded_candidate");
+    expect(projected[1]?.evidenceTier).toBe("expanded_candidate");
+    expect(projected.filter((item) => item.evidenceTier === "expanded_candidate")).toHaveLength(25);
+    expect(projected[1]?.citationId).toBe("c2");
+  });
+
+  it("does not expand coverage evidence whose source becomes empty after URL redaction", () => {
+    const selection: SummaryEvidenceSelection = {
+      ...evidenceSelection(),
+      selectedEvidence: [
+        { ...evidenceItem(0), sourceText: "https://example.test/only", bodyPreview: " " },
+        evidenceItem(1),
+      ],
+    };
+    const projected = buildAdaptiveReaderSummaryEvidence(selection, coveragePlan());
+
+    expect(projected[0]?.evidenceTier).toBe("baseline");
+    expect(projected[0]?.sourceContent).toBeUndefined();
+    expect(projected[1]?.evidenceTier).toBe("expanded_candidate");
+  });
+
+  it("keeps single-item prompt projection equivalent to the composed pack", () => {
+    const selection = evidenceSelection();
+    const projected = buildAdaptiveReaderSummaryEvidence(selection, coveragePlan());
+    expect(projected[0]).toEqual(projectReaderSummaryPromptEvidenceItem(
+      selection.selectedEvidence[0]!, 0, true, "c1", 50_000, false,
+    ));
+    expect(sourceHydrationLimitForSelection(selection)).toBe(50_000);
+  });
+
 });
 
 const evidenceSelection = (): SummaryEvidenceSelection => {
