@@ -38,4 +38,4 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=4096
         run: |
           set -euo pipefail
-          npx jest --config jest.config.ts --runInBand --runTestsByPath libs/summary/adapters/model/openai-responses-summary-http-failure.spec.ts libs/summary/adapters/model/openai-responses-summary-model-error.spec.ts libs/summary/adapters/model/openai-responses-summary-model.adapter.spec.ts libs/summary/adapters/model/agent-runtime-summary-budget-policy.spec.ts
+          npx jest --config jest.config.ts --runInBand --runTestsByPath libs/summary/adapters/model/openai-responses-summary-http-failure.spec.ts libs/summary/adapters/model/openai-responses-summary-model-error.spec.ts libs/summary/adapters/model/openai-responses-summary-model.adapter.spec.ts libs/summary/adapters/model/agent-runtime-summary-budget-policy.spec.ts libs/summary/adapters/model/deterministic-reader-summary-budget-policy.spec.ts libs/summary/adapters/model/deterministic-reader-summary-model.adapter.spec.ts
