@@ -28,21 +28,7 @@ test('mutating each checker call fails the delegation gate', () => {
   const invocations = [
     ['validateEnvExample', /^[ \t]*validateEnvExample\(\);[ \t]*$/m],
     ...['validateJobBasics', 'validateJobCommands', 'validateJobEnvironment', 'validateJobScopeSafety']
-      .map((name) => [name, new RegExp('^[ \\t]*' + name + '\\(job, label\\);[ \\t]*
-  const root = fileURLToPath(new URL('../../', import.meta.url));
-  const checker = fileURLToPath(new URL('../check-external-beta-evidence-runner.mjs', import.meta.url));
-  const result = spawnSync(process.execPath, [checker], {
-    cwd: root,
-    encoding: 'utf8',
-    timeout: 300_000,
-    maxBuffer: 2 * 1024 * 1024,
-    env: { ...process.env, EXTERNAL_BETA_EVIDENCE_CONFIRM: '' },
-  });
-  assert.ifError(result.error);
-  assert.equal(result.status, 0, result.stderr || 'standalone external beta checker must pass');
-  assert.match(result.stdout, /External beta evidence runner contract OK/);
-});
-, 'm')]),
+      .map((name) => [name, new RegExp('^[ \\t]*' + name + '\\(job, label\\);[ \\t]*$', 'm')]),
   ];
   const assertCalls = (candidate) => {
     const activeSource = candidate.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
