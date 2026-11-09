@@ -33,9 +33,9 @@ describe("ordinary OpenAI summary response boundaries", () => {
 
   it("prefers a nonempty top-level output without trimming or interpreting it", () => {
     expect(extractOpenAiSummaryOutputText({
-      output_text: " { \\"accepted\\": true } ",
+      output_text: ' { "accepted": true } ',
       output: [{ content: [{ text: "nested" }] }],
-    })).toBe(" { \\"accepted\\": true } ");
+    })).toBe(' { "accepted": true } ');
     expect(extractOpenAiSummaryOutputText({ output_text: "   " })).toBeUndefined();
   });
 
