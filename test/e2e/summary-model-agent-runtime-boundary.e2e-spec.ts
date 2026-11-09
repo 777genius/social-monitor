@@ -72,7 +72,13 @@ describe("Agent Runtime summary provider through REST and job execution (e2e)", 
         if (params.tenantId !== tenant || params.workspaceId !== workspace) {
           throw new Error("Synthetic evidence scope does not match");
         }
-        return evidence;
+        return params.interestId === "agent-model-e2e-no-signal"
+          ? {
+              ...evidence,
+              sourceWindow: { ...evidence.sourceWindow, selectedFeedItemIds: [] },
+              items: [],
+            }
+          : evidence;
       },
     };
     const client: AgentRuntimeClientPort = {
@@ -189,4 +195,30 @@ describe("Agent Runtime summary provider through REST and job execution (e2e)", 
       status: "failed", failure_kind: "unsafe_or_refused",
     })).toBe(1);
   });
+
+  it("returns a local no-signal artifact without invoking the runtime", async () => {
+    const commandCount = commands.length;
+    const requested = await requestJob("agent-model-e2e-no-signal");
+    const executed = await app.get(ExecuteSummaryJobUseCase).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      summaryJobId: requested.body.summaryJobId as string,
+    });
+    expect(executed.ok).toBe(true);
+    if (!executed.ok || executed.value.summaryId === undefined) {
+      throw new Error("No-signal path must save a local summary artifact");
+    }
+    expect(executed.value.status).toBe("no_signal");
+    expect(commands).toHaveLength(commandCount);
+    const artifact = await app.get(InMemorySummaryArtifactRepository).findById({
+      tenantId: tenant,
+      workspaceId: workspace,
+      summaryId: executed.value.summaryId,
+    });
+    expect(artifact?.toSnapshot()).toMatchObject({
+      qualityFlags: ["no_signal", "limited_sources"],
+      lineage: { providerVersion: "agent-runtime" },
+    });
+  });
+
 });
