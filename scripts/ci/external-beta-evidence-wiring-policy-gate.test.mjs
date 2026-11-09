@@ -54,7 +54,7 @@ test('removing and commenting out wiring delegation fails static gate', () => {
 });
 
 test('wiring delegation cannot disconnect the shared violation sink', () => {
-  const mutated = source.replace(/^  violations, scriptNameFromCommand,$/m,
+  const mutated = source.replace(/^ {2}violations, scriptNameFromCommand,$/m,
     '  violations: [], scriptNameFromCommand,');
   assert.notEqual(mutated, source, 'expected to mutate original validation call');
   assertActiveDelegation(mutated);
