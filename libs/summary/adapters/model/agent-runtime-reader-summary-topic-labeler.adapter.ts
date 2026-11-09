@@ -12,7 +12,6 @@ import type {
 } from "../../ports";
 import {
   nonEmptyOrFallback,
-  parsePositiveInteger,
   positiveIntegerOrFallback,
   readAgentRuntimeObjectOutput,
 } from "./agent-runtime-model-support";
@@ -29,12 +28,9 @@ import {
   activeReaderSummaryModel,
   activeReaderSummaryProvider,
   activeReaderSummaryReasoningEffort,
-  assertActiveReaderSummaryProvider,
   assertReaderSummaryBackendModel,
   mimoReaderSummaryBackend,
   resolveReaderSummaryBackendEffort,
-  resolveReaderSummaryDailyTaskIdentityFromEnv,
-  resolveReaderSummaryReasoningEffortFromEnv,
   type ReaderSummaryGenerationBackend,
   verifyAndRecordMimoDailyExecution,
 } from "./active-reader-summary-generation-profile";
@@ -156,28 +152,4 @@ const defaultAttemptContext: ReaderSummaryTopicMapAttemptContext = {
   totalAttempts: 1,
 };
 
-export const resolveAgentRuntimeReaderSummaryTopicLabelerOptions = (
-  env: NodeJS.ProcessEnv,
-  client: AgentRuntimeClientPort,
-): AgentRuntimeReaderSummaryTopicLabelerOptions => ({
-  client,
-    agentProvider: assertActiveReaderSummaryProvider(
-      env.AGENT_RUNTIME_PROVIDER,
-    ),
-  providerInstanceId: env.AGENT_RUNTIME_PROVIDER_INSTANCE_ID,
-    ...resolveReaderSummaryDailyTaskIdentityFromEnv(
-      env, env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MODEL,
-    ),
-    reasoningEffort: resolveReaderSummaryReasoningEffortFromEnv(env),
-  promptVersion: env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_PROMPT_VERSION,
-  timeoutMs: parsePositiveInteger(
-    env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_TIMEOUT_MS ??
-      env.AGENT_RUNTIME_TIMEOUT_MS,
-  ),
-  maxOutputTokens: parsePositiveInteger(
-    env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MAX_OUTPUT_TOKENS,
-  ),
-  maxCandidates: parsePositiveInteger(
-    env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MAX_CANDIDATES,
-  ),
-});
+export { resolveAgentRuntimeReaderSummaryTopicLabelerOptions } from "./agent-runtime-reader-summary-topic-labeler-options";

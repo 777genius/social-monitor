@@ -12,13 +12,11 @@ import type {
 } from "../../ports";
 import {
   nonEmptyOrFallback,
-  parsePositiveInteger,
   positiveIntegerOrFallback,
   readAgentRuntimeObjectOutput,
 } from "./agent-runtime-model-support";
-import {
-  resolveAgentRuntimeReaderSummaryTopicLabelerOptions,
-  type AgentRuntimeReaderSummaryTopicLabelerOptions,
+import type {
+  AgentRuntimeReaderSummaryTopicLabelerOptions,
 } from "./agent-runtime-reader-summary-topic-labeler.adapter";
 import {
   verifyAndRecordReaderSummaryExecution,
@@ -31,7 +29,6 @@ import {
   assertReaderSummaryBackendModel,
   mimoReaderSummaryBackend,
   resolveReaderSummaryBackendEffort,
-  resolveReaderSummaryDailyTaskIdentityFromEnv,
   type ReaderSummaryGenerationBackend,
   verifyAndRecordMimoDailyExecution,
 } from "./active-reader-summary-generation-profile";
@@ -138,33 +135,4 @@ const defaultAttemptContext: ReaderSummaryTopicMapAttemptContext = {
   totalAttempts: 1,
 };
 
-export const resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions = (
-  env: NodeJS.ProcessEnv,
-  client: AgentRuntimeClientPort,
-): AgentRuntimeReaderSummaryTopicRelationVerifierOptions => {
-  const shared = resolveAgentRuntimeReaderSummaryTopicLabelerOptions(
-    env,
-    client,
-  );
-
-  return {
-    client,
-    agentProvider: shared.agentProvider,
-    providerInstanceId: shared.providerInstanceId,
-    reasoningEffort: shared.reasoningEffort,
-    ...resolveReaderSummaryDailyTaskIdentityFromEnv(
-      env, env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_MODEL,
-    ),
-    promptVersion:
-      env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_PROMPT_VERSION,
-    timeoutMs: parsePositiveInteger(
-      env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_TIMEOUT_MS ??
-        env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_TIMEOUT_MS ??
-        env.AGENT_RUNTIME_TIMEOUT_MS,
-    ),
-    maxOutputTokens: parsePositiveInteger(
-      env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_MAX_OUTPUT_TOKENS,
-    ),
-  };
-};
-
+export { resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions } from "./agent-runtime-reader-summary-topic-relation-options";
