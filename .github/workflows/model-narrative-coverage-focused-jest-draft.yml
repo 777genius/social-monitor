@@ -36,6 +36,6 @@ jobs:
       - name: Run focused citation-policy and narrative integration specs
         run: |
           set -euo pipefail
-          ./node_modules/.bin/jest --config jest.config.ts --runInBand --runTestsByPath \\
-            libs/summary/adapters/model/openai-responses-reader-summary-narrative-citation-policy.spec.ts \\
+          ./node_modules/.bin/jest --config jest.config.ts --runInBand --runTestsByPath \
+            libs/summary/adapters/model/openai-responses-reader-summary-narrative-citation-policy.spec.ts \
             libs/summary/adapters/model/openai-responses-reader-summary-narrative.spec.ts
