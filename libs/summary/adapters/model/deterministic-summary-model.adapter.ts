@@ -10,6 +10,10 @@ import type {
   SummaryModelValidationResult,
 } from '../../ports';
 import { buildSummaryHeadline } from './deterministic-summary-headline';
+import {
+  assertDeterministicSummaryBudget,
+  estimateDeterministicSummaryTokens,
+} from './deterministic-summary-budget-policy';
 import { formatSourceHighlight } from './deterministic-summary-source-highlights';
 import { buildExecutiveSummary, buildNoSignalSummary } from './deterministic-summary-text';
 
@@ -27,17 +31,7 @@ export class DeterministicSummaryModelAdapter implements SummaryModelPort {
     budget: SummaryModelBudget,
   ): SummaryModelRoute {
     const estimate = this.estimate(input, route);
-
-    if (
-      estimate.inputTokens > policy.maxInputTokens ||
-      estimate.outputTokens > policy.maxOutputTokens ||
-      estimate.estimatedCostUsd > policy.maxEstimatedCostUsd ||
-      estimate.inputTokens + estimate.outputTokens > budget.remainingTokens ||
-      estimate.estimatedCostUsd > budget.remainingCostUsd
-    ) {
-      throw new Error('Summary model budget exceeded');
-    }
-
+    assertDeterministicSummaryBudget(estimate, policy, budget);
     return route;
   }
 
@@ -46,23 +40,7 @@ export class DeterministicSummaryModelAdapter implements SummaryModelPort {
     selectedRoute: SummaryModelRoute,
   ): SummaryModelEstimate {
     void selectedRoute;
-
-    const evidenceTextLength = input.evidence.items.reduce(
-      (total, item) =>
-        total + item.title.length + (item.bodyPreview?.length ?? 0),
-      0,
-    );
-    const memoryTextLength = input.memoryContext?.renderedText?.length ?? 0;
-    const inputTokens = Math.ceil(
-      (input.interestId.length + evidenceTextLength + memoryTextLength) / 4,
-    );
-    const outputTokens = input.evidence.items.length === 0 ? 48 : 160;
-
-    return {
-      inputTokens,
-      outputTokens,
-      estimatedCostUsd: 0,
-    };
+    return estimateDeterministicSummaryTokens(input);
   }
 
   async summarize(
