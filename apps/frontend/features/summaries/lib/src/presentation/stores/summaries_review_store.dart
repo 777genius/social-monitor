@@ -58,6 +58,7 @@ final class SummariesReviewStore extends ChangeNotifier {
     OperationGenerationGuard? postRatingGenerationGuard,
     OperationGenerationGuard? topicRecommendationGenerationGuard,
     Duration workspaceSummaryLoadTimeout = const Duration(seconds: 20),
+    this.allowUnpublishedDays = false,
     ReaderActionTargetResolver readerActionTargetResolver =
         const ReaderActionTargetResolver(),
   }) : _dependencies = dependencies,
@@ -98,6 +99,7 @@ final class SummariesReviewStore extends ChangeNotifier {
   final OperationGenerationGuard _postRatingGenerationGuard;
   final OperationGenerationGuard _topicRecommendationGenerationGuard;
   final Duration _workspaceSummaryLoadTimeout;
+  final bool allowUnpublishedDays;
   WorkspaceScope _scope;
   final String _userId;
   SummaryId? _selectedSummaryId;
@@ -153,33 +155,14 @@ final class SummariesReviewStore extends ChangeNotifier {
     );
   }
 
-  bool get isSelectedSummaryPeriodCurrent {
-    if (_selectedSummaryPeriodEndedAt == null) {
-      return true;
-    }
-    final latestAvailable = _latestAvailableSummaryPeriodForSelectedPreset;
-    if (latestAvailable != null) {
-      return _sameSummaryPeriodWindow(selectedSummaryPeriod, latestAvailable);
-    }
-    return selectedSummaryPeriod.endedAt ==
-        selectedSummaryPeriodPreset.currentPeriodEndedAt();
-  }
+  bool get isSelectedSummaryPeriodCurrent =>
+      _isSelectedSummaryPeriodCurrent(this);
 
-  bool get canShowPreviousSummaryPeriod {
-    if (availableWorkspaceSummaryPeriods.isNotEmpty) {
-      return _previousAvailableSummaryPeriodForSelectedPreset != null;
-    }
-    return false;
-  }
+  bool get canShowPreviousSummaryPeriod =>
+      _canShowPreviousSummaryPeriod(this);
 
-  bool get canShowNextSummaryPeriod {
-    if (availableWorkspaceSummaryPeriods.isNotEmpty) {
-      return _nextAvailableSummaryPeriodForSelectedPreset != null;
-    }
-    return selectedSummaryPeriodPreset.canNavigateNext(
-      selectedSummaryPeriod.endedAt,
-    );
-  }
+  bool get canShowNextSummaryPeriod =>
+      _canShowNextSummaryPeriod(this);
 
   List<SummaryPeriod> get availableWorkspaceSummaryPeriods {
     final periodsByKey = <String, SummaryPeriod>{};

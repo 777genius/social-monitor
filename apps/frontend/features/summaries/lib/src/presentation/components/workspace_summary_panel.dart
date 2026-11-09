@@ -41,6 +41,8 @@ class WorkspaceSummaryPanel extends StatelessWidget {
     required this.onTopicRecommendationDecision,
     required this.onOpenUrl,
     this.includeTopPosts = true,
+    this.showPostFallback = false,
+    this.allowUnpublishedDates = false,
     this.showRefreshSchedule = false,
     this.onRefreshDue,
     this.contentPadding = const EdgeInsets.only(top: AppSpacing.md),
@@ -87,6 +89,8 @@ class WorkspaceSummaryPanel extends StatelessWidget {
   onTopicRecommendationDecision;
   final void Function(ReaderSummary summary, String url) onOpenUrl;
   final bool includeTopPosts;
+  final bool showPostFallback;
+  final bool allowUnpublishedDates;
   final bool showRefreshSchedule;
   final VoidCallback? onRefreshDue;
   final EdgeInsets contentPadding;
@@ -178,10 +182,12 @@ class WorkspaceSummaryPanel extends StatelessWidget {
     final body = switch (state) {
       ReadyViewState<WorkspaceSummarySnapshot>(:final value) =>
         value.current == null
-            ? _EmptySummary(
-                periodPreset: selectedPeriodPreset,
-                onGenerate: onGenerate,
-              )
+            ? showPostFallback
+                ? _SourceOnlySummaryNotice(onGenerate: onGenerate)
+                : _EmptySummary(
+                    periodPreset: selectedPeriodPreset,
+                    onGenerate: onGenerate,
+                  )
             : _ReadySummary(
                 summary: value.current!,
                 readerActionState: readerActionState,
@@ -226,10 +232,12 @@ class WorkspaceSummaryPanel extends StatelessWidget {
           actionLabel: 'Retry',
           onAction: onRetry,
         ),
-      EmptyViewState<WorkspaceSummarySnapshot>() => _EmptySummary(
-        periodPreset: selectedPeriodPreset,
-        onGenerate: onGenerate,
-      ),
+      EmptyViewState<WorkspaceSummarySnapshot>() => showPostFallback
+          ? _SourceOnlySummaryNotice(onGenerate: onGenerate)
+          : _EmptySummary(
+              periodPreset: selectedPeriodPreset,
+              onGenerate: onGenerate,
+            ),
       _ => const SizedBox.shrink(),
     };
     return _withPeriodShell(body, exportSummary: _currentSummary(state));
@@ -255,6 +263,7 @@ class WorkspaceSummaryPanel extends StatelessWidget {
       isLoading: state is LoadingViewState<WorkspaceSummarySnapshot>,
       exportSummary: exportSummary,
       showRefreshSchedule: showRefreshSchedule,
+      allowUnpublishedDates: allowUnpublishedDates,
       onRefreshDue: onRefreshDue,
       contentPadding: contentPadding,
       child: child,
@@ -315,6 +324,23 @@ class WorkspaceSummaryPanel extends StatelessWidget {
       _ => null,
     };
   }
+}
+
+class _SourceOnlySummaryNotice extends StatelessWidget {
+  const _SourceOnlySummaryNotice({required this.onGenerate});
+
+  final VoidCallback onGenerate;
+
+  @override
+  Widget build(BuildContext context) => AppInlineProblem(
+    title: 'No AI summary for this day',
+    message:
+        'Showing collected original posts below, sorted by likes or '
+        'source score. No AI-generated headlines or descriptions.',
+    tone: AppProblemTone.neutral,
+    actionLabel: 'Generate summary',
+    onAction: onGenerate,
+  );
 }
 
 class _EmptySummary extends StatelessWidget {

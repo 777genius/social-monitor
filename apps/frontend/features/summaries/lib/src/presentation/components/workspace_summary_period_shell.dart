@@ -27,6 +27,7 @@ class WorkspaceSummaryPeriodShell extends StatelessWidget {
     required this.exportSummary,
     required this.child,
     this.showRefreshSchedule = false,
+    this.allowUnpublishedDates = false,
     this.onRefreshDue,
     this.contentPadding = const EdgeInsets.only(top: AppSpacing.md),
   });
@@ -46,6 +47,7 @@ class WorkspaceSummaryPeriodShell extends StatelessWidget {
   final ReaderSummary? exportSummary;
   final Widget child;
   final bool showRefreshSchedule;
+  final bool allowUnpublishedDates;
   final VoidCallback? onRefreshDue;
   final EdgeInsets contentPadding;
 
@@ -61,6 +63,7 @@ class WorkspaceSummaryPeriodShell extends StatelessWidget {
             children: [
               WorkspaceSummaryPeriodToolbar(
                 selectedPeriod: selectedPeriod,
+                allowUnpublishedDates: allowUnpublishedDates,
                 selectedPreset: selectedPreset,
                 availableSummaryPeriods: availableSummaryPeriods,
                 canNavigateToPreviousPeriod: canNavigateToPreviousPeriod,

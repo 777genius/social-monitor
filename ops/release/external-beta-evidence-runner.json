@@ -242,7 +242,9 @@
         "BACKEND_GIT_COMMIT_SHA",
         "SOURCE_LIVE_OPERATOR"
       ],
-      "optionalEnv": [],
+      "optionalEnv": [
+        "GITHUB_ACCESS_TOKEN"
+      ],
       "outputArtifacts": [
         {
           "env": "LIVE_OPEN_CONNECTORS_EVIDENCE_PATH",
@@ -250,11 +252,12 @@
           "expectedArtifactId": "live-open-connectors-evidence-v1",
           "expectedProviderKeys": [
             "hacker-news",
-            "rss"
+            "rss",
+            "github-issues"
           ]
         }
       ],
-      "exitCondition": "HN and RSS live smoke, cache, SSRF and rate-limit evidence is attached for the promoted backend image."
+      "exitCondition": "HN, RSS and GitHub Issues live smoke, cache, SSRF and rate-limit evidence is attached for the promoted backend image."
     },
     {
       "jobId": "live-github-repo-radar",

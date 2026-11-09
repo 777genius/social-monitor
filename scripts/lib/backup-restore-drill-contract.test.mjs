@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
@@ -8,6 +9,7 @@ import {
   parseRestoreValidationTable,
   restoreDrillContractFingerprints,
 } from './backup-restore-drill-contract.mjs';
+import { validatePostgresRestoreEvidence } from './postgres-restore-evidence-validator.mjs';
 
 test('parses the reviewed count query grammar', () => {
   assert.equal(parseRestoreValidationTable('select count(*) from feed_items'), 'feed_items');
@@ -94,4 +96,53 @@ test('fingerprints backup membership and validation order independently', () => 
     base.restoreValidationContractHash,
     reorderedValidation.restoreValidationContractHash,
   );
+});
+
+test('reader value assessment operational state is backed up and restore-validated', () => {
+  const contract = JSON.parse(readFileSync(
+    new URL('../../ops/recovery/backup-restore-contract.json', import.meta.url),
+    'utf8',
+  ));
+  const table = 'reader_value_assessments';
+  const query = `select count(*) from ${table}`;
+
+  assert.ok(contract.backupIncludes.includes(table));
+  assert.ok(contract.operationalStateTables.includes(table));
+  assert.ok(contract.restoreValidationQueries.includes(query));
+  const compiled = compileBackupRestoreDrillContract(contract);
+  assert.ok(compiled.restoreValidationTables.includes(table));
+
+  assert.throws(
+    () => compileBackupRestoreDrillContract({
+      ...contract,
+      backupIncludes: contract.backupIncludes.filter((item) => item !== table),
+    }),
+    /restore validation table is not backed up: reader_value_assessments/,
+  );
+  assert.throws(
+    () => compileBackupRestoreDrillContract({
+      ...contract,
+      restoreValidationQueries: contract.restoreValidationQueries.filter((item) => item !== query),
+    }),
+    /operational table has no restore validation query: reader_value_assessments/,
+  );
+});
+
+test('tracked fixture-only postgres restore artifact matches current exact backup contract', () => {
+  const contract = JSON.parse(readFileSync(
+    new URL('../../ops/recovery/backup-restore-contract.json', import.meta.url), 'utf8',
+  ));
+  const compiled = compileBackupRestoreDrillContract(contract);
+  const examples = JSON.parse(readFileSync(
+    new URL('../../ops/drills/fixtures/staging-reliability-artifact-examples.json', import.meta.url), 'utf8',
+  ));
+  const artifact = examples.examples.find((item) => item.artifactId === 'postgres-restore-drill-output');
+  assert.equal(artifact.provenance.fixtureOnly, true);
+  assert.deepEqual(validatePostgresRestoreEvidence(artifact, compiled), []);
+
+  const stale = JSON.parse(JSON.stringify(artifact));
+  stale.signalResults.find((item) => item.signalId === 'postgres-backup-created')
+    .evidence.expectedBackupIncludeCount -= 1;
+  assert.ok(validatePostgresRestoreEvidence(stale, compiled)
+    .includes('expected backup count must be 83'));
 });

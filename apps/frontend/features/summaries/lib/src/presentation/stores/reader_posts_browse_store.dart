@@ -35,19 +35,32 @@ final class ReaderPostsBrowseStore extends ChangeNotifier {
   AsyncViewState<ReaderPostsPage> get state => _state;
 
   void bind(ReaderSummary summary, TopPostsSortOrder order) {
-    if (_summaryId == summary.id &&
-        _period == summary.period &&
-        _order == order) {
+    _bind(summaryId: summary.id, period: summary.period, order: order);
+  }
+
+  /// Browse a day even when no editorial summary was published.
+  /// This is always source-only and ordered by native engagement.
+  void bindUnpublishedDay(SummaryPeriod period) {
+    _bind(summaryId: null, period: period, order: TopPostsSortOrder.engagement);
+  }
+
+  void _bind({
+    required String? summaryId,
+    required SummaryPeriod period,
+    required TopPostsSortOrder order,
+  }) {
+    if (_summaryId == summaryId && _period == period && _order == order) {
       return;
     }
-    if (_summaryId != summary.id || _period != summary.period) {
+    if (_summaryId != summaryId || _period != period) {
       _visibleTarget = 12;
       _firstPage = null;
     }
     _generation.invalidate();
-    _summaryId = summary.id;
-    _period = summary.period;
+    _summaryId = summaryId;
+    _period = period;
     _order = order;
+    if (summaryId == null) _selectedOnly = false;
     _state = const InitialViewState();
     if (!_selectedOnly) unawaited(Future<void>.microtask(reload));
   }
