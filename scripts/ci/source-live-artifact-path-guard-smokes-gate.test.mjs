@@ -59,8 +59,8 @@ test('removing or disabling either source-live guard cannot pass the delegation 
 test('disabled or nested main live-smoke invocation cannot pass the gate', () => {
   for (const replacement of [
     '',
-    'if (false) {\\n  validateLiveSmokeScripts();\\n}',
-    'function dormant() {\\n  validateLiveSmokeScripts();\\n}',
+    'if (false) {\n  validateLiveSmokeScripts();\n}',
+    'function dormant() {\n  validateLiveSmokeScripts();\n}',
     'false && validateLiveSmokeScripts();',
   ]) {
     assert.throws(() => assertLiveDelegation(checker.replace('validateLiveSmokeScripts();', replacement)));
