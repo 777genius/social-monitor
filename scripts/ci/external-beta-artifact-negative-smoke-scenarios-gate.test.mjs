@@ -16,9 +16,13 @@ function assertActiveDelegation(source, functionName, factoryName) {
   assert.match(clean, moduleImport);
   const marker = 'function ' + functionName + '() {\n';
   const start = clean.indexOf(marker);
-  const end = clean.indexOf('\n\n  for (const scenario of scenarios) {', start);
-  assert.ok(start >= 0 && end > start, 'original smoke executor and loop must remain');
-  const setup = clean.slice(start + marker.length, end);
+  const bodyStart = start + marker.length;
+  const functionEnd = clean.indexOf('\n}', bodyStart);
+  assert.ok(start >= 0 && functionEnd > bodyStart, 'original smoke executor must remain');
+  const body = clean.slice(bodyStart, functionEnd);
+  const loop = /^[ \t]*for\s*\(\s*const\s+scenario\s+of\s+scenarios\s*\)\s*\{/m.exec(body);
+  assert.ok(loop, 'original scenario loop must remain');
+  const setup = body.slice(0, loop.index);
   const statement = 'const scenarios = ' + factoryName + '();';
   assert.ok(setup.includes(statement), 'original loop must bind actual factory output');
   let calls = 0;
@@ -46,6 +50,18 @@ for (const [functionName, factoryName] of delegates) {
     assert.throws(() => assertActiveDelegation(checker.replace(statement, 'if (false) { ' + statement + ' }'), functionName, factoryName));
     assert.throws(() => assertActiveDelegation(checker.replace(statement, '{ ' + statement + ' }\n  const scenarios = [];'), functionName, factoryName));
     assert.throws(() => assertActiveDelegation(checker.replace(statement, 'const scenarios = [];'), functionName, factoryName));
+  });
+
+  test(functionName + ' accepts formatter-only scenario loop changes', () => {
+    const original = statement + '\n\n  for (const scenario of scenarios) {';
+    assert.ok(checker.includes(original), 'expected original loop fixture');
+    assertActiveDelegation(checker.replace(original, statement + '\n    for( const scenario of scenarios ) {'), functionName, factoryName);
+  });
+
+  test(functionName + ' rejects a missing scenario loop', () => {
+    const original = statement + '\n\n  for (const scenario of scenarios) {';
+    assert.ok(checker.includes(original), 'expected original loop fixture');
+    assert.throws(() => assertActiveDelegation(checker.replace(original, statement + '\n    if (false) {'), functionName, factoryName));
   });
 
   test(functionName + ' handles CRLF source without accepting disabled factory calls', () => {
