@@ -1,9 +1,9 @@
 import type { ReaderSummaryTopicRelationVerifierInput } from "../../ports";
 import { normalizeDecisions, parseJsonObject } from "./agent-runtime-reader-summary-topic-relation-decisions";
 
-const relations = [
-  { sourceNodeId: "topic-a", targetNodeId: "topic-b" },
-] as ReaderSummaryTopicRelationVerifierInput["relations"];
+const relations: ReaderSummaryTopicRelationVerifierInput["relations"] = [
+  { sourceNodeId: "topic-a", targetNodeId: "topic-b", sharedTerms: ["shared", "source"] },
+];
 
 describe("Agent Runtime topic relation output contract", () => {
   it("requires exactly one bounded decision per requested pair", () => {
