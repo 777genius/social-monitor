@@ -140,7 +140,7 @@ test('tracked fixture-only postgres restore artifact matches current exact backu
   assert.equal(artifact.provenance.fixtureOnly, true);
   assert.deepEqual(validatePostgresRestoreEvidence(artifact, compiled), []);
 
-  const stale = structuredClone(artifact);
+  const stale = JSON.parse(JSON.stringify(artifact));
   stale.signalResults.find((item) => item.signalId === 'postgres-backup-created')
     .evidence.expectedBackupIncludeCount -= 1;
   assert.ok(validatePostgresRestoreEvidence(stale, compiled)
