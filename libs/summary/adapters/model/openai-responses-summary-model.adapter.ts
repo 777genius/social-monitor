@@ -32,6 +32,10 @@ import {
 } from './openai-responses-summary-response-parser';
 import { openAiSummaryJsonSchema } from './openai-responses-summary-schema';
 import {
+  assertOpenAiSummaryWithinBudget,
+  estimateOpenAiSummaryUsage,
+} from "./openai-responses-summary-budget";
+import {
   nonEmptyOrFallback,
   nonNegativeNumberOrFallback,
   parseNonNegativeNumber,
@@ -124,22 +128,7 @@ export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
     budget: SummaryModelBudget,
   ): SummaryModelRoute {
     const route = this.buildRoute();
-    const estimate = this.estimate(input, route);
-
-    if (
-      estimate.inputTokens > policy.maxInputTokens ||
-      estimate.outputTokens > policy.maxOutputTokens ||
-      estimate.estimatedCostUsd > policy.maxEstimatedCostUsd ||
-      estimate.inputTokens + estimate.outputTokens > budget.remainingTokens ||
-      estimate.estimatedCostUsd > budget.remainingCostUsd
-    ) {
-      throw new SummaryModelProviderError({
-        kind: 'budget_exceeded',
-        retryable: false,
-        message: 'Summary model budget exceeded',
-      });
-    }
-
+    assertOpenAiSummaryWithinBudget(this.estimate(input, route), policy, budget);
     return route;
   }
 
@@ -149,26 +138,12 @@ export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
   ): SummaryModelEstimate {
     void selectedRoute;
 
-    const inputTokens = Math.ceil(
-      buildPromptPayload(input).length / this.inputTokenDivisor,
-    );
-    const outputTokens =
-      input.evidence.items.length === 0
-        ? 96
-        : Math.min(
-            this.maxOutputTokens,
-            Math.max(256, input.policy.maxKeyPoints * 220),
-          );
-    const estimatedCostUsd =
-      (inputTokens * this.estimatedInputCostUsdPerMillionTokens +
-        outputTokens * this.estimatedOutputCostUsdPerMillionTokens) /
-      1_000_000;
-
-    return {
-      inputTokens,
-      outputTokens,
-      estimatedCostUsd,
-    };
+    return estimateOpenAiSummaryUsage(input, {
+      maxOutputTokens: this.maxOutputTokens,
+      inputTokenDivisor: this.inputTokenDivisor,
+      estimatedInputCostUsdPerMillionTokens: this.estimatedInputCostUsdPerMillionTokens,
+      estimatedOutputCostUsdPerMillionTokens: this.estimatedOutputCostUsdPerMillionTokens,
+    });
   }
 
   async summarize(
