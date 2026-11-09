@@ -12,7 +12,7 @@ export const projectAgentRuntimeTopicGroups = (
   recovery: ReturnType<typeof completeRequiredGroundedTopicCohorts>,
   candidates: readonly ReaderSummaryTopicLabelerInput["candidates"][number][],
   groupRecords: ReadonlyMap<string, Record<string, unknown>>,
-): { readonly groups: ReaderSummaryTopicLabelPlan["groups"]; readonly finalGroupIds: ReadonlySet<string> } => {
+): { readonly groups: readonly (ReaderSummaryTopicLabelPlan["groups"][number] & { readonly semanticAnchors: readonly string[] })[]; readonly finalGroupIds: ReadonlySet<string> } => {
   const nodeLabels = recovery.nodeLabels;
   const finalGroupIds = new Set(
     nodeLabels
