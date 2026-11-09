@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import ts from 'typescript';
 import '../lib/source-live-artifact-path-guard-smokes.test.mjs';
 
 const checker = readFileSync(new URL('../check-source-live-certification-evidence.mjs', import.meta.url), 'utf8');
@@ -13,6 +14,23 @@ function assertLiveDelegation(source) {
   assert.match(code, /^[ \t]*validateDirectRedditLifecyclePathGuards\(\);[ \t]*$/m);
   assert.doesNotMatch(code, /\bfunction\s+validateCaptureOutputPathGuards\s*\(/);
   assert.doesNotMatch(code, /\bfunction\s+validateDirectRedditLifecyclePathGuards\s*\(/);
+  // Regexes alone accept unreachable guard calls nested under `if (false)`.
+  // The original checker must invoke both validators directly in its live smoke function.
+  const parsed = ts.createSourceFile('check-source-live-certification-evidence.mjs', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  assert.equal(parsed.parseDiagnostics.length, 0, 'original checker must parse as JavaScript');
+  const liveSmokeFunction = parsed.statements.find((statement) => ts.isFunctionDeclaration(statement)
+    && statement.name?.text === 'validateLiveSmokeScripts');
+  assert.ok(liveSmokeFunction?.body, 'original live-smoke function must exist');
+  const directCalls = liveSmokeFunction.body.statements
+    .filter((statement) => ts.isExpressionStatement(statement)
+      && ts.isCallExpression(statement.expression)
+      && ts.isIdentifier(statement.expression.expression)
+      && statement.expression.arguments.length === 0)
+    .map((statement) => statement.expression.expression.text);
+  for (const name of ['validateCaptureOutputPathGuards', 'validateDirectRedditLifecyclePathGuards']) {
+    assert.equal(directCalls.filter((value) => value === name).length, 1,
+      `${name} must run exactly once directly inside validateLiveSmokeScripts`);
+  }
 }
 
 test('source-live checker still invokes both original path guard smokes', () => {
@@ -25,6 +43,9 @@ test('removing or disabling either source-live guard cannot pass the delegation 
     assert.throws(() => assertLiveDelegation(checker.replace('  ' + name + '();', '// ' + name + '();')));
     assert.throws(() => assertLiveDelegation(checker.replace('  ' + name + '();', '  const fake = "' + name + '();";')));
     assert.throws(() => assertLiveDelegation(checker.replace('  ' + name + '();', '  if (false) { ' + name + '(); }')));
+    assert.throws(() => assertLiveDelegation(checker.replace('  ' + name + '();', `  if (false) {\n    ${name}();\n  }`)));
+    assert.throws(() => assertLiveDelegation(checker.replace('  ' + name + '();', `  function dormant() {\n    ${name}();\n  }`)));
+    assert.throws(() => assertLiveDelegation(checker.replace('  ' + name + '();', `  false && ${name}();`)));
   }
 });
 
