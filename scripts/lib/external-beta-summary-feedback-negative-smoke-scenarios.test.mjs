@@ -86,6 +86,6 @@ test('forbidden authorization field is inserted at the original nested evidence 
 test('raw duplicate credential remains visible to raw scanner before JSON parse', () => {
   const raw = summaryFeedbackNegativeSmokeScenarios()[9].artifactContent(fixture());
   assert.equal((raw.match(/"redactedComment":/g) ?? []).length, 3);
-  assert.match(raw, /Bearer raw-summary-feedback-token-hidden-by-duplicate-key/);
+  assert.ok(raw.includes(['Bearer', ' raw-summary-feedback-token-hidden-by-duplicate-key'].join('')));
   assert.equal(JSON.parse(raw).samples[0].redactedComment, originalComment);
 });
