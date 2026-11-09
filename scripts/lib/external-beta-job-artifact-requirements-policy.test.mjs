@@ -94,11 +94,13 @@ test('missing, blank, and repeated provider keys are rejected', () => {
   }
 });
 test('validation command must read the artifact env and format', () => {
-  const state = fixture();
-  state.dependencies.validationCommandSource = () => '';
-  const policy = createExternalBetaJobArtifactRequirementsPolicy(state.dependencies);
-  policy.validateJobArtifacts(state.job, 'job');
-  assert.ok(state.violations.some(text => text.includes('must be read by a validation command')));
+  for (const source of ['', 'EVIDENCE_PATH', 'source-live-provider-evidence-v1']) {
+    const state = fixture();
+    state.dependencies.validationCommandSource = () => source;
+    const policy = createExternalBetaJobArtifactRequirementsPolicy(state.dependencies);
+    policy.validateJobArtifacts(state.job, 'job');
+    assert.ok(state.violations.some(text => text.includes('must be read by a validation command')));
+  }
 });
 test('mandatory required and optional evidence environment names remain required', () => {
   const result = messages(({ job }) => { job.requiredEnv = []; job.optionalEnv = []; },
@@ -106,12 +108,17 @@ test('mandatory required and optional evidence environment names remain required
   assert.ok(result.includes('job: must include required evidence env "EVIDENCE_PATH"'));
   assert.ok(result.includes('job: must include optional evidence env "OPTIONAL_TOKEN"'));
 });
-test('alternative requirements reject substituted mode and coverage', () => {
-  const result = messages(({ job }) => {
-    job.requiredEnvAlternatives = [{ label: 'captured', env: ['EVIDENCE_PATH'],
-      coversEnv: ['UNRELATED'], mode: 'wrong' }];
-  }, 'validateRequiredJobEvidence');
-  assert.ok(result.some(text => text.includes('requiredEnvAlternatives must include "captured"')));
+test('alternative requirements reject substituted mode and coverage separately', () => {
+  for (const substitution of [
+    { coversEnv: ['EVIDENCE_PATH'], mode: 'captured_artifact' },
+    { coversEnv: ['UNRELATED'] },
+  ]) {
+    const result = messages(({ job }) => {
+      job.requiredEnv.push('UNRELATED');
+      job.requiredEnvAlternatives = [{ label: 'captured', env: ['EVIDENCE_PATH'], ...substitution }];
+    }, 'validateRequiredJobEvidence');
+    assert.ok(result.some(text => text.includes('requiredEnvAlternatives must include "captured"')));
+  }
 });
 test('mandatory output artifacts must match format, id and unordered provider set', () => {
   const state = fixture();
@@ -121,6 +128,8 @@ test('mandatory output artifacts must match format, id and unordered provider se
   state.artifact.expectedArtifactId = 'forged';
   state.policy.validateRequiredJobEvidence(state.job, 'job');
   assert.ok(state.violations.some(text => text.includes('outputArtifacts must include env "EVIDENCE_PATH"')));
+  assert.ok(messages(({ artifact }) => { artifact.format = 'different-format'; },
+    'validateRequiredJobEvidence').some(text => text.includes('outputArtifacts must include env "EVIDENCE_PATH"')));
 });
 test('incorrect required provider set is rejected', () => {
   assert.ok(messages(({ artifact }) => {
