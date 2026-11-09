@@ -65,7 +65,10 @@ test('world-readable artifact fixture creation is deferred until the original en
     const env = scenarios[4].env(root);
     assert.equal(env.DURABLE_BACKEND_E2E_ARTIFACT_PATH, path);
     assert.equal(readFileSync(path, 'utf8'), '{}\n');
-    assert.equal(statSync(path).mode & 0o777, 0o644);
+    // Windows stat reports only read-only/writable attributes, not POSIX permission bits.
+    if (process.platform !== 'win32') {
+      assert.equal(statSync(path).mode & 0o777, 0o644);
+    }
     assert.deepEqual(scenarios[4].expectedOutput, ['DURABLE_BACKEND_E2E_ARTIFACT_PATH', '0600-style private file permissions before preflight']);
   } finally {
     rmSync(root, { recursive: true, force: true });
