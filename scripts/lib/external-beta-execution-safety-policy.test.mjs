@@ -9,7 +9,7 @@ const forbiddenFragments = ['frontend', 'mobile', 'flutter', 'agent-runtime', 'c
 
 function fixture() {
   return {
-    contract: structuredClone(originalContract),
+    contract: JSON.parse(JSON.stringify(originalContract)),
     contractPath: originalContractPath,
     forbiddenFragments,
     violations: [],
