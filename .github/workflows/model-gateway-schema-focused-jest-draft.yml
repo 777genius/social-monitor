@@ -1,0 +1,39 @@
+# Temporary branch-only synthetic Jest proof for PR #665 gateway schema responsibility split.
+# Delete after collecting exact-source test results. Never calls a paid provider or production.
+name: Model gateway schema focused Jest (temporary)
+
+on:
+  push:
+    branches: [refactor/summary-model-adapters-10k-20261108]
+    paths: [.github/workflows/model-gateway-schema-focused-jest-draft.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  focused_gateway_schema:
+    name: Gateway schema policy and redacted errors
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact commit without retained credentials
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install exact dependencies
+        run: npm ci --prefer-offline --no-audit
+      - name: Generate pinned Prisma client
+        run: npm run prisma:generate
+      - name: Run synthetic gateway schema and diagnostic regressions
+        run: |
+          set -euo pipefail
+          ./node_modules/.bin/jest --config jest.config.ts --runInBand --runTestsByPath \
+            libs/summary/adapters/model/gateway-llm/gateway-llm-schema-primitives.spec.ts \
+            libs/summary/adapters/model/gateway-llm/gateway-llm-output-schema.spec.ts \
+            libs/summary/adapters/model/gateway-llm/gateway-llm-output-violations.spec.ts
