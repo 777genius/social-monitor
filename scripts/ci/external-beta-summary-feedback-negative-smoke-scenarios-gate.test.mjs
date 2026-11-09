@@ -7,7 +7,7 @@ import '../lib/external-beta-summary-feedback-negative-smoke-scenarios.test.mjs'
 const source = readFileSync(new URL('../check-external-beta-evidence-runner.mjs', import.meta.url), 'utf8');
 const statement = 'const scenarios = summaryFeedbackNegativeSmokeScenarios();';
 function assertDelegated(candidate) {
-  const active = candidate.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+  const active = candidate.replace(/\r\n?/g, '\n').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
   assert.match(active, /from '\.\/lib\/external-beta-summary-feedback-negative-smoke-scenarios\.mjs'/);
   const marker = 'function validateRunnerNegativeSummaryFeedbackArtifactSmokes() {\n';
   const start = active.indexOf(marker);
@@ -39,5 +39,14 @@ test('unreachable summary-feedback factory invocation cannot satisfy original ru
 test('nested summary-feedback factory result cannot be replaced by an empty loop array', () => {
   assert.throws(() => assertDelegated(source.replace(statement, '{ ' + statement + ' }\n  const scenarios = [];')), {
     code: 'ERR_ASSERTION',
+  });
+});
+
+test('CRLF checkout preserves active delegation but rejects disabled invocations', () => {
+  const crlf = source.replace(/\r?\n/g, '\r\n');
+  assertDelegated(crlf);
+  assert.throws(() => assertDelegated(crlf.replace(statement, '// ' + statement)), { code: 'ERR_ASSERTION' });
+  assert.throws(() => assertDelegated(crlf.replace(statement, 'if (false) { ' + statement + ' }')), {
+    name: 'ReferenceError', message: 'scenarios is not defined',
   });
 });
