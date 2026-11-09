@@ -1,19 +1,11 @@
-import { readerPostPresentationV3OutputSchema as baseSchema, readerPostPresentationCandidates } from "../../domain/services/reader-post-presentation-v3-proposal";
-import { readerPostCanonicalPresentationInstructions } from "./reader-post-canonical-presentation-instructions";
-import { mimoQualifiedHeadlineOutputSchema } from "../../domain/services/mimo-qualified-headline-codec";
 import {
   READER_POST_PRESENTATION_V3_MAX_REQUEST_BYTES,
-  readerPostPresentationV3InputDigest,
   type PromotionPresentationBuilder,
   type ReaderPostPresentationV3Input,
   type ReaderPostPresentationV3Result,
 } from "../../domain/services/reader-post-presentation-v3";
-import type { AgentRuntimeClientPort, AgentRuntimeProvider, AgentRuntimeTaskCommand } from "../../ports";
-import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
-import { canonicalPromotionPayload, promotionPayloadDigest } from
-  "../../domain/services/reader-post-promotion-attestation";
+import type { AgentRuntimeClientPort, AgentRuntimeProvider } from "../../ports";
 import {
-  buildAgentRuntimeRequestId,
   parsePositiveInteger,
   positiveIntegerOrFallback,
   readAgentRuntimeObjectOutput,
@@ -32,18 +24,13 @@ import {
   assertActiveReaderSummaryProvider,
   isCodexGatewayOnlyReaderSummaryModel,
   isGatewayReaderSummaryBackend,
-  readerSummaryRouteControls,
   resolveReaderSummaryBackendEffort,
   resolveReaderSummaryReasoningEffortFromEnv,
 } from "./active-reader-summary-generation-profile";
 import { presentationRuntimeFailureDisposition, presentationRuntimeFailureIdentity } from
   "./agent-runtime-promotion-presentation-v3-runtime-failure";
-import {
-  usesSourceCopyOptions,
-  mimoPresentationInstructions,
-  requestBytes,
-  parseObject,
-} from "./agent-runtime-promotion-presentation-v3-request";
+import { requestBytes, parseObject } from "./agent-runtime-promotion-presentation-v3-request";
+import { createPromotionPresentationTaskCommand } from "./agent-runtime-promotion-presentation-v3-task-command";
 import {
   runtimePresentationValidationRejection,
   completedPromotionPresentationResults,
@@ -126,56 +113,16 @@ implements PromotionPresentationBuilder {
       return [...await this.build(inputs.slice(0, split)),
         ...await this.build(inputs.slice(split))];
     }
-    const first = inputs[0]!;
-    const prompt = JSON.stringify({ candidates: inputs.map((input) => ({
-      candidateId: input.candidateId, title: input.title, sourceText: input.body,
-    })) });
-    const catalogCandidates = readerPostPresentationCandidates(prompt);
-    const sourceCopyWire = usesSourceCopyOptions(this.modelBackend);
-    // Keep Codex's provider-qualified wire schema; narrow copied references per
-    // item below, so one invalid sibling does not discard valid presentations.
-    const schema = sourceCopyWire ? mimoQualifiedHeadlineOutputSchema(catalogCandidates) : baseSchema;
-    const systemPrompt = sourceCopyWire ? mimoPresentationInstructions(catalogCandidates)
-      : readerPostCanonicalPresentationInstructions(catalogCandidates);
-    const requestDigest = promotionPayloadDigest(canonicalPromotionPayload({
-      purpose: activeReaderSummaryPurposes.promotionPresentation,
-      inputs: inputs.map(readerPostPresentationV3InputDigest),
-      systemPrompt, prompt, outputSchema: schema,
-      provider: this.provider, providerInstanceId: this.providerInstanceId ?? null,
-      model: this.model, reasoningEffort: this.reasoningEffort,
-      ...(this.modelBackend === mimoReaderSummaryBackend ||
-        isGatewayReaderSummaryBackend(this.modelBackend) ? { modelBackend: this.modelBackend } : {}),
-      maxOutputTokens: this.maxOutputTokens,
-    }));
-    const command: AgentRuntimeTaskCommand = {
-      requestId: buildAgentRuntimeRequestId(
-        "reader-summary-promotion-presentation", first.tenantId,
-        first.workspaceId, requestDigest, new Date(0),
-      ),
-      tenantId: tenantId(first.tenantId),
-      workspaceId: workspaceId(first.workspaceId),
-      correlationId: buildAgentRuntimeRequestId(
-        "reader-summary-promotion-presentation-correlation", first.tenantId,
-        first.workspaceId, requestDigest, new Date(0),
-      ),
-      provider: this.provider,
-      providerInstanceId: this.providerInstanceId,
-      purpose: activeReaderSummaryPurposes.promotionPresentation,
-      systemPrompt,
-      prompt,
-      outputSchema: schema,
-      controls: {
-        interactive: false,
-        outputSchemaName: "social_monitor_reader_post_presentation_v3",
-        schemaVersion: "reader_post_presentation.v3",
+    const { command, sourceCopyWire, catalogCandidates } =
+      createPromotionPresentationTaskCommand(inputs, {
+        provider: this.provider,
+        providerInstanceId: this.providerInstanceId,
         model: this.model,
-        ...(this.modelBackend === mimoReaderSummaryBackend ? { modelBackend: this.modelBackend } : {}),
-        ...readerSummaryRouteControls(this.modelBackend, this.reasoningEffort),
+        modelBackend: this.modelBackend,
+        reasoningEffort: this.reasoningEffort,
+        timeoutMs: this.timeoutMs,
         maxOutputTokens: this.maxOutputTokens,
-      },
-      timeoutMs: this.timeoutMs,
-      metadata: { adapter: "agent-runtime-promotion-presentation-v3" },
-    };
+      });
     let result = await this.client.runTask(command);
     // A transient runtime failure (cancellation, crashed run, empty failure,
     // timeout) says nothing about the stories on either backend: resend the same
