@@ -87,11 +87,18 @@ test('backend-safe verification must include the contract checker', () => {
   }, 'backendScripts must include');
 });
 
-test('backend-safe verification cannot run live actions', () => {
-  rejects(context => {
-    context.backendScripts.add(scriptNameFromCommand(context.contract.executeCommand));
-  }, 'backend-safe verify must not run');
-});
+for (const field of [
+  'planCommand', 'jsonPlanCommand', 'summaryCommand',
+  'handoffCommand', 'handoffJsonCommand', 'preflightCommand',
+  'artifactValidationCommand', 'currentPackageCommand', 'executeCommand',
+]) {
+  test('backend-safe verification cannot run ' + field, () => {
+    rejects(context => {
+      const script = scriptNameFromCommand(context.contract[field]);
+      context.backendScripts.add(script);
+    }, 'backend-safe verify must not run ' + scriptNameFromCommand(originalContract[field]));
+  });
+}
 
 test('baseline must include required checker command', () => {
   rejects(context => {

@@ -31,6 +31,7 @@ function assertBehavior(candidate) {
     validateEnvExample: () => events.push('env'),
     validateWiring: provided => {
       assert.equal(provided.contract, context.contract);
+      assert.equal(provided.violations, context.violations);
       events.push('wiring');
     },
   }, { timeout: 1000 });
@@ -50,6 +51,14 @@ test('removing and commenting out wiring delegation fails static gate', () => {
   assert.throws(() => assertActiveDelegation(removed), /required active wiring policy call/);
   const commented = source.replace(/^validateWiring\(\{$/m, '// validateWiring({');
   assert.throws(() => assertActiveDelegation(commented), /required active wiring policy call/);
+});
+
+test('wiring delegation cannot disconnect the shared violation sink', () => {
+  const mutated = source.replace(/^  violations, scriptNameFromCommand,$/m,
+    '  violations: [], scriptNameFromCommand,');
+  assert.notEqual(mutated, source, 'expected to mutate original validation call');
+  assertActiveDelegation(mutated);
+  assert.throws(() => assertBehavior(mutated), { code: 'ERR_ASSERTION' });
 });
 
 test('unreachable wiring validator fails actual behavioral delegation', () => {
