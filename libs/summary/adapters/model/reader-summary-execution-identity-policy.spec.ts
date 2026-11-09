@@ -15,7 +15,7 @@ const forgedAttestations: readonly {
 }[] = [
   { name: "request identity", change: (value) => ({ ...value, requestId: "not-the-command-request" }) },
   { name: "purpose", change: (value) => ({ ...value, purpose: "not-the-command-purpose" }) },
-  { name: "provider", change: (value) => ({ ...value, provider: "not-the-command-provider" }) },
+  { name: "provider", change: (value) => ({ ...value, provider: "claude" }) },
   { name: "model", change: (value) => ({ ...value, model: "not-the-selected-model" }) },
   { name: "reasoning effort", change: (value) => ({ ...value, reasoningEffort: "xhigh" }) },
   { name: "canonical request digest", change: (value) => ({ ...value, canonicalRequestSha256: "invalid" }) },
