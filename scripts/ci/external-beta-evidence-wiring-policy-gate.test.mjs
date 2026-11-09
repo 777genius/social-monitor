@@ -54,7 +54,7 @@ test('removing and commenting out wiring delegation fails static gate', () => {
 
 test('unreachable wiring validator fails actual behavioral delegation', () => {
   const mutated = source.replace(/^validateWiring\(\{$/m, 'if (false) {\nvalidateWiring({')
-    .replace(/^  violations, scriptNameFromCommand,\n\}\);$/m,
+    .replace(/^ {2}violations, scriptNameFromCommand,\n\}\);$/m,
       '  violations, scriptNameFromCommand,\n});\n}');
   assertActiveDelegation(mutated);
   assert.throws(() => assertBehavior(mutated), { code: 'ERR_ASSERTION' });
