@@ -1,3 +1,4 @@
+import { buildAgentRuntimeTopicPromptNodes } from "./agent-runtime-reader-summary-topic-evidence-prompt";
 import type { ReaderSummaryTopicLabelCandidate } from "../../ports";
 import type { ReaderSummaryTopicLabelerInput } from "../../ports";
 import {
@@ -448,4 +449,85 @@ const promptInput = (
   selectedEvidence: [],
   topStories: [],
   candidates,
+});
+
+describe("topic prompt evidence boundary", () => {
+  it("projects only cluster-owned selected evidence with bounded, deduplicated samples", () => {
+    const candidates = [
+      candidate("node:left", ["Rust"]),
+      candidate("node:right", ["Claude"]),
+    ];
+    const original = promptInput(candidates);
+    const timestamp = new Date("2026-07-09T12:00:00.000Z");
+    const makeEvidence = (
+      feedItemId: string,
+      index: number,
+    ): ReaderSummaryTopicLabelerInput["selectedEvidence"][number] => ({
+      feedItemId,
+      sourceItemId: `source:${feedItemId}`,
+      sourceBindingId: "binding:test",
+      interestId: "interest:ai",
+      providerKey: "rss",
+      title: `Story ${index}`,
+      bodyPreview: "   First   sentence  with   spaces. ",
+      canonicalUrl: `https://example.test/${index}`,
+      publishedAt: timestamp,
+      observedAt: timestamp,
+      score: 1,
+      whyImportant: ["first", "second", "third"],
+    });
+    const input: ReaderSummaryTopicLabelerInput = {
+      ...original,
+      clusters: [
+        {
+          ...original.clusters[0]!,
+          representativeFeedItemId: "feed:l0",
+          duplicateFeedItemIds: [
+            "feed:l1", "feed:l2", "feed:missing", "feed:l3", "feed:l4", "feed:l0",
+          ],
+        },
+        {
+          ...original.clusters[1]!,
+          representativeFeedItemId: "feed:r0",
+          duplicateFeedItemIds: [],
+        },
+      ],
+      selectedEvidence: [
+        ...Array.from({ length: 5 }, (_, index) =>
+          makeEvidence(`feed:l${index}`, index),
+        ),
+        makeEvidence("feed:r0", 10),
+        makeEvidence("feed:unselected", 11),
+      ],
+    };
+    const nodes = buildAgentRuntimeTopicPromptNodes(input, candidates);
+    expect(nodes.map((node) => node.nodeId)).toEqual([
+      "node:left",
+      "node:right",
+    ]);
+    expect(nodes[0]!.evidenceSamples).toEqual(
+      [0, 1, 2, 3].map((index) => ({
+        title: `Story ${index}`,
+        providerKey: "rss",
+        authorHandle: undefined,
+        publishedAt: timestamp.toISOString(),
+        bodyPreview: "First sentence with spaces.",
+        whyImportant: ["first", "second"],
+      })),
+    );
+    expect(nodes[1]!.evidenceSamples).toEqual([
+      {
+        title: "Story 10",
+        providerKey: "rss",
+        authorHandle: undefined,
+        publishedAt: timestamp.toISOString(),
+        bodyPreview: "First sentence with spaces.",
+        whyImportant: ["first", "second"],
+      },
+    ]);
+    const prompt = JSON.parse(
+      buildAgentRuntimeReaderSummaryTopicLabelPrompt(input, candidates),
+    ) as { nodes: unknown };
+    expect(prompt.nodes).toEqual(JSON.parse(JSON.stringify(nodes)));
+  });
 });

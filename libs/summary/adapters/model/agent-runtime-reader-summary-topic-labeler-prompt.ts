@@ -8,7 +8,7 @@ import type {
   ReaderSummaryTopicLabelerInput,
   ReaderSummaryTopicMapAttemptContext,
 } from "../../ports";
-import { buildAgentRuntimeTopicEvidenceSamples } from "./agent-runtime-reader-summary-topic-evidence-prompt";
+import { buildAgentRuntimeTopicPromptNodes } from "./agent-runtime-reader-summary-topic-evidence-prompt";
 import {
   buildGroundedTopicCohortsForCandidates,
 } from "./agent-runtime-reader-summary-topic-grounded-cohorts";
@@ -63,12 +63,6 @@ export const buildAgentRuntimeReaderSummaryTopicLabelPrompt = (
   candidates: readonly ReaderSummaryTopicLabelerInput["candidates"][number][],
   attemptContext?: ReaderSummaryTopicMapAttemptContext,
 ): string => {
-  const evidenceByFeedItemId = new Map(
-    input.selectedEvidence.map((item) => [item.feedItemId, item] as const),
-  );
-  const clusterById = new Map(
-    input.clusters.map((cluster) => [cluster.id, cluster] as const),
-  );
   const requiredGroundedCohorts = buildGroundedTopicCohortsForCandidates(
     candidates,
   );
@@ -144,28 +138,7 @@ export const buildAgentRuntimeReaderSummaryTopicLabelPrompt = (
         timezone: input.period.timezone,
       },
       relationshipHints: buildReaderSummaryTopicRelationCandidates(candidates),
-      nodes: candidates.map((candidate) => ({
-        nodeId: candidate.nodeId,
-        fallbackLabel: candidate.fallbackLabel,
-        summary: candidate.summary,
-        score: candidate.score,
-        evidenceCount: candidate.evidenceCount,
-        providerKeys: candidate.providerKeys,
-        interestIds: candidate.interestIds,
-        keywords: candidate.keywords,
-        labelCandidates: candidate.labelCandidates.map((labelCandidate) => ({
-          label: labelCandidate.label,
-          source: labelCandidate.source,
-          score: labelCandidate.score,
-          evidenceFeedItemIds: labelCandidate.evidenceFeedItemIds,
-          rationale: labelCandidate.rationale,
-        })),
-        evidenceSamples: buildAgentRuntimeTopicEvidenceSamples({
-          candidate,
-          clusterById,
-          evidenceByFeedItemId,
-        }),
-      })),
+      nodes: buildAgentRuntimeTopicPromptNodes(input, candidates),
     },
     null,
     2,
