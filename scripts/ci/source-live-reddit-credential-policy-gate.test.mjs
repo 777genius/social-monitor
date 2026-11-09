@@ -10,7 +10,7 @@ function assertWired(source) {
   assert.ok(clean.includes("import { createSourceLiveRedditCredentialPolicy } from '" + moduleName + "';"), 'policy must be imported');
   assert.match(clean, /createSourceLiveRedditCredentialPolicy\(\{\s*violations,\s*redditCredentialLifecycleFormat,\s*redditCredentialLifecycleEvidenceKind,\s*requiredRedditLifecycleOperations,/);
   assert.match(clean, /validateRedditCredentialLifecycleArtifact\(readJson\(schema\.exampleArtifactPath\)/);
-  assert.match(clean, /validateRedditCredentialLifecycleArtifact\(artifact, \{/);
+  assert.match(clean, /validateRedditCredentialLifecycleArtifact\(lifecycleArtifact, \{/);
   assert.match(clean, /validateArtifactRedaction\(artifact, label\)/);
   assert.doesNotMatch(clean, /function validateRedditCredentialLifecycleOperations\(/);
 }
