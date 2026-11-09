@@ -1,6 +1,6 @@
 import { readerPostPresentationCatalogReferenceFailure,
   type ReaderPostPresentationCatalogReferences } from "../../domain/services/reader-post-presentation-reference-catalog";
-import { readerPostPresentationCandidates } from "../../domain/services/reader-post-presentation-v3-proposal";
+import type { readerPostPresentationCandidates } from "../../domain/services/reader-post-presentation-v3-proposal";
 import { decodeReaderPostPresentationBatch } from "../../domain/services/reader-post-presentation-batch-decode";
 import {
   sealReaderPostPresentationV3,

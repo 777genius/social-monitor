@@ -11,7 +11,7 @@ import { canonicalPromotionPayload, promotionPayloadDigest } from
 import type { AgentRuntimeTaskCommand } from "../../ports";
 import { buildAgentRuntimeRequestId } from "./agent-runtime-model-support";
 import {
-  activeReaderSummaryProvider,
+  type activeReaderSummaryProvider,
   mimoReaderSummaryBackend,
   activeReaderSummaryPurposes,
   isGatewayReaderSummaryBackend,
