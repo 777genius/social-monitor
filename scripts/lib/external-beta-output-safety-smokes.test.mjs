@@ -5,7 +5,7 @@ import { createExternalBetaOutputSafetySmokes } from './external-beta-output-saf
 
 const runnerFile = 'scripts/external-beta-evidence-runner.mjs';
 
-function harness(execFileSync, envFactory = (_directory) => ({ FIXTURE_VALUE: 'fixture-value' })) {
+function harness(execFileSync, envFactory = () => ({ FIXTURE_VALUE: 'fixture-value' })) {
   const violations = [];
   const smokes = createExternalBetaOutputSafetySmokes({
     contract: { runnerFile },
