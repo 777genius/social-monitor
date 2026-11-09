@@ -19,13 +19,9 @@ import type {
 } from "../../ports";
 import { primaryReaderSummaryEvidence } from "../../domain";
 import {
-  assertOpenAiReaderSummaryClaimCitationIds,
-  assertOpenAiReaderSummaryDraftShape,
-  extractOpenAiOutputText,
-  normalizeOpenAiReaderSummaryDraft,
-  parseOpenAiReaderSummaryJsonObject,
-  resolveOpenAiReaderSummaryUsage,
-} from "./openai-responses-reader-summary-model-support";
+  completeOpenAiReaderSummaryAttempt,
+  validateOpenAiReaderSummaryResponse,
+} from "./openai-responses-reader-summary-response-policy";
 import {
   buildOpenAiReaderSummaryInstructions,
   buildOpenAiReaderSummaryPromptPayload,
@@ -194,63 +190,20 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
         },
       },
     });
-    const outputText = extractOpenAiOutputText(responseJson);
-
-    if (outputText === undefined) {
-      throw new ReaderSummaryModelProviderError({
-        kind: "unsafe_or_refused",
-        retryable: false,
-        message: "OpenAI response did not contain reader summary output text",
-      });
-    }
-
-    const rawDraft = parseOpenAiReaderSummaryJsonObject(outputText);
-    assertOpenAiReaderSummaryClaimCitationIds(rawDraft);
-    const usage = resolveOpenAiReaderSummaryUsage(
+    return completeOpenAiReaderSummaryAttempt({
       responseJson,
-      this.estimate(input, selectedRoute),
-    );
-    const draft = normalizeOpenAiReaderSummaryDraft(
-      rawDraft,
       input,
       selectedRoute,
-      usage,
-      this.evalDatasetVersion,
-    );
-
-    return {
-      route: selectedRoute,
-      draft,
-      ...(dailyGenerationReceipt === undefined ? {} : { dailyGenerationReceipt }),
-    };
+      estimateUsage: () => this.estimate(input, selectedRoute),
+      evalDatasetVersion: this.evalDatasetVersion,
+      dailyGenerationReceipt,
+    });
   }
 
   validateRawProviderResponse(
     attempt: ProviderReaderSummaryAttempt,
   ): ReaderSummaryModelValidationResult {
-    try {
-      assertOpenAiReaderSummaryDraftShape(attempt.draft);
-      if (attempt.route.schemaVersion !== "reader_summary.artifact.v1") {
-        throw new Error("Unsupported reader summary schema version");
-      }
-      if (attempt.route.provider !== provider) {
-        throw new Error("Unexpected reader summary provider route");
-      }
-
-      return { ok: true };
-    } catch (error) {
-      return {
-        ok: false,
-        failure: {
-          kind: "invalid_schema",
-          retryable: false,
-          message:
-            error instanceof Error
-              ? error.message
-              : "Invalid reader summary provider response",
-        },
-      };
-    }
+    return validateOpenAiReaderSummaryResponse(attempt);
   }
 
   classifyError(error: unknown): ReaderSummaryModelFailure {
