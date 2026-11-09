@@ -8,11 +8,11 @@ export {
   readOpenAiResponseBody,
 } from "./openai-responses-reader-summary-http";
 export { asRecord } from "./openai-responses-reader-summary-json";
+export { assertOpenAiReaderSummaryClaimCitationIds } from "./openai-responses-reader-summary-claim-citations";
+export { resolveOpenAiReaderSummaryUsage } from "./openai-responses-reader-summary-usage";
 export {
-  assertOpenAiReaderSummaryClaimCitationIds,
   extractOpenAiOutputText,
   OpenAiReaderSummaryOutputParseError,
   parseOpenAiReaderSummaryJsonObject,
-  resolveOpenAiReaderSummaryUsage,
 } from "./openai-responses-reader-summary-response-parser";
 export { openAiReaderSummaryJsonSchema } from "./openai-responses-reader-summary-schema";
