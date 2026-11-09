@@ -81,7 +81,7 @@ describe("agent-runtime summary provider response contract", () => {
 
   it("rejects a schema mismatch without widening accepted versions", () => {
     expect(validateAgentRuntimeSummaryProviderResponse({
-      ...validAttempt, route: { ...validAttempt.route, schemaVersion: "unknown" },
+      ...validAttempt, route: { ...validAttempt.route, schemaVersion: "unknown" as ProviderSummaryAttempt["route"]["schemaVersion"] },
     })).toEqual({ ok: false, failure: { kind: "invalid_schema", retryable: false,
       message: "Unsupported summary schema version" } });
   });
@@ -89,7 +89,7 @@ describe("agent-runtime summary provider response contract", () => {
   it("retains fail-closed draft validation before route checks", () => {
     expect(validateAgentRuntimeSummaryProviderResponse({
       ...validAttempt, draft: { ...validDraft, headline: "" },
-      route: { ...validAttempt.route, schemaVersion: "unknown" },
+      route: { ...validAttempt.route, schemaVersion: "unknown" as ProviderSummaryAttempt["route"]["schemaVersion"] },
     })).toEqual({ ok: false, failure: { kind: "invalid_schema", retryable: false,
       message: "Summary headline must be non-empty" } });
   });
