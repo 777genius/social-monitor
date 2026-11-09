@@ -1,3 +1,7 @@
+import type { AgentRuntimeReaderSummaryModelAdapterOptions } from "./agent-runtime-reader-summary-options";
+import { extractReaderSummaryGatewaySchemaViolations } from "./agent-runtime-reader-summary-gateway-violations";
+export { resolveAgentRuntimeReaderSummaryModelOptions } from "./agent-runtime-reader-summary-options";
+export type { AgentRuntimeReaderSummaryModelAdapterOptions } from "./agent-runtime-reader-summary-options";
 import {
   estimateReaderSummaryTokenUsage,
   isReaderSummaryBudgetExceeded,
@@ -9,9 +13,7 @@ import { runAgentRuntimeDailyEditor } from "./agent-runtime-reader-summary-daily
 import { primaryReaderSummaryEvidence } from "../../domain";
 import type {
   AgentRuntimeClientPort,
-  AgentRuntimeProvider,
   AgentRuntimeTaskCommand,
-  AgentRuntimeTaskResult,
   ProviderReaderSummaryAttempt,
   ReaderSummaryDailyEditorialAttempt,
   ReaderSummaryModelBudget,
@@ -28,7 +30,6 @@ import {
   normalizeOpenAiReaderSummaryDraft,
 } from "./openai-responses-reader-summary-draft-normalizer";
 import {
-  assertNoReaderSummaryPromptReleaseOverride,
   currentReaderSummaryPromptRelease,
 } from "./openai-responses-reader-summary-prompt";
 import { parseOpenAiReaderSummaryJsonObject } from "./openai-responses-reader-summary-response-parser";
@@ -42,7 +43,6 @@ import {
   assertReaderSummaryRepairWithinBudget,
   classifyAgentRuntimeError,
   nonEmptyOrFallback,
-  parsePositiveInteger,
   positiveIntegerOrFallback,
   readAgentRuntimeObjectOutput,
   usageFromAgentRuntime,
@@ -53,33 +53,10 @@ import {
   activeReaderSummaryReasoningEffort,
   resolveReaderSummaryBackendEffort,
   resolveReaderSummaryGenerationIdentity,
-  resolveReaderSummaryGenerationIdentityFromEnv,
-  resolveReaderSummaryReasoningEffortFromEnv,
   type ReaderSummaryGenerationBackend,
   frozenLegacyReaderSummaryRecoveryContract,
-  type FrozenLegacyReaderSummaryRecoveryContract,
 } from "./active-reader-summary-generation-profile";
-import { maxReportedOutputViolations, safeOutputViolationPattern } from
-  "./gateway-llm/gateway-llm-output-violations";
 
-export type AgentRuntimeReaderSummaryModelAdapterOptions = {
-  readonly client: AgentRuntimeClientPort;
-  readonly agentProvider?: AgentRuntimeProvider;
-  readonly providerInstanceId?: string;
-  readonly model?: string;
-  readonly modelBackend?: ReaderSummaryGenerationBackend;
-  /**
-   * high for gpt-5.6-sol and MiMo, xhigh for legacy recovery, the route effort
-   * for a gateway backend or gateway-only Codex model.
-   */
-  readonly reasoningEffort?: string;
-  readonly legacyRecoveryContract?: FrozenLegacyReaderSummaryRecoveryContract;
-  readonly evalDatasetVersion?: string;
-  readonly timeoutMs?: number;
-  readonly maxOutputTokens?: number;
-  readonly inputTokenDivisor?: number;
-  readonly verifiedAttestationSink?: VerifiedReaderSummaryExecutionAttestationSink;
-};
 const provider = "agent-runtime";
 const defaultReasoningEffort = activeReaderSummaryReasoningEffort;
 const defaultEvalDatasetVersion = "reader_summary.eval.mvp.v1";
@@ -207,7 +184,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
       const attemptUsage = usageFromAgentRuntime(result.usage, estimate);
       logicalRunUsage = sumReaderSummaryUsage(logicalRunUsage, attemptUsage);
       if (attempt === "primary") {
-        schemaViolations = this.gatewaySchemaViolations(result);
+        schemaViolations = extractReaderSummaryGatewaySchemaViolations(result);
         if (schemaViolations !== undefined) {
           assertReaderSummaryRepairWithinBudget(logicalRunUsage, estimate, writerBudget);
           continue;
@@ -257,18 +234,6 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
    * outputValidationViolations; the CLI runtime enforces the schema itself
    * and keeps failing such output.
    */
-  private gatewaySchemaViolations(result: AgentRuntimeTaskResult): readonly string[] | undefined {
-    const failure = result.status === "failed" ? result.failure : undefined;
-    if (failure?.code !== "provider_output_invalid" ||
-        failure.details?.outputValidationStage !== "schema_normalization" ||
-        failure.details.outputValidationViolations === undefined) return undefined;
-    const reported = (failure.details.outputValidationViolations ?? "").split(" ")
-      .filter((entry) => safeOutputViolationPattern.test(entry));
-    const first = failure.details.outputValidationPath;
-    return (reported.length > 0 ? reported : [first ?? "json_parse_or_empty"])
-      .slice(0, maxReportedOutputViolations);
-  }
-
   private buildTaskCommand(
     input: ReaderSummaryModelInput,
     selectedRoute: ReaderSummaryModelRoute,
@@ -347,32 +312,3 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     });
   }
 }
-
-
-export const resolveAgentRuntimeReaderSummaryModelOptions = (
-  env: NodeJS.ProcessEnv,
-  client: AgentRuntimeClientPort,
-): AgentRuntimeReaderSummaryModelAdapterOptions => {
-  assertNoReaderSummaryPromptReleaseOverride({
-    environmentName: "AGENT_RUNTIME_READER_SUMMARY_PROMPT_VERSION",
-    value: env.AGENT_RUNTIME_READER_SUMMARY_PROMPT_VERSION,
-  });
-
-  const generationIdentity = resolveReaderSummaryGenerationIdentityFromEnv(env);
-  return {
-    client,
-    agentProvider: generationIdentity.provider,
-    providerInstanceId: env.AGENT_RUNTIME_PROVIDER_INSTANCE_ID,
-    model: generationIdentity.model,
-    modelBackend: generationIdentity.backend,
-    reasoningEffort: resolveReaderSummaryReasoningEffortFromEnv(env),
-    evalDatasetVersion: env.READER_SUMMARY_EVAL_DATASET_VERSION,
-    timeoutMs: parsePositiveInteger(
-      env.AGENT_RUNTIME_READER_SUMMARY_TIMEOUT_MS ??
-        env.AGENT_RUNTIME_TIMEOUT_MS,
-    ),
-    maxOutputTokens: parsePositiveInteger(
-      env.AGENT_RUNTIME_READER_SUMMARY_MAX_OUTPUT_TOKENS,
-    ),
-  };
-};
