@@ -49,6 +49,8 @@ test('disconnected evidence policy and certification loop fail the gate', () => 
   assert.ok(checker.includes(loop));
   assert.throws(() => assertLiveWiring(checker.replace(artifact, 'requiredJobEnvAlternatives,')));
   assert.throws(() => assertLiveWiring(checker.replace(loop, 'for (const requiredSourceJob of [])')));
+});
+
 test('removed required-evidence enforcement and disabled certification failure branch are rejected', () => {
   const evidence = 'validateRequiredJobEvidence(job, label);';
   const certification = 'if (!sourceJobs.has(requiredSourceJob)) {';
@@ -56,6 +58,4 @@ test('removed required-evidence enforcement and disabled certification failure b
   assert.ok(checker.includes(certification));
   assert.throws(() => assertLiveWiring(checker.replace(evidence, '/* enforcement removed */')));
   assert.throws(() => assertLiveWiring(checker.replace(certification, 'if (false) {')));
-});
-
 });
