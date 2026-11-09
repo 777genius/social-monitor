@@ -1,3 +1,4 @@
+import { agentRuntimeReaderSummaryTopicRelationVerifierJsonSchema } from "./agent-runtime-reader-summary-topic-relation-response-schema";
 import { readerSummaryScopeKey } from "../../domain";
 import type {
   AgentRuntimeTaskCommand,
@@ -7,7 +8,6 @@ import type {
 import { buildAgentRuntimeRequestId } from "./agent-runtime-model-support";
 import {
   agentRuntimeReaderSummaryTopicRelationVerifierInstructions,
-  agentRuntimeReaderSummaryTopicRelationVerifierJsonSchema,
   buildAgentRuntimeReaderSummaryTopicRelationVerifierPrompt,
 } from "./agent-runtime-reader-summary-topic-relation-verifier-prompt";
 import {

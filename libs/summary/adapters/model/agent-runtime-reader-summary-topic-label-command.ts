@@ -1,3 +1,4 @@
+import { agentRuntimeReaderSummaryTopicLabelerJsonSchema } from "./agent-runtime-reader-summary-topic-labeler-response-schema";
 import { readerSummaryScopeKey } from "../../domain";
 import type {
   AgentRuntimeTaskCommand,
@@ -7,7 +8,6 @@ import type {
 import { buildAgentRuntimeRequestId } from "./agent-runtime-model-support";
 import {
   agentRuntimeReaderSummaryTopicLabelerInstructions,
-  agentRuntimeReaderSummaryTopicLabelerJsonSchema,
   buildAgentRuntimeReaderSummaryTopicLabelPrompt,
 } from "./agent-runtime-reader-summary-topic-labeler-prompt";
 import {

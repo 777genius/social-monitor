@@ -1,5 +1,5 @@
+import { agentRuntimeReaderSummaryTopicLabelerJsonSchema } from "./agent-runtime-reader-summary-topic-labeler-response-schema";
 import { fromJSONSchema } from "zod";
-import { agentRuntimeReaderSummaryTopicLabelerJsonSchema } from "./agent-runtime-reader-summary-topic-labeler-prompt";
 
 let mimoTopicLabelSchema: ReturnType<typeof fromJSONSchema> | undefined;
 
