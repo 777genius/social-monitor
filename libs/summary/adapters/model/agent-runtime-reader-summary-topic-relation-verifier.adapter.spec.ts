@@ -12,6 +12,7 @@ import {
   resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions,
 } from "./agent-runtime-reader-summary-topic-relation-verifier.adapter";
 import { withTestExecutionAttestation } from "./reader-summary-execution-attestation.spec-support";
+import { buildAgentRuntimeReaderSummaryTopicRelationVerifierPrompt } from "./agent-runtime-reader-summary-topic-relation-verifier-prompt";
 
 describe("AgentRuntimeReaderSummaryTopicRelationVerifier", () => {
   it("uses the shared runtime and parses one decision per requested pair", async () => {
@@ -79,6 +80,51 @@ describe("AgentRuntimeReaderSummaryTopicRelationVerifier", () => {
       attemptNumber: "2",
       totalAttempts: "2",
     });
+  });
+
+  it("grounds each paired node in its own evidence cluster when reversing the relation", () => {
+    const request = input();
+    expect(JSON.parse(buildAgentRuntimeReaderSummaryTopicRelationVerifierPrompt(request)))
+      .toMatchObject({
+        pairs: [{
+          sourceNodeId: "node:a",
+          targetNodeId: "node:b",
+          source: { evidenceSamples: [{ authorHandle: "openai" }] },
+          target: { evidenceSamples: [{ authorHandle: "sama" }] },
+        }],
+      });
+
+    expect(JSON.parse(buildAgentRuntimeReaderSummaryTopicRelationVerifierPrompt({
+      ...request,
+      relations: [{
+        sourceNodeId: "node:b",
+        targetNodeId: "node:a",
+        sharedTerms: ["codex", "work"],
+      }],
+    }))).toMatchObject({
+      pairs: [{
+        sourceNodeId: "node:b",
+        targetNodeId: "node:a",
+        source: { evidenceSamples: [{ authorHandle: "sama" }] },
+        target: { evidenceSamples: [{ authorHandle: "openai" }] },
+      }],
+    });
+  });
+
+  it("fails closed on missing candidates and labels instead of inventing relation context", () => {
+    const request = input();
+    expect(() => buildAgentRuntimeReaderSummaryTopicRelationVerifierPrompt({
+      ...request,
+      candidates: request.candidates.filter((candidate) => candidate.nodeId !== "node:b"),
+    })).toThrow("Unknown topic relation node node:b");
+
+    expect(() => buildAgentRuntimeReaderSummaryTopicRelationVerifierPrompt({
+      ...request,
+      labelPlan: {
+        ...request.labelPlan,
+        nodeLabels: request.labelPlan.nodeLabels.filter((label) => label.nodeId !== "node:a"),
+      },
+    })).toThrow("Unknown topic relation node node:a");
   });
 
   it("rejects incomplete pair decisions", async () => {
