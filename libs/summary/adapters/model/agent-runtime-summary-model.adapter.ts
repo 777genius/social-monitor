@@ -147,7 +147,7 @@ export class AgentRuntimeSummaryModelAdapter implements SummaryModelPort {
       agentProvider: this.agentProvider,
       providerInstanceId: this.providerInstanceId,
       model: this.model,
-      defaultAgentRuntimeSummaryModelAlias: defaultAgentRuntimeSummaryModel,
+      defaultModelAlias: defaultAgentRuntimeSummaryModel,
       routeControls: this.routeControls,
       maxOutputTokens: this.maxOutputTokens,
       timeoutMs: this.timeoutMs,
