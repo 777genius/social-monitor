@@ -22,6 +22,9 @@ function assertLiveWiring(source) {
   }
   assert.match(clean, /createExternalBetaJobArtifactRequirementsPolicy\(\{\s*violations,\s*requiredJobEnvNames,\s*requiredJobOptionalEnvNames,\s*requiredJobEnvAlternatives,\s*requiredJobOutputArtifacts,\s*existsSync,/);
   assert.match(clean, /for\s*\(const requiredSourceJob of requiredSourceLiveCertificationJobIds\)/);
+  assert.match(clean, /validateRequiredJobEvidence\s*\(\s*job\s*,\s*label\s*\)\s*;/);
+  assert.match(clean, /for\s*\(const requiredSourceJob of requiredSourceLiveCertificationJobIds\)\s*\{\s*if\s*\(!sourceJobs\.has\(requiredSourceJob\)\)\s*\{\s*violations\.push\(/);
+
   assert.doesNotMatch(clean, /const requiredJobEnvNames\s*=\s*new Map/);
   assert.doesNotMatch(clean, /const requiredJobOutputArtifacts\s*=\s*new Map/);
 }
@@ -46,4 +49,13 @@ test('disconnected evidence policy and certification loop fail the gate', () => 
   assert.ok(checker.includes(loop));
   assert.throws(() => assertLiveWiring(checker.replace(artifact, 'requiredJobEnvAlternatives,')));
   assert.throws(() => assertLiveWiring(checker.replace(loop, 'for (const requiredSourceJob of [])')));
+test('removed required-evidence enforcement and disabled certification failure branch are rejected', () => {
+  const evidence = 'validateRequiredJobEvidence(job, label);';
+  const certification = 'if (!sourceJobs.has(requiredSourceJob)) {';
+  assert.ok(checker.includes(evidence));
+  assert.ok(checker.includes(certification));
+  assert.throws(() => assertLiveWiring(checker.replace(evidence, '/* enforcement removed */')));
+  assert.throws(() => assertLiveWiring(checker.replace(certification, 'if (false) {')));
+});
+
 });

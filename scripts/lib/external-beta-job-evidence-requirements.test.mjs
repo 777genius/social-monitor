@@ -65,7 +65,7 @@ function liveConnectorsFixture() {
     optionalEnv: [...requiredJobOptionalEnvNames.get(jobId)],
     requiredEnvAlternatives: [],
     outputArtifacts: requiredJobOutputArtifacts.get(jobId).map(({ kind, ref, ...rest }) => ({
-      ...structuredClone(rest), [kind]: ref,
+      ...rest, [kind]: ref,
     })),
     validationCommands: ['check:source-live'],
   };
