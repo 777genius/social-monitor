@@ -110,3 +110,34 @@ test('redaction is required even when the caller passes a malformed object', () 
   assert.ok(h.violations.some(x=>x.includes('redaction object is required')));
   assert.ok(h.violations.some(x=>x.includes('redaction.credentialValuesIncluded must be false')));
 });
+
+test('artifact validator forwards nested redaction and operation checks', () => {
+  const badRedaction = fixture();
+  badRedaction.redaction.secretsIncluded = true;
+  const redactionHarness = createHarness();
+  redactionHarness.validateRedditCredentialLifecycleArtifact(badRedaction, { label: 'fixture', allowFixture: true });
+  assert.ok(redactionHarness.violations.includes('fixture: redaction.secretsIncluded must be false'));
+
+  const badOperations = fixture();
+  badOperations.lifecycleOperations = badOperations.lifecycleOperations.filter(x => x.operation !== 'revoke');
+  const operationsHarness = createHarness();
+  operationsHarness.validateRedditCredentialLifecycleArtifact(badOperations, { label: 'fixture', allowFixture: true });
+  assert.ok(operationsHarness.violations.includes('fixture: lifecycleOperations must include revoke'));
+});
+
+test('live artifact independently rejects fixture provenance and forbidden identity markers', () => {
+  const bad = fixture();
+  bad.environmentId = 'fixture-live-environment';
+  bad.operator = 'mock-live-operator';
+  const h = createHarness();
+  h.validateRedditCredentialLifecycleArtifact(bad, { label: 'live' });
+  for (const message of [
+    'live.environmentId must not contain "fixture" for reddit credential lifecycle artifacts',
+    'live.operator must not contain "mock" for reddit credential lifecycle artifacts',
+    'live: provenance.evidenceKind must be credential_lifecycle',
+    'live: provenance.fixtureOnly must be false for reddit credential lifecycle artifacts',
+  ]) {
+    assert.ok(h.violations.includes(message), message);
+  }
+  assert.deepEqual(h.calls, ['fixture-markers', 'sensitive-literals']);
+});

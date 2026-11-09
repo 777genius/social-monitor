@@ -9,6 +9,7 @@ function assertWired(source) {
   const clean = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
   assert.ok(clean.includes("import { createSourceLiveRedditCredentialPolicy } from '" + moduleName + "';"), 'policy must be imported');
   assert.match(clean, /createSourceLiveRedditCredentialPolicy\(\{\s*violations,\s*redditCredentialLifecycleFormat,\s*redditCredentialLifecycleEvidenceKind,\s*requiredRedditLifecycleOperations,/);
+  assert.match(clean, /requiredRedditLifecycleOperations,\s*validateNoRealArtifactFixtureMarkers,\s*validateNoSensitiveArtifactLiterals,\s*\}\)/);
   assert.match(clean, /validateRedditCredentialLifecycleArtifact\(readJson\(schema\.exampleArtifactPath\)/);
   assert.match(clean, /validateRedditCredentialLifecycleArtifact\(lifecycleArtifact, \{/);
   assert.match(clean, /validateArtifactRedaction\(artifact, label\)/);
@@ -27,4 +28,12 @@ test('disabling artifact validator or redaction delegation cannot pass the gate'
   assert.ok(checker.includes('validateRedditCredentialLifecycleArtifact(lifecycleArtifact, {'));
   assert.throws(() => assertWired(checker.replace('validateRedditCredentialLifecycleArtifact(lifecycleArtifact, {', '/* validator removed */ (artifact, {')));
   assert.throws(() => assertWired(checker.replace('validateArtifactRedaction(artifact, label)', '/* redaction removed */')));
+});
+
+test('both caller-owned scanners must remain wired to Reddit credential policy', () => {
+  for (const scanner of ['validateNoRealArtifactFixtureMarkers', 'validateNoSensitiveArtifactLiterals']) {
+    const binding = `  ${scanner},`;
+    assert.ok(checker.includes(binding));
+    assert.throws(() => assertWired(checker.replace(binding, `  ${scanner}: () => {},`)));
+  }
 });
