@@ -20,7 +20,7 @@
   "totals": {
     "fixtureCount": 7,
     "attributedFixtureCount": 7,
-    "inputTokens": 313,
+    "inputTokens": 314,
     "outputTokens": 1008,
     "estimatedCostUsd": 0,
     "estimatedCostMicroUsd": 0
@@ -31,14 +31,14 @@
       "datasetVersion": "summary.eval.mvp.v1",
       "tenantId": "eval-tenant",
       "workspaceId": "eval-workspace",
-      "interestId": "empty-topic",
+      "interestId": "empty-interest",
       "sourceWindowId": "eval-empty-window",
       "provider": "deterministic-local",
       "model": "summary-fake-v1",
       "promptVersion": "summary.prompt.v1",
       "schemaVersion": "summary.artifact.v1",
       "usage": {
-        "inputTokens": 3,
+        "inputTokens": 4,
         "outputTokens": 48,
         "estimatedCostUsd": 0,
         "estimatedCostMicroUsd": 0
@@ -161,14 +161,14 @@
     }
   ],
   "aggregates": {
-    "byTenantWorkspaceTopic": [
+    "byTenantWorkspaceInterest": [
       {
         "tenantId": "eval-tenant",
         "workspaceId": "eval-workspace",
-        "interestId": "empty-topic",
+        "interestId": "empty-interest",
         "fixtureCount": 1,
         "usage": {
-          "inputTokens": 3,
+          "inputTokens": 4,
           "outputTokens": 48,
           "estimatedCostUsd": 0,
           "estimatedCostMicroUsd": 0
@@ -253,7 +253,7 @@
         "model": "summary-fake-v1",
         "fixtureCount": 7,
         "usage": {
-          "inputTokens": 313,
+          "inputTokens": 314,
           "outputTokens": 1008,
           "estimatedCostUsd": 0,
           "estimatedCostMicroUsd": 0
