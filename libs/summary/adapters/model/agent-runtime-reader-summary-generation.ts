@@ -42,57 +42,57 @@ export const runAgentRuntimeReaderSummaryGeneration = async (params: Readonly<{
   verifiedAttestationSink: VerifiedReaderSummaryExecutionAttestationSink | undefined;
 }>): Promise<ProviderReaderSummaryAttempt> => {
   const { input, selectedRoute } = params;
-    let logicalRunUsage: ReaderSummaryModelEstimate | undefined;
-    let schemaViolations: readonly string[] | undefined;
-    // Two attempts at most: the repair runs once, for either cause.
-    for (const attempt of readerSummaryNarrativeAttempts) {
-      const command = params.buildTaskCommand(attempt, schemaViolations);
-      const dailyGenerationReceipt = readerSummaryDailyInputReceipt(command.prompt, input.evidence.dailyGenerationInput, input.dailyEditorialPlan);
-      const result = await params.client.runTask(command);
-      const estimate = params.estimate();
-      const attemptUsage = usageFromAgentRuntime(result.usage, estimate);
-      logicalRunUsage = sumReaderSummaryUsage(logicalRunUsage, attemptUsage);
-      if (attempt === "primary") {
-        schemaViolations = extractReaderSummaryGatewaySchemaViolations(result);
-        if (schemaViolations !== undefined) {
-          assertReaderSummaryRepairWithinBudget(logicalRunUsage, estimate, params.writerBudget);
-          continue;
-        }
-      }
-      try {
-        const rawDraft = readAgentRuntimeObjectOutput(
-          result,
-          parseOpenAiReaderSummaryJsonObject,
-          "Reader summary",
-        );
-        const draft = normalizeOpenAiReaderSummaryDraft(
-          rawDraft,
-          input,
-          selectedRoute,
-          logicalRunUsage,
-          params.evalDatasetVersion,
-        );
-        await verifyAndRecordReaderSummaryExecution({
-          command,
-          result,
-          taskRole: "summary",
-          attempt,
-          normalizedOutput: draft,
-          legacyRecoveryContract: params.legacyRecovery
-            ? frozenLegacyReaderSummaryRecoveryContract
-            : undefined,
-          sink: params.verifiedAttestationSink,
-        });
-
-        return { route: selectedRoute, draft, ...(dailyGenerationReceipt === undefined ? {} : { dailyGenerationReceipt }) };
-      } catch (error) {
-        if (attempt === "primary" && isRepairableNarrativeError(error)) {
-          assertReaderSummaryRepairWithinBudget(logicalRunUsage, estimate, params.writerBudget);
-          continue;
-        }
-        throw error;
+  let logicalRunUsage: ReaderSummaryModelEstimate | undefined;
+  let schemaViolations: readonly string[] | undefined;
+  // Two attempts at most: the repair runs once, for either cause.
+  for (const attempt of readerSummaryNarrativeAttempts) {
+    const command = params.buildTaskCommand(attempt, schemaViolations);
+    const dailyGenerationReceipt = readerSummaryDailyInputReceipt(command.prompt, input.evidence.dailyGenerationInput, input.dailyEditorialPlan);
+    const result = await params.client.runTask(command);
+    const estimate = params.estimate();
+    const attemptUsage = usageFromAgentRuntime(result.usage, estimate);
+    logicalRunUsage = sumReaderSummaryUsage(logicalRunUsage, attemptUsage);
+    if (attempt === "primary") {
+      schemaViolations = extractReaderSummaryGatewaySchemaViolations(result);
+      if (schemaViolations !== undefined) {
+        assertReaderSummaryRepairWithinBudget(logicalRunUsage, estimate, params.writerBudget);
+        continue;
       }
     }
+    try {
+      const rawDraft = readAgentRuntimeObjectOutput(
+        result,
+        parseOpenAiReaderSummaryJsonObject,
+        "Reader summary",
+      );
+      const draft = normalizeOpenAiReaderSummaryDraft(
+        rawDraft,
+        input,
+        selectedRoute,
+        logicalRunUsage,
+        params.evalDatasetVersion,
+      );
+      await verifyAndRecordReaderSummaryExecution({
+        command,
+        result,
+        taskRole: "summary",
+        attempt,
+        normalizedOutput: draft,
+        legacyRecoveryContract: params.legacyRecovery
+          ? frozenLegacyReaderSummaryRecoveryContract
+          : undefined,
+        sink: params.verifiedAttestationSink,
+      });
 
-    throw new Error("Reader summary repair attempt did not return a result");
+      return { route: selectedRoute, draft, ...(dailyGenerationReceipt === undefined ? {} : { dailyGenerationReceipt }) };
+    } catch (error) {
+      if (attempt === "primary" && isRepairableNarrativeError(error)) {
+        assertReaderSummaryRepairWithinBudget(logicalRunUsage, estimate, params.writerBudget);
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw new Error("Reader summary repair attempt did not return a result");
 };
