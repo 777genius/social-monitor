@@ -223,3 +223,11 @@ The original `openai-responses-summary-citations.ts` additionally has 107 physic
 ### Exact move review fix (2026-11-09)
 
 - Follow-up to the deterministic citation selector extraction on parent HEAD `b8734f66d6b191b4a0255adada4df8f2e95dac6c`: a static manual review detected that the initial transformation had also dropped the original `topStoryByClusterId` map definition, even though narrative title/summary rendering still depends on it. Restored the identical original map construction before citation selection. This is a **production TypeScript correctness correction**, not a new source refactor or additional count: the verified provenance counter stays **3,028 provisional across 24 originals**. The superseded intermediate commit must not be reported as passing or considered releasable. Verify fresh exact-head CI, direct narrative Jest and existing provider-diversity regression. No prompt/schema/route/deploy change.
+
+### Ordinary agent-runtime summary config/validation provenance slice (2026-11-09)
+
+| Pinned original (relative to model/) | Newly owned responsibility | Distinct original implementation LOC candidate |
+|---|---|---:|
+| `agent-runtime-summary-model.adapter.ts` | `agent-runtime-summary-options.ts` (env/gateway route and provider identity) + `agent-runtime-summary-response-validation.ts` (normalized schema/route rejection) | **40** (27 + 13) |
+
+Pinned original SHA `3fa1b9e9ee5bd1302840d1164a975cde3f0eeaba`, blob `be412753d82573557f7b19c170457966dc8e65dd`. Implementation `b33c7eacfc9c4648891467542a7596a0c1424e7e`, synthetic typed fixture fix `028c538842791ef699ecf87c3fe237cad6bd700a`. Original method ranges were disjoint and not included among the prior 24 audited baseline modules. Detailed original-code line selection, tests, risks and limits appear in the plan. **Only 40** source behavior statements are counted, not all 77 physical lines or 59 nonblank-code-like lines, and none is accepted without executable tests and independent review. **Cumulative candidate total: 3,068 across 25 unique pinned originals.** A minimum of 6,932 additional candidate original implementation lines remains, before rejection of moves without architectural value. Full 20/20 Ready CI, independent approval and merge are not satisfied.
