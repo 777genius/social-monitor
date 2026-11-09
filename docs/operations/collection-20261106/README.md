@@ -17,3 +17,15 @@ November 9 patch SHA-256 bindings (preimage → installed):
 | `/usr/local/sbin/social-monitor-posts-once` | `f2f0057e66e1619c068fbb2c39bebe9044e9e907691f94e0cb4e6b1558ef3fa3` | `647e9d0851e81b4516ba32413d797b615020c83b0db7b18265bb74c9922e78df` |
 | `/usr/local/lib/social-monitor/current-source-guard/physical_operator_epoch.py` | `4be63bcd62b7d0a88ad27657b71ced7c8562fdc5cb6b59b8362dcae39547b990` | `2d4bb08e394c9b2cc6289d02a5928ada53d59ccbe866f3a1734ed37d881424e8` |
 | `/usr/local/sbin/social-monitor-posts-current-authority-stage` | `f08da47f94370759ae33feb5e6d590bfc89cadecccec6670fa20be17f75b5d5c` | `529985c2cfbfe4909d98ac73454b48e3a1696d914c8df873282a7136ebc744a5` |
+
+`20261109-historical-scopes.patch` records the installed preparation for one bounded historical HN/RSS pass and one Reddit/X pass for November 9, after the exact two earlier current-slot attempts. The historical UTC day must be closed. Linux tests covered those exact retained terminal states, mutation refusal, denial of repeat scope, and HN/RSS followed by Reddit/X. Neither historical pass has run yet; X historical coverage is not established. This records the installed operator state; it does not deploy it. Use `git apply --unidiff-zero` only after verifying all exact preimages below.
+
+| File | Preimage SHA-256 | Installed SHA-256 |
+| --- | --- | --- |
+| `/usr/local/lib/social-monitor/historical-reddit-x/manifest.json` | `69044c27698fc0bb3e4494f9edfa9c72dcadfc3a58c5113a25a42ebf0149271c` | `2a4f0ca4c0d115184f9eebc554f3b7ae87a141553a545c84cfac41431ae93efc` |
+| `/usr/local/lib/social-monitor/historical-reddit-x/mode.sh` | `41e701924439e8f0ec8cabe91f6d04e89302ec5722fd3a72a3b9b845262292a1` | `32a28678ad5b8a021135e0aeb0df89dc5f765aacba519f25bda2c700b2ca7dd0` |
+| `/usr/local/lib/social-monitor/historical-reddit-x/collection-reddit-x-entrypoint.sh` | `032dd10c98468ff18481d3adb1f7acc9f3db33c9ecb4ec8bdc7082eef13fac05` | `f6d60ff50c62820dd4677d6c2fb9a2817d9a53cd5e5466e68a80e863417fe1f1` |
+| `/usr/local/lib/social-monitor/current-source-guard/current_profile_admission.py` | `1187a96202e95cfe2cca665fc6c4ae28c13388bb362a9de4acfc2b32a62637f2` | `7dcd3a808144abd57a332be9a5115711116235e517dce2b1cf12198cf94434cf` |
+| `/usr/local/sbin/social-monitor-posts-once` | `647e9d0851e81b4516ba32413d797b615020c83b0db7b18265bb74c9922e78df` | `fba2ce86cba51d7ae71149a535acd30c44682bf278daf93b42250ecde3924448` |
+| `/usr/local/lib/social-monitor/current-source-guard/physical_operator_epoch.py` | `2d4bb08e394c9b2cc6289d02a5928ada53d59ccbe866f3a1734ed37d881424e8` | `f515748a5a9164a832623c8862560a4b4496eb461b510e55cf8530993abcb65d` |
+| `/usr/local/sbin/social-monitor-posts-current-authority-stage` | `529985c2cfbfe4909d98ac73454b48e3a1696d914c8df873282a7136ebc744a5` | `a1d2b523f6be7eb51506bfdb5906bb29c132a665cece2891e7c67e172ed8efae` |
