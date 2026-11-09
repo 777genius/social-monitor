@@ -1,4 +1,5 @@
 # Temporary synthetic Jest proof for existing Draft PR #665; remove after qualification.
+# Rerun with complete valid evidence projection fixture; no production model calls.
 name: Model summary HTTP focused Jest draft
 
 on:

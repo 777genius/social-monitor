@@ -12,7 +12,15 @@ const inputForEstimate = (
   evidence: readonly { title: string; bodyPreview?: string }[],
   context: readonly string[] = [],
 ): ReaderSummaryModelInput => ({
-  evidence: { selectedEvidence: evidence },
+  evidence: {
+    selectedEvidence: evidence.map((item, index) => ({
+      ...item,
+      providerKey: "rss",
+      feedItemId: `synthetic-${index}`,
+    })),
+    clusters: [],
+    sourceWindow: { selectedFeedItemIds: [], storyClusterIds: [] },
+  },
   contextArtifacts: context.map((summaryText) => ({ summaryText })),
 } as unknown as ReaderSummaryModelInput);
 

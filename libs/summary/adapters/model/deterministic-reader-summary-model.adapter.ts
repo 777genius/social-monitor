@@ -10,7 +10,10 @@ import type {
   ProviderReaderSummaryAttempt,
 } from "../../ports";
 import { buildReaderSummary, primaryReaderSummaryEvidence } from "../../domain";
-import { assertDeterministicReaderSummaryBudget, estimateDeterministicReaderSummaryTokens } from "./deterministic-reader-summary-budget-policy";
+import {
+  assertDeterministicReaderSummaryBudget,
+  estimateDeterministicReaderSummaryTokens,
+} from "./deterministic-reader-summary-budget-policy";
 import { buildDeterministicNoSignalReaderSummaryAttempt } from "./deterministic-reader-summary-no-signal";
 import {
   selectClustersForEvidence,
@@ -37,7 +40,6 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
     const estimate = this.estimate(input, route);
 
     assertDeterministicReaderSummaryBudget(estimate, policy, budget);
-
 
     return route;
   }
