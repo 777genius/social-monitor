@@ -48,27 +48,27 @@ export const buildAgentRuntimeTopicPromptNodes = (
     input.clusters.map((cluster) => [cluster.id, cluster] as const),
   );
   return candidates.map((candidate) => ({
-        nodeId: candidate.nodeId,
-        fallbackLabel: candidate.fallbackLabel,
-        summary: candidate.summary,
-        score: candidate.score,
-        evidenceCount: candidate.evidenceCount,
-        providerKeys: candidate.providerKeys,
-        interestIds: candidate.interestIds,
-        keywords: candidate.keywords,
-        labelCandidates: candidate.labelCandidates.map((labelCandidate) => ({
-          label: labelCandidate.label,
-          source: labelCandidate.source,
-          score: labelCandidate.score,
-          evidenceFeedItemIds: labelCandidate.evidenceFeedItemIds,
-          rationale: labelCandidate.rationale,
-        })),
-        evidenceSamples: buildAgentRuntimeTopicEvidenceSamples({
-          candidate,
-          clusterById,
-          evidenceByFeedItemId,
-        }),
-      }));
+    nodeId: candidate.nodeId,
+    fallbackLabel: candidate.fallbackLabel,
+    summary: candidate.summary,
+    score: candidate.score,
+    evidenceCount: candidate.evidenceCount,
+    providerKeys: candidate.providerKeys,
+    interestIds: candidate.interestIds,
+    keywords: candidate.keywords,
+    labelCandidates: candidate.labelCandidates.map((labelCandidate) => ({
+      label: labelCandidate.label,
+      source: labelCandidate.source,
+      score: labelCandidate.score,
+      evidenceFeedItemIds: labelCandidate.evidenceFeedItemIds,
+      rationale: labelCandidate.rationale,
+    })),
+    evidenceSamples: buildAgentRuntimeTopicEvidenceSamples({
+      candidate,
+      clusterById,
+      evidenceByFeedItemId,
+    }),
+  }));
 };
 
 const uniqueStrings = (

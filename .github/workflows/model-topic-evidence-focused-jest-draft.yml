@@ -1,0 +1,41 @@
+# Temporary branch-only synthetic Jest evidence for topic label prompt projection.
+# Delete immediately after qualifying this code/test SHA; no paid provider calls.
+name: Model topic evidence focused Jest (temporary)
+
+on:
+  push:
+    branches: [refactor/summary-model-adapters-10k-20261108]
+    paths: [.github/workflows/model-topic-evidence-focused-jest-draft.yml]
+
+permissions:
+  contents: read
+
+env:
+  DATABASE_URL: postgresql://social_monitor_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_ci
+
+jobs:
+  focused_topic_evidence:
+    name: Cluster-safe topic prompt evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact commit without retained credentials
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install exact dependencies
+        run: npm ci --prefer-offline --no-audit
+      - name: Generate pinned Prisma client
+        run: npm run prisma:generate
+      - name: Run synthetic topic prompt and evidence regressions
+        run: |
+          set -euo pipefail
+          ./node_modules/.bin/jest --config jest.config.ts --runInBand --runTestsByPath \\
+            libs/summary/adapters/model/agent-runtime-reader-summary-topic-labeler-prompt.spec.ts \\
+            libs/summary/adapters/model/agent-runtime-reader-summary-cohort-grouping.spec.ts
