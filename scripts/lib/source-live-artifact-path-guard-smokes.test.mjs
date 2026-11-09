@@ -55,7 +55,7 @@ test('four capture path guards preserve diagnostics and original subprocess cont
   });
   h.validateCaptureOutputPathGuards();
   assert.deepEqual(h.violations, []);
-  assert.deepEqual(calls.map(x => x.args), [[], [], [], []]);
+  assert.deepEqual(calls.map(x => x.args), [[paths.liveOpenCaptureScriptPath], [paths.githubTrendingPageCaptureScriptPath], [paths.redditLiveCaptureScriptPath], [paths.redditLiveCaptureScriptPath]]);
   assert.deepEqual(calls.map(x => x.binary), Array(4).fill(process.execPath));
   assert.deepEqual(calls.map(x => x.options.stdio), Array(4).fill('pipe'));
   assert.deepEqual(calls.map(x => x.options.encoding), Array(4).fill('utf8'));
