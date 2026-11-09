@@ -2837,7 +2837,8 @@ function validateRequiredJobEvidence(job, label) {
   const requiredAlternatives = requiredJobEnvAlternatives.get(job.jobId) ?? [];
   for (const requiredAlternative of requiredAlternatives) {
     const hasAlternative = asEnvArray(job.requiredEnvAlternatives).some((alternative) => (
-      alternative.label === requiredAlternative.label
+      alternative !== null && typeof alternative === 'object'
+      && alternative.label === requiredAlternative.label
       && providerKeysEqual(alternative.env, requiredAlternative.env)
       && providerKeysEqual(alternative.coversEnv ?? alternative.env, requiredAlternative.coversEnv)
       && (alternative.mode ?? null) === (requiredAlternative.mode ?? null)
