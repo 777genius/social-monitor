@@ -24,6 +24,9 @@ export const buildDeterministicReaderSummaryNarrative = (params: {
     return [];
   }
 
+  const topStoryByClusterId = new Map(
+    params.topStories.map((story) => [story.storyClusterId, story] as const),
+  );
   const { leadCitationIds, dailySynthesisCitations } =
     selectDeterministicNarrativeCitations({
       mode: params.input.coveragePlan.mode,
