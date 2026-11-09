@@ -21,6 +21,13 @@ function assertLiveDelegation(source) {
   const liveSmokeFunction = parsed.statements.find((statement) => ts.isFunctionDeclaration(statement)
     && statement.name?.text === 'validateLiveSmokeScripts');
   assert.ok(liveSmokeFunction?.body, 'original live-smoke function must exist');
+  const rootCalls = parsed.statements
+    .filter((statement) => ts.isExpressionStatement(statement)
+      && ts.isCallExpression(statement.expression)
+      && ts.isIdentifier(statement.expression.expression)
+      && statement.expression.expression.text === 'validateLiveSmokeScripts'
+      && statement.expression.arguments.length === 0);
+  assert.equal(rootCalls.length, 1, 'original checker must invoke validateLiveSmokeScripts directly at top level');
   const directCalls = liveSmokeFunction.body.statements
     .filter((statement) => ts.isExpressionStatement(statement)
       && ts.isCallExpression(statement.expression)
@@ -46,6 +53,17 @@ test('removing or disabling either source-live guard cannot pass the delegation 
     assert.throws(() => assertLiveDelegation(checker.replace('  ' + name + '();', `  if (false) {\n    ${name}();\n  }`)));
     assert.throws(() => assertLiveDelegation(checker.replace('  ' + name + '();', `  function dormant() {\n    ${name}();\n  }`)));
     assert.throws(() => assertLiveDelegation(checker.replace('  ' + name + '();', `  false && ${name}();`)));
+  }
+});
+
+test('disabled or nested main live-smoke invocation cannot pass the gate', () => {
+  for (const replacement of [
+    '',
+    'if (false) {\\n  validateLiveSmokeScripts();\\n}',
+    'function dormant() {\\n  validateLiveSmokeScripts();\\n}',
+    'false && validateLiveSmokeScripts();',
+  ]) {
+    assert.throws(() => assertLiveDelegation(checker.replace('validateLiveSmokeScripts();', replacement)));
   }
 });
 
