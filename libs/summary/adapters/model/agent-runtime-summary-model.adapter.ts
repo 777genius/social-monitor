@@ -1,4 +1,11 @@
 import { buildAgentRuntimeSummaryTaskCommand } from "./agent-runtime-summary-task-command";
+import {
+  defaultAgentRuntimeSummaryModel,
+  type AgentRuntimeSummaryModelAdapterOptions,
+} from "./agent-runtime-summary-options";
+import { validateAgentRuntimeSummaryProviderResponse } from "./agent-runtime-summary-response-validation";
+export { resolveAgentRuntimeSummaryModelOptions } from "./agent-runtime-summary-options";
+export type { AgentRuntimeSummaryModelAdapterOptions } from "./agent-runtime-summary-options";
 import { buildSummaryNoSignalAttempt } from "./summary-no-signal-attempt";
 import type {
   AgentRuntimeClientPort,
@@ -14,47 +21,22 @@ import type {
   SummaryModelValidationResult,
 } from "../../ports";
 import { buildPromptPayload } from "./openai-responses-summary-prompt";
-import {
-  assertOpenAiSummaryDraftShape,
-  normalizeOpenAiSummaryDraft,
-} from "./openai-responses-summary-draft-normalizer";
+import { normalizeOpenAiSummaryDraft } from "./openai-responses-summary-draft-normalizer";
 import {
   parseOpenAiSummaryJsonObject,
 } from "./openai-responses-summary-response-parser";
-import {
-  resolveReaderSummaryDailyTaskIdentityFromEnv,
-  resolveReaderSummaryGenerationIdentityFromEnv,
-  resolveReaderSummaryReasoningEffortFromEnv,
-  readerSummaryRouteControls,
-  type ReaderSummaryGenerationBackend,
-} from "./active-reader-summary-generation-profile";
+import { readerSummaryRouteControls } from "./active-reader-summary-generation-profile";
 import {
   AgentRuntimeModelProviderError,
   classifyAgentRuntimeError,
   nonEmptyOrFallback,
-  parsePositiveInteger,
   positiveIntegerOrFallback,
   readAgentRuntimeObjectOutput,
   usageFromAgentRuntime,
 } from "./agent-runtime-model-support";
 
-export type AgentRuntimeSummaryModelAdapterOptions = {
-  readonly client: AgentRuntimeClientPort;
-  readonly agentProvider?: AgentRuntimeProvider;
-  readonly providerInstanceId?: string;
-  readonly model?: string;
-  readonly modelBackend?: ReaderSummaryGenerationBackend;
-  readonly reasoningEffort?: string;
-  readonly promptVersion?: string;
-  readonly evalDatasetVersion?: string;
-  readonly timeoutMs?: number;
-  readonly maxOutputTokens?: number;
-  readonly inputTokenDivisor?: number;
-};
-
 const provider = "agent-runtime";
 const defaultAgentProvider: AgentRuntimeProvider = "codex";
-const defaultModel = "agent-runtime-summary";
 const defaultPromptVersion = "summary.prompt.agent_runtime.v1";
 const defaultEvalDatasetVersion = "summary.eval.mvp.v1";
 const defaultTimeoutMs = 120_000;
@@ -77,7 +59,7 @@ export class AgentRuntimeSummaryModelAdapter implements SummaryModelPort {
     this.client = options.client;
     this.agentProvider = options.agentProvider ?? defaultAgentProvider;
     this.providerInstanceId = options.providerInstanceId;
-    this.model = nonEmptyOrFallback(options.model, defaultModel);
+    this.model = nonEmptyOrFallback(options.model, defaultAgentRuntimeSummaryModel);
     this.routeControls = options.modelBackend === undefined ? {} :
       readerSummaryRouteControls(options.modelBackend, options.reasoningEffort ?? "default");
     this.promptVersion = nonEmptyOrFallback(
@@ -165,7 +147,7 @@ export class AgentRuntimeSummaryModelAdapter implements SummaryModelPort {
       agentProvider: this.agentProvider,
       providerInstanceId: this.providerInstanceId,
       model: this.model,
-      defaultModelAlias: defaultModel,
+      defaultAgentRuntimeSummaryModelAlias: defaultAgentRuntimeSummaryModel,
       routeControls: this.routeControls,
       maxOutputTokens: this.maxOutputTokens,
       timeoutMs: this.timeoutMs,
@@ -196,29 +178,7 @@ export class AgentRuntimeSummaryModelAdapter implements SummaryModelPort {
   validateRawProviderResponse(
     attempt: ProviderSummaryAttempt,
   ): SummaryModelValidationResult {
-    try {
-      assertOpenAiSummaryDraftShape(attempt.draft);
-      if (attempt.route.schemaVersion !== "summary.artifact.v1") {
-        throw new Error("Unsupported summary schema version");
-      }
-      if (attempt.route.provider !== provider) {
-        throw new Error("Unexpected summary provider route");
-      }
-
-      return { ok: true };
-    } catch (error) {
-      return {
-        ok: false,
-        failure: {
-          kind: "invalid_schema",
-          retryable: false,
-          message:
-            error instanceof Error
-              ? error.message
-              : "Invalid agent-runtime summary provider response",
-        },
-      };
-    }
+    return validateAgentRuntimeSummaryProviderResponse(attempt);
   }
 
   classifyError(error: unknown): SummaryModelFailure {
@@ -249,51 +209,4 @@ export class AgentRuntimeSummaryModelAdapter implements SummaryModelPort {
     });
   }
 }
-
-export const resolveAgentRuntimeSummaryModelOptions = (
-  env: NodeJS.ProcessEnv,
-  client: AgentRuntimeClientPort,
-): AgentRuntimeSummaryModelAdapterOptions => ({
-  client,
-  agentProvider: parseAgentRuntimeProvider(env.AGENT_RUNTIME_PROVIDER),
-  providerInstanceId: env.AGENT_RUNTIME_PROVIDER_INSTANCE_ID,
-  model: env.AGENT_RUNTIME_SUMMARY_MODEL,
-  ...resolveSummaryGatewayIdentity(env),
-  promptVersion: env.AGENT_RUNTIME_SUMMARY_PROMPT_VERSION,
-  evalDatasetVersion: env.SUMMARY_EVAL_DATASET_VERSION,
-  timeoutMs: parsePositiveInteger(
-    env.AGENT_RUNTIME_SUMMARY_TIMEOUT_MS ?? env.AGENT_RUNTIME_TIMEOUT_MS,
-  ),
-  maxOutputTokens: parsePositiveInteger(
-    env.AGENT_RUNTIME_SUMMARY_MAX_OUTPUT_TOKENS,
-  ),
-});
-
-const resolveSummaryGatewayIdentity = (env: NodeJS.ProcessEnv): Partial<AgentRuntimeSummaryModelAdapterOptions> => {
-  if (env.AGENT_RUNTIME_TRANSPORT?.trim() !== "gateway-llm") return {};
-  const identity = resolveReaderSummaryGenerationIdentityFromEnv(env);
-  const purposeModel = env.AGENT_RUNTIME_SUMMARY_MODEL?.trim();
-  const route = resolveReaderSummaryDailyTaskIdentityFromEnv(env,
-    purposeModel === defaultModel ? undefined : purposeModel);
-  const reasoningEffort = resolveReaderSummaryReasoningEffortFromEnv(env) ?? "default";
-  const requestedEffort = env.AGENT_RUNTIME_SUMMARY_REASONING_EFFORT?.trim();
-  if (requestedEffort && requestedEffort !== reasoningEffort) {
-    throw new Error("Gateway summary reasoning effort conflicts with purpose policy");
-  }
-  return { agentProvider: identity.provider, model: route.model,
-    modelBackend: route.modelBackend, reasoningEffort };
-};
-
-const parseAgentRuntimeProvider = (
-  value: string | undefined,
-): AgentRuntimeProvider | undefined => {
-  if (value === undefined || value.trim().length === 0) {
-    return undefined;
-  }
-  if (value === "codex" || value === "claude") {
-    return value;
-  }
-
-  throw new Error('AGENT_RUNTIME_PROVIDER must be "codex" or "claude"');
-};
 
