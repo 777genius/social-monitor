@@ -10,8 +10,6 @@ import { createExternalBetaJobRequirementsPolicy } from './lib/external-beta-job
 import {
   completeExternalEvidencePreflightEnv,
   durableBackendE2ePreflightEnv,
-  postgresRestorePreflightEnv,
-  rabbitmqDrillPreflightEnv,
   redditOAuthPreflightEnv,
 } from './lib/external-beta-evidence-preflight-fixtures.mjs';
 import { validateRunnerImplementationMarkers, redactionPolicyPath } from './lib/external-beta-evidence-runner-markers.mjs';
