@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 
 // Include 19 extracted signal-policy regressions in the static CI glob.
 import '../lib/staging-reliability-signal-policy.test.mjs';
+// Include the release/readiness policy tests in the mandatory static CI glob.
+import '../lib/staging-reliability-release-wiring-policy.test.mjs';
 
 test('real staging-reliability checker remains wired to the pure signal policy', () => {
   const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
