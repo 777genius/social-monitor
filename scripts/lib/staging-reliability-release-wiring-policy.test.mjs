@@ -118,16 +118,33 @@ test("baseline does not invent an example artifact when optional path is absent"
   assert.deepEqual(validate(ctx), []);
 });
 
-test("original staging checker retains all four live policy calls and a real delegate", () => {
-  const source = readFileSync(
-    fileURLToPath(new URL("../check-staging-reliability-evidence.mjs", import.meta.url)), "utf8",
-  );
-  assert.match(source, /createStagingReliabilityReleaseWiringPolicy\(\{/);
+function assertActiveReleaseWiring(source) {
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
+  assert.match(code, /createStagingReliabilityReleaseWiringPolicy\(\{/);
   for (const name of [
     "requireReleaseWiring", "requireBackendOpsWiring",
     "requireExternalReadinessWiring", "requireBaselineWiring",
   ]) {
-    assert.ok(source.includes(name + "()"), name + " invocation is mandatory");
-    assert.ok(!source.includes("function " + name + "()"), name + " must be owned by the policy");
+    const call = new RegExp("^\\s*" + name + "\\(\\);\\s*$", "m");
+    assert.match(code, call, name + " invocation must remain active");
+    assert.ok(!code.includes("function " + name + "()"), name + " must be owned by the policy");
+  }
+}
+
+test("original staging checker retains all four live policy calls and a real delegate", () => {
+  const source = readFileSync(
+    fileURLToPath(new URL("../check-staging-reliability-evidence.mjs", import.meta.url)), "utf8",
+  );
+  assertActiveReleaseWiring(source);
+  for (const name of [
+    "requireReleaseWiring", "requireBackendOpsWiring",
+    "requireExternalReadinessWiring", "requireBaselineWiring",
+  ]) {
+    assert.throws(() => assertActiveReleaseWiring(source.replace(name + "();", "// " + name + "();")),
+      name + " disabled by a line comment must fail the gate");
+    assert.throws(() => assertActiveReleaseWiring(source.replace(name + "();", "/* " + name + "(); */")),
+      name + " disabled by a block comment must fail the gate");
+    assert.throws(() => assertActiveReleaseWiring(source.replace(name + "();", "")),
+      name + " removed must fail the gate");
   }
 });
