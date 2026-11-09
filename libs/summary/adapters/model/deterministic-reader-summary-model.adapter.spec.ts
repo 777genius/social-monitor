@@ -19,6 +19,36 @@ import {
 } from "../evidence/reader-summary-editorial-slate";
 
 describe("DeterministicReaderSummaryModelAdapter", () => {
+  it("preserves the deterministic no-primary-evidence contract", async () => {
+    const adapter = new DeterministicReaderSummaryModelAdapter();
+    const input = readerSummaryInputForEvidence(readerSummaryEvidence([]));
+    const selectedRoute = adapter.route(
+      input,
+      {
+        preferredProvider: "deterministic-local",
+        maxInputTokens: 24_000,
+        maxOutputTokens: 2_500,
+        maxEstimatedCostUsd: 1,
+      },
+      { remainingTokens: 32_000, remainingCostUsd: 2 },
+    );
+    const attempt = await adapter.generate(input, selectedRoute);
+    expect(attempt.draft).toMatchObject({
+      headline: "No reliable workspace signal yet",
+      executiveSummary: "No eligible feed items were available for this summary window.",
+      topStories: [],
+      interestHighlights: [],
+      repeatedSignals: [],
+      qualityFlags: ["no_signal", "limited_sources"],
+      confidence: { level: "none", score: 0 },
+      noSignalReason: "No eligible evidence items selected for this summary scope.",
+      usage: { inputTokens: 0, outputTokens: 64, estimatedCostUsd: 0 },
+      lineage: { modelVersion: "deterministic-reader-summary-v1" },
+    });
+    expect(attempt.draft.citationMap).toEqual([]);
+    expect(attempt.draft.content).toBeDefined();
+  });
+
   it("keeps a provider-diverse first page while preserving ranked order", async () => {
     const adapter = new DeterministicReaderSummaryModelAdapter();
     const input = dailySynthesisReaderSummaryInput();
