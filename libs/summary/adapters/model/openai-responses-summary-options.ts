@@ -2,7 +2,7 @@ import {
   openAiApiKeySourceDescription,
   resolveOpenAiApiKey,
 } from './openai-api-key-source';
-import { parseNonNegativeNumber, parsePositiveInteger } from './openai-responses-summary-json';
+import { parseNonNegativeNumber, parsePositiveInteger } from './openai-responses-summary-option-values';
 import type { OpenAiSummaryFetchLike } from './openai-responses-summary-transport';
 
 export type OpenAiResponsesSummaryModelAdapterOptions = {

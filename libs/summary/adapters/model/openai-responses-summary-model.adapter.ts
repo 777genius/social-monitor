@@ -36,7 +36,7 @@ import {
   nonEmptyOrFallback,
   nonNegativeNumberOrFallback,
   positiveIntegerOrFallback,
-} from './openai-responses-summary-json';
+} from './openai-responses-summary-option-values';
 
 import {
   createOpenAiSummaryResponse,
