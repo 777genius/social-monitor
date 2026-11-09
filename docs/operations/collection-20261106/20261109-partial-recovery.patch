@@ -1,19 +1,10 @@
 --- a/usr/local/sbin/social-monitor-posts-provider-policy.sh
 +++ b/usr/local/sbin/social-monitor-posts-provider-policy.sh
-@@ -421,7 +421,8 @@
-       artifact_name=${path%/*}
-       artifact_name=${artifact_name##*/}
-       valid_artifact current-slot "$day" "$artifact_name" partial ||
+@@ -424 +424,2 @@
 -        valid_artifact current-slot "$day" "$artifact_name" reconcile-x
 +        valid_artifact current-slot "$day" "$artifact_name" reconcile-x ||
 +        valid_hn_rss_recovery current-slot "$day" "$artifact_name" reconcile-hn-rss
-       return $? ;;
-     *) return 1 ;;
-   esac
-@@ -429,3 +430,256 @@
-     'length == 1 and .[0].schemaVersion == 1 and .[0].artifactFormat == "reader-summary-clean-real-day-collection-v1" and .[0].run.collectionDate == $day and .[0].blockingPassed == false and ((.[0].inputs.providerKeys | sort) == ($expected | sort))' \
-     "$path" >/dev/null 2>&1
- }
+@@ -431,0 +433,253 @@
 +
 +# Recovery-only additional validation; normal admission remains unchanged.
 +valid_hn_rss_recovery() {
@@ -269,53 +260,23 @@
 +}
 --- a/usr/local/sbin/social-monitor-posts-once
 +++ b/usr/local/sbin/social-monitor-posts-once
-@@ -33,7 +33,7 @@
- role=social_monitor_collection
- provider_policy=/usr/local/sbin/social-monitor-posts-provider-policy.sh
- [[ -f $provider_policy && ! -L $provider_policy &&
+@@ -36 +36 @@
 -   $(sha256sum "$provider_policy" | cut -d' ' -f1) == babab8c5defb46baf6dce4e9c4ea41dc6cfaa8fd0a8ce667cb0923d5118ec58d ]] || exit 78
 +   $(sha256sum "$provider_policy" | cut -d' ' -f1) == 6bb480c649fdfcfc24eab39fe9b9bc28b921daeaef4bdb11f869cd86615f1060 ]] || exit 78
- source "$provider_policy"
- rss_import_module=/usr/local/sbin/social-monitor-posts-rss-import.sh
- [[ -f $rss_import_module && ! -L $rss_import_module &&
-@@ -120,7 +120,8 @@
-     fi
-     cat "$errf" >&2
-     grep -q 'FIRST_FAILED_BOUNDARY=manager_jobs' "$errf" && [[ $attempt -lt 12 ]] || break
+@@ -123 +123,2 @@
 -    sleep 30
 +    # Shift retries off the five-second credential-watchdog cadence.
 +    sleep 29
-   done
-   rm -f -- "$errf"
-   return 1
 --- a/usr/local/lib/social-monitor/current-source-guard/physical_operator_epoch.py
 +++ b/usr/local/lib/social-monitor/current-source-guard/physical_operator_epoch.py
-@@ -85,7 +85,7 @@
-     Path('/usr/local/lib/social-monitor/historical-reddit-x/collection-reddit-x-entrypoint.sh'): '032dd10c98468ff18481d3adb1f7acc9f3db33c9ecb4ec8bdc7082eef13fac05',
-     Path('/var/lib/platform/social-monitor/github-archive-sep24-qualified-input-20261013-r1/2026-09-24/packet.json'): '839558da0e3585596bf8c4661f89809186d7f085d005f802d777a2ee38c96e9e',
-     Path('/var/lib/platform/social-monitor/github-archive-sep24-qualified-input-20261013-r1/2026-09-24/archive.json'): '548a545c9bd8e3f9cba27e379af97ada38a8030815d662511e667e8ed42c2466',
+@@ -88 +88 @@
 -    Path('/usr/local/sbin/social-monitor-posts-provider-policy.sh'): 'babab8c5defb46baf6dce4e9c4ea41dc6cfaa8fd0a8ce667cb0923d5118ec58d',
 +    Path('/usr/local/sbin/social-monitor-posts-provider-policy.sh'): '6bb480c649fdfcfc24eab39fe9b9bc28b921daeaef4bdb11f869cd86615f1060',
- 
-     Path('/usr/local/sbin/social-monitor-posts-github-archive-import.sh'): '619ab3ef1a7c20d53af70ea509298933560f136221dbf87692725db45cb00f5e',
-     Path('/usr/local/lib/social-monitor/current-source-guard/github-archive-qualified-partitions.json'): 'b57a65a229361c69c05e5b54f6f888e01fe5565e84b9d819639c572251592abb',
-@@ -106,7 +106,7 @@
-     LIB / 'installed_frontier_policy.py': '51580ab128fa1a13ecc1fc02a07fc46b315287eb6f855c6c4bdc33ac3d55b37e',
-     FENCE: '84d93196dc54561061ffdd97cca88aa78c66705965aff64b50aea7868acc37e4',
-     CONTAINED: '5dc1dcceaeafad0622c4ed72154eb80bbc9f70177c73a9d1698c9e33aeb63758',
+@@ -109 +109 @@
 -    ROUTER: 'f2f0057e66e1619c068fbb2c39bebe9044e9e907691f94e0cb4e6b1558ef3fa3',
 +    ROUTER: '647e9d0851e81b4516ba32413d797b615020c83b0db7b18265bb74c9922e78df',
-     Path('/usr/local/sbin/social-monitor-posts-rss-import.sh'): '30e4502328581f1ef28cb46ec3a0cfd6e934dc33b13da4dfa33fec786abb166f',
-     Path('/usr/local/sbin/social-monitor-posts-hn-archive-import.sh'): '5414de0f50659002f3012532fe465720d13ab10c7f534a6f937aaabf5a1f0b07',
-     Path('/usr/local/lib/social-monitor/current-source-guard/hn-archive-feed-key-derive.cjs'): 'ef5068dddcb63e44b423fd8026d436993c275b981c90c79ef835abb7739d6bff',
 --- a/usr/local/sbin/social-monitor-posts-current-authority-stage
 +++ b/usr/local/sbin/social-monitor-posts-current-authority-stage
-@@ -60,7 +60,7 @@
-     'render_guard': 'bbff4c1516e1f9dcb3382bbb65fa0a442e1958b56da383cabf8715c9a8508fab',
-     'verify_guard': 'fcd48a94b2cd4bd74de295333cf26a65b0963d410b1fc5d8394d6c70ec5560ab',
-     'current_authority_mechanism': 'a6f84ae39cc84a457444a9252aabc2e7c1fc77d06b8c13f27056cdde6290501a',
+@@ -63 +63 @@
 -    'physical_operator_epoch': '4be63bcd62b7d0a88ad27657b71ced7c8562fdc5cb6b59b8362dcae39547b990',
 +    'physical_operator_epoch': '2d4bb08e394c9b2cc6289d02a5928ada53d59ccbe866f3a1734ed37d881424e8',
-     'generation_authority_handoff': '790dd0ba71d2617158a4f6d7af24b19ad7656137b869b051781fbb16c0324357',
-     'retained_capture_contract': '1a06b2272c560686cb9aa4a72b89022b693c93f1474931ab7e832e0a60003770',
-     'retained_capture_files': 'acf494f9e9eeea8e8ab4dd2a543d7301adb71803c63c63215a67c26a6f2422c0',
