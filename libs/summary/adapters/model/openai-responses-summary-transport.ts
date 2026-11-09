@@ -1,8 +1,8 @@
+import { SummaryModelProviderError } from './openai-responses-summary-model-error';
 import {
   classifyOpenAiHttpFailure,
   readOpenAiResponseBody,
-  SummaryModelProviderError,
-} from './openai-responses-summary-model-error';
+} from './openai-responses-summary-http-failure';
 import { asRecord } from './openai-responses-summary-json';
 
 export type OpenAiSummaryFetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
