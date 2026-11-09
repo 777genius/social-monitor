@@ -2761,13 +2761,17 @@ function validateJobs() {
   }
 }
 
+function asEnvArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
 function validateJobArtifacts(job, label) {
   if (!Array.isArray(job.outputArtifacts) || job.outputArtifacts.length === 0) {
     violations.push(`${label}: outputArtifacts must be non-empty`);
     return;
   }
 
-  const envNames = new Set([...(job.requiredEnv ?? []), ...(job.optionalEnv ?? [])]);
+  const envNames = new Set([...asEnvArray(job.requiredEnv), ...asEnvArray(job.optionalEnv)]);
   for (const artifact of job.outputArtifacts) {
     if (typeof artifact.format !== 'string' || artifact.format.trim().length === 0) {
       violations.push(`${label}: output artifact must define format`);
@@ -2815,14 +2819,14 @@ function validateArtifactValidatorCoverage(job, artifact, label) {
 }
 
 function validateRequiredJobEvidence(job, label) {
-  const envNames = new Set([...(job.requiredEnv ?? []), ...(job.optionalEnv ?? [])]);
+  const envNames = new Set([...asEnvArray(job.requiredEnv), ...asEnvArray(job.optionalEnv)]);
   const requiredEnvNames = requiredJobEnvNames.get(job.jobId) ?? [];
   for (const envName of requiredEnvNames) {
     if (!envNames.has(envName)) {
       violations.push(`${label}: must include required evidence env "${envName}"`);
     }
   }
-  const optionalEnvNames = new Set(job.optionalEnv ?? []);
+  const optionalEnvNames = new Set(asEnvArray(job.optionalEnv));
   const requiredOptionalEnvNames = requiredJobOptionalEnvNames.get(job.jobId) ?? [];
   for (const envName of requiredOptionalEnvNames) {
     if (!optionalEnvNames.has(envName)) {
@@ -2832,7 +2836,7 @@ function validateRequiredJobEvidence(job, label) {
 
   const requiredAlternatives = requiredJobEnvAlternatives.get(job.jobId) ?? [];
   for (const requiredAlternative of requiredAlternatives) {
-    const hasAlternative = (job.requiredEnvAlternatives ?? []).some((alternative) => (
+    const hasAlternative = asEnvArray(job.requiredEnvAlternatives).some((alternative) => (
       alternative.label === requiredAlternative.label
       && providerKeysEqual(alternative.env, requiredAlternative.env)
       && providerKeysEqual(alternative.coversEnv ?? alternative.env, requiredAlternative.coversEnv)

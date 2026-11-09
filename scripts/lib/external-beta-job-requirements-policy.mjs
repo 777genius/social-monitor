@@ -4,6 +4,8 @@ export function createExternalBetaJobRequirementsPolicy({
   externalGroups, auditRequirements, backendScripts, forbiddenFragments,
   validateCommand, scriptNameFromCommand,
 }) {
+  const arrayOrEmpty = (value) => Array.isArray(value) ? value : [];
+
   function validateEnvExample() {
     if (envExampleSource.trim().length === 0) {
       violations.push(`${contractPath}: envExample must reference a non-empty env example file`);
@@ -12,9 +14,9 @@ export function createExternalBetaJobRequirementsPolicy({
   
     const expectedEnvNames = new Set([
       'EXTERNAL_BETA_EVIDENCE_CONFIRM',
-      ...contract.jobs.flatMap((job) => job.requiredEnv ?? []),
-      ...contract.jobs.flatMap((job) => (job.requiredEnvAlternatives ?? []).flatMap((alternative) => alternative.env ?? [])),
-      ...contract.jobs.flatMap((job) => job.optionalEnv ?? []),
+      ...arrayOrEmpty(contract.jobs).flatMap((job) => arrayOrEmpty(job?.requiredEnv)),
+      ...arrayOrEmpty(contract.jobs).flatMap((job) => arrayOrEmpty(job?.requiredEnvAlternatives).flatMap((alternative) => arrayOrEmpty(alternative?.env))),
+      ...arrayOrEmpty(contract.jobs).flatMap((job) => arrayOrEmpty(job?.optionalEnv)),
     ]);
     const actualEnvNames = new Set();
   
@@ -147,9 +149,13 @@ export function createExternalBetaJobRequirementsPolicy({
     if (job.requiredEnvAlternatives !== undefined && !Array.isArray(job.requiredEnvAlternatives)) {
       violations.push(`${label}: requiredEnvAlternatives must be an array when set`);
     }
-    const requiredEnvSet = new Set(job.requiredEnv ?? []);
-    for (const [index, alternative] of (job.requiredEnvAlternatives ?? []).entries()) {
+    const requiredEnvSet = new Set(arrayOrEmpty(job.requiredEnv));
+    for (const [index, alternative] of arrayOrEmpty(job.requiredEnvAlternatives).entries()) {
       const alternativeLabel = `${label}: requiredEnvAlternatives[${index}]`;
+      if (typeof alternative !== 'object' || alternative === null) {
+        violations.push(`${alternativeLabel}: alternative must be an object`);
+        continue;
+      }
       if (typeof alternative.label !== 'string' || alternative.label.trim().length === 0) {
         violations.push(`${alternativeLabel}: label must be a non-empty string`);
       }
@@ -157,7 +163,7 @@ export function createExternalBetaJobRequirementsPolicy({
         violations.push(`${alternativeLabel}: env must be a non-empty array`);
       }
       const seenEnv = new Set();
-      for (const envName of alternative.env ?? []) {
+      for (const envName of arrayOrEmpty(alternative.env)) {
         if (!/^[A-Z][A-Z0-9_]*$/.test(String(envName))) {
           violations.push(`${alternativeLabel}: env contains invalid env name "${envName}"`);
         }
@@ -169,7 +175,7 @@ export function createExternalBetaJobRequirementsPolicy({
       if (alternative.coversEnv !== undefined && !Array.isArray(alternative.coversEnv)) {
         violations.push(`${alternativeLabel}: coversEnv must be an array when set`);
       }
-      for (const envName of alternative.coversEnv ?? []) {
+      for (const envName of arrayOrEmpty(alternative.coversEnv)) {
         if (!requiredEnvSet.has(envName)) {
           violations.push(`${alternativeLabel}: coversEnv "${envName}" must be listed in requiredEnv`);
         }
@@ -182,7 +188,7 @@ export function createExternalBetaJobRequirementsPolicy({
       }
     }
   
-    if (job.runPolicy !== 'local_contract' && job.requiredEnv.length === 0) {
+    if (job.runPolicy !== 'local_contract' && arrayOrEmpty(job.requiredEnv).length === 0) {
       violations.push(`${label}: non-local job must define requiredEnv`);
     }
   }

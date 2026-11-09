@@ -9,6 +9,7 @@ import {
   parseRestoreValidationTable,
   restoreDrillContractFingerprints,
 } from './backup-restore-drill-contract.mjs';
+import { validatePostgresRestoreEvidence } from './postgres-restore-evidence-validator.mjs';
 
 test('parses the reviewed count query grammar', () => {
   assert.equal(parseRestoreValidationTable('select count(*) from feed_items'), 'feed_items');
@@ -125,4 +126,23 @@ test('reader value assessment operational state is backed up and restore-validat
     }),
     /operational table has no restore validation query: reader_value_assessments/,
   );
+});
+
+test('tracked fixture-only postgres restore artifact matches current exact backup contract', () => {
+  const contract = JSON.parse(readFileSync(
+    new URL('../../ops/recovery/backup-restore-contract.json', import.meta.url), 'utf8',
+  ));
+  const compiled = compileBackupRestoreDrillContract(contract);
+  const examples = JSON.parse(readFileSync(
+    new URL('../../ops/drills/fixtures/staging-reliability-artifact-examples.json', import.meta.url), 'utf8',
+  ));
+  const artifact = examples.examples.find((item) => item.artifactId === 'postgres-restore-drill-output');
+  assert.equal(artifact.provenance.fixtureOnly, true);
+  assert.deepEqual(validatePostgresRestoreEvidence(artifact, compiled), []);
+
+  const stale = structuredClone(artifact);
+  stale.signalResults.find((item) => item.signalId === 'postgres-backup-created')
+    .evidence.expectedBackupIncludeCount -= 1;
+  assert.ok(validatePostgresRestoreEvidence(stale, compiled)
+    .includes('expected backup count must be 83'));
 });

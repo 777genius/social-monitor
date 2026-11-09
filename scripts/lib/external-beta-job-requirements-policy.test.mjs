@@ -175,3 +175,27 @@ test('blank environment example is not accepted', () => {
   f.policy.validateEnvExample();
   assert.deepEqual(f.violations, ['fixtures/contract.json: envExample must reference a non-empty env example file']);
 });
+
+test('malformed env collections fail closed while retaining all independent diagnostics', () => {
+  const f = fixture();
+  f.job.requiredEnv = { invalid: true };
+  f.job.optionalEnv = 'malformed';
+  f.job.requiredEnvAlternatives = { invalid: true };
+  f.policy.validateJobEnvironment(f.job, 'job');
+  f.policy.validateEnvExample();
+  assert.ok(f.violations.includes('job: requiredEnv must be an array'));
+  assert.ok(f.violations.includes('job: optionalEnv must be an array'));
+  assert.ok(f.violations.includes('job: requiredEnvAlternatives must be an array when set'));
+  assert.ok(f.violations.includes('job: non-local job must define requiredEnv'));
+  assert.ok(f.violations.includes('fixtures/external-beta.example: unexpected env example entry "API_KEY"'));
+});
+
+test('malformed nested alternative fields fail closed without aborting following checks', () => {
+  const f = fixture();
+  f.job.requiredEnvAlternatives = [null, { label: 'bad', env: { invalid: true }, coversEnv: { invalid: true } }];
+  f.policy.validateJobEnvironment(f.job, 'job');
+  f.policy.validateEnvExample();
+  assert.ok(f.violations.includes('job: requiredEnvAlternatives[0]: alternative must be an object'));
+  assert.ok(f.violations.includes('job: requiredEnvAlternatives[1]: env must be a non-empty array'));
+  assert.ok(f.violations.includes('job: requiredEnvAlternatives[1]: coversEnv must be an array when set'));
+});
