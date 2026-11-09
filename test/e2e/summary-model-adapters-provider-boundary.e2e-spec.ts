@@ -155,6 +155,24 @@ describe("OpenAI model adapter through REST, use case and storage (e2e)", () => 
       ],
     });
     expect(JSON.stringify(snapshot)).not.toContain("invented-feed");
+    const detail = await request(app.getHttpServer())
+      .get("/summaries/" + result.value.summaryId)
+      .set("x-tenant-id", tenant)
+      .set("x-workspace-id", workspace)
+      .set("x-workspace-role", "viewer")
+      .expect(200);
+    expect(detail.body).toMatchObject({
+      summaryId: result.value.summaryId,
+      tenantId: tenant,
+      workspaceId: workspace,
+      citations: [
+        { citationId: "c1", feedItemId: "feed-1", sourceItemId: "source-1",
+          providerKey: "reddit", canonicalUrl: "https://example.test/reddit/verified" },
+        { citationId: "c2", feedItemId: "feed-2", sourceItemId: "source-2",
+          providerKey: "github", canonicalUrl: "https://example.test/github/verified" },
+      ],
+    });
+    expect(JSON.stringify(detail.body)).not.toContain("invented-feed");
     expect(app.get(InMemorySummaryEventPublisher).all()).toHaveLength(1);
     expect(metrics.counterValue("summary_model_requests_total", {
       model: "synthetic-openai-summary", provider: "openai-responses", status: "succeeded",
@@ -183,4 +201,20 @@ describe("OpenAI model adapter through REST, use case and storage (e2e)", () => 
     })).toBe(1);
     expect(calls).toHaveLength(2);
   });
+
+  it("does not load another tenant's job or dispatch another model request", async () => {
+    const requested = await requestJob("model-e2e-tenant-isolation");
+    const summaryJobId = requested.body.summaryJobId as string;
+    const result = await app.get(ExecuteSummaryJobUseCase).execute({
+      tenantId: tenantId(deterministicTestUuid("model-boundary-other-tenant")),
+      workspaceId: workspace,
+      summaryJobId,
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("Cross-tenant job access was accepted");
+    expect(result.error).toMatchObject({ code: "resource.not_found" });
+    expect(calls).toHaveLength(2);
+    expect(app.get(InMemorySummaryEventPublisher).all()).toHaveLength(1);
+  });
+
 });
