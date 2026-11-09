@@ -63,7 +63,7 @@ export const completedPromotionPresentationResults = (params: {
       [[row.candidateId, row.proposal] as const]));
   const failures = new Map(decoded?.flatMap((row) => row.failure === undefined ? [] :
     [[row.candidateId, row.failure] as const]));
-  return inputs.map((input, index) => {
+  return inputs.map((input, index): ReaderPostPresentationV3Result => {
     const proposal = proposals.get(input.candidateId);
     if (proposal === undefined) return { status: "unavailable", reason: "invalid_presentation",
       validation: { stage: decoded === undefined ? "proposal_contract" : "source_copy_decode",

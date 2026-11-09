@@ -40,7 +40,7 @@ describe("promotion presentation runtime output trust policy", () => {
       expect(runtimePresentationValidationRejection(result, "xiaomi-mimo-token-plan"))
         .toEqual({ status: "unavailable", reason: "invalid_presentation",
           validation: { stage: "runtime_output", code } });
-      expect(runtimePresentationValidationRejection(result, "codex-cli")).toBeUndefined();
+      expect(runtimePresentationValidationRejection(result, "openai-chatgpt")).toBeUndefined();
     });
 
   it.each([
