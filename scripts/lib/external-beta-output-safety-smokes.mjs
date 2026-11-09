@@ -15,14 +15,15 @@ export function createExternalBetaOutputSafetySmokes({
     const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-output-redaction-'));
     try {
       const secrets = outputRedactionSecretValues();
-      const env = completeExternalEvidencePreflightEnv(tempDirectory, {
+      const env = {
+        ...completeExternalEvidencePreflightEnv(tempDirectory),
         API_BASE_URL: `http://127.0.0.1:3000?access_token=${secrets.apiToken}`,
         DATABASE_URL: 'postgresql://runtime_user:...@127.0.0.1:54329/social_monitor',
         RABBITMQ_URL: 'amqp://runtime_user:...@127.0.0.1:56729/social_monitor',
         REDDIT_ACCESS_TOKEN: secrets.redditAccessToken,
         REDDIT_CLIENT_SECRET: secrets.redditClientSecret,
         REDDIT_REFRESH_TOKEN: secrets.redditRefreshToken,
-      });
+      };
 
       const smokeCommands = [
         { label: 'JSON plan', args: ['--plan', '--json'] },

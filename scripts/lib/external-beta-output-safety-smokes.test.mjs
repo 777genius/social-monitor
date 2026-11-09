@@ -5,7 +5,7 @@ import { createExternalBetaOutputSafetySmokes } from './external-beta-output-saf
 
 const runnerFile = 'scripts/external-beta-evidence-runner.mjs';
 
-function harness(execFileSync, envFactory = (_directory, values = {}) => values) {
+function harness(execFileSync, envFactory = (_directory) => ({ FIXTURE_VALUE: 'fixture-value' })) {
   const violations = [];
   const smokes = createExternalBetaOutputSafetySmokes({
     contract: { runnerFile },
@@ -36,8 +36,12 @@ test('four plan/summary/handoff redaction smokes retain bounded isolated process
     assert.equal(call.options.timeout, 30_000);
     assert.equal(call.options.stdio, 'pipe');
     assert.equal(call.options.encoding, 'utf8');
+    assert.equal(call.options.env.FIXTURE_VALUE, 'fixture-value');
+    assert.match(call.options.env.API_BASE_URL, /runtime-api-token-value-1234567890/);
+    assert.equal(call.options.env.REDDIT_CLIENT_SECRET, 'reddit-runtime-client-secret-value-1234567890');
+    assert.equal(call.options.env.REDDIT_REFRESH_TOKEN, 'reddit-runtime-refresh-value-1234567890');
     assert.deepEqual(Object.keys(call.options.env).sort(), [
-      'API_BASE_URL', 'DATABASE_URL', 'PATH', 'RABBITMQ_URL',
+      'API_BASE_URL', 'DATABASE_URL', 'FIXTURE_VALUE', 'PATH', 'RABBITMQ_URL',
       'REDDIT_ACCESS_TOKEN', 'REDDIT_CLIENT_SECRET', 'REDDIT_REFRESH_TOKEN',
     ]);
   }
