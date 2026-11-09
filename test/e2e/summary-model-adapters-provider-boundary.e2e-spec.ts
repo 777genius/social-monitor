@@ -78,6 +78,7 @@ const providerDraft = () => ({
 describe("OpenAI model adapter through REST, use case and storage (e2e)", () => {
   let app: INestApplication;
   const calls: string[] = [];
+  let responseMode: "valid" | "malformed" = "valid";
   const metrics = new InMemoryMetricsRecorder();
 
   beforeAll(async () => {
@@ -96,7 +97,7 @@ describe("OpenAI model adapter through REST, use case and storage (e2e)", () => 
         const body = JSON.parse(String(init?.body)) as { readonly input: string };
         calls.push(body.input);
         return new Response(JSON.stringify({
-          output_text: calls.length === 1
+          output_text: responseMode === "valid"
             ? JSON.stringify(providerDraft())
             : "{invalid-json",
         }), { status: 200 });
@@ -128,6 +129,7 @@ describe("OpenAI model adapter through REST, use case and storage (e2e)", () => 
     .expect(201);
 
   it("rebinds fabricated provider citations and publishes only scoped evidence", async () => {
+    responseMode = "valid";
     const requested = await requestJob("model-e2e-valid");
     const summaryJobId = requested.body.summaryJobId as string;
     const result = await app.get(ExecuteSummaryJobUseCase).execute({
@@ -181,6 +183,7 @@ describe("OpenAI model adapter through REST, use case and storage (e2e)", () => 
   });
 
   it("fails closed on malformed provider JSON without artifact or ready event", async () => {
+    responseMode = "malformed";
     const requested = await requestJob("model-e2e-invalid");
     const summaryJobId = requested.body.summaryJobId as string;
     const result = await app.get(ExecuteSummaryJobUseCase).execute({
