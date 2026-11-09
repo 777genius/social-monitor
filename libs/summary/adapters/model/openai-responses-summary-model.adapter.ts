@@ -38,7 +38,10 @@ import {
   positiveIntegerOrFallback,
 } from './openai-responses-summary-json';
 
-import { createOpenAiSummaryResponse } from './openai-responses-summary-transport';
+import {
+  createOpenAiSummaryResponse,
+  type OpenAiSummaryFetchLike as FetchLike,
+} from './openai-responses-summary-transport';
 import type { OpenAiResponsesSummaryModelAdapterOptions } from './openai-responses-summary-options';
 export type { OpenAiResponsesSummaryModelAdapterOptions } from './openai-responses-summary-options';
 export { resolveOpenAiResponsesSummaryModelOptions } from './openai-responses-summary-options';
