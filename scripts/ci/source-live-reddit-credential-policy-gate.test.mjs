@@ -24,7 +24,7 @@ test('removed or commented import cannot pass the integration gate', () => {
   assert.throws(() => assertWired(checker.replace(statement, '/* ' + statement + ' */')));
 });
 test('disabling artifact validator or redaction delegation cannot pass the gate', () => {
-  assert.ok(checker.includes('validateRedditCredentialLifecycleArtifact(artifact, {'));
-  assert.throws(() => assertWired(checker.replace('validateRedditCredentialLifecycleArtifact(artifact, {', '/* validator removed */ (artifact, {')));
+  assert.ok(checker.includes('validateRedditCredentialLifecycleArtifact(lifecycleArtifact, {'));
+  assert.throws(() => assertWired(checker.replace('validateRedditCredentialLifecycleArtifact(lifecycleArtifact, {', '/* validator removed */ (artifact, {')));
   assert.throws(() => assertWired(checker.replace('validateArtifactRedaction(artifact, label)', '/* redaction removed */')));
 });
