@@ -25,7 +25,7 @@ const evidence = [
     bodyPreview: undefined,
     canonicalUrl: undefined,
   },
-] as SummaryModelInput['evidence']['items'];
+] as unknown as SummaryModelInput['evidence']['items'];
 
 const modelCitation = (
   citationId: string,
