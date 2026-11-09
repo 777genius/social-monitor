@@ -24,6 +24,25 @@ const stagingLabels = [
   'staging reliability nested fixture marker',
   'staging reliability raw duplicate-key credential hidden by JSON parser',
 ];
+const durableDiagnostics = [
+  'fixture provenance',
+  'must not be in-memory',
+  'services must include event-relay',
+  'rollup.forbiddenSelectorsFound must be false',
+  'imageDigest must match BACKEND_IMAGE_DIGEST',
+  'must not contain fixture marker "example"',
+  'sensitive literal fragment "bearer "',
+];
+const stagingTargetsAndDiagnostics = [
+  ['rabbitmq-staging-drill-output', 'fixture provenance'],
+  ['rabbitmq-staging-drill-output', 'must use artifactId rabbitmq-staging-drill-output'],
+  ['postgres-restore-drill-output', 'imageDigest must match BACKEND_IMAGE_DIGEST'],
+  ['postgres-restore-drill-output', 'missing signal result "postgres-no-duplicate-side-effects"'],
+  ['durable-backend-e2e-output', 'signal result "backend-loop-idempotency" must have status=passed'],
+  ['durable-backend-e2e-output', 'apiBaseUrl must match API_BASE_URL'],
+  ['rabbitmq-staging-drill-output', 'must not contain fixture marker "example"'],
+  ['rabbitmq-staging-drill-output', 'sensitive literal fragment "bearer "'],
+];
 const durableFixture = () => ({
   provenance: { evidenceKind: 'runtime_selector', fixtureOnly: false },
   services: [
@@ -57,14 +76,13 @@ function apply(build, label, fixture) {
 test('seven durable-runtime scenarios retain identity, order and distinct diagnostics', () => {
   const scenarios = durableRuntimeNegativeSmokeScenarios();
   assert.deepEqual(scenarios.map(item => item.label), durableLabels);
-  assert.equal(new Set(scenarios.map(item => item.expectedOutput)).size, scenarios.length);
+  assert.deepEqual(scenarios.map(item => item.expectedOutput), durableDiagnostics);
   assert.notStrictEqual(scenarios, durableRuntimeNegativeSmokeScenarios());
 });
 test('eight staging scenarios retain identity, order, target artifact and diagnostic', () => {
   const scenarios = stagingReliabilityNegativeSmokeScenarios();
   assert.deepEqual(scenarios.map(item => item.label), stagingLabels);
-  assert.equal(new Set(scenarios.map(item => item.expectedOutput)).size, scenarios.length);
-  assert.ok(scenarios.every(item => item.artifactId && item.expectedOutput));
+  assert.deepEqual(scenarios.map(item => [item.artifactId, item.expectedOutput]), stagingTargetsAndDiagnostics);
   assert.notStrictEqual(scenarios, stagingReliabilityNegativeSmokeScenarios());
 });
 test('durable fixture provenance must be rejected', () => {

@@ -21,8 +21,12 @@ function assertDelegated(candidate) {
     const statement = `const scenarios = ${factory}();`;
     assert.ok(setup.includes(statement), caller);
     const calls = [];
-    runInNewContext(setup, { [factory]: () => { calls.push(factory); return []; } }, { timeout: 1000 });
+    const sentinel = [];
+    const boundScenarios = runInNewContext(`${setup}\nscenarios`, {
+      [factory]: () => { calls.push(factory); return sentinel; },
+    }, { timeout: 1000 });
     assert.deepEqual(calls, [factory], caller);
+    assert.strictEqual(boundScenarios, sentinel, caller);
   }
 }
 test('both original runtime negative smoke validators delegate to pure scenario factories', () => {
@@ -42,5 +46,11 @@ test('unreachable runtime scenario call cannot satisfy behavioral delegation', (
   for (const [, factory] of cases) {
     const statement = `const scenarios = ${factory}();`;
     assert.throws(() => assertDelegated(source.replace(statement, `if (false) { ${statement} }`)), { code: 'ERR_ASSERTION' });
+  }
+});
+test('nested scenario factory call cannot replace the loop-bound result', () => {
+  for (const [, factory] of cases) {
+    const statement = `const scenarios = ${factory}();`;
+    assert.throws(() => assertDelegated(source.replace(statement, `{ ${statement} }\n  const scenarios = [];`)), { code: 'ERR_ASSERTION' });
   }
 });
