@@ -1,0 +1,66 @@
+# One-time qualification of the unchanged canonical backend E2E job on draft #665.
+# The 20/20 Ready PR release gate remains authoritative.
+name: Model draft full backend E2E
+
+on:
+  push:
+    branches:
+      - refactor/summary-model-adapters-10k-20261108
+    paths:
+      - .github/workflows/model-full-backend-e2e-draft.yml
+
+permissions:
+  contents: read
+
+env:
+  DATABASE_URL: postgresql://social_monitor_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_ci
+
+concurrency:
+  group: model-draft-full-backend-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend_e2e:
+    name: Canonical broker and backend end-to-end
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      rabbitmq:
+        image: rabbitmq:4.3-management
+        env:
+          RABBITMQ_DEFAULT_USER: social_monitor_broker_ci
+          RABBITMQ_DEFAULT_PASS: social_monitor_local_password
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - name: Check out exact source commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install exact dependencies
+        run: npm ci
+      - name: Generate pinned Prisma client
+        run: npm run prisma:generate
+      - name: Prove RabbitMQ delivery recovery against disposable broker
+        env:
+          RABBITMQ_INTEGRATION_TEST_URL: amqp://social_monitor_broker_ci:social_monitor_local_password@127.0.0.1:5672
+        run: npm run test:broker-e2e
+      - name: Prove reader workflow and publication HTTP fixtures
+        run: npm run check:reader-summary-workflow
+      - name: Prove refactored delivery and source-health smoke contracts
+        run: |
+          set -euo pipefail
+          npm run check:delivery-persistence
+          npm run check:source-binding-health-rest
+      - name: Run backend end-to-end tests
+        run: npm run test:e2e
