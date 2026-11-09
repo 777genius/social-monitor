@@ -111,14 +111,17 @@ test('source sample timestamps cannot be dropped from freshness policy', () => {
   }, 'artifactFreshness.timestampPaths must include source.sampleWindow.endedAt');
 });
 test('every environment artifact format must remain freshness-enforced', () => {
-  const context = fixture();
-  const format = context.contract.jobs.flatMap(job => job.outputArtifacts ?? [])
-    .find(artifact => artifact.env !== undefined)?.format;
-  assert.ok(format, 'tracked contract must have an env-linked evidence format');
-  context.contract.artifactFreshness.requiredTimestampFormats =
-    context.contract.artifactFreshness.requiredTimestampFormats.filter(value => value !== format);
-  validateArtifactFreshnessPolicy(context);
-  assert.ok(context.violations.includes(
-    originalContractPath + ': artifactFreshness.requiredTimestampFormats must include ' + format,
-  ));
+  const formats = new Set(fixture().contract.jobs.flatMap(job => job.outputArtifacts ?? [])
+    .filter(artifact => artifact.env !== undefined)
+    .map(artifact => artifact.format));
+  assert.ok(formats.size, 'tracked contract must have an env-linked evidence format');
+  for (const format of formats) {
+    const context = fixture();
+    context.contract.artifactFreshness.requiredTimestampFormats =
+      context.contract.artifactFreshness.requiredTimestampFormats.filter(value => value !== format);
+    validateArtifactFreshnessPolicy(context);
+    assert.ok(context.violations.includes(
+      originalContractPath + ': artifactFreshness.requiredTimestampFormats must include ' + format,
+    ));
+  }
 });
