@@ -1261,7 +1261,7 @@ function validateRunnerNegativeStagingReliabilityArtifactSmokes() {
         continue;
       }
       if (!result.output.includes(scenario.expectedOutput)) {
-        violations.push(`${contract.runnerFile}: runner negative staging reliability smoke for ${scenario.label} must report "${scenario.expectedOutput}"`);
+        violations.push(`${contract.runnerFile}: runner negative staging reliability smoke for ${scenario.label} must report "${scenario.expectedOutput}"; observed: ${smokeOutputSnippet(result.output)}`);
       }
     } finally {
       rmSync(tempDirectory, { recursive: true, force: true });
@@ -1397,7 +1397,7 @@ function validateRunnerNegativeSummaryFeedbackArtifactSmokes() {
         continue;
       }
       if (!result.output.includes(scenario.expectedOutput)) {
-        violations.push(`${contract.runnerFile}: runner negative summary feedback smoke for ${scenario.label} must report "${scenario.expectedOutput}"`);
+        violations.push(`${contract.runnerFile}: runner negative summary feedback smoke for ${scenario.label} must report "${scenario.expectedOutput}"; observed: ${smokeOutputSnippet(result.output)}`);
       }
     } finally {
       rmSync(tempDirectory, { recursive: true, force: true });
