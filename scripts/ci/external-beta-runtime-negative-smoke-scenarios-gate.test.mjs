@@ -27,8 +27,8 @@ function assertDelegated(candidate) {
 }
 test('both original runtime negative smoke validators delegate to pure scenario factories', () => {
   assertDelegated(source);
-  assert.doesNotMatch(source, /const scenarios = \[\n    {\n      label: 'durable runtime fixture provenance'/);
-  assert.doesNotMatch(source, /const scenarios = \[\n    {\n      label: 'staging reliability fixture provenance'/);
+  assert.doesNotMatch(source, /const scenarios = \[\n {4}\{\n {6}label: 'durable runtime fixture provenance'/);
+  assert.doesNotMatch(source, /const scenarios = \[\n {4}\{\n {6}label: 'staging reliability fixture provenance'/);
 });
 test('deleted or commented runtime scenario call fails closed', () => {
   for (const [, factory] of cases) {
