@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
@@ -93,5 +94,35 @@ test('fingerprints backup membership and validation order independently', () => 
   assert.notEqual(
     base.restoreValidationContractHash,
     reorderedValidation.restoreValidationContractHash,
+  );
+});
+
+test('reader value assessment operational state is backed up and restore-validated', () => {
+  const contract = JSON.parse(readFileSync(
+    new URL('../../ops/recovery/backup-restore-contract.json', import.meta.url),
+    'utf8',
+  ));
+  const table = 'reader_value_assessments';
+  const query = `select count(*) from ${table}`;
+
+  assert.ok(contract.backupIncludes.includes(table));
+  assert.ok(contract.operationalStateTables.includes(table));
+  assert.ok(contract.restoreValidationQueries.includes(query));
+  const compiled = compileBackupRestoreDrillContract(contract);
+  assert.ok(compiled.restoreValidationTables.includes(table));
+
+  assert.throws(
+    () => compileBackupRestoreDrillContract({
+      ...contract,
+      backupIncludes: contract.backupIncludes.filter((item) => item !== table),
+    }),
+    /restore validation table is not backed up: reader_value_assessments/,
+  );
+  assert.throws(
+    () => compileBackupRestoreDrillContract({
+      ...contract,
+      restoreValidationQueries: contract.restoreValidationQueries.filter((item) => item !== query),
+    }),
+    /operational table has no restore validation query: reader_value_assessments/,
   );
 });
