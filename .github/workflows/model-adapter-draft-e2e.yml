@@ -14,6 +14,10 @@ on:
 permissions:
   contents: read
 
+# Same synthetic local-only DSN as the existing pull-request workflow.
+env:
+  DATABASE_URL: postgresql://social_monitor_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_ci
+
 concurrency:
   group: model-adapter-draft-e2e-${{ github.ref }}
   cancel-in-progress: true
