@@ -43,7 +43,7 @@ describe("promotion presentation runtime output trust policy", () => {
       expect(runtimePresentationValidationRejection(result, "openai-chatgpt")).toBeUndefined();
     });
 
-  it.each([
+  it.each<Record<string, string>>([
     { outputValidationStage: "schema_normalization" },
     { outputValidationStage: "json_parse", outputValidationCode: "schema_normalization_failed" },
     { presentationValidationStage: "product_contract_rejected",
