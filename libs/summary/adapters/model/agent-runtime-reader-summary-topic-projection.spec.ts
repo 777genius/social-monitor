@@ -29,7 +29,7 @@ describe("topic group projection and normalization diagnostics", () => {
     ]);
   });
 
-  it("counts missing group definitions without conflating zero recovered assignments", () => {
+  it("reports missing group definitions without inventing recovered singleton anchors", () => {
     const warnings = buildTopicNormalizationWarnings({
       raw: { warnings: null },
       parsedNodeLabels: [{ nodeId: "a", rawGroupId: READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID, semantic: { confidenceScore: 0.9 } }],
@@ -41,7 +41,6 @@ describe("topic group projection and normalization diagnostics", () => {
     });
     expect(warnings).toEqual([
       "1 semantic group definitions were recovered from canonical node assignments",
-      "1 semantic group anchor sets were recovered from shared node evidence",
     ]);
   });
 
