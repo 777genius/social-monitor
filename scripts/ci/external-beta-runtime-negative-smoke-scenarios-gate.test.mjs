@@ -45,7 +45,7 @@ test('deleted or commented runtime scenario call fails closed', () => {
 test('unreachable runtime scenario call cannot satisfy behavioral delegation', () => {
   for (const [, factory] of cases) {
     const statement = `const scenarios = ${factory}();`;
-    assert.throws(() => assertDelegated(source.replace(statement, `if (false) { ${statement} }`)), { code: 'ERR_ASSERTION' });
+    assert.throws(() => assertDelegated(source.replace(statement, `if (false) { ${statement} }`)), { name: 'ReferenceError', message: 'scenarios is not defined' });
   }
 });
 test('nested scenario factory call cannot replace the loop-bound result', () => {
