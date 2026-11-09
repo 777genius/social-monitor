@@ -1,6 +1,5 @@
 import {
   normalizeSemanticGroupId,
-  semanticGroupLabelFromId,
   retainedSemanticGroupIds,
 } from "./agent-runtime-reader-summary-topic-group-policy";
 import {
@@ -9,9 +8,7 @@ import {
   stringValue,
   optionalString,
   semanticLabelFromRaw,
-  numberValue,
 } from "./agent-runtime-reader-summary-topic-raw-decoder";
-import { recoverSemanticGroupAnchors, uniqueStrings } from "./agent-runtime-reader-summary-topic-anchor-recovery";
 import {
   READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID,
   READER_SUMMARY_TOPIC_SEMANTIC_CONFIDENCE_MIN,
@@ -21,8 +18,9 @@ import {
 import type { ReaderSummaryTopicLabelerInput } from "../../ports";
 
 
-import { evaluateTopicLabelQuality } from "../../domain/services/reader-summary-topic-map-label-quality";
 import { completeRequiredGroundedTopicCohorts } from "./agent-runtime-reader-summary-topic-cohort-completion";
+import { projectAgentRuntimeTopicGroups } from "./agent-runtime-reader-summary-topic-group-projection";
+import { buildTopicNormalizationWarnings } from "./agent-runtime-reader-summary-topic-normalization-warnings";
 
 export const normalizeAgentRuntimeReaderSummaryTopicLabelPlan = (
   raw: Record<string, unknown>,
@@ -95,102 +93,13 @@ export const normalizeAgentRuntimeReaderSummaryTopicLabelPlan = (
     new Map(parsedNodeLabels.map((label) => [label.nodeId, label.groupId])),
   );
   const nodeLabels = recovery.nodeLabels;
-  const finalGroupIds = new Set(
-    nodeLabels
-      .map((label) => label.groupId)
-      .filter(
-        (groupId): groupId is string =>
-          groupId !== undefined &&
-          groupId !== READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID,
-      ),
-  );
-  const groups = [...finalGroupIds].map((id) => {
-    const group = groupRecords.get(id);
-    const proposedLabel = group === undefined
-      ? semanticGroupLabelFromId(id) : stringValue(group.label);
-    const explicitAnchors =
-      group === undefined ? [] : readStringArray(group.semanticAnchors);
-    const recoveredAnchors = recoverSemanticGroupAnchors({
-      groupId: id,
-      nodeLabels,
-      candidates,
-    });
-
-    return {
-      id,
-      label: evaluateTopicLabelQuality(proposedLabel).accepted
-        ? proposedLabel : recovery.displayByGroup.get(id) ?? proposedLabel,
-      recoveredDisplayLabel: recovery.displayByGroup.get(id),
-      semanticAnchors: uniqueStrings([
-        ...explicitAnchors,
-        ...(recovery.semanticAnchorsByGroup.get(id) ?? []),
-        ...recoveredAnchors,
-        semanticGroupLabelFromId(id),
-      ]).slice(0, 8),
-      nodeIds: nodeLabels
-        .filter((label) => label.groupId === id)
-        .map((label) => label.nodeId),
-      confidenceScore:
-        group === undefined ? 0.5 : numberValue(group.confidenceScore),
-      rationale:
-        group === undefined
-          ? "Recovered from consistent node group assignments"
-          : optionalString(group.rationale),
-    };
-  });
-  const recoveredGroupCount = [...finalGroupIds].filter(
-    (groupId) => !groupRecords.has(groupId),
-  ).length;
-  const recoveredAnchorGroupCount = groups.filter((group) => {
-    const explicit = readStringArray(
-      groupRecords.get(group.id)?.semanticAnchors,
-    );
-
-    return explicit.length < 2 && group.semanticAnchors.length >= 2;
-  }).length;
-  const normalizedAwayCount = nodeLabels.filter(
-    (label) =>
-      label.groupId === READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID &&
-      parsedNodeLabels.find((candidate) => candidate.nodeId === label.nodeId)
-        ?.rawGroupId !== READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID,
-  ).length;
-  const lowConfidenceCount = parsedNodeLabels.filter(
-    (label) =>
-      label.semantic.confidenceScore <
-      READER_SUMMARY_TOPIC_SEMANTIC_CONFIDENCE_MIN,
-  ).length;
-
+  const { groups, finalGroupIds } = projectAgentRuntimeTopicGroups(recovery, candidates, groupRecords);
   return {
     nodeLabels,
     groups,
-    warnings: [
-      ...readStringArray(raw.warnings),
-      ...(lowConfidenceCount > 0
-        ? [
-            `${lowConfidenceCount} low-confidence topic assignments were kept ungrouped`,
-          ]
-        : []),
-      ...(normalizedAwayCount > 0
-        ? [
-            `${normalizedAwayCount} topic assignments exceeded the semantic group contract and were marked ungrouped`,
-          ]
-        : []),
-      ...(recoveredGroupCount > 0
-        ? [
-            `${recoveredGroupCount} semantic group definitions were recovered from canonical node assignments`,
-          ]
-        : []),
-      ...(recoveredAnchorGroupCount > 0
-        ? [
-            `${recoveredAnchorGroupCount} semantic group anchor sets were recovered from shared node evidence`,
-          ]
-        : []),
-      ...(recovery.recoveredNodeCount > 0
-        ? [
-            `${recovery.recoveredNodeCount} ungrouped topic assignments were recovered from shared grounded anchors`,
-          ]
-        : []),
-    ],
+    warnings: buildTopicNormalizationWarnings({
+      raw, parsedNodeLabels, nodeLabels, groups, finalGroupIds, groupRecords, recovery,
+    }),
   };
 };
 
