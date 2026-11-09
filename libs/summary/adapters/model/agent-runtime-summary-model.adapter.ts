@@ -1,5 +1,9 @@
 import { buildAgentRuntimeSummaryTaskCommand } from "./agent-runtime-summary-task-command";
 import {
+  assertAgentRuntimeSummaryWithinBudget,
+  estimateAgentRuntimeSummaryUsage,
+} from "./agent-runtime-summary-budget-policy";
+import {
   defaultAgentRuntimeSummaryModel,
   type AgentRuntimeSummaryModelAdapterOptions,
 } from "./agent-runtime-summary-options";
@@ -20,14 +24,12 @@ import type {
   SummaryModelRoute,
   SummaryModelValidationResult,
 } from "../../ports";
-import { buildPromptPayload } from "./openai-responses-summary-prompt";
 import { normalizeOpenAiSummaryDraft } from "./openai-responses-summary-draft-normalizer";
 import {
   parseOpenAiSummaryJsonObject,
 } from "./openai-responses-summary-response-parser";
 import { readerSummaryRouteControls } from "./active-reader-summary-generation-profile";
 import {
-  AgentRuntimeModelProviderError,
   classifyAgentRuntimeError,
   nonEmptyOrFallback,
   positiveIntegerOrFallback,
@@ -92,19 +94,7 @@ export class AgentRuntimeSummaryModelAdapter implements SummaryModelPort {
     const route = this.buildRoute();
     const estimate = this.estimate(input, route);
 
-    if (
-      estimate.inputTokens > policy.maxInputTokens ||
-      estimate.outputTokens > policy.maxOutputTokens ||
-      estimate.estimatedCostUsd > policy.maxEstimatedCostUsd ||
-      estimate.inputTokens + estimate.outputTokens > budget.remainingTokens ||
-      estimate.estimatedCostUsd > budget.remainingCostUsd
-    ) {
-      throw new AgentRuntimeModelProviderError({
-        kind: "budget_exceeded",
-        retryable: false,
-        message: "Summary model budget exceeded",
-      });
-    }
+    assertAgentRuntimeSummaryWithinBudget(estimate, policy, budget);
 
     return route;
   }
@@ -115,22 +105,7 @@ export class AgentRuntimeSummaryModelAdapter implements SummaryModelPort {
   ): SummaryModelEstimate {
     void selectedRoute;
 
-    const inputTokens = Math.ceil(
-      buildPromptPayload(input).length / this.inputTokenDivisor,
-    );
-    const outputTokens =
-      input.evidence.items.length === 0
-        ? 96
-        : Math.min(
-            this.maxOutputTokens,
-            Math.max(256, input.policy.maxKeyPoints * 220),
-          );
-
-    return {
-      inputTokens,
-      outputTokens,
-      estimatedCostUsd: 0,
-    };
+    return estimateAgentRuntimeSummaryUsage(input, this.inputTokenDivisor, this.maxOutputTokens);
   }
 
   async summarize(
