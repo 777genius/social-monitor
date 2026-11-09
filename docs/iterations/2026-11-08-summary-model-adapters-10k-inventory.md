@@ -361,3 +361,13 @@ The prior candidate ledger was **3,374 / 37 originals**. Source-identity-only pr
 | **Cumulative** | **40 unique pinned original files** | Previous 39/3,513 + 26; review/testing still pending | **3,539 / 10,000 provisional** |
 
 The audit excludes new wrapper invocation statements, edits required for new function parameters, unmatched lines, blank/comments/imports/braces/types/tests. Pure relocation alone is not accepted; reviewers must validate the per-candidate trust boundary and compare errors/cleanup behavior on the exact final code. The new policy and focused spec are individually under the hard 1000LOC cap. Exact code-head Draft CI `#42610479533` was queued after the second code commit; do not count the superseded `#42610397846` (cancelled). Ready 20/20 (six PG18 shards), full Jest/E2E, reviewers and main reconciliation are still outstanding. Draft/no merge/deploy and leave #620/#663/#664 untouched.
+
+### Promotion presentation task command source audit — 2026-11-09
+
+| Pinned original | Original selected implementation lines (exact match to new task-command) | Distinct original candidate count |
+|---|---|---:|
+| `agent-runtime-promotion-presentation-v3.builder.ts`, immutable blob `fe928ee3957e2e1be1f1227b48ad819f870eddb9` | `124–126,128,132–138,145–148,150–154,158–161,163–165,172`, after excluding punctuation and non-behavior-only wrappers | **28** |
+| **Same original file as earlier result policy**, not an additional source | Earlier 26 matched lines 192–236 do not intersect 124–172 | **54 total candidate statements in this original** |
+| **Running source ledger** | Previous 3,539 across 40 original sources; +28 original statements, **not** +1 original source | **3,567 / 10,000 provisional** |
+
+Single-PR code commit `77052d0909f168598f67665465fb0f861b6381ea`: the builder shrank from 253 to 200 physical lines and a 97-line task-command policy and 80-line spec were added. **Do not count physical movement or tests as original implementation LOC.** The task command owns immutable provider wire representation; the adapter still holds credentials/route selection, retry/deadline and attestation. Tests are authored but locally unexecuted, exact code-head Draft `#42611105522` is not Ready 20/20, external approvals missing. Keep existing PR Draft; no merge/deploy or changes to #620/#663/#664.
