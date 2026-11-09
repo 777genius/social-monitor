@@ -43,7 +43,4 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=4096
         run: |
           set -euo pipefail
-          npx jest --config jest.config.ts --runInBand --runTestsByPath \\
-            libs/summary/adapters/model/openai-responses-reader-summary-adaptive-evidence.spec.ts \\
-            libs/summary/adapters/model/openai-responses-reader-summary-story-normalizer.spec.ts \\
-            libs/summary/adapters/model/openai-responses-reader-summary-story-input.spec.ts
+          npx jest --config jest.config.ts --runInBand --runTestsByPath libs/summary/adapters/model/openai-responses-reader-summary-adaptive-evidence.spec.ts libs/summary/adapters/model/openai-responses-reader-summary-story-normalizer.spec.ts libs/summary/adapters/model/openai-responses-reader-summary-story-input.spec.ts
