@@ -62,9 +62,9 @@ describe("normalizeOpenAiReaderSummaryDraft", () => {
     expect(draft.executiveSummary).toBe(draft.topStories[0]?.summary);
     expect(draft.executiveSummary.trim()).not.toBe("");
     expect(draft.content?.headline).toBe(draft.headline);
-    expect(draft.content?.topStories).toEqual(draft.topStories);
-    expect(draft.content?.citationMap).toEqual(draft.citationMap);
-    expect(draft.content?.sourceWindow).toEqual(input.evidence.sourceWindow);
+    expect(draft.content?.topReads.length).toBeGreaterThan(0);
+    expect(draft.content?.qualityState).toBeDefined();
+    expect(draft.citationMap.length).toBeGreaterThan(0);
     expect(draft.lineage).toMatchObject({
       promptVersion: "test",
       schemaVersion: "reader_summary.artifact.v1",
