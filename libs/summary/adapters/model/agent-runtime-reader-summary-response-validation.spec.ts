@@ -34,7 +34,7 @@ describe("reader summary draft and agent-runtime response trust", () => {
 
   it("rejects missing headline and executive summary before checking the route", () => {
     const base = attempt();
-    invalid({ ...base, route: { ...base.route, schemaVersion: "wrong" },
+    invalid({ ...base, route: { ...base.route, schemaVersion: "wrong" as typeof base.route.schemaVersion },
       draft: { ...base.draft, headline: "" } },
     "Reader summary draft must include headline and executive summary");
     invalid({ ...base, draft: { ...base.draft, executiveSummary: "  " } },
@@ -63,7 +63,7 @@ describe("reader summary draft and agent-runtime response trust", () => {
 
   it("rejects schema and provider route spoofing without retry", () => {
     const base = attempt();
-    invalid({ ...base, route: { ...base.route, schemaVersion: "wrong" } },
+    invalid({ ...base, route: { ...base.route, schemaVersion: "wrong" as typeof base.route.schemaVersion } },
       "Unsupported reader summary schema version");
     invalid({ ...base, route: { ...base.route, provider: "unknown" as typeof base.route.provider } },
       "Unexpected reader summary provider route");

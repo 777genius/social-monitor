@@ -1,4 +1,4 @@
-# Temporary exact-code focused contract check for PR #665; remove after result.
+# Temporary exact-code focused contract check for PR #665; delete after success.
 name: PR665 reader summary trust split
 on:
   push:
