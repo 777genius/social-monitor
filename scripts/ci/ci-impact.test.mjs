@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -68,5 +68,33 @@ test("real Git diff treats moved docs into source as full", () => {
     assert.equal(changedPaths(head, base, cwd), null);
   } finally {
     rmSync(cwd, {recursive:true, force:true});
+  }
+});
+
+test("changed documentation mode or symlink cannot enter light PR lane", (t) => {
+  if (process.platform === "win32") return t.skip("POSIX file-mode proof");
+  const cwd = mkdtempSync(join(tmpdir(), "social-ci-modes-"));
+  const git = (...args) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" }).trim();
+  const commit = (message) => {
+    git("add", "-A");
+    git("-c", "user.name=CI", "-c", "user.email=ci@example.invalid", "commit", "-q", "-m", message);
+    return git("rev-parse", "HEAD");
+  };
+  try {
+    git("init", "-q");
+    mkdirSync(join(cwd, "docs/plans"), { recursive: true });
+    const file = join(cwd, "docs/plans/proof.md");
+    writeFileSync(file, "Regular plan\n");
+    const base = commit("regular plan");
+    chmodSync(file, 0o755);
+    const executable = commit("executable plan");
+    assert.equal(changedPaths(base, executable, cwd), null);
+    chmodSync(file, 0o644);
+    rmSync(file);
+    symlinkSync("../guide.md", file);
+    const linked = commit("symlinked plan");
+    assert.equal(changedPaths(base, linked, cwd), null);
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
   }
 });
