@@ -7,7 +7,6 @@ const A: typeof import('./hetzner-release-authority.mjs') =
 const sha = 'a'.repeat(40), other = 'b'.repeat(40), runId = '123';
 type Row = Record<string, unknown>;
 const names = [
-  'CI impact selection',
   'Static architecture and quality', 'Security and public contracts',
   'Backend unit shard 1/6', 'Backend unit shard 2/6',
   'Backend unit shard 3/6', 'Backend unit shard 4/6',
@@ -58,11 +57,11 @@ function fixture() {
 const code = (wanted: string) => (error: unknown): boolean =>
   error instanceof A.AuthorityError && error.code === wanted;
 
-test('public API-shaped main push with all twenty-one successful jobs becomes ready', async () => {
+test('public API-shaped main push with all twenty successful jobs becomes ready', async () => {
   const f = fixture(), result = await A.observeAuthority(f.get, runId);
   assert.equal(result.phase, 'ready');
   if (result.phase !== 'ready') assert.fail('qualified main must be ready');
-  assert.equal(result.authority.jobs.length, 21);
+  assert.equal(result.authority.jobs.length, 20);
   assert.equal(result.authority.attempt, 2);
   assert.equal(result.authority.artifact, '50');
   assert.equal(f.calls.filter(path => path === 'actions/runs/123').length, 2);
