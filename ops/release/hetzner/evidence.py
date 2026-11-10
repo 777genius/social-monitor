@@ -4,6 +4,8 @@ import time
 from prisma_history import summarize, timestamp
 from contract import DIGEST, digest, fresh, require
 
+WORKER_README = 'apps/agent-runtime/README.md'
+
 
 def compatibility(evidence, revision, candidate):
     require(evidence.get('production_revision') == revision
@@ -16,7 +18,7 @@ def compatibility(evidence, revision, candidate):
     denied = ('prisma/', 'apps/intelligence-worker/', 'apps/ingestion-worker/',
               'apps/agent-runtime/', 'apps/x-collector/', 'libs/agent-runtime/', 'ops/compose/')
     def sensitive(path):
-        if path.startswith('docs/'):
+        if path.startswith('docs/') or path == WORKER_README:
             return False
         leaf = path.rsplit('/', 1)[-1]
         return path.startswith(denied) or leaf == 'schema.prisma' or '/prisma/migrations/' in path \
