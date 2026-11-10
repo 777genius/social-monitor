@@ -12,7 +12,7 @@ const groundedFixture = (fallbacks: readonly string[] = ["Orion Beacon", "Orion 
   if (cohort === undefined) throw new Error("Expected a grounded cohort");
   const nodeLabels = normalizeIntegrityFixture(fixture).nodeLabels;
   const candidateById = new Map(fixture.candidates.map((candidate) => [candidate.nodeId, candidate] as const));
-  const assignedGroupByNodeId = new Map(fixture.candidates.map((candidate) => [candidate.nodeId, ungrouped] as const));
+  const assignedGroupByNodeId = new Map<string, string>(fixture.candidates.map((candidate) => [candidate.nodeId, ungrouped]));
   return { fixture, cohort, nodeLabels, candidateById, assignedGroupByNodeId };
 };
 
