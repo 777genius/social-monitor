@@ -2,8 +2,10 @@ import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentRuntimeClientPort, AgentRuntimeTaskCommand } from "../../ports";
+import { CryptoIdGenerator } from "@social-monitor/shared-kernel";
 import { withReaderSummaryUsageLog } from "./reader-summary-usage-log";
 import { createSummaryAgentRuntimeClient } from "./reader-summary-agent-runtime-transport";
+import { createReaderSummaryUsageScope } from "./reader-summary-usage-scope";
 
 describe("reader summary usage log", () => {
   const directory = mkdtempSync(join(tmpdir(), "summary-usage-"));
@@ -73,5 +75,24 @@ describe("reader summary usage log", () => {
       await expect(withReaderSummaryUsageLog(client, evidence, "run-3", brokenClock).runTask(command))
         .resolves.toMatchObject({ status: "completed" });
     } finally { stderr.mockRestore(); }
+  });
+
+  it("keeps concurrent job dates and execution ids isolated", async () => {
+    const file = join(directory, "concurrent");
+    const raw = { runTask: jest.fn().mockImplementation(async () => {
+      await new Promise((resolve) => setImmediate(resolve));
+      return { status: "completed", warnings: [] };
+    }), checkHealth: jest.fn() } satisfies AgentRuntimeClientPort;
+    const client = withReaderSummaryUsageLog(raw, file, "process-run", clock);
+    const scope = createReaderSummaryUsageScope(new CryptoIdGenerator());
+    await Promise.all(["2026-11-01", "2026-11-02"].map((date) =>
+      scope.run({ jobId: `job-${date}`, periodStartedAt: `${date}T00:00:00Z` },
+        () => client.runTask(command))));
+    const records = readFileSync(`${file}.usage.jsonl`, "utf8").trim().split("\n")
+      .map((line) => JSON.parse(line));
+    expect(records.map(({ jobId, targetDate }) => [jobId, targetDate]).sort()).toEqual([
+      ["job-2026-11-01", "2026-11-01"], ["job-2026-11-02", "2026-11-02"],
+    ]);
+    expect(records[0].runId).not.toBe(records[1].runId);
   });
 });

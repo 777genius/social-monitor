@@ -43,8 +43,11 @@ model, effort, status, duration, and token counts when returned by the runtime.
 It never includes prompts, outputs, account IDs or credentials. Missing usage
 or cache counts are null, not zero. A failed log write is reported on stderr
 but does not change the result of a model call.
-The V3 intelligence worker does not currently set this evidence path, so these
-capture logs do not account for its summary tasks.
+The V3 worker overlay mounts a dedicated host directory at
+`/var/lib/social-monitor/usage` and writes `worker.usage.jsonl` there. Create
+the host directory with write access for the worker's UID before deploying.
+The file records each execution's job and run identifiers and the summary's
+period start; it does not include Jev's separate scoring usage.
 
 To aggregate one or more retained logs from a checkout with dependencies:
 
@@ -52,10 +55,12 @@ To aggregate one or more retained logs from a checkout with dependencies:
 npm run report:reader-summary-usage -- /path/to/*.usage.jsonl
 ```
 
-The report groups by target date, stage, model and effort. It counts calls and
-those with unreported usage. `estimatedApiUsd` is an approximate standard
+The report groups by job, execution, target date, stage, model and effort. It
+counts calls, failures and those with unreported usage. `estimatedApiUsd` is an approximate standard
 short-context API equivalent using the dated prices in the script; unknown
 cache is treated as uncached and unknown prices or long contexts are counted
 as unpriced. It is not a subscription invoice and excludes cache-write and
 service-tier costs. Older runs cannot be reconstructed from this log, and
 model usage never returned by a provider remains unavailable.
+JSONL is diagnostic accounting, not a billing ledger: an interrupted write can
+lose a record, and operators must manage retention and disk space.

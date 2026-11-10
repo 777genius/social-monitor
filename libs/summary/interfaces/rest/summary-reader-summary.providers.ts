@@ -37,6 +37,7 @@ import { AgentRuntimeReaderSummaryTopicLabeler } from "../../adapters/model/agen
 import { AgentRuntimeReaderSummaryTopicRelationVerifier } from "../../adapters/model/agent-runtime-reader-summary-topic-relation-verifier.adapter";
 import { DeterministicReaderSummaryModelAdapter } from "../../adapters/model/deterministic-reader-summary-model.adapter";
 import { MeteredReaderSummaryModelAdapter } from "../../adapters/model/metered-reader-summary-model.adapter";
+import { createReaderSummaryUsageScope } from "../../adapters/composition/reader-summary-usage-scope";
 import {
   OpenAiResponsesReaderSummaryModelAdapter,
   type OpenAiResponsesReaderSummaryModelAdapterOptions,
@@ -118,7 +119,6 @@ import { summaryReaderSummaryPersistenceProviders } from "./summary-reader-summa
 import { readerSummaryPublicationProvider } from "./summary-reader-summary-publication.provider";
 import { readerSummaryV3Providers } from
   "./summary-reader-summary-v3.providers";
-
 export const summaryReaderSummaryProviders: Provider[] = [
   CryptoIdGenerator,
   SystemClock,
@@ -285,7 +285,6 @@ export const summaryReaderSummaryProviders: Provider[] = [
           : mode === "agent-runtime"
             ? agentRuntimeReaderSummaryModel
             : deterministicReaderSummaryModel;
-
       return new MeteredReaderSummaryModelAdapter(selectedModel, metrics);
     },
     inject: [
@@ -380,6 +379,9 @@ export const summaryReaderSummaryProviders: Provider[] = [
         undefined,
         v3Preflight,
         v3Promotion,
+        undefined,
+        undefined,
+        createReaderSummaryUsageScope(new CryptoIdGenerator()),
       ),
     inject: [
       READER_SUMMARY_JOB_REPOSITORY,
@@ -473,7 +475,6 @@ export const summaryReaderSummaryProviders: Provider[] = [
     inject: [READER_SUMMARY_JOB_REPOSITORY, READER_SUMMARY_ARTIFACT_REPOSITORY],
   },
 ];
-
 const requirePrismaSummaryClient = (
   client: PrismaSummaryClient | null,
 ): PrismaSummaryClient => {
@@ -482,10 +483,8 @@ const requirePrismaSummaryClient = (
       "Prisma summary client is required when SUMMARY_PERSISTENCE=prisma",
     );
   }
-
   return client;
 };
-
 const requireRabbitMqQueueChannel = (
   channel: RabbitMqQueueChannelPort | null,
 ): RabbitMqQueueChannelPort => {
@@ -494,6 +493,5 @@ const requireRabbitMqQueueChannel = (
       "RabbitMQ queue channel is required when SUMMARY_JOB_QUEUE_MODE=rabbitmq",
     );
   }
-
   return channel;
 };

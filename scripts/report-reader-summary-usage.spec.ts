@@ -18,4 +18,14 @@ describe("reader summary usage report", () => {
     expect(summarizeReaderSummaryUsage([JSON.stringify(record)])[0]).toMatchObject({ unpricedCalls: 1, unknownCacheCalls: 1 });
     expect(() => summarizeReaderSummaryUsage([JSON.stringify({ ...record, cachedInputTokens: 3 })])).toThrow("Invalid usage token counts");
   });
+  it("keeps separate executions of the same job separate", () => {
+    const record = { ...common, jobId: "job-1", inputTokens: null, outputTokens: null,
+      cachedInputTokens: null, usageSource: "unavailable", status: "error" };
+    const results = summarizeReaderSummaryUsage([JSON.stringify({ ...record, runId: "one" }),
+      JSON.stringify({ ...record, runId: "two" })]);
+    expect(results.map(({ jobId, runId }) => ({ jobId, runId }))).toEqual([
+      { jobId: "job-1", runId: "one" }, { jobId: "job-1", runId: "two" },
+    ]);
+    expect(results[0]).toMatchObject({ failedCalls: 1, unknownUsage: 1 });
+  });
 });

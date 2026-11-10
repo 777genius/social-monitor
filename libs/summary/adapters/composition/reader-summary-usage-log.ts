@@ -1,6 +1,7 @@
 import { appendFileSync, closeSync, constants, openSync } from "node:fs";
 import type { Clock } from "@social-monitor/shared-kernel";
 import type { AgentRuntimeClientPort, AgentRuntimeTaskCommand, AgentRuntimeTaskResult } from "../../ports";
+import { currentReaderSummaryUsage } from "./reader-summary-usage-scope";
 
 /** Record metadata only: prompts, provider output and credentials never enter this log. */
 export const withReaderSummaryUsageLog = (
@@ -11,9 +12,11 @@ export const withReaderSummaryUsageLog = (
   const record = (command: AgentRuntimeTaskCommand, started: number, result?: AgentRuntimeTaskResult): void => {
     try {
       const usage = result?.usage;
+      const context = currentReaderSummaryUsage();
       const item = {
-        version: 1, runId: safeIdentity(runId), timestamp: clock.now().toISOString(),
-        targetDate: /^(\d{4}-\d{2}-\d{2})T/u.exec(periodStart ?? "")?.[1] ??
+        version: 1, runId: safeIdentity(context?.runId ?? runId), jobId: safeIdentity(context?.jobId),
+        timestamp: clock.now().toISOString(),
+        targetDate: /^(\d{4}-\d{2}-\d{2})T/u.exec(context?.periodStartedAt ?? periodStart ?? "")?.[1] ??
           /durable-reader-summary-(\d{4}-\d{2}-\d{2})/u.exec(evidencePath)?.[1] ?? null,
         requestId: safeIdentity(command.requestId),
         stage: safeIdentity(command.purpose),
