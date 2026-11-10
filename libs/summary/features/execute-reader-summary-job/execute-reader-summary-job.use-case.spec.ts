@@ -38,7 +38,7 @@ import type {
   UserSummaryPreferenceReaderPort,
 } from "../../ports";
 import { ExecuteReaderSummaryJobUseCase } from "./execute-reader-summary-job.use-case";
-import { currentReaderSummaryUsage, readerSummaryUsageScope } from "../../adapters/composition/reader-summary-usage-scope";
+import type { ReaderSummaryUsageContext } from "../../application/contracts/reader-summary-usage-scope";
 import {
   NOOP_READER_SUMMARY_PROMOTION_METRICS,
   readerSummaryPromotionControl,
@@ -85,8 +85,9 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       status: "running", startedAt: now, preparationReadyAt: now,
       preparationManifest: manifest });
     await jobs.save(running);
+    let usageContext: ReaderSummaryUsageContext | undefined;
     const markProviderStarted = jest.fn(async () => {
-      expect(currentReaderSummaryUsage()).toMatchObject({ jobId: "v3-fence-test",
+      expect(usageContext).toMatchObject({ jobId: "v3-fence-test",
         periodStartedAt: "2026-06-26T00:00:00.000Z" });
       return false;
     });
@@ -100,7 +101,7 @@ describe("ExecuteReaderSummaryJobUseCase", () => {
       { advance: async () => ({ kind: "claimed" as const, job: running,
         manifest }), markProviderStarted },
       { build: promotionBuild },
-      undefined, undefined, readerSummaryUsageScope,
+      undefined, undefined, { run: (context, action) => { usageContext = context; return action(); } },
     ).execute({ tenantId: requested.toSnapshot().tenantId,
       workspaceId: requested.toSnapshot().workspaceId,
       readerSummaryJobId: requested.toSnapshot().id });
