@@ -54,6 +54,7 @@ describe("reader summary agent-runtime transport", () => {
       AGENT_RUNTIME_READER_SUMMARY_MODEL: undefined,
       AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: undefined });
     const model = settings.AGENT_RUNTIME_GATEWAY_LLM_MODEL;
+    if (!model) throw new Error("Summary model setting is missing");
     const effort = codexGatewayReaderSummaryReasoningEffort(model);
     expect(effort).toBeDefined();
     expect(resolveGatewayLlmTransportConfig(env).route).toMatchObject({
