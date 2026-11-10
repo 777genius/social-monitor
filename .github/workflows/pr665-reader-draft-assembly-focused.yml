@@ -6,6 +6,9 @@ on:
       - refactor/summary-model-adapters-10k-20261108
     paths:
       - .github/workflows/pr665-reader-draft-assembly-focused.yml
+      - libs/summary/adapters/model/openai-responses-reader-summary-draft-assembly.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-draft-normalizer.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-draft-normalizer.spec.ts
   workflow_dispatch:
 
 permissions:
