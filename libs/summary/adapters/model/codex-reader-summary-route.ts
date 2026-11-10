@@ -18,10 +18,10 @@ export type CodexReaderSummaryRoute = {
  * newer model routes run only behind the account-gateway Codex profile.
  */
 export const defaultCodexGatewayReaderSummaryRoute: CodexReaderSummaryRoute =
-  Object.freeze({ model: "gpt-6.1-sol", reasoningEffort: "low" });
+  Object.freeze({ model: "gpt-6.1-terra", reasoningEffort: "medium" });
 export const codexGatewayReaderSummaryRoutes: readonly CodexReaderSummaryRoute[] = Object.freeze([
   defaultCodexGatewayReaderSummaryRoute,
-  Object.freeze({ model: "gpt-6.1-terra", reasoningEffort: "medium" }),
+  Object.freeze({ model: "gpt-6.1-sol", reasoningEffort: "low" }),
   Object.freeze({ model: activeReaderSummaryModel, reasoningEffort: activeReaderSummaryReasoningEffort }),
 ]);
 

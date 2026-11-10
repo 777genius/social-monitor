@@ -332,6 +332,7 @@ describe("GatewayLlmClient", () => {
   it("serves a Codex topic label configured from env at gpt-6.1-sol/low end to end", async () => {
     const env: NodeJS.ProcessEnv = { AGENT_RUNTIME_TRANSPORT: "gateway-llm",
       AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
+      AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-6.1-sol",
       AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.6-sol",
       AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "high" };
     const output = { nodeLabels: [{ nodeId: "topic:story:codex", topicId: null,

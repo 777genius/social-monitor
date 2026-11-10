@@ -22,7 +22,7 @@ describe("source assessment selected transport", () => {
     const connect = jest.spyOn(GrpcAgentRuntimeClient, "connect");
     const runtime = createSourceAssessmentRuntime({ env: gatewayEnv, clock });
     expect(runtime.client).toBeInstanceOf(GatewayLlmClient);
-    expect(runtime).toMatchObject({ model: "gpt-6.1-sol", modelBackend: "openai-chatgpt", reasoningEffort: "low",
+    expect(runtime).toMatchObject({ model: "gpt-6.1-terra", modelBackend: "openai-chatgpt", reasoningEffort: "medium",
       totalTimeoutMs: 600_000, batchTimeoutMs: 300_000 });
     expect(read).toHaveBeenCalledWith("/fixture/control-token", "utf8");
     expect(connect).not.toHaveBeenCalled();

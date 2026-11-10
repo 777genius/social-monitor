@@ -22,7 +22,7 @@ describe("ordinary summary selected transport wiring", () => {
     try {
       const options = module.get<AgentRuntimeSummaryModelAdapterOptions>(SUMMARY_AGENT_RUNTIME_SUMMARY_MODEL_OPTIONS);
       expect(options.client).toBe(client);
-      expect(options).toMatchObject({ model: "gpt-6.1-sol", modelBackend: "openai-chatgpt", reasoningEffort: "low" });
+      expect(options).toMatchObject({ model: "gpt-6.1-terra", modelBackend: "openai-chatgpt", reasoningEffort: "medium" });
     } finally { await module.close(); }
   });
 
