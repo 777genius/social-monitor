@@ -244,6 +244,9 @@ class Controller:
         return receipt
 
     def exclusive(self, key):
+        for other in (self.state / 'cohort' / 'transactions').glob('*.json'):
+            same = key.startswith('cohort-') and other.name == key[len('cohort-'):] + '.json'
+            require(same or read_json(other).get('outcome') in ('activated', 'rolled-back'), 'unfinished-cohort-release')
         for other in (self.state / 'backend' / 'transactions').glob('*.json'):
             require(key.startswith('backend-') or read_json(other).get('outcome') is not None,
                     'unfinished-backend-release')
