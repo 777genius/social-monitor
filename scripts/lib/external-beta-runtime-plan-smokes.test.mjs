@@ -24,7 +24,7 @@ function harness({ type = 'local', planOverride, commandOverride, handoffOutput 
       if (commandOverride) return commandOverride(binary, args, options);
       if (args.includes('--plan')) {
         const job = args.at(-1);
-        const plan = structuredClone(type === 'local' ? localPlan : bundlePlan);
+        const plan = JSON.parse(JSON.stringify(type === 'local' ? localPlan : bundlePlan));
         return JSON.stringify(planOverride ? planOverride(job, plan) : plan);
       }
       return handoffOutput ?? 'BACKEND_STAGING_EVIDENCE_BUNDLE_PATH covers API_BASE_URL';
