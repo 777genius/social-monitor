@@ -110,19 +110,19 @@ describe("reader summary agent-runtime transport", () => {
         model: "openai/gpt-oss-120b" });
   });
 
-  it("resolves Codex through the gateway at gpt-6.1-sol/low by default", () => {
+  it("resolves Codex through the gateway at gpt-6.1-terra/medium by default", () => {
     const codexAccount = "8d2f6a51-3c6e-4f0b-9d7a-2b1c4e5f6a7b";
     const env = gatewayEnv({ AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
       AGENT_RUNTIME_GATEWAY_LLM_ACCOUNT_REFS: `${codexAccount},${kimiAccount}` });
     expect(resolveGatewayLlmTransportConfig(env).route).toEqual({
-      profileId: "openai-codex-oauth-responses-v1", modelBackend: "openai-chatgpt", model: "gpt-6.1-sol",
-      reasoningEffort: "low", accountRefs: [codexAccount, kimiAccount], minOutputTokens: 16_384 });
-    // Adapters take the same pair, so verifiers check gpt-6.1-sol at effort low.
+      profileId: "openai-codex-oauth-responses-v1", modelBackend: "openai-chatgpt", model: "gpt-6.1-terra",
+      reasoningEffort: "medium", accountRefs: [codexAccount, kimiAccount], minOutputTokens: 16_384 });
+    // Adapters and verifiers use the same default model and effort.
     expect(resolveReaderSummaryGenerationIdentityFromEnv(env)).toEqual({
-      provider: "codex", model: "gpt-6.1-sol", backend: "openai-chatgpt" });
+      provider: "codex", model: "gpt-6.1-terra", backend: "openai-chatgpt" });
     expect(resolveReaderSummaryDailyTaskIdentityFromEnv(env, undefined)).toEqual({
-      model: "gpt-6.1-sol", modelBackend: "openai-chatgpt" });
-    expect(resolveReaderSummaryReasoningEffortFromEnv(env)).toBe("low");
+      model: "gpt-6.1-terra", modelBackend: "openai-chatgpt" });
+    expect(resolveReaderSummaryReasoningEffortFromEnv(env)).toBe("medium");
     // The CLI transport keeps the pinned Codex identity from the same settings.
     const cliEnv = { ...env, AGENT_RUNTIME_TRANSPORT: "agent-runtime" };
     expect(resolveReaderSummaryGenerationIdentityFromEnv(cliEnv)).toEqual({
@@ -134,7 +134,7 @@ describe("reader summary agent-runtime transport", () => {
 
   it.each([
     [{ AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-6.1-sol" }, "gpt-6.1-sol", "low"],
-    [{ AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "low" }, "gpt-6.1-sol", "low"],
+    [{ AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "medium" }, "gpt-6.1-terra", "medium"],
     [{ AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-5.6-sol" }, "gpt-5.6-sol", "high"],
     [{ AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-5.6-sol", AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "high",
       AGENT_RUNTIME_GATEWAY_LLM_MAX_OUTPUT_TOKENS: "24000" }, "gpt-5.6-sol", "high"],
@@ -147,8 +147,9 @@ describe("reader summary agent-runtime transport", () => {
 
   it.each([
     ["another Codex gateway model", { AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-5.6-mini" }],
-    ["gpt-6.1-sol at another effort", { AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "high" }],
-    ["gpt-6.1-sol without reasoning", { AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "minimal" }],
+    ["gpt-6.1-terra at another effort", { AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "high" }],
+    ["gpt-6.1-terra with Sol's effort", { AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "low" }],
+    ["gpt-6.1-terra without reasoning", { AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "minimal" }],
     ["gpt-5.6-sol at another effort", { AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-5.6-sol",
       AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "low" }],
     ["an effort the Codex purposes do not admit", { AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "xhigh" }],

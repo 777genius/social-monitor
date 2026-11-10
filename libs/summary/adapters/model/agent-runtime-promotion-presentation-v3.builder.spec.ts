@@ -340,6 +340,7 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
       resolveAgentRuntimePromotionPresentationV3BuilderOptions({
         AGENT_RUNTIME_TRANSPORT: "gateway-llm",
         AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
+        AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-6.1-sol",
         AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.6-sol",
         AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "high",
       }, client));

@@ -90,10 +90,13 @@ describe("weekly gateway execution evidence", () => {
 
   it("fails closed on a partial switch or an unapproved weekly profile", () => {
     const env = { AGENT_RUNTIME_TRANSPORT: "gateway-llm", AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
+      AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-6.1-sol",
       AGENT_RUNTIME_GATEWAY_LLM_ACCOUNT_REFS: "test_account", AGENT_RUNTIME_GATEWAY_LLM_POLICY_SUBJECT_REF: "test_subject",
       AGENT_RUNTIME_GATEWAY_LLM_POLICY_REVISION: "1", AGENT_RUNTIME_GATEWAY_LLM_BINDING_REVISION: "1",
       AGENT_RUNTIME_GATEWAY_LLM_CONTROL_ORIGIN: "https://gateway.test", AGENT_RUNTIME_GATEWAY_LLM_CONTROL_TOKEN_FILE: "/test/not-read" };
     expect(resolveReaderSummaryWeeklyExecutionProfile(env)).toEqual(profile);
+    expect(resolveReaderSummaryWeeklyExecutionProfile({ ...env, AGENT_RUNTIME_GATEWAY_LLM_MODEL: "" }))
+      .toMatchObject({ model: "gpt-6.1-terra", reasoningEffort: "medium" });
     expect(() => resolveReaderSummaryWeeklyExecutionProfile({ ...env, AGENT_RUNTIME_GATEWAY_LLM_PROFILE_ID: "test_other_profile" })).toThrow("approved Codex gateway profile");
     expect(() => resolveReaderSummaryWeeklyExecutionProfile({ ...env, AGENT_RUNTIME_READER_SUMMARY_BACKEND: "" })).toThrow();
     expect(resolveReaderSummaryWeeklyExecutionProfile({ AGENT_RUNTIME_TRANSPORT: "agent-runtime" }))

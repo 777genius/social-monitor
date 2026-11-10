@@ -162,7 +162,7 @@ type GatewayServedRoute = Omit<GatewayReaderSummaryRoute, "backend"> & {
 
 /**
  * The gateway route of the configured backend. Codex runs one allowed
- * model/effort pair (default gpt-6.1-sol/low); the adapters resolve the
+ * model/effort pair (default gpt-6.1-terra/medium); the adapters resolve the
  * same pair from these settings, so the attested identity matches it.
  */
 const resolveGatewayServedRoute = (env: NodeJS.ProcessEnv): GatewayServedRoute | undefined => {

@@ -28,16 +28,16 @@ describe("AgentRuntimeSummaryModelAdapter", () => {
     const route = adapter.route(input, { preferredProvider: "agent-runtime", maxInputTokens: 12_000,
       maxOutputTokens: 4_000, maxEstimatedCostUsd: 1 }, { remainingTokens: 20_000, remainingCostUsd: 1 });
     const attempt = await adapter.summarize(input, route);
-    expect(attempt.route.model).toBe("codex:gpt-6.1-sol");
+    expect(attempt.route.model).toBe("codex:gpt-6.1-terra");
     expect(attempt.draft.headline).toBe("Backend signals are converging");
     expect(fixture.bodies).toHaveLength(1);
-    expect(fixture.bodies[0]).toMatchObject({ model: "gpt-6.1-sol", reasoning: { effort: "low" },
+    expect(fixture.bodies[0]).toMatchObject({ model: "gpt-6.1-terra", reasoning: { effort: "medium" },
       max_output_tokens: 16_384, text: { format: { type: "json_schema", strict: true } } });
   });
 
   it.each([
-    ["openai-chatgpt", undefined, "gpt-6.1-sol", "low"],
-    ["openai-chatgpt", "agent-runtime-summary", "gpt-6.1-sol", "low"],
+    ["openai-chatgpt", undefined, "gpt-6.1-terra", "medium"],
+    ["openai-chatgpt", "agent-runtime-summary", "gpt-6.1-terra", "medium"],
     ["kimi-code", undefined, "k3-256k", undefined],
   ])("binds %s summary lineage and task controls to the gateway model", async (backend, alias, model, effort) => {
     const client = new CapturingAgentRuntimeClient({ status: "completed",
