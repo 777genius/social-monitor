@@ -231,6 +231,34 @@ test('closing observations reject main/run/workflow/legacy races; stable stale m
     { phase: 'stale-main-skipped', sha, run: runId });
 });
 
+test('stale pre-upgrade CI runs skip without 21-job evidence but still close all identity races', async () => {
+  const old = fixture();
+  old.main.object = { type: 'commit', sha: other };
+  old.jobs.splice(0, 1); // Old main run legitimately lacks the new CI impact job.
+  old.artifacts.splice(0); // No stale artifact may be considered current.
+  assert.deepEqual(await A.observeAuthority(old.get, runId),
+    { phase: 'stale-main-skipped', sha, run: runId });
+  assert.equal(old.calls.some(path => path.includes('/jobs?') || path.includes('/artifacts?')), false);
+
+  for (const raced of ['main', 'run', 'workflow', 'legacy'] as const) {
+    const f = fixture();
+    f.main.object = { type: 'commit', sha: other };
+    f.jobs.splice(0, 1);
+    let observed = 0;
+    await assert.rejects(A.observeAuthority(async path => {
+      const value = await f.get(path);
+      const target = raced === 'main' ? 'git/ref/heads/main'
+        : raced === 'run' ? 'actions/runs/123'
+        : raced === 'workflow' ? 'actions/workflows/pull-request.yml'
+        : 'actions/workflows/production-deploy.yml';
+      if (path !== target || ++observed < 2) return value;
+      if (raced === 'main') return { ref: 'refs/heads/main', object: { type: 'commit', sha } };
+      if (raced === 'run') return { ...f.run, run_attempt: 3 };
+      return { ...A.object(value), id: 999 };
+    }, runId));
+  }
+});
+
 test('mode selection precedes payload access; dispatch requires exact owner/main and explicit activation', () => {
   for (const mode of [undefined, '', 'AUTO', 'unknown'])
     assert.deepEqual(A.releaseTrigger(mode, null, '', '', '', ''), { run: '', lane: 'skip' });
