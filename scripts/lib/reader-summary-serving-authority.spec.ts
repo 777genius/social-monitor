@@ -136,11 +136,15 @@ describe("reader summary current serving authority", () => {
       AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-5.6-sol" }))) {
       expect(component).toMatchObject({ physicalModel: "gpt-5.6-sol", reasoningPolicy: "high" });
     }
+    for (const component of components(await resolve({
+      AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-6.1-terra" }))) {
+      expect(component).toMatchObject({ physicalModel: "gpt-6.1-terra", reasoningPolicy: "medium" });
+    }
     for (const component of components(await resolve({ AGENT_RUNTIME_TRANSPORT: "agent-runtime" }))) {
       expect(component).toMatchObject({ physicalModel: "gpt-5.6-sol", reasoningPolicy: "high" });
     }
     await expect(resolve({ AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "high" }))
-      .rejects.toThrow(/gpt-6\.1-sol\/low, gpt-5\.6-sol\/high/u);
+      .rejects.toThrow(/gpt-6\.1-sol\/low, gpt-6\.1-terra\/medium, gpt-5\.6-sol\/high/u);
   });
 
   it("rejects an unknown generation backend", async () => {
