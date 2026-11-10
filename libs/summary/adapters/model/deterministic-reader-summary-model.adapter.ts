@@ -9,7 +9,7 @@ import type {
   ReaderSummaryModelValidationResult,
   ProviderReaderSummaryAttempt,
 } from "../../ports";
-import { buildReaderSummary, primaryReaderSummaryEvidence } from "../../domain";
+import { primaryReaderSummaryEvidence } from "../../domain";
 import {
   assertDeterministicReaderSummaryBudget,
   estimateDeterministicReaderSummaryTokens,
@@ -19,10 +19,8 @@ import {
   selectClustersForEvidence,
   selectProviderDiverseRankedEvidence,
 } from "./deterministic-reader-summary-evidence-selection";
-import { buildReaderHeadline } from "./deterministic-reader-summary-headline";
-import { buildDeterministicReaderSummaryNarrative } from "./deterministic-reader-summary-narrative";
-import { buildExecutiveSummary } from "./deterministic-reader-summary-text";
 import { buildDeterministicReaderSummaryStoryProjection } from "./deterministic-reader-summary-story-projection";
+import { buildDeterministicReaderSummaryDocument } from "./deterministic-reader-summary-document";
 
 const route: ReaderSummaryModelRoute = {
   provider: "deterministic-local",
@@ -98,7 +96,7 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
           ],
         )
       : primaryEvidence.clusters;
-    const { citationMap, topStories, interestHighlights, repeatedSignals } =
+    const projection =
       buildDeterministicReaderSummaryStoryProjection({
         input,
         citedEvidence,
@@ -107,71 +105,15 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
         firstItem,
       });
 
-    const headlineEvidence = input.evidence.editorialSlate === undefined
-      ? selectedEvidence
-      : input.evidence.editorialSlate.orderedCandidateIds.flatMap(
-          (candidateId) => {
-            const item = input.evidence.selectedEvidence.find(
-              (evidence) => evidence.feedItemId === candidateId,
-            );
-            return item === undefined ? [] : [item];
-          },
-        );
-    const headline = buildReaderHeadline(input, headlineEvidence);
-    const executiveSummary = buildExecutiveSummary(input);
-    const narrativeSections = buildDeterministicReaderSummaryNarrative({
+    return buildDeterministicReaderSummaryDocument({
       input,
-      executiveSummary,
-      citationMap,
-      topStories,
-    });
-    const draft = {
-      headline,
-      executiveSummary,
-      topStories,
-      interestHighlights,
-      repeatedSignals,
-      risksAndUnknowns: input.policy.includeRisks
-        ? [
-            {
-              description:
-                "This deterministic reader summary only uses selected primary evidence titles.",
-              citationIds: ["c1"],
-              reason: "source_limit" as const,
-            },
-          ]
-        : [],
-      citationMap,
-      qualityFlags:
-        selectedEvidence.length < 3 ? ["limited_sources" as const] : [],
-      confidence: {
-        level:
-          selectedEvidence.length < 3 ? ("low" as const) : ("medium" as const),
-        score: selectedEvidence.length < 3 ? 0.35 : 0.65,
-        rationale:
-          "Confidence is derived from selected primary evidence count in this deterministic adapter.",
-      },
+      selectedRoute,
+      selectedEvidence,
+      citedEvidence,
+      projection,
       lineage,
       usage,
-    };
-
-    const content = buildReaderSummary({
-      ...draft,
-      narrativeSections,
-      storyClusters: input.evidence.clusters,
-      sourceWindow: input.evidence.sourceWindow,
-      selectedEvidence: citedEvidence,
-      editorialSlate: input.evidence.editorialSlate,
     });
-
-    return {
-      route: selectedRoute,
-      draft: {
-        ...draft,
-        headline: content.headline,
-        content,
-      },
-    };
   }
 
   validateRawProviderResponse(

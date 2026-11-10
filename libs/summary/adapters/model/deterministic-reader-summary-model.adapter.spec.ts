@@ -317,6 +317,58 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
     expect(disabled.repeatedSignals).toEqual([]);
   });
 
+  it("keeps deterministic document risk, confidence, citation identity and headline synchronized", async () => {
+    const adapter = new DeterministicReaderSummaryModelAdapter();
+    const input = dailySynthesisReaderSummaryInput();
+    const selectedRoute = {
+      provider: "deterministic-local",
+      model: "deterministic-reader-summary-v1",
+      promptVersion: "reader_summary.prompt.v1",
+      schemaVersion: "reader_summary.artifact.v1",
+    };
+    const attempt = await adapter.generate(input, selectedRoute);
+
+    expect(attempt.draft.risksAndUnknowns).toEqual([{
+      description: "This deterministic reader summary only uses selected primary evidence titles.",
+      citationIds: ["c1"],
+      reason: "source_limit",
+    }]);
+    expect(attempt.draft.qualityFlags).toEqual([]);
+    expect(attempt.draft.confidence).toEqual({
+      level: "medium",
+      score: 0.65,
+      rationale: "Confidence is derived from selected primary evidence count in this deterministic adapter.",
+    });
+    expect(attempt.draft.content?.headline).toBe(attempt.draft.headline);
+    expect(attempt.draft.lineage.promptVersion).toBe(selectedRoute.promptVersion);
+    expect(attempt.draft.usage).toEqual(adapter.estimate(input, selectedRoute));
+    expect(attempt.draft.citationMap[0]?.feedItemId)
+      .toBe(input.evidence.selectedEvidence[0]?.feedItemId);
+  });
+
+  it("retains limited-source confidence and excludes disabled risks", async () => {
+    const adapter = new DeterministicReaderSummaryModelAdapter();
+    const original = readerSummaryInputForEvidence(
+      readerSummaryEvidence([evidenceItem("hacker-news", 1, 3)]),
+    );
+    const input: ReaderSummaryModelInput = {
+      ...original,
+      policy: { ...original.policy, includeRisks: false },
+    };
+    const selectedRoute = {
+      provider: "deterministic-local",
+      model: "deterministic-reader-summary-v1",
+      promptVersion: "reader_summary.prompt.v1",
+      schemaVersion: "reader_summary.artifact.v1",
+    };
+    const attempt = await adapter.generate(input, selectedRoute);
+
+    expect(attempt.draft.risksAndUnknowns).toEqual([]);
+    expect(attempt.draft.qualityFlags).toEqual(["limited_sources"]);
+    expect(attempt.draft.confidence).toMatchObject({ level: "low", score: 0.35 });
+    expect(attempt.draft.content?.headline).toBe(attempt.draft.headline);
+  });
+
 });
 
 const expectPublished = (
