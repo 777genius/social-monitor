@@ -18,3 +18,6 @@ Move one cohesive JSON handoff projection and five private input/artifact helper
 3. **Scope/tests:** Only five files plus this plan; dedicated positive/negative regression, stronger original source cap. Count **126 physical relocated unique legacy LOC**, not net deletion; accept only after merged and postmerge CI.
 
 Never touch independent #665 model-owner work, production #620, Hetzner SSH or concurrent PR ownership.
+
+## Exact original Draft CI finding and fix
+The first complete Draft Static CI on `3c4f3b6` exposed five pre-existing marker-gate entries that still assigned the relocated functions to the CLI runner. Do **not** remove or disable those markers: reassign exactly the five moved names to the extracted handoff module with a separate fail-closed owner-specific validation loop. Test all five mutations individually. The new extracted module and original CLI guards remain unchanged. No production behavior changes; requalify new exact HEAD on fresh natural CI.
