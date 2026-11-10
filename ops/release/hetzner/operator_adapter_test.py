@@ -352,7 +352,7 @@ class GitHubTests(unittest.TestCase):
                              for shard in job['strategy']['matrix']['shard'])
             else:
                 names.append(job['name'])
-        self.assertEqual(len(names), 21)
+        self.assertEqual(len(names), 20)
         self.assertEqual(len(set(names)), len(names))
         self.assertEqual(set(names), github.JOBS)
         run = {'id': 123, 'run_attempt': 2, 'head_sha': BINDING['sha']}
