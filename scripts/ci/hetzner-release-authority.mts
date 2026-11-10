@@ -8,7 +8,6 @@ export const SHA = /^[0-9a-f]{40}$/u;
 export const RUN = /^[1-9][0-9]{0,14}$/u;
 export const DIGEST = /^sha256:[0-9a-f]{64}$/u;
 export const JOBS = Object.freeze([
-  'CI impact selection',
   'Static architecture and quality', 'Security and public contracts',
   'Backend unit shard 1/6', 'Backend unit shard 2/6',
   'Backend unit shard 3/6', 'Backend unit shard 4/6',
