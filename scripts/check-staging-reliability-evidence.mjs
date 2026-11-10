@@ -956,19 +956,15 @@ function requireCaptureScriptWiring() {
     }
   }
 
-  const durableBackendE2eCaptureSource = readFileSync(
-    durableBackendE2eCapturePath,
-    "utf8",
-  );
-  for (const marker of [
-    "DURABLE_BACKEND_E2E_ARTIFACT_PATH",
-    "mode: 0o600",
-    "chmodSync",
+  for (const [file, markers] of [
+    [durableBackendE2eCapturePath, ["mode: 0o600", "chmodSync", "loadConfig(defaultMemoStackTimeoutMs)", 'from "./lib/durable-backend-e2e-config"']],
+    ["scripts/lib/durable-backend-e2e-config.ts", ['outputPath: requireEnv("DURABLE_BACKEND_E2E_ARTIFACT_PATH")']],
   ]) {
-    if (!durableBackendE2eCaptureSource.includes(marker)) {
-      violations.push(
-        `${durableBackendE2eCapturePath}: capture must include ${marker}`,
-      );
+    const source = readFileSync(file, "utf8");
+    for (const marker of markers) {
+      if (!source.includes(marker)) {
+        violations.push(`${file}: capture must include ${marker}`);
+      }
     }
   }
 

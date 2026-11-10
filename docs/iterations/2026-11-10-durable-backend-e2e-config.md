@@ -4,7 +4,7 @@
 
 Extract **105 unique nonblank original** configuration/type/helper lines from `scripts/capture-durable-backend-e2e-loop.ts` to `scripts/lib/durable-backend-e2e-config.ts`. This is a move, **not net deletion**. Strict cap ratchet: **2111 → 1998** physical lines. The CLI remains the orchestration, network, DB, tenant/workspace and artifact owner.
 
-Files: this plan, one CLI, one new configuration module, one focused deterministic test, `package.json` architecture test command, and the existing strict source line-cap map. No production code, model adapters (#665), release/deploy (#620), SSH, CI security skip, or runtime behavior change.
+Files: this plan, one CLI, one new configuration module, one focused deterministic test, `package.json` architecture test command, the strict source line-cap map, and the existing staging checker wiring guard. No production code, model adapters (#665), release/deploy (#620), SSH, CI security skip, or runtime behavior change.
 
 ## Extraction and compatibility
 
@@ -17,7 +17,7 @@ Files: this plan, one CLI, one new configuration module, one focused determinist
 
 1. **Dependency/SRP**: the config module owns only environment parsing and pure validation, exporting a type and one shared trim helper; the CLI continues to own side effects and lifecycle. No overbuilt factory, DI container or new abstraction layer.
 2. **Behavior/security**: data remains read at the existing top-level invocation, missing env and invalid JWT prerequisites still fail closed, and min/max numeric checks remain exact. Test-only fixture values are synthetic. No production token or URL changes.
-3. **Scope/verification**: enforce one source delegation, deterministic positive/negative tests under original `check:architecture`, unchanged canonical `check:source-line-cap` command and stricter cap. Require original Draft 3-job, Ready exact-head full 20-job E2E and API image; reviews/merge and postmerge exact-main 20/20 before counting moved LOC.
+3. **Scope/verification**: enforce one source delegation, deterministic positive/negative tests under original `check:architecture`, unchanged canonical `check:source-line-cap` command and stricter cap. The original Draft Static run #42845219766 exposed a legitimate staging checker guard still expecting the artifact env marker inside the CLI; retain a fail-closed check for the original CLI permissions/call/import and actual `requireEnv` assignment in the extracted module (checker cap 1200 → 1196). Require original Draft 3-job, Ready exact-head full 20-job E2E and API image; reviews/merge and postmerge exact-main 20/20 before counting moved LOC.
 
 Estimates: complexity **3/10**, behavior confidence **9/10 subject to exact-head E2E**, approximately 105 moved nonblank original lines plus deterministic regressions. No line padding or quota-driven edits.
 

@@ -1,0 +1,4 @@
+services:
+  jev-intelligence-worker:
+    env_file:
+      - /srv/platform/projects/social-monitor/deploy/private-api/reader-summary-model.env
