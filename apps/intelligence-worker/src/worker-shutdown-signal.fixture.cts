@@ -1,7 +1,7 @@
 /** Disposable Nest context only. No application imports, DB, queues or model calls. */
 async function runSyntheticWorkerSignalFixture(): Promise<void> {
-  const { Module } = require("@nestjs/common") as typeof import("@nestjs/common");
-  const { NestFactory } = require("@nestjs/core") as typeof import("@nestjs/core");
+  const { Module } = await import("@nestjs/common");
+  const { NestFactory } = await import("@nestjs/core");
   const event = (name: string): void => { process.stdout.write(`${name}\n`); };
   class SyntheticLoop {
     async onModuleDestroy(): Promise<void> {
