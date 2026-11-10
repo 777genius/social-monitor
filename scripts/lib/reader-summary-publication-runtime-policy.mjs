@@ -24,6 +24,7 @@ const gatewayModelId = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/u;
 const gatewayEfforts = new Set(
   ["default", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]);
 const codexGatewayOnlyRoutes = Object.freeze([
+  { model: "gpt-6.1-terra", reasoningEffort: "medium" },
   { model: "gpt-6.1-sol", reasoningEffort: "low" },
 ]);
 export const isGatewayModel = (value) => typeof value === "string" &&

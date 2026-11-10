@@ -297,6 +297,14 @@ test("gateway-only Codex models publish only through the gateway at an allowed e
   assert.equal(isPublicationRuntimeProvenance(provenance), true);
   assert.equal(isPublicationRuntimeProvenance({ ...provenance, reasoningEffort: "high",
     topicLabeler: { ...provenance.topicLabeler, reasoningEffort: "high" } }), false);
+  const terra = codexRecord();
+  Object.assign(terra.attestation, { model: "gpt-6.1-terra", reasoningEffort: "medium" });
+  terra.attestation.gateway.observedModel = "gpt-6.1-terra";
+  assert.doesNotThrow(() => validatePublicationAttestationRecord(terra, false));
+  for (const effort of ["low", "high", "default"]) {
+    terra.attestation.reasoningEffort = effort;
+    assert.throws(() => validatePublicationAttestationRecord(terra, false), /malformed or mismatched/u);
+  }
 });
 
 test("gateway model rules match the TypeScript generation profile", () => {
@@ -311,6 +319,7 @@ test("gateway model rules match the TypeScript generation profile", () => {
     [profile, '"minimal", "low", "medium", "high", "xhigh", "max", "ultra"'],
     // The gateway-only Codex pair; gpt-5.6-sol/high is the CLI identity.
     [codexRoute, '{ model: "gpt-6.1-sol", reasoningEffort: "low" }'],
+    [codexRoute, '{ model: "gpt-6.1-terra", reasoningEffort: "medium" }'],
   ]) {
     assert.ok(source.includes(shared) && policy.includes(shared), shared);
   }
