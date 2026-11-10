@@ -83,6 +83,10 @@ test('event checkout, command, environment, cancellation and branch-gate mutatio
     ['host authorization gate removed', value => { steps(value, 'activate')[6]!.if = 'always()'; }],
     ['mode gate removed before checkout', value => { delete steps(value, 'candidate')[2]!.if; }],
     ['receipt wildcard', value => { map(steps(value, 'activate')[7]!.with).path = '${{ runner.temp }}/**'; }],
+    ['automatic recovery trigger', value => { job(value, 'recover').if = 'always()'; }],
+    ['recovery command changed', value => { steps(value, 'recover')[5]!.run = 'node activate.mts'; }],
+    ['recovery concurrency removed', value => { delete job(value, 'recover').concurrency; }],
+    ['recovery write permissions', value => { map(job(value, 'recover').permissions).contents = 'write'; }],
   ];
   for (const [name, mutate] of mutations) assert.equal(accepted(changed(mutate)), false, name);
 });

@@ -370,8 +370,8 @@ test('native ineligible CLI skips every lane without GitHub token or SSH configu
   await assert.rejects(lstat(root), { code: 'ENOENT' });
 });
 
-test('guarded writes reject changed authority before transport; rollback is outside the draft', async () => {
-  let transported = 0;
+test('guarded writes bind candidates and allow only recovery of an attempted backend activation', async () => {
+  let transported = 0, artifactId = 51, mainSha = sha;
   const transport: Transport = async () => { transported++; return response({}); };
   const repo = { id: 10, name: 'social-monitor', full_name: '777genius/social-monitor',
     owner: { id: 20, login: '777genius' } };
@@ -382,20 +382,104 @@ test('guarded writes reject changed authority before transport; rollback is outs
     if (path === 'actions/runs/123') return { id: 123, workflow_id: 30, name: 'Pull request checks',
       path: '.github/workflows/pull-request.yml', status: 'completed', conclusion: 'success',
       event: 'push', head_branch: 'main', head_sha: sha, run_attempt: 2, repository: repo, head_repository: repo };
-    if (path === 'git/ref/heads/main') return { ref: 'refs/heads/main', object: { type: 'commit', sha } };
+    if (path === 'git/ref/heads/main') return { ref: 'refs/heads/main', object: { type: 'commit', sha: mainSha } };
     if (path === 'actions/workflows/production-deploy.yml') return { id: 40,
       path: '.github/workflows/production-deploy.yml', state: 'disabled_manually' };
     if (path.includes('/jobs?')) return { total_count: A.JOBS.length, jobs: A.JOBS.map((name, i) =>
       ({ id: 1000 + i, run_id: 123, run_attempt: 2, head_sha: sha, status: 'completed', conclusion: 'success', name })) };
-    if (path.includes('/artifacts?')) return { total_count: 1, artifacts: [{ id: 51,
+    if (path.includes('/artifacts?')) return { total_count: 1, artifacts: [{ id: artifactId,
       name: authority.artifactName, expired: false, size_in_bytes: 4096, digest: image,
       workflow_run: { id: 123, head_sha: sha, head_branch: 'main', repository_id: 10, head_repository_id: 10 } }] };
     throw new Error('unexpected fixture endpoint');
   };
-  const guarded = O.guardedTransport(get, authority, transport);
-  for (const wire of [`receive ${sha} ${run} ${image} ${image} 7`, `admit ${sha} ${run}`, `activate ${sha} ${run}`])
+  const currentAuthority = { ...authority, jobs: A.JOBS.map((_, i) => String(1000 + i)).sort() };
+  const guarded = O.guardedTransport(get, currentAuthority, transport);
+  for (const wire of [`receive ${sha} ${run} ${image} ${image} 7`, `admit ${sha} ${run}`, `activate ${sha} ${run}`,
+    `backend-receive ${sha} ${run} ${image} ${image} 7`, `backend-admit ${sha} ${run}`, `backend-activate ${sha} ${run}`])
     await assert.rejects(guarded(wire), /authority-changed/);
   await assert.rejects(guarded(`rollback ${sha} ${run}`), /rollback-unsupported/);
+  await assert.rejects(guarded(`backend-rollback ${sha} ${run}`), /rollback-unsupported/);
   assert.equal(transported, 0);
-  await guarded('status'); assert.equal(transported, 1);
+  await assert.rejects(guarded(`backend-activate ${'c'.repeat(40)} ${run}`), /candidate-disagreement/);
+  artifactId = 50;
+  await guarded(`backend-activate ${sha} ${run}`);
+  mainSha = 'c'.repeat(40);
+  await assert.rejects(guarded(`backend-activate ${sha} ${run}`), /stale-main-skip/);
+  await assert.rejects(guarded(`backend-rollback ${'c'.repeat(40)} ${run}`), /rollback-unsupported/);
+  await guarded(`backend-rollback ${sha} ${run}`);
+  await guarded('status'); assert.equal(transported, 3);
+});
+
+test('restarted runner can only inspect or roll back the bound backend transaction', async () => {
+  const sent: string[] = [];
+  const recovery = O.recoveryTransport(sha, run, async wire => { sent.push(wire); return response({}); });
+  await recovery('status');
+  await recovery(`backend-receipt ${sha}-${run}`);
+  await recovery(`backend-receipt ${sha}-${run}-rollback`);
+  await recovery(`backend-rollback ${sha} ${run}`);
+  for (const wire of [`backend-activate ${sha} ${run}`, `backend-admit ${sha} ${run}`,
+    `backend-rollback ${'c'.repeat(40)} ${run}`, `backend-receipt ${sha}-124`, `rollback ${sha} ${run}`]) {
+    await assert.rejects(recovery(wire), /recovery-scope/);
+  }
+  await assert.rejects(recovery(`backend-rollback ${sha} ${run}`, async function* () { yield Buffer.from('x'); }), /recovery-scope/);
+  assert.equal(sent.length, 4);
+});
+
+test('backend recovery trigger requires the repository owner and exact manual rollback identity', () => {
+  const event = { repository: { full_name: A.REPOSITORY },
+    inputs: { action: 'recover-backend', ci_run_id: run, rollback_sha: sha } };
+  const call = (mode: string, payload: unknown, name: string, actor: string, repo: string, ref: string) =>
+    O.recoveryTrigger(mode, payload, name, actor, repo, ref);
+  assert.deepEqual(call('manual', event, 'workflow_dispatch', '777genius', A.REPOSITORY, 'refs/heads/main'), { sha, run });
+  for (const args of [
+    ['preflight', event, 'workflow_dispatch', '777genius', A.REPOSITORY, 'refs/heads/main'],
+    ['manual', event, 'workflow_run', '777genius', A.REPOSITORY, 'refs/heads/main'],
+    ['manual', event, 'workflow_dispatch', 'attacker', A.REPOSITORY, 'refs/heads/main'],
+    ['manual', event, 'workflow_dispatch', '777genius', A.REPOSITORY, 'refs/heads/other'],
+    ['manual', { ...event, inputs: { ...event.inputs, rollback_sha: 'bad' } }, 'workflow_dispatch', '777genius', A.REPOSITORY, 'refs/heads/main'],
+    ['manual', { ...event, inputs: { ...event.inputs, action: 'activate' } }, 'workflow_dispatch', '777genius', A.REPOSITORY, 'refs/heads/main'],
+  ] as const) assert.throws(() => call(args[0], args[1], args[2], args[3], args[4], args[5]));
+});
+
+test('backend recovery resumes only bound rollback until a matching terminal receipt', async () => {
+  const common = { sha, ci_run_id: run, scope: ['api', 'jev-intelligence-worker'], archive_sha256: image, image_id: image,
+    previous_image_ids: { api: image, 'jev-intelligence-worker': image },
+    active_image_ids: { api: image, 'jev-intelligence-worker': image },
+    previous_revisions: { api: sha, 'jev-intelligence-worker': sha },
+    target_container_ids: { api: 'c'.repeat(64), 'jev-intelligence-worker': 'd'.repeat(64) },
+    runtime_sha256: { api: image, 'jev-intelligence-worker': image }, snapshot_sha256: image, compose_hash: image,
+    compatibility: { valid: true }, database: { valid: true }, backup: { valid: true },
+    timings: { started_at_ns: 100, finished_at_ns: 101 } };
+  let calls = 0, waits = 0;
+  const transport: Transport = async wire => {
+    assert.equal(wire, `backend-rollback ${sha} ${run}`);
+    return response(calls++ ? { ...common, schema: 'social-monitor-backend-release-receipt-v1', outcome: 'rolled-back' }
+      : { ...common, phase: 'draining' });
+  };
+  const receipt = await O.recoverBackend(transport, sha, run, async () => { waits++; });
+  assert.equal(receipt.outcome, 'rolled-back'); assert.equal(calls, 2); assert.equal(waits, 1);
+  for (const invalid of [
+    { sha, ci_run_id: run, scope: common.scope, schema: 'social-monitor-backend-release-receipt-v1', outcome: 'rolled-back' },
+    { ...common, schema: 'social-monitor-backend-release-receipt-v1', outcome: 'rolled-back', phase: 'draining' },
+    { ...common, active_image_ids: { api: 'sha256:' + 'e'.repeat(64), 'jev-intelligence-worker': image },
+      schema: 'social-monitor-backend-release-receipt-v1', outcome: 'rolled-back' },
+    { ...common, sha: 'c'.repeat(40), phase: 'draining' },
+    { ...common, phase: 'activated' },
+    { ...common, schema: 'social-monitor-backend-release-receipt-v1', outcome: 'activated' },
+  ]) await assert.rejects(O.recoverBackend(async () => response(invalid), sha, run, async () => {}));
+  await assert.rejects(O.recoverBackend(async () => response({ ...common, phase: 'starting' }), sha, run, async () => {}), /recovery-timeout/);
+});
+
+test('recovery CLI rejects untrusted dispatch before accessing host credentials', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'TEST-sm-recovery-cli-'));
+  try {
+    const path = join(root, 'event.json');
+    await writeFile(path, JSON.stringify({ repository: { full_name: A.REPOSITORY },
+      inputs: { action: 'recover-backend', ci_run_id: run, rollback_sha: sha } }));
+    const env = { GITHUB_JOB: 'recover', GITHUB_EVENT_PATH: path, HETZNER_RELEASE_MODE: 'manual',
+      GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_ACTOR: 'attacker', GITHUB_REPOSITORY: A.REPOSITORY,
+      GITHUB_REF: 'refs/heads/main', RUNNER_TEMP: root, TRUSTED_MAIN: sha };
+    await assert.rejects(O.main(['recover'], env), /recovery-trigger/);
+    assert.deepEqual(await readdir(root), ['event.json']);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
