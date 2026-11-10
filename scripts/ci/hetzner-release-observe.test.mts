@@ -420,9 +420,15 @@ test('guarded writes bind candidates and allow only recovery of an attempted bac
   const guardedFrontend = O.guardedTransport(get, currentAuthority, transport, frontend);
   await guardedFrontend(`cohort-receive-frontend ${sha} ${run}`, source);
   assert.equal(transported, 4);
-  includeFrontend = false;
+  await assert.rejects(guardedFrontend(`cohort-rollback ${sha} ${run}`), /rollback-unsupported/);
+  await guardedFrontend(`cohort-admit ${sha} ${run}`);
+  await guardedFrontend(`cohort-activate ${sha} ${run}`);
+  mainSha = 'c'.repeat(40);
+  await assert.rejects(guardedFrontend(`cohort-activate ${sha} ${run}`), /frontend-stale-main/);
+  await guardedFrontend(`cohort-rollback ${sha} ${run}`);
+  mainSha = sha; includeFrontend = false;
   await assert.rejects(guardedFrontend(`cohort-receive-frontend ${sha} ${run}`, source));
-  assert.equal(transported, 4);
+  assert.equal(transported, 7);
 });
 
 test('restarted runner can only inspect or roll back the bound backend transaction', async () => {
@@ -446,6 +452,10 @@ test('backend recovery trigger requires the repository owner and exact manual ro
   const call = (mode: string, payload: unknown, name: string, actor: string, repo: string, ref: string) =>
     O.recoveryTrigger(mode, payload, name, actor, repo, ref);
   assert.deepEqual(call('manual', event, 'workflow_dispatch', '777genius', A.REPOSITORY, 'refs/heads/main'), { sha, run });
+  const cohortEvent = { ...event, inputs: { ...event.inputs, action: 'recover-cohort' } };
+  assert.deepEqual(O.recoveryTrigger('manual', cohortEvent, 'workflow_dispatch', '777genius',
+    A.REPOSITORY, 'refs/heads/main', 'recover-cohort'), { sha, run });
+  assert.throws(() => call('manual', cohortEvent, 'workflow_dispatch', '777genius', A.REPOSITORY, 'refs/heads/main'));
   for (const args of [
     ['preflight', event, 'workflow_dispatch', '777genius', A.REPOSITORY, 'refs/heads/main'],
     ['manual', event, 'workflow_run', '777genius', A.REPOSITORY, 'refs/heads/main'],
@@ -564,6 +574,59 @@ test('frontend delivery sends exact CI ZIP and checks host proof against both ar
     assert.deepEqual(await O.sendBackendCandidate(base, backend, get, sentBackend), backendManifest);
     await assert.rejects(O.sendBackendCandidate(base, backend, get,
       async () => response({ ...backendManifest, image_id: 'sha256:' + 'f'.repeat(64) })), /backend-host-binding/);
+    const targets = ['api', 'jev-intelligence-worker', 'frontend'];
+    const previous = Object.fromEntries(targets.map((name, index) => [name, 'sha256:' + String(index + 1).repeat(64)]));
+    const active = { ...previous, api: image, 'jev-intelligence-worker': image };
+    const ids = Object.fromEntries(targets.map((name, index) => [name, String(index + 4).repeat(64)]));
+    const runtime = Object.fromEntries(targets.map(name => [name, image]));
+    const oldSources = { '/usr/share/nginx/public': '/trusted/old/public', '/usr/share/nginx/admin': '/trusted/old/admin',
+      '/run/bootstrap/verify-static-release.sh': '/trusted/old/check.sh' };
+    const desired = { '/usr/share/nginx/public': `${proof.root}/public`, '/usr/share/nginx/admin': `${proof.root}/admin`,
+      '/run/bootstrap/verify-static-release.sh': `/var/lib/social-monitor-release/cohort/verifiers/${sha}-${run}.sh` };
+    const revisions = { api: sha, 'jev-intelligence-worker': sha };
+    const admission = { ...backendManifest, frontend: proof, previous_image_ids: previous, previous_revisions: revisions,
+      previous_sources: oldSources, desired_sources: desired, desired_verifier_sha256: image,
+      runtime_sha256: runtime, snapshot_sha256: image, compose_hash: image, compatibility: { ok: true } };
+    const receipt = { schema: 'social-monitor-cohort-release-receipt-v1', sha, ci_run_id: run,
+      archive_sha256: backendManifest.archive_sha256, image_id: image, scope: targets, frontend: proof,
+      active_image_ids: active, previous_image_ids: previous, previous_revisions: revisions, target_container_ids: ids,
+      active_sources: desired, previous_sources: oldSources, active_releases: { public: sha, admin: sha },
+      active_frontend_tree_sha256: image, verifier_sha256: image, runtime_sha256: runtime,
+      snapshot_sha256: image, compose_hash: image, compatibility: { ok: true }, database: { ok: true }, backup: { ok: true },
+      outcome: 'activated', timings: { started_at_ns: 100, finished_at_ns: 101 } };
+    let polls = 0;
+    const cohortTransport: Transport = async wire => {
+      if (wire.startsWith('cohort-admit ')) return response(admission);
+      if (wire.startsWith('cohort-activate ')) return response(polls++ ? receipt :
+        { sha, ci_run_id: run, archive_sha256: backendManifest.archive_sha256, image_id: image, scope: targets, phase: 'starting' });
+      if (wire.startsWith('cohort-verify ')) return response({ verified: true, scope: targets, sha, ci_run_id: run,
+        archive_sha256: backendManifest.archive_sha256, image_id: image });
+      if (wire.startsWith('cohort-receipt ')) return response(receipt);
+      throw new Error('unexpected cohort request');
+    };
+    assert.deepEqual(await O.activateCohort(frontend, backendManifest, proof, get, cohortTransport, async () => {}), receipt);
+    assert.equal(polls, 2);
+    let unexpectedCalls = 0;
+    await assert.rejects(O.activateCohort(frontend, backendManifest,
+      { ...proof, authority: { ...proof.authority, artifact_id: '52' } }, get,
+      async () => { unexpectedCalls++; return response({}); }, async () => {}), /cohort-frontend-authority-binding/);
+    assert.equal(unexpectedCalls, 0);
+    let rollbacks = 0;
+    const rolledBack = { ...receipt, active_image_ids: previous, active_sources: oldSources, outcome: 'rolled-back' };
+    const interrupted: Transport = async wire => {
+      if (wire.startsWith('cohort-admit ')) return response(admission);
+      if (wire.startsWith('cohort-activate ')) {
+        currentMain = 'd'.repeat(40);
+        return response({ sha, ci_run_id: run, archive_sha256: backendManifest.archive_sha256,
+          image_id: image, scope: targets, phase: 'draining' });
+      }
+      if (wire.startsWith('cohort-rollback ')) { rollbacks++; return response(rolledBack); }
+      throw new Error('unexpected cohort request');
+    };
+    await assert.rejects(O.activateCohort(frontend, backendManifest, proof, get, interrupted, async () => {}),
+      /cohort-rolled-back/);
+    assert.equal(rollbacks, 1);
+    currentMain = sha;
     await assert.rejects(O.sendFrontendCandidate(frontend, candidate, get, async () => response({ ...proof,
       archive_sha256: image })), /frontend-host-binding/);
     currentMain = 'd'.repeat(40);
@@ -573,4 +636,43 @@ test('frontend delivery sends exact CI ZIP and checks host proof against both ar
     await assert.rejects(O.sendFrontendCandidate(frontend, candidate, get, transport), /frontend-transport-changed/);
     assert.equal(calls, 1);
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('cohort recovery is bounded to one transaction and validates a complete rollback receipt', async () => {
+  const targets = ['api', 'jev-intelligence-worker', 'frontend'];
+  const previous = Object.fromEntries(targets.map((name, index) => [name, 'sha256:' + String(index + 1).repeat(64)]));
+  const ids = Object.fromEntries(targets.map((name, index) => [name, String(index + 4).repeat(64)]));
+  const runtime = Object.fromEntries(targets.map(name => [name, image]));
+  const sources = { '/usr/share/nginx/public': '/trusted/old/public', '/usr/share/nginx/admin': '/trusted/old/admin',
+    '/run/bootstrap/verify-static-release.sh': '/trusted/old/check.sh' };
+  const frontend = { root: `/var/lib/social-monitor-release/cohort/frontend/candidates/${sha}-${run}/bundle`,
+    authority: { sha, ci_run_id: run, ci_run_attempt: '2', artifact_id: '51',
+      artifact_name: `frontend-candidate-${sha}-${run}-2`, artifact_sha256: image, artifact_bytes: 100 },
+    manifest_sha256: image, archive_sha256: image, archive_bytes: 50, tree_sha256: image };
+  const receipt = { schema: 'social-monitor-cohort-release-receipt-v1', sha, ci_run_id: run,
+    archive_sha256: image, image_id: image, scope: targets, frontend, active_image_ids: previous,
+    previous_image_ids: previous, previous_revisions: { api: sha, 'jev-intelligence-worker': sha },
+    target_container_ids: ids, active_sources: sources, previous_sources: sources,
+    active_releases: { public: sha, admin: sha }, active_frontend_tree_sha256: image, verifier_sha256: image,
+    runtime_sha256: runtime, snapshot_sha256: image, compose_hash: image,
+    compatibility: { ok: true }, database: { ok: true }, backup: { ok: true }, outcome: 'rolled-back',
+    timings: { started_at_ns: 100, finished_at_ns: 101 } };
+  let calls = 0;
+  const transport: Transport = async wire => {
+    assert.equal(wire, `cohort-rollback ${sha} ${run}`);
+    return response(calls++ ? receipt : { sha, ci_run_id: run, scope: targets, phase: 'draining' });
+  };
+  assert.deepEqual(await O.recoverCohort(transport, sha, run, async () => {}), receipt);
+  assert.equal(calls, 2);
+  const scoped = O.cohortRecoveryTransport(sha, run, transport);
+  await assert.rejects(scoped(`cohort-activate ${sha} ${run}`), /recovery-scope/);
+  await assert.rejects(scoped(`cohort-rollback ${'f'.repeat(40)} ${run}`), /recovery-scope/);
+  for (const changed of [
+    { ...receipt, active_sources: { ...sources, '/usr/share/nginx/public': '/other' } },
+    { ...receipt, active_image_ids: { ...previous, frontend: image } },
+    { ...receipt, scope: ['api'] }, { ...receipt, phase: 'draining' },
+    { ...receipt, frontend: { ...frontend, authority: { ...frontend.authority, ci_run_id: '124' } } },
+  ]) assert.throws(() => O.cohortReceipt(changed, sha, run, 'rolled-back'));
+  await assert.rejects(O.recoverCohort(async () => response({ sha, ci_run_id: run, scope: targets, phase: 'starting' }),
+    sha, run, async () => {}), /cohort-recovery-timeout/);
 });

@@ -2,7 +2,7 @@ type Mapping = Record<string, unknown>;
 const CHECKOUT = 'actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10';
 const NODE = 'actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e';
 const UPLOAD = 'actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f';
-const CANDIDATE_ADMISSION = "(vars.HETZNER_RELEASE_MODE == 'preflight' || vars.HETZNER_RELEASE_MODE == 'manual' || vars.HETZNER_RELEASE_MODE == 'auto') && (github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository)) && !(github.event_name == 'workflow_dispatch' && inputs.action == 'recover-backend')";
+const CANDIDATE_ADMISSION = "(vars.HETZNER_RELEASE_MODE == 'preflight' || vars.HETZNER_RELEASE_MODE == 'manual' || vars.HETZNER_RELEASE_MODE == 'auto') && (github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository)) && !(github.event_name == 'workflow_dispatch' && (inputs.action == 'recover-backend' || inputs.action == 'recover-cohort'))";
 const ENABLED = "steps.mode.outputs.enabled == 'true'";
 const MODE = [
   'set -euo pipefail', 'case "${HETZNER_RELEASE_MODE:-}" in',
@@ -25,7 +25,9 @@ const BASE_ENV = { GH_TOKEN: '${{ github.token }}',
   HETZNER_RELEASE_MODE: '${{ vars.HETZNER_RELEASE_MODE }}', TRUSTED_MAIN: '${{ steps.main.outputs.sha }}' };
 const EXPECTED_ENV = { ...BASE_ENV, EXPECTED_SHA: '${{ needs.candidate.outputs.sha }}',
   EXPECTED_RUN: '${{ needs.candidate.outputs.run }}', EXPECTED_ARTIFACT: '${{ needs.candidate.outputs.artifact }}',
-  EXPECTED_MANIFEST_HASH: '${{ needs.candidate.outputs.manifest_hash }}', EXPECTED_LANE: '${{ needs.candidate.outputs.lane }}' };
+  EXPECTED_MANIFEST_HASH: '${{ needs.candidate.outputs.manifest_hash }}', EXPECTED_LANE: '${{ needs.candidate.outputs.lane }}',
+  EXPECTED_FRONTEND_ARTIFACT: '${{ needs.candidate.outputs.frontend_artifact }}',
+  EXPECTED_FRONTEND_MANIFEST_HASH: '${{ needs.candidate.outputs.frontend_manifest_hash }}' };
 function common(): Mapping[] {
   return [
     { name: 'Require explicitly configured mode', id: 'mode', shell: 'bash',
@@ -51,7 +53,7 @@ function host(lane: 'preflight' | 'activate'): Mapping {
     environment: 'production-hetzner', permissions: { actions: 'read', contents: 'read' },
     steps: [...common(),
       { name: 'Independently authorize the host phase', id: 'gate', if: ENABLED, env: EXPECTED_ENV, run: SCRIPT + 'gate' },
-      { name: lane === 'preflight' ? 'Observe bounded host preflight' : 'Deliver through the existing bounded client',
+      { name: lane === 'preflight' ? 'Observe bounded host preflight' : 'Deliver and verify the coordinated cohort',
         if: `steps.gate.outputs.phase == 'ready' && steps.gate.outputs.lane == '${lane}'`, shell: 'bash',
         env: { ...EXPECTED_ENV, HETZNER_HOST: '${{ vars.HETZNER_HOST }}', HETZNER_PORT: '${{ vars.HETZNER_PORT }}',
           HETZNER_PRIVATE_KEY: '${{ secrets.HETZNER_PRIVATE_KEY }}', HETZNER_KNOWN_HOSTS: '${{ secrets.HETZNER_KNOWN_HOSTS }}' }, run },
@@ -67,10 +69,10 @@ function recover(): Mapping {
   const run = ['set -euo pipefail', 'umask 077',
     'private="$(mktemp -d "$RUNNER_TEMP/hetzner-private-XXXXXXXX")"',
     "trap 'rm -rf -- \"$private\"' EXIT", 'export HETZNER_PRIVATE_DIRECTORY="$private"', SCRIPT + 'recover'].join('\n');
-  return { if: "github.event_name == 'workflow_dispatch' && inputs.action == 'recover-backend' && (vars.HETZNER_RELEASE_MODE == 'manual' || vars.HETZNER_RELEASE_MODE == 'auto')",
+  return { if: "github.event_name == 'workflow_dispatch' && (inputs.action == 'recover-backend' || inputs.action == 'recover-cohort') && (vars.HETZNER_RELEASE_MODE == 'manual' || vars.HETZNER_RELEASE_MODE == 'auto')",
     concurrency: { group: 'social-monitor-hetzner-production', 'cancel-in-progress': false },
     'runs-on': 'ubuntu-latest', 'timeout-minutes': 30, environment: 'production-hetzner', permissions: { contents: 'read' },
-    steps: [...common(), { name: 'Recover the exact existing backend transaction', shell: 'bash', env: {
+    steps: [...common(), { name: 'Recover the exact existing release transaction', shell: 'bash', env: {
       HETZNER_RELEASE_MODE: BASE_ENV.HETZNER_RELEASE_MODE, TRUSTED_MAIN: BASE_ENV.TRUSTED_MAIN,
       HETZNER_HOST: '${{ vars.HETZNER_HOST }}', HETZNER_PORT: '${{ vars.HETZNER_PORT }}',
       HETZNER_PRIVATE_KEY: '${{ secrets.HETZNER_PRIVATE_KEY }}', HETZNER_KNOWN_HOSTS: '${{ secrets.HETZNER_KNOWN_HOSTS }}' }, run },
@@ -84,13 +86,15 @@ function expected(): Mapping {
     workflow_dispatch: { inputs: {
       ci_run_id: { description: 'Exact successful main push CI run ID', required: true, type: 'string' },
       action: { description: 'Explicit bounded release action', required: true, default: 'preflight',
-        type: 'choice', options: ['preflight', 'activate', 'rollback-previous', 'recover-backend'] },
+        type: 'choice', options: ['preflight', 'activate', 'rollback-previous', 'recover-backend', 'recover-cohort'] },
       rollback_sha: { description: 'Full transaction SHA for backend recovery', required: false, default: '', type: 'string' },
     } } }, permissions: {},
     jobs: { candidate: { if: CANDIDATE_ADMISSION, 'runs-on': 'ubuntu-latest', 'timeout-minutes': 30, permissions: { actions: 'read', contents: 'read' },
       outputs: { phase: "${{ steps.candidate.outputs.phase || 'disabled-skipped' }}", lane: "${{ steps.candidate.outputs.lane || 'skip' }}",
         sha: '${{ steps.candidate.outputs.sha }}', run: '${{ steps.candidate.outputs.run }}',
-        artifact: '${{ steps.candidate.outputs.artifact }}', manifest_hash: '${{ steps.candidate.outputs.manifest_hash }}' },
+        artifact: '${{ steps.candidate.outputs.artifact }}', manifest_hash: '${{ steps.candidate.outputs.manifest_hash }}',
+        frontend_artifact: '${{ steps.candidate.outputs.frontend_artifact }}',
+        frontend_manifest_hash: '${{ steps.candidate.outputs.frontend_manifest_hash }}' },
       steps: [...common(), { name: 'Verify and download candidate data', id: 'candidate', if: ENABLED, env: BASE_ENV, run: SCRIPT + 'candidate' }] },
     preflight: host('preflight'), activate: host('activate'), recover: recover() } };
 }

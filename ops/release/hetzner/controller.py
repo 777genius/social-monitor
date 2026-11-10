@@ -356,6 +356,9 @@ class Controller:
                     return receive_frontend(self, args[0], args[1], stream)
                 from cohort_backend_receive import receive_backend
                 return receive_backend(self, args, stream)
+            if verb.startswith('cohort-'):
+                from cohort_wire import dispatch as dispatch_cohort
+                return dispatch_cohort(self, verb[len('cohort-'):], args)
             if verb.startswith('backend-'):
                 from backend_controller import BackendRelease
                 return BackendRelease(self).dispatch(verb[8:], args, stream)

@@ -15,7 +15,7 @@ on:
         required: true
         default: preflight
         type: choice
-        options: [preflight, activate, rollback-previous, recover-backend]
+        options: [preflight, activate, rollback-previous, recover-backend, recover-cohort]
       rollback_sha:
         description: Full transaction SHA for backend recovery
         required: false
@@ -26,7 +26,7 @@ permissions: {}
 
 jobs:
   candidate:
-    if: (vars.HETZNER_RELEASE_MODE == 'preflight' || vars.HETZNER_RELEASE_MODE == 'manual' || vars.HETZNER_RELEASE_MODE == 'auto') && (github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository)) && !(github.event_name == 'workflow_dispatch' && inputs.action == 'recover-backend')
+    if: (vars.HETZNER_RELEASE_MODE == 'preflight' || vars.HETZNER_RELEASE_MODE == 'manual' || vars.HETZNER_RELEASE_MODE == 'auto') && (github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository)) && !(github.event_name == 'workflow_dispatch' && (inputs.action == 'recover-backend' || inputs.action == 'recover-cohort'))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -39,6 +39,8 @@ jobs:
       run: ${{ steps.candidate.outputs.run }}
       artifact: ${{ steps.candidate.outputs.artifact }}
       manifest_hash: ${{ steps.candidate.outputs.manifest_hash }}
+      frontend_artifact: ${{ steps.candidate.outputs.frontend_artifact }}
+      frontend_manifest_hash: ${{ steps.candidate.outputs.frontend_manifest_hash }}
     steps:
       - &mode
         name: Require explicitly configured mode
@@ -139,6 +141,8 @@ jobs:
           EXPECTED_ARTIFACT: ${{ needs.candidate.outputs.artifact }}
           EXPECTED_MANIFEST_HASH: ${{ needs.candidate.outputs.manifest_hash }}
           EXPECTED_LANE: ${{ needs.candidate.outputs.lane }}
+          EXPECTED_FRONTEND_ARTIFACT: ${{ needs.candidate.outputs.frontend_artifact }}
+          EXPECTED_FRONTEND_MANIFEST_HASH: ${{ needs.candidate.outputs.frontend_manifest_hash }}
         run: node --experimental-strip-types scripts/ci/hetzner-release-observe.mts gate
       - name: Observe bounded host preflight
         if: steps.gate.outputs.phase == 'ready' && steps.gate.outputs.lane == 'preflight'
@@ -153,6 +157,8 @@ jobs:
           EXPECTED_ARTIFACT: ${{ needs.candidate.outputs.artifact }}
           EXPECTED_MANIFEST_HASH: ${{ needs.candidate.outputs.manifest_hash }}
           EXPECTED_LANE: ${{ needs.candidate.outputs.lane }}
+          EXPECTED_FRONTEND_ARTIFACT: ${{ needs.candidate.outputs.frontend_artifact }}
+          EXPECTED_FRONTEND_MANIFEST_HASH: ${{ needs.candidate.outputs.frontend_manifest_hash }}
           HETZNER_HOST: ${{ vars.HETZNER_HOST }}
           HETZNER_PORT: ${{ vars.HETZNER_PORT }}
           HETZNER_PRIVATE_KEY: ${{ secrets.HETZNER_PRIVATE_KEY }}
@@ -194,7 +200,7 @@ jobs:
       - *head
       - *node
       - *gate
-      - name: Deliver through the existing bounded client
+      - name: Deliver and verify the coordinated cohort
         if: steps.gate.outputs.phase == 'ready' && steps.gate.outputs.lane == 'activate'
         shell: bash
         env:
@@ -207,6 +213,8 @@ jobs:
           EXPECTED_ARTIFACT: ${{ needs.candidate.outputs.artifact }}
           EXPECTED_MANIFEST_HASH: ${{ needs.candidate.outputs.manifest_hash }}
           EXPECTED_LANE: ${{ needs.candidate.outputs.lane }}
+          EXPECTED_FRONTEND_ARTIFACT: ${{ needs.candidate.outputs.frontend_artifact }}
+          EXPECTED_FRONTEND_MANIFEST_HASH: ${{ needs.candidate.outputs.frontend_manifest_hash }}
           HETZNER_HOST: ${{ vars.HETZNER_HOST }}
           HETZNER_PORT: ${{ vars.HETZNER_PORT }}
           HETZNER_PRIVATE_KEY: ${{ secrets.HETZNER_PRIVATE_KEY }}
@@ -230,7 +238,7 @@ jobs:
           retention-days: 90
 
   recover:
-    if: github.event_name == 'workflow_dispatch' && inputs.action == 'recover-backend' && (vars.HETZNER_RELEASE_MODE == 'manual' || vars.HETZNER_RELEASE_MODE == 'auto')
+    if: github.event_name == 'workflow_dispatch' && (inputs.action == 'recover-backend' || inputs.action == 'recover-cohort') && (vars.HETZNER_RELEASE_MODE == 'manual' || vars.HETZNER_RELEASE_MODE == 'auto')
     concurrency:
       group: social-monitor-hetzner-production
       cancel-in-progress: false
@@ -245,7 +253,7 @@ jobs:
       - *checkout
       - *head
       - *node
-      - name: Recover the exact existing backend transaction
+      - name: Recover the exact existing release transaction
         shell: bash
         env:
           HETZNER_RELEASE_MODE: ${{ vars.HETZNER_RELEASE_MODE }}
