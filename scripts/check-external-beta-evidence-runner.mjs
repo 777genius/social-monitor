@@ -93,7 +93,6 @@ const {
   runRunnerReleaseDeployArtifactSmoke,
   runRunnerArtifactSmoke,
   runRunnerRedditArtifactSmoke,
-  runRunnerValidateArtifactsSmoke,
 } = createExternalBetaArtifactValidationSmokes({
   contract,
   execFileSync,
