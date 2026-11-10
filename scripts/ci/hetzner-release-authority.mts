@@ -178,6 +178,17 @@ export async function observeAuthority(get: Get, runId: string): Promise<Decisio
   const initial = runIdentity(await get(`actions/runs/${runId}`), runId, workflow, repo);
   const initialMain = mainSha(await get('git/ref/heads/main'));
   const legacyId = legacy(await get('actions/workflows/production-deploy.yml'));
+  // Old successful main runs can arrive after a newer main SHA. They lack
+  // newly required CI jobs: reject changed authority, then skip without
+  // interpreting stale artifacts as evidence for the current main.
+  if (initial.sha !== initialMain) {
+    requireValue(ciWorkflow(await get('actions/workflows/pull-request.yml')) === workflow, 'workflow-race');
+    const repeated = runIdentity(await get(`actions/runs/${runId}`), runId, workflow, repo);
+    requireValue(repeated.sha === initial.sha && repeated.attempt === initial.attempt, 'run-race');
+    requireValue(legacy(await get('actions/workflows/production-deploy.yml')) === legacyId, 'legacy-race');
+    requireValue(mainSha(await get('git/ref/heads/main')) === initialMain, 'main-race');
+    return { phase: 'stale-main-skipped', sha: initial.sha, run: runId };
+  }
   const jobs = await pages(get, `actions/runs/${runId}/attempts/${initial.attempt}/jobs`, 'jobs');
   const names = new Set<string>();
   for (const job of jobs) {
