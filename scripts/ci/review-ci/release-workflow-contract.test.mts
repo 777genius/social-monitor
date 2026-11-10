@@ -204,4 +204,7 @@ test('static CI rejects skipped, reordered, duplicated or changed release verifi
   }
   const scripts = { ...map(pkg.scripts), 'check:hetzner-release-tests': 'node --test' };
   assert.ok(R.hetznerReleaseCiViolations(stringify(ci), scripts).length > 0);
+  const withoutTransport = { ...map(pkg.scripts), 'check:hetzner-release-tests':
+    String(map(pkg.scripts)['check:hetzner-release-tests']).replace('scripts/ci/hetzner-release-client.test.mjs ', '') };
+  assert.ok(R.hetznerReleaseCiViolations(stringify(ci), withoutTransport).length > 0);
 });
