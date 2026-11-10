@@ -198,7 +198,7 @@ def load_config():
             and 'api' not in config['required_non_targets']
             and all(re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}', n)
                     for n in config['required_non_targets'].values()), 'non-targets')
-    require(isinstance(config['fenced_units'], list) and config['fenced_units']
+    require(isinstance(config['fenced_units'], list)
             and all(re.fullmatch(r'[a-zA-Z0-9@_.-]+\.(timer|service)', u)
                     for u in config['fenced_units']), 'fenced-units')
     root = config['migration_root']

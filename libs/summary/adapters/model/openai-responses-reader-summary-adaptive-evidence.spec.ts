@@ -62,12 +62,19 @@ describe("adaptive reader summary evidence", () => {
       mode: "full_social_post",
       text: socialSourceText("X/Twitter"),
     });
+    expect(evidence[119]?.bodyPreview).toBeUndefined();
     expect(redditSource).toMatchObject({
       mode: "full_social_post",
       text: socialSourceText("Reddit"),
     });
     expect(rssSource.mode).toBe("rss_relevant_fragments");
     const fragments = rssSource.fragments as readonly string[];
+    const rssPreview = evidence[117]?.bodyPreview;
+    if (rssPreview === undefined) {
+      expect(fragments.some((fragment) => fragment.includes(rssSourceText().slice(0, 600)))).toBe(true);
+    } else {
+      expect(typeof rssPreview).toBe("string");
+    }
     expect(fragments.length).toBeGreaterThanOrEqual(2);
     expect(fragments.length).toBeLessThanOrEqual(3);
     expect(Number(rssSource.includedCharacterCount)).toBeGreaterThanOrEqual(
@@ -82,6 +89,22 @@ describe("adaptive reader summary evidence", () => {
     expect(
       fragments.every((fragment) => normalizedRssSource.includes(fragment)),
     ).toBe(true);
+  });
+
+  it("removes only a preview fully present in transmitted source text", () => {
+    const selection = evidenceSelection();
+    const full = "Короткий пост 🧪 с сохранёнными деталями.";
+    const selectedEvidence = selection.selectedEvidence.map((item, index) =>
+      index === 119 ? { ...item, sourceText: full } : item);
+    const exact = buildAdaptiveReaderSummaryEvidence({ ...selection, selectedEvidence }, coveragePlan())[119]!;
+    expect(exact.bodyPreview).toBeUndefined();
+    expect((exact.sourceContent as { text: string }).text).toBe(full);
+
+    const long = "x".repeat(3_000);
+    const longEvidence = selection.selectedEvidence.map((item, index) =>
+      index === 119 ? { ...item, sourceText: long } : item);
+    const truncated = buildAdaptiveReaderSummaryEvidence({ ...selection, selectedEvidence: longEvidence }, coveragePlan())[119]!;
+    expect(truncated.bodyPreview).toBeDefined();
   });
 
   it("serializes the adaptive pack into one model prompt", () => {
