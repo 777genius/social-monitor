@@ -20,12 +20,12 @@ test("GET and POST preserve path, header, request-body and successful JSON contr
     return new Response('{"ok":true}', { status: 200 });
   }, async () => {
     assert.deepEqual(await client().requestJson("GET", "/items", { headers: { "x-tenant-id": "scope" } }), { ok: true });
-    assert.deepEqual(await client().requestJson("POST", "/items", { headers: { authorization: "Bearer test" }, body: { name: "demo" } }), { ok: true });
+    assert.deepEqual(await client().requestJson("POST", "/items", { headers: { authorization: "fixture-authorization" }, body: { name: "demo" } }), { ok: true });
   });
   assert.equal(calls[0].url, baseUrl + "/items");
   assert.deepEqual(calls[0].options.headers, { accept: "application/json", "x-tenant-id": "scope" });
   assert.equal(calls[0].options.body, undefined);
-  assert.deepEqual(calls[1].options.headers, { accept: "application/json", authorization: "Bearer test", "content-type": "application/json" });
+  assert.deepEqual(calls[1].options.headers, { accept: "application/json", authorization: "fixture-authorization", "content-type": "application/json" });
   assert.equal(calls[1].options.body, '{"name":"demo"}');
 });
 
