@@ -53,6 +53,19 @@ function git(args, cwd) {
   return result.error || result.status !== 0 ? null : result.stdout;
 }
 
+// Treat mode changes, symlinks and submodules as executable/unsafe inputs.
+// Deleted files are absent from one tree; any present file must be regular.
+function regularAt(ref, path, cwd) {
+  const entry = git(["ls-tree", "-z", ref, "--", path], cwd);
+  if (entry === null) return false;
+  if (entry.length === 0) return true;
+  const text = entry.toString("utf8");
+  const rows = text.split("\0");
+  return rows.length === 2 && rows[1] === "" &&
+    /^100644 blob [a-f0-9]{40}\t/u.test(rows[0]) &&
+    rows[0].endsWith("\t" + path);
+}
+
 /** Require immutable reviewed merge commit and complete NUL-safe git diff. */
 export function changedPaths(base, head, cwd = process.cwd()) {
   if (!COMMIT.test(base) || !COMMIT.test(head)) return null;
@@ -65,6 +78,12 @@ export function changedPaths(base, head, cwd = process.cwd()) {
   if (decoded.includes("\uFFFD")) return null;
   const paths = decoded.split("\0");
   if (paths.at(-1) === "") paths.pop();
+  // Bound work and verify both Git tree modes; docs-only paths must not be
+  // symlinks, executable files or gitlinks. All uncertainty => full.
+  if (paths.length > 100) return null;
+  if (classifyChangedPaths(paths) !== "full" &&
+      paths.some((path) => !regularAt(base, path, cwd) || !regularAt(head, path, cwd)))
+    return null;
   return paths;
 }
 
