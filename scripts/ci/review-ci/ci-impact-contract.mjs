@@ -34,7 +34,7 @@ const exact = isDeepStrictEqual;
  * Never mutate the actual parsed workflow or mark skipped test work as run.
  */
 export function projectScopedBackendWorkflow(workflow) {
-  const projected = structuredClone(workflow);
+  const projected = globalThis.structuredClone(workflow);
   const jobs = workflow?.jobs;
   const errors = [];
   if (!jobs || typeof jobs !== "object") return { errors: ["impact: no jobs"], projected };
