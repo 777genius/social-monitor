@@ -37,6 +37,7 @@ import { AgentRuntimeReaderSummaryTopicLabeler } from "../../adapters/model/agen
 import { AgentRuntimeReaderSummaryTopicRelationVerifier } from "../../adapters/model/agent-runtime-reader-summary-topic-relation-verifier.adapter";
 import { DeterministicReaderSummaryModelAdapter } from "../../adapters/model/deterministic-reader-summary-model.adapter";
 import { MeteredReaderSummaryModelAdapter } from "../../adapters/model/metered-reader-summary-model.adapter";
+import { readerSummaryUsageScope } from "../../adapters/composition/reader-summary-usage-scope";
 import {
   OpenAiResponsesReaderSummaryModelAdapter,
   type OpenAiResponsesReaderSummaryModelAdapterOptions,
@@ -380,6 +381,9 @@ export const summaryReaderSummaryProviders: Provider[] = [
         undefined,
         v3Preflight,
         v3Promotion,
+        undefined,
+        undefined,
+        readerSummaryUsageScope,
       ),
     inject: [
       READER_SUMMARY_JOB_REPOSITORY,

@@ -2,12 +2,15 @@ import { readFileSync } from "node:fs";
 
 type Item = {
   version: number; targetDate: string | null; stage: string | null; model: string | null;
+  jobId?: string | null; runId?: string | null;
+  status?: string;
   effort: string | null; identitySource: string; inputTokens: number | null; outputTokens: number | null;
   cachedInputTokens: number | null; usageSource: string;
 };
 type Totals = {
   targetDate: string | null; stage: string | null; model: string | null; effort: string | null; identitySource: string;
-  calls: number; unknownUsage: number; inputTokens: number; outputTokens: number;
+  jobId: string | null; runId: string | null;
+  calls: number; failedCalls: number; unknownUsage: number; inputTokens: number; outputTokens: number;
   cachedInputTokens: number; unknownCacheCalls: number; estimatedApiUsd: number;
   unpricedCalls: number;
 };
@@ -26,11 +29,13 @@ export const summarizeReaderSummaryUsage = (lines: readonly string[]): Totals[] 
     if (item.version !== 1 || !["runtime_reported", "unavailable"].includes(item.usageSource)) {
       throw new Error("Invalid usage log record");
     }
-    const key = JSON.stringify([item.targetDate, item.stage, item.model, item.effort, item.identitySource]);
+    const key = JSON.stringify([item.jobId ?? null, item.runId ?? null, item.targetDate, item.stage, item.model, item.effort, item.identitySource]);
     const total = groups.get(key) ?? { targetDate: item.targetDate, stage: item.stage, model: item.model,
-      effort: item.effort, identitySource: item.identitySource, calls: 0, unknownUsage: 0, inputTokens: 0, outputTokens: 0,
+      jobId: item.jobId ?? null, runId: item.runId ?? null,
+      effort: item.effort, identitySource: item.identitySource, calls: 0, failedCalls: 0, unknownUsage: 0, inputTokens: 0, outputTokens: 0,
       cachedInputTokens: 0, unknownCacheCalls: 0, estimatedApiUsd: 0, unpricedCalls: 0 };
     total.calls++;
+    if (item.status !== undefined && item.status !== "completed") total.failedCalls++;
     if (item.usageSource === "unavailable") { total.unknownUsage++; groups.set(key, total); continue; }
     if (!isCount(item.inputTokens) || !isCount(item.outputTokens) ||
       (item.cachedInputTokens !== null && (!isCount(item.cachedInputTokens) || item.cachedInputTokens > item.inputTokens))) {

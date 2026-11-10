@@ -2,3 +2,7 @@ services:
   jev-intelligence-worker:
     env_file:
       - /srv/platform/projects/social-monitor/deploy/private-api/reader-summary-model.env
+    environment:
+      DURABLE_READER_SUMMARY_EVIDENCE_PATH: /var/lib/social-monitor/usage/worker
+    volumes:
+      - /srv/platform/projects/social-monitor/pipeline/artifacts/worker-summary-usage:/var/lib/social-monitor/usage
