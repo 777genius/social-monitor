@@ -10,6 +10,7 @@ import {
 import type {
   ProviderReaderSummaryAttempt,
   ReaderSummaryModelInput,
+  ReaderSummaryModelRoute,
 } from "../../ports";
 import { DeterministicReaderSummaryModelAdapter } from "./deterministic-reader-summary-model.adapter";
 import { buildDeterministicReaderSummaryStoryProjection } from "./deterministic-reader-summary-story-projection";
@@ -320,7 +321,7 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
   it("keeps deterministic document risk, confidence, citation identity and headline synchronized", async () => {
     const adapter = new DeterministicReaderSummaryModelAdapter();
     const input = dailySynthesisReaderSummaryInput();
-    const selectedRoute = {
+    const selectedRoute: ReaderSummaryModelRoute = {
       provider: "deterministic-local",
       model: "deterministic-reader-summary-v1",
       promptVersion: "reader_summary.prompt.v1",
@@ -355,7 +356,7 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
       ...original,
       policy: { ...original.policy, includeRisks: false },
     };
-    const selectedRoute = {
+    const selectedRoute: ReaderSummaryModelRoute = {
       provider: "deterministic-local",
       model: "deterministic-reader-summary-v1",
       promptVersion: "reader_summary.prompt.v1",
