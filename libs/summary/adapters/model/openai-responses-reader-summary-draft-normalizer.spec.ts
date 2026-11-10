@@ -61,5 +61,22 @@ describe("normalizeOpenAiReaderSummaryDraft", () => {
 
     expect(draft.executiveSummary).toBe(draft.topStories[0]?.summary);
     expect(draft.executiveSummary.trim()).not.toBe("");
+    expect(draft.content?.headline).toBe(draft.headline);
+    expect(draft.content?.topStories).toEqual(draft.topStories);
+    expect(draft.content?.citationMap).toEqual(draft.citationMap);
+    expect(draft.content?.sourceWindow).toEqual(input.evidence.sourceWindow);
+    expect(draft.lineage).toMatchObject({
+      promptVersion: "test",
+      schemaVersion: "reader_summary.artifact.v1",
+      modelVersion: "fixture",
+      providerVersion: "offline-test",
+      rulesVersion: "test-no-signal-fallback",
+      evalDatasetVersion: "test",
+    });
+    expect(draft.usage).toEqual({
+      inputTokens: 0,
+      outputTokens: 0,
+      estimatedCostUsd: 0,
+    });
   });
 });
