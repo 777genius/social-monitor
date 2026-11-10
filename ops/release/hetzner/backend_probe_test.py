@@ -76,6 +76,20 @@ class ProbeTests(unittest.TestCase):
         with self.assertRaisesRegex(Denied, 'worker-signal-replay-source'):
             worker_capability(Config(), self.runner, {'container_id': ID, 'image_id': IMAGE})
 
+    def test_created_and_started_oom_defaults_match_but_disabling_does_not(self):
+        value = {'Config': {'Env': ['PAUSED=true']}, 'Mounts': [],
+                 'HostConfig': {'RestartPolicy': {'Name': 'unless-stopped', 'MaximumRetryCount': 0},
+                                'OomKillDisable': None, 'ReadonlyRootfs': True}}
+        for service in ('api', SERVICE):
+            started = BackendHost.policy(value, service)
+            created = copy.deepcopy(value); created['HostConfig']['OomKillDisable'] = False
+            self.assertEqual(BackendHost.policy(created, service), started)
+            created['HostConfig']['OomKillDisable'] = True
+            self.assertNotEqual(BackendHost.policy(created, service), started)
+            created['HostConfig']['OomKillDisable'] = None
+            created['HostConfig']['ReadonlyRootfs'] = False
+            self.assertNotEqual(BackendHost.policy(created, service), started)
+
     def test_capability_absent_old_image_fails(self):
         self.runner.value['State']['Running'] = True
         run = self.runner.run

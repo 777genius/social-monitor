@@ -15,6 +15,10 @@ class WorkerHost:
         # Image/labels are release identity. All runtime controls remain byte-bound.
         settings = {k: v for k, v in config.items() if k not in ('Image', 'Labels', 'Hostname')}
         host = {k: v for k, v in value['HostConfig'].items() if k != 'RestartPolicy'}
+        # Docker29 reports the enabled OOM killer as null after start, false just
+        # after create. Only these equivalent defaults normalize; disabling stays bound.
+        if host.get('OomKillDisable') is None:
+            host['OomKillDisable'] = False
         return digest({'config': settings, 'host': host, 'mounts': value['Mounts']})
 
     def signal_ready(self, value):
