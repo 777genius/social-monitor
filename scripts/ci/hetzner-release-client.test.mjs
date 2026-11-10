@@ -110,6 +110,29 @@ test('process seam proves exact SSH arguments, cleared environment, stdin EOF, s
   assert.deepEqual(Buffer.concat(received), bytes);
 });
 
+test('SSH failure diagnostics expose only a fixed category, never stderr', async () => {
+  for (const [message, diagnostic] of [
+    ['Permission denied (publickey). SECRET', 'publickey'],
+    ['Host key verification failed. SECRET', 'host-key'],
+    ['Load key /private/SECRET: error in libcrypto', 'private-key'],
+    ['ssh: connect to host SECRET: Connection timed out', 'timeout'],
+    ['ssh: connect to host SECRET: Connection refused', 'network'],
+    ['SECRET unrecognized failure', 'unknown'],
+  ]) {
+    const spawnSeam = () => {
+      const child = new EventEmitter();
+      child.stdin = new PassThrough(); child.stdout = new PassThrough(); child.stderr = new PassThrough();
+      child.kill = () => {};
+      child.stdin.resume();
+      child.stdin.on('end', () => { child.stderr.end(message); child.stdout.end(); setImmediate(() => child.emit('close', 255)); });
+      return child;
+    };
+    const result = await sshTransport(config, spawnSeam)('status');
+    assert.deepEqual(result, { code: 255, stdout: Buffer.alloc(0), diagnostic });
+    assert.equal(JSON.stringify(result).includes('SECRET'), false);
+  }
+});
+
 test('hash before any SSH, exact archive bytes and durable observed phases', async () => fixture(async options => {
   const h = host();
   assert.deepEqual(await deliver(options, h.transport), { phase: 'completed' });

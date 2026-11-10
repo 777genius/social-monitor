@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { Authority, Get } from './hetzner-release-authority.mjs';
 import type { Transport } from './hetzner-release-client.mjs';
+import { ClientError } from './hetzner-release-client.mjs';
 const require = createRequire(resolve('scripts/ci/hetzner-release-observe.test.mts'));
 const A: typeof import('./hetzner-release-authority.mjs') = require('./hetzner-release-authority.mts');
 const O: typeof import('./hetzner-release-observe.mjs') = require('./hetzner-release-observe.mts');
@@ -250,8 +251,20 @@ test('native finite status/preflight schemas are accepted; hostile machine/envir
   await assert.rejects(O.observeReadonly(async () => { retries++; return response({}, 255); }));
   assert.equal(retries, 3);
   retries = 0;
+  await assert.rejects(O.observeReadonly(async () => {
+    retries++; return { ...response({}, 255), diagnostic: 'publickey' as const };
+  }), /ssh-publickey/u);
+  assert.equal(retries, 3);
+  retries = 0;
   await assert.rejects(O.observeReadonly(async () => { retries++; return response({}, 1); }));
   assert.equal(retries, 1);
+});
+
+test('preflight receipts accept only fixed diagnostic codes', () => {
+  assert.equal(O.safePreflightDiagnostic('preflight', new ClientError('ssh-publickey')), 'ssh-publickey');
+  assert.equal(O.safePreflightDiagnostic('activate', new ClientError('ssh-publickey')), undefined);
+  assert.equal(O.safePreflightDiagnostic('preflight', new ClientError('PRIVATE_SECRET')), undefined);
+  assert.equal(O.safePreflightDiagnostic('preflight', new Error('ssh-publickey')), undefined);
 });
 
 test('native disabled CLI exits before event, GitHub, private directory or credential reads', () => {
