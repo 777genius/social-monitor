@@ -27,7 +27,9 @@ function harness({ type = 'local', planOverride, commandOverride, handoffOutput 
         const plan = JSON.parse(JSON.stringify(type === 'local' ? localPlan : bundlePlan));
         return JSON.stringify(planOverride ? planOverride(job, plan) : plan);
       }
-      return handoffOutput ?? 'BACKEND_STAGING_EVIDENCE_BUNDLE_PATH covers API_BASE_URL';
+      return handoffOutput ?? (type === 'local'
+        ? 'Blocked by local runtime env: 1\nReadiness: blocked_local_runtime_env'
+        : 'BACKEND_STAGING_EVIDENCE_BUNDLE_PATH covers API_BASE_URL');
     },
     runnerSmokeTimeoutMs: 30_000,
     mkdtempSync: (prefix) => prefix + 'test',
