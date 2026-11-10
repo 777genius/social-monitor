@@ -46,11 +46,13 @@ const grant = (intent: Prepare, accountRef = intent.accountRefs[0]!): Access => 
     expiresAt: intent.deadline },
 });
 
-const completedStream = (text: string, model = "k3-256k"): NativeResponse => {
+const completedStream = (text: string, model = "k3-256k", cached?: number, reasoning?: number): NativeResponse => {
   const bytes = new TextEncoder().encode(`data: ${JSON.stringify({ type: "response.completed",
     response: { id: "resp-1", model, status: "completed",
       output: [{ type: "message", content: [{ type: "output_text", text }] }],
-      usage: { input_tokens: 40, output_tokens: 9 } } })}\n\n`);
+      usage: { input_tokens: 40, output_tokens: 9,
+        ...(cached === undefined ? {} : { input_tokens_details: { cached_tokens: cached } }),
+        ...(reasoning === undefined ? {} : { output_tokens_details: { reasoning_tokens: reasoning } }) } } })}\n\n`);
   const body = new ReadableStream<Uint8Array>({ start(controller) {
     controller.enqueue(bytes);
     controller.close();
@@ -516,6 +518,34 @@ describe("GatewayLlmClient preparation and completion boundaries", () => {
     expect(result).toMatchObject({ status: "completed", outputText: "plain provider output" });
     expect(result.structuredOutput).toBeUndefined();
     expect(result.executionAttestation).toMatchObject({ selectedOutputKind: "output_text" });
+    expect(fake.requests()).toBe(1);
+  });
+});
+
+describe("gateway usage accounting across outcome boundaries", () => {
+  it("retains cached and reasoning usage on a verified completion", async () => {
+    const fake = harness({ request: async () =>
+      completedStream('{"label":"AI agents","note":null}', "k3-256k", 12, 3) });
+    const result = await fake.client.runTask(command());
+
+    expect(result).toMatchObject({ status: "completed",
+      usage: { inputTokens: 40, outputTokens: 9, totalTokens: 49,
+        cachedInputTokens: 12, reasoningTokens: 3 } });
+    expect(result.executionAttestation).toBeDefined();
+    expect(fake.requests()).toBe(1);
+  });
+
+  it("preserves provider usage but never attests a mismatched observed model", async () => {
+    const fake = harness({ request: async () =>
+      completedStream('{"label":"wrong model","note":null}', "other-model", 12, 3) });
+    const result = await fake.client.runTask(command());
+
+    expect(result).toMatchObject({ status: "failed",
+      failure: { code: "provider_model_mismatch" },
+      usage: { inputTokens: 40, outputTokens: 9, totalTokens: 49,
+        cachedInputTokens: 12, reasoningTokens: 3 } });
+    expect(result.executionAttestation).toBeUndefined();
+    expect(result.structuredOutput).toBeUndefined();
     expect(fake.requests()).toBe(1);
   });
 });
