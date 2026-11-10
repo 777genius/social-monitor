@@ -249,7 +249,9 @@ export async function prepareFrontendCandidate(frontend: FrontendAuthority, scra
   await mkdir(directory, { mode: 0o700 });
   await download(artifact, zip, env);
   await extractFrontendArtifact(zip, directory);
-  return validateFrontendCandidate(directory, frontend);
+  const candidate = await validateFrontendCandidate(directory, frontend);
+  // Retain the original CI artifact so the host can independently verify its provenance.
+  return { ...candidate, transport: zip };
 }
 export interface Observation {
   environment: 'production-hetzner'; machine_id: string; latch: false;
