@@ -3,6 +3,8 @@ import type {
   ReaderSummaryQualityFlag,
 } from "../../domain";
 import { buildReaderSummary, readerSummaryHeadline } from "../../domain";
+import { assertOpenAiReaderSummaryDraftShape } from "./reader-summary-draft-shape-contract";
+export { assertOpenAiReaderSummaryDraftShape } from "./reader-summary-draft-shape-contract";
 import type {
   ReaderSummaryModelInput,
   ReaderSummaryModelRoute,
@@ -177,29 +179,7 @@ export const buildOpenAiReaderSummaryLineage = (
   rankingPolicyVersion: input.evidence.rankingPolicyVersion,
 });
 
-export const assertOpenAiReaderSummaryDraftShape = (
-  draft: GeneratedReaderSummaryDraft,
-): void => {
-  if (
-    draft.headline.trim().length === 0 ||
-    draft.executiveSummary.trim().length === 0
-  ) {
-    throw new Error(
-      "Reader summary draft must include headline and executive summary",
-    );
-  }
-  if (draft.confidence.score < 0 || draft.confidence.score > 1) {
-    throw new Error("Reader summary confidence score must be between 0 and 1");
-  }
-  if (
-    draft.topStories.length === 0 &&
-    !draft.qualityFlags.includes("no_signal")
-  ) {
-    throw new Error(
-      "Reader summary draft without top stories must be marked no_signal",
-    );
-  }
-};
+
 
 const normalizeRecordArray = (
   value: unknown,

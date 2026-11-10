@@ -24,7 +24,7 @@ import type {
   ReaderSummaryModelRoute,
   ReaderSummaryModelValidationResult,
 } from "../../ports";
-import { assertOpenAiReaderSummaryDraftShape } from "./openai-responses-reader-summary-draft-normalizer";
+import { validateAgentRuntimeReaderSummaryProviderResponse } from "./agent-runtime-reader-summary-response-validation";
 import {
   currentReaderSummaryPromptRelease,
 } from "./openai-responses-reader-summary-prompt";
@@ -203,29 +203,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
   validateRawProviderResponse(
     attempt: ProviderReaderSummaryAttempt,
   ): ReaderSummaryModelValidationResult {
-    try {
-      assertOpenAiReaderSummaryDraftShape(attempt.draft);
-      if (attempt.route.schemaVersion !== "reader_summary.artifact.v1") {
-        throw new Error("Unsupported reader summary schema version");
-      }
-      if (attempt.route.provider !== provider) {
-        throw new Error("Unexpected reader summary provider route");
-      }
-
-      return { ok: true };
-    } catch (error) {
-      return {
-        ok: false,
-        failure: {
-          kind: "invalid_schema",
-          retryable: false,
-          message:
-            error instanceof Error
-              ? error.message
-              : "Invalid agent-runtime reader summary provider response",
-        },
-      };
-    }
+    return validateAgentRuntimeReaderSummaryProviderResponse(attempt);
   }
 
   classifyError(error: unknown): ReaderSummaryModelFailure {
