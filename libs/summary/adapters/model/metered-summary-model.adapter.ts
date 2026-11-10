@@ -1,4 +1,4 @@
-import type { MetricLabels, MetricsRecorderPort } from '@social-monitor/platform-metrics';
+import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
 
 import type {
   ProviderSummaryAttempt,
@@ -11,6 +11,10 @@ import type {
   SummaryModelRoute,
   SummaryModelValidationResult,
 } from '../../ports';
+import {
+  recordSummaryModelRequest,
+  recordSummaryModelUsage,
+} from './summary-model-metrics';
 
 export class MeteredSummaryModelAdapter implements SummaryModelPort {
   constructor(
@@ -27,44 +31,19 @@ export class MeteredSummaryModelAdapter implements SummaryModelPort {
   }
 
   async summarize(input: SummaryModelInput, route: SummaryModelRoute): Promise<ProviderSummaryAttempt> {
-    this.recordRequest(route, 'started');
+    recordSummaryModelRequest(this.metrics, route, 'started');
 
     try {
       const attempt = await this.delegate.summarize(input, route);
       const usage = attempt.draft.usage;
 
-      this.recordRequest(route, 'succeeded');
-      this.metrics.incrementCounter({
-        name: 'summary_model_tokens_total',
-        value: usage.inputTokens,
-        labels: {
-          model: route.model,
-          provider: route.provider,
-          token_type: 'input',
-        },
-      });
-      this.metrics.incrementCounter({
-        name: 'summary_model_tokens_total',
-        value: usage.outputTokens,
-        labels: {
-          model: route.model,
-          provider: route.provider,
-          token_type: 'output',
-        },
-      });
-      this.metrics.incrementCounter({
-        name: 'summary_model_estimated_cost_usd',
-        value: usage.estimatedCostUsd,
-        labels: {
-          model: route.model,
-          provider: route.provider,
-        },
-      });
+      recordSummaryModelRequest(this.metrics, route, 'succeeded');
+      recordSummaryModelUsage(this.metrics, route, usage);
 
       return attempt;
     } catch (error) {
       const failure = this.delegate.classifyError(error);
-      this.recordRequest(route, 'failed', failure.kind);
+      recordSummaryModelRequest(this.metrics, route, 'failed', failure.kind);
       throw error;
     }
   }
@@ -75,19 +54,5 @@ export class MeteredSummaryModelAdapter implements SummaryModelPort {
 
   classifyError(error: unknown): SummaryModelFailure {
     return this.delegate.classifyError(error);
-  }
-
-  private recordRequest(route: SummaryModelRoute, status: 'started' | 'succeeded' | 'failed', failureKind?: string): void {
-    const labels: MetricLabels = {
-      ...(failureKind === undefined ? {} : { failure_kind: failureKind }),
-      model: route.model,
-      provider: route.provider,
-      status,
-    };
-
-    this.metrics.incrementCounter({
-      name: 'summary_model_requests_total',
-      labels,
-    });
   }
 }
