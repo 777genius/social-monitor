@@ -31,77 +31,22 @@ import {
   estimateOpenAiSummaryUsage,
 } from "./openai-responses-summary-budget";
 import {
-  nonEmptyOrFallback,
-  nonNegativeNumberOrFallback,
-  positiveIntegerOrFallback,
-} from './openai-responses-summary-option-values';
+  resolveOpenAiSummaryRuntimeSettings,
+  type OpenAiSummaryRuntimeSettings,
+} from './openai-responses-summary-runtime-settings';
 
-import {
-  createOpenAiSummaryResponse,
-  type OpenAiSummaryFetchLike as FetchLike,
-} from './openai-responses-summary-transport';
+import { createOpenAiSummaryResponse } from './openai-responses-summary-transport';
 import type { OpenAiResponsesSummaryModelAdapterOptions } from './openai-responses-summary-options';
 export type { OpenAiResponsesSummaryModelAdapterOptions } from './openai-responses-summary-options';
 export { resolveOpenAiResponsesSummaryModelOptions } from './openai-responses-summary-options';
 
 const provider = 'openai-responses';
-const defaultModel = 'gpt-5.4-mini';
-const defaultPromptVersion = 'summary.prompt.openai.responses.v1';
-const defaultEvalDatasetVersion = 'summary.eval.mvp.v1';
-const defaultEndpointUrl = 'https://api.openai.com/v1/responses';
-const defaultTimeoutMs = 60_000;
-const defaultMaxOutputTokens = 4_000;
-const defaultInputTokenDivisor = 4;
 
 export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
-  private readonly apiKey: string;
-  private readonly endpointUrl: string;
-  private readonly model: string;
-  private readonly promptVersion: string;
-  private readonly evalDatasetVersion: string;
-  private readonly timeoutMs: number;
-  private readonly maxOutputTokens: number;
-  private readonly inputTokenDivisor: number;
-  private readonly estimatedInputCostUsdPerMillionTokens: number;
-  private readonly estimatedOutputCostUsdPerMillionTokens: number;
-  private readonly fetchFn: FetchLike;
+  private readonly settings: OpenAiSummaryRuntimeSettings;
 
   constructor(options: OpenAiResponsesSummaryModelAdapterOptions = {}) {
-    this.apiKey = options.apiKey?.trim() ?? '';
-    this.endpointUrl = nonEmptyOrFallback(
-      options.endpointUrl,
-      defaultEndpointUrl,
-    );
-    this.model = nonEmptyOrFallback(options.model, defaultModel);
-    this.promptVersion = nonEmptyOrFallback(
-      options.promptVersion,
-      defaultPromptVersion,
-    );
-    this.evalDatasetVersion = nonEmptyOrFallback(
-      options.evalDatasetVersion,
-      defaultEvalDatasetVersion,
-    );
-    this.timeoutMs = positiveIntegerOrFallback(
-      options.timeoutMs,
-      defaultTimeoutMs,
-    );
-    this.maxOutputTokens = positiveIntegerOrFallback(
-      options.maxOutputTokens,
-      defaultMaxOutputTokens,
-    );
-    this.inputTokenDivisor = positiveIntegerOrFallback(
-      options.inputTokenDivisor,
-      defaultInputTokenDivisor,
-    );
-    this.estimatedInputCostUsdPerMillionTokens = nonNegativeNumberOrFallback(
-      options.estimatedInputCostUsdPerMillionTokens,
-      0,
-    );
-    this.estimatedOutputCostUsdPerMillionTokens = nonNegativeNumberOrFallback(
-      options.estimatedOutputCostUsdPerMillionTokens,
-      0,
-    );
-    this.fetchFn = options.fetchFn ?? fetch;
+    this.settings = resolveOpenAiSummaryRuntimeSettings(options);
   }
 
   route(
@@ -121,10 +66,10 @@ export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
     void selectedRoute;
 
     return estimateOpenAiSummaryUsage(input, {
-      maxOutputTokens: this.maxOutputTokens,
-      inputTokenDivisor: this.inputTokenDivisor,
-      estimatedInputCostUsdPerMillionTokens: this.estimatedInputCostUsdPerMillionTokens,
-      estimatedOutputCostUsdPerMillionTokens: this.estimatedOutputCostUsdPerMillionTokens,
+      maxOutputTokens: this.settings.maxOutputTokens,
+      inputTokenDivisor: this.settings.inputTokenDivisor,
+      estimatedInputCostUsdPerMillionTokens: this.settings.estimatedInputCostUsdPerMillionTokens,
+      estimatedOutputCostUsdPerMillionTokens: this.settings.estimatedOutputCostUsdPerMillionTokens,
     });
   }
 
@@ -136,7 +81,7 @@ export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
       return this.buildNoSignalAttempt(input, selectedRoute);
     }
 
-    if (this.apiKey.length === 0) {
+    if (this.settings.apiKey.length === 0) {
       throw new SummaryModelProviderError({
         kind: 'provider_unavailable',
         retryable: false,
@@ -148,7 +93,7 @@ export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
     const request = {
       model: selectedRoute.model,
       store: false,
-      max_output_tokens: this.maxOutputTokens,
+      max_output_tokens: this.settings.maxOutputTokens,
       instructions: buildInstructions(input),
       input: buildPromptPayload(input),
       text: {
@@ -163,10 +108,10 @@ export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
 
     const responseJson = await createOpenAiSummaryResponse({
       request,
-      endpointUrl: this.endpointUrl,
-      apiKey: this.apiKey,
-      timeoutMs: this.timeoutMs,
-      fetchFn: this.fetchFn,
+      endpointUrl: this.settings.endpointUrl,
+      apiKey: this.settings.apiKey,
+      timeoutMs: this.settings.timeoutMs,
+      fetchFn: this.settings.fetchFn,
     });
     const outputText = extractOpenAiSummaryOutputText(responseJson);
 
@@ -188,7 +133,7 @@ export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
       input,
       selectedRoute,
       usage,
-      this.evalDatasetVersion,
+      this.settings.evalDatasetVersion,
     );
 
     return {
@@ -234,8 +179,8 @@ export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
   private buildRoute(): SummaryModelRoute {
     return {
       provider,
-      model: this.model,
-      promptVersion: this.promptVersion,
+      model: this.settings.model,
+      promptVersion: this.settings.promptVersion,
       schemaVersion: 'summary.artifact.v1',
     };
   }
@@ -247,7 +192,7 @@ export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
     return buildSummaryNoSignalAttempt({
       input,
       selectedRoute,
-      evalDatasetVersion: this.evalDatasetVersion,
+      evalDatasetVersion: this.settings.evalDatasetVersion,
       usage: this.estimate(input, selectedRoute),
     });
   }
