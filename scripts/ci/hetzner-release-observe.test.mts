@@ -498,3 +498,63 @@ test('recovery CLI rejects untrusted dispatch before accessing host credentials'
     assert.deepEqual(await readdir(root), ['event.json']);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test('frontend delivery sends exact CI ZIP and checks host proof against both archives', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'TEST-sm-frontend-delivery-'));
+  try {
+    const zipBytes = Buffer.from('synthetic ZIP bytes'), tarHash = 'c'.repeat(64);
+    const transportPath = join(root, 'frontend-transport.zip'), manifest = join(root, 'frontend-manifest.json');
+    const manifestBytes = Buffer.from(JSON.stringify({ archive: { sha256: tarHash, bytes: 17 } }));
+    await writeFile(transportPath, zipBytes); await writeFile(manifest, manifestBytes);
+    const base = { ...authority, jobs: A.JOBS.map((_, i) => String(1000 + i)).sort() };
+    const frontend = { base, artifact: { id: '51', name: `frontend-candidate-${sha}-${run}-2`,
+      digest: digest(zipBytes), bytes: zipBytes.length } };
+    const candidate = { manifest, manifestHash: digest(manifestBytes), transport: transportPath };
+    const proof = { root: `/var/lib/social-monitor-release/cohort/frontend/candidates/${sha}-${run}/bundle`,
+      authority: { sha, ci_run_id: run, ci_run_attempt: '2', artifact_id: '51',
+        artifact_name: frontend.artifact.name, artifact_sha256: frontend.artifact.digest, artifact_bytes: zipBytes.length },
+      manifest_sha256: candidate.manifestHash, archive_sha256: 'sha256:' + tarHash,
+      archive_bytes: 17, tree_sha256: image };
+    const repo = { id: 10, name: 'social-monitor', full_name: '777genius/social-monitor',
+      owner: { id: 20, login: '777genius' } };
+    let currentMain = sha;
+    const get: Get = async path => {
+      if (path === '') return repo;
+      if (path === 'actions/workflows/pull-request.yml') return { id: 30, name: 'Pull request checks',
+        path: '.github/workflows/pull-request.yml', state: 'active' };
+      if (path === 'actions/runs/123') return { id: 123, workflow_id: 30, name: 'Pull request checks',
+        path: '.github/workflows/pull-request.yml', status: 'completed', conclusion: 'success', event: 'push',
+        head_branch: 'main', head_sha: sha, run_attempt: 2, repository: repo, head_repository: repo };
+      if (path === 'git/ref/heads/main') return { ref: 'refs/heads/main', object: { type: 'commit', sha: currentMain } };
+      if (path === 'actions/workflows/production-deploy.yml') return { id: 40,
+        path: '.github/workflows/production-deploy.yml', state: 'disabled_manually' };
+      if (path.includes('/jobs?')) return { total_count: A.JOBS.length, jobs: A.JOBS.map((name, i) =>
+        ({ id: 1000 + i, run_id: 123, run_attempt: 2, head_sha: sha, status: 'completed', conclusion: 'success', name })) };
+      if (path.includes('/artifacts?')) {
+        const producer = { id: 123, head_sha: sha, head_branch: 'main', repository_id: 10, head_repository_id: 10 };
+        return { total_count: 2, artifacts: [
+          { id: 50, name: authority.artifactName, expired: false, size_in_bytes: 4096, digest: image, workflow_run: producer },
+          { id: 51, name: frontend.artifact.name, expired: false, size_in_bytes: zipBytes.length,
+            digest: frontend.artifact.digest, workflow_run: producer }] };
+      }
+      throw new Error('unexpected endpoint');
+    };
+    let calls = 0;
+    const transport: Transport = async (wire, source) => {
+      calls++; assert.equal(wire, `cohort-receive-frontend ${sha} ${run}`); assert.ok(source);
+      const chunks: Buffer[] = [];
+      for await (const chunk of source()) chunks.push(Buffer.from(chunk));
+      assert.deepEqual(Buffer.concat(chunks), zipBytes);
+      return response(proof);
+    };
+    assert.deepEqual(await O.sendFrontendCandidate(frontend, candidate, get, transport), proof);
+    await assert.rejects(O.sendFrontendCandidate(frontend, candidate, get, async () => response({ ...proof,
+      archive_sha256: image })), /frontend-host-binding/);
+    currentMain = 'd'.repeat(40);
+    await assert.rejects(O.sendFrontendCandidate(frontend, candidate, get, transport), /frontend-stale-main/);
+    currentMain = sha;
+    await writeFile(transportPath, Buffer.alloc(zipBytes.length, 'x'));
+    await assert.rejects(O.sendFrontendCandidate(frontend, candidate, get, transport), /frontend-transport-changed/);
+    assert.equal(calls, 1);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

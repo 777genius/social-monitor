@@ -253,6 +253,49 @@ export async function prepareFrontendCandidate(frontend: FrontendAuthority, scra
   // Retain the original CI artifact so the host can independently verify its provenance.
   return { ...candidate, transport: zip };
 }
+/** Deliver original CI ZIP; the host repeats independent authority and archive checks. */
+export async function sendFrontendCandidate(frontend: FrontendAuthority,
+  candidate: { manifest: string; manifestHash: string; transport: string }, get: Get, transport: Transport) {
+  const artifact = frontend.artifact, base = frontend.base;
+  const manifestBytes = await boundedBytes(candidate.manifest, 65536);
+  A.requireValue('sha256:' + createHash('sha256').update(manifestBytes).digest('hex') === candidate.manifestHash,
+    'frontend-manifest-changed');
+  const manifest = A.object(A.parseJson(manifestBytes, 65536));
+  const archive = A.object(manifest.archive);
+  const archiveSha = A.text(archive.sha256, /^[0-9a-f]{64}$/u, 'frontend-archive-digest');
+  const archiveBytes = archive.bytes;
+  A.requireValue(Number.isSafeInteger(archiveBytes) && (archiveBytes as number) > 0, 'frontend-archive-size');
+  await canonical(candidate.transport);
+  const handle = await open(candidate.transport, F.O_RDONLY | F.O_NOFOLLOW | F.O_NONBLOCK);
+  try {
+    const before = await handle.stat();
+    A.requireValue(before.isFile() && before.size === artifact.bytes, 'frontend-transport-size');
+    const hash = createHash('sha256');
+    for await (const chunk of handle.createReadStream({ autoClose: false, start: 0, end: before.size - 1 })) hash.update(chunk);
+    A.requireValue('sha256:' + hash.digest('hex') === artifact.digest
+      && identity(before) === identity(await handle.stat()) && identity(before) === identity(await lstat(candidate.transport)),
+      'frontend-transport-changed');
+    const guarded = guardedTransport(get, base, transport, frontend);
+    const response = await guarded(command('cohort-receive-frontend', [base.sha, base.run]),
+      () => handle.createReadStream({ autoClose: false, start: 0, end: before.size - 1 }));
+    A.requireValue(response.code === 0 && Buffer.isBuffer(response.stdout), 'frontend-host-denied');
+    A.requireValue(identity(before) === identity(await handle.stat()) && identity(before) === identity(await lstat(candidate.transport)),
+      'frontend-transport-changed');
+    const proof = A.exact(A.parseJson(response.stdout, 65536),
+      ['root', 'authority', 'manifest_sha256', 'archive_sha256', 'archive_bytes', 'tree_sha256']);
+    const binding = A.exact(proof.authority, ['sha', 'ci_run_id', 'ci_run_attempt', 'artifact_id', 'artifact_name',
+      'artifact_sha256', 'artifact_bytes']);
+    A.requireValue(binding.sha === base.sha && binding.ci_run_id === base.run && binding.ci_run_attempt === String(base.attempt)
+      && binding.artifact_id === artifact.id && binding.artifact_name === artifact.name
+      && binding.artifact_sha256 === artifact.digest && binding.artifact_bytes === artifact.bytes
+      && proof.manifest_sha256 === candidate.manifestHash && proof.archive_sha256 === 'sha256:' + archiveSha
+      && proof.archive_bytes === archiveBytes
+      && proof.root === `/var/lib/social-monitor-release/cohort/frontend/candidates/${base.sha}-${base.run}/bundle`,
+      'frontend-host-binding');
+    A.text(proof.tree_sha256, A.DIGEST, 'frontend-tree-digest');
+    return proof;
+  } finally { await handle.close(); }
+}
 export interface Observation {
   environment: 'production-hetzner'; machine_id: string; latch: false;
   snapshot: string; api_image: string; compose: string;
