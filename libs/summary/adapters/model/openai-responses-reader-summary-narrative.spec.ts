@@ -275,6 +275,41 @@ describe("normalizeOpenAiReaderSummaryNarrative", () => {
 
     expect(result.some((item) => item.kind === "watch")).toBe(false);
   });
+  it("keeps provider section indices after rejecting an ungrounded optional watch", () => {
+    const result = normalize([
+      section("lead", "lead", "c1"),
+      section("watch", "rumor", "c1"),
+      section("secondary_signal", "security", "c2"),
+      section("secondary_signal", "database", "c3"),
+    ]);
+
+    expect(result.map((item) => item.id)).toEqual([
+      "narrative-1",
+      "narrative-3",
+      "narrative-4",
+    ]);
+  });
+
+  it("prunes invented citation IDs before checking synthesis lead coverage", () => {
+    const input = modelInput();
+    const result = normalize(
+      [
+        { ...section("lead", "lead", "c1"), citationIds: ["c1", "invented", "c2"] },
+        section("secondary_signal", "security", "c2"),
+        section("secondary_signal", "database", "c3"),
+      ],
+      {
+        ...input,
+        coveragePlan: { ...input.coveragePlan, mode: "daily_synthesis" },
+      },
+    );
+
+    expect(result[0]).toMatchObject({
+      kind: "lead",
+      citationIds: ["c1", "c2"],
+    });
+  });
+
 });
 
 const normalize = (
