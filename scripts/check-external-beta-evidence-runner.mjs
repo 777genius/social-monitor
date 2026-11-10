@@ -21,7 +21,7 @@ import {
   durableBackendE2ePreflightEnv,
   redditOAuthPreflightEnv,
 } from './lib/external-beta-evidence-preflight-fixtures.mjs';
-import { validateRunnerImplementationMarkers, redactionPolicyPath } from './lib/external-beta-evidence-runner-markers.mjs';
+import { validateRunnerImplementationMarkers, redactionPolicyPath, handoffPolicyPath } from './lib/external-beta-evidence-runner-markers.mjs';
 import {
   liveOpenConnectorsArtifact,
   redditCredentialLifecycleArtifact,
@@ -32,7 +32,6 @@ import {
   stagingReliabilitySmokeConfigByArtifactId,
   stagingReliabilitySmokeConfigs,
 } from './lib/external-beta-staging-reliability-fixtures.mjs';
-
 import {
   securityFinalSweepExportDocuments,
   securityFinalSweepArtifact,
@@ -317,6 +316,7 @@ function validateRunnerImplementation() {
     runnerSource,
     checkSource,
     selectionHelperSource,
+    handoffSource: readFileSync(handoffPolicyPath, 'utf8'),
     redactionPolicySource: readFileSync(redactionPolicyPath, 'utf8'),
     runnerFile: contract.runnerFile,
     checkFile: contract.checkFile,

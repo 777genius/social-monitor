@@ -1,7 +1,9 @@
 export const redactionPolicyPath = 'scripts/lib/external-beta-evidence-artifact-redaction.mjs';
+export const handoffPolicyPath = 'scripts/lib/external-beta-evidence-handoff.mjs';
 
 export function validateRunnerImplementationMarkers({
   runnerSource,
+  handoffSource,
   checkSource,
   selectionHelperSource,
   redactionPolicySource,
@@ -23,10 +25,6 @@ export function validateRunnerImplementationMarkers({
     'printSummary',
     'printHandoff',
     'printJsonHandoff',
-    'buildHandoff',
-    'buildHandoffArtifactContracts',
-    'buildHandoffInputs',
-    'buildHandoffEnvArtifacts',
     'runnerDescription',
     'operatorAction',
     'inputMetadataByEnv',
@@ -64,7 +62,6 @@ export function validateRunnerImplementationMarkers({
     'satisfiedRequiredEnvAlternatives',
     'requiredEnvAlternativeCoveredEnvNames',
     'jobInputEnvNames',
-    'requiredAlternativeInputs',
     'coversEnv',
     'allowCapturedArtifactAlternatives',
     'hasSatisfiedCapturedArtifactAlternative',
@@ -219,6 +216,19 @@ export function validateRunnerImplementationMarkers({
   ]) {
     if (!runnerSource.includes(marker)) {
       violations.push(`${runnerFile}: runner must fail fast before executing unsafe job selections`);
+    }
+  }
+
+  // The JSON handoff projection moved; its markers must stay enforced at the new owner.
+  for (const marker of [
+    'buildHandoff',
+    'buildHandoffArtifactContracts',
+    'buildHandoffInputs',
+    'buildHandoffEnvArtifacts',
+    'requiredAlternativeInputs',
+  ]) {
+    if (!handoffSource.includes(marker)) {
+      violations.push(`${handoffPolicyPath}: extracted JSON handoff must preserve "${marker}"`);
     }
   }
 
