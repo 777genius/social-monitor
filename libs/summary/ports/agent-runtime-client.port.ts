@@ -32,6 +32,8 @@ export type AgentRuntimeUsage = {
   readonly outputTokens: number;
   readonly totalTokens: number;
   readonly estimatedCostUsd: number;
+  readonly cachedInputTokens?: number;
+  readonly reasoningTokens?: number;
 };
 
 export type AgentRuntimeFailure = {

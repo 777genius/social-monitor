@@ -2,7 +2,7 @@ import {
   LlmSchemaError, prepareStrictJsonSchema,
 } from "@agent-teams/account-gateway/llm";
 import type {
-  LlmClient, LlmEffort, LlmFailure, LlmPolicy, LlmSuccess, LlmTask,
+  LlmClient, LlmEffort, LlmFailure, LlmPolicy, LlmSuccess, LlmTask, LlmUsage,
 } from "@agent-teams/account-gateway/llm";
 import type { Clock } from "@social-monitor/shared-kernel";
 import {
@@ -111,11 +111,11 @@ export class GatewayLlmClient implements AgentRuntimeClientPort {
           remainingMs <= afterMs) {
         const elapsedMs = now.getTime() - startedAt;
         const failure = gatewayLlmFailure(result, identity, prepared.outputViolations());
-        return failed({ ...failure, details: { ...failure.details,
+        return { ...failed({ ...failure, details: { ...failure.details,
           gatewayElapsedMs: String(elapsedMs),
           gatewaySoftTimeoutMs: String(command.timeoutMs),
           gatewayHardTimeoutMs: String(prepared.task.deadline.getTime() - startedAt),
-        } }, elapsedMs);
+        } }, elapsedMs), ...gatewayUsage(result.usage) };
       }
       await this.options.sleep(afterMs, options?.signal);
       if (retry.kind === "new_attempt") {
@@ -228,12 +228,11 @@ export class GatewayLlmClient implements AgentRuntimeClientPort {
   ): AgentRuntimeTaskResult {
     const receipt = result.receipt;
     if (!observedModelMatches(prepared.task.model, receipt.observedModel)) {
-      return failed(gatewayLlmModelMismatch(identity), durationMs);
+      return { ...failed(gatewayLlmModelMismatch(identity), durationMs), ...gatewayUsage(result.usage) };
     }
     const output = prepared.structured
       ? { structuredOutput: result.value } : { outputText: result.text };
     const selected = selectedAgentRuntimeOutput(output);
-    const usage = result.usage;
     return {
       status: "completed",
       ...output,
@@ -243,10 +242,7 @@ export class GatewayLlmClient implements AgentRuntimeClientPort {
         ...(durationMs > command.timeoutMs ? [{ code: "gateway_settlement_grace_used",
           message: "Gateway task settled after its nominal timeout" }] : []),
       ],
-      ...(usage.inputTokens === null || usage.outputTokens === null ? {} : {
-        usage: { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens,
-          totalTokens: usage.inputTokens + usage.outputTokens, estimatedCostUsd: 0 },
-      }),
+      ...gatewayUsage(result.usage),
       durationMs,
       executionAttestation: {
         schemaVersion: 1,
@@ -290,3 +286,11 @@ const observation = (failure: LlmFailure): "busy" | "unauthorized" | "other" =>
 const failed = (failure: AgentRuntimeFailure, durationMs: number): AgentRuntimeTaskResult => ({
   status: "failed", warnings: [], failure, durationMs,
 });
+
+const gatewayUsage = (usage: LlmUsage | null): Pick<AgentRuntimeTaskResult, "usage"> =>
+  usage === null || usage.inputTokens === null || usage.outputTokens === null ? {} : {
+    usage: { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens,
+      totalTokens: usage.inputTokens + usage.outputTokens, estimatedCostUsd: 0,
+      ...(usage.cachedInputTokens === null ? {} : { cachedInputTokens: usage.cachedInputTokens }),
+      ...(usage.reasoningTokens === null ? {} : { reasoningTokens: usage.reasoningTokens }) },
+  };
