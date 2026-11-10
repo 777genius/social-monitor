@@ -1,0 +1,34 @@
+name: Weekly legacy evidence policy focused verification
+on:
+  push:
+    branches:
+      - refactor/summary-model-adapters-10k-20261108
+    paths:
+      - .github/workflows/model-weekly-legacy-evidence-focused.yml
+permissions:
+  contents: read
+jobs:
+  focused_weekly:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      DATABASE_URL: postgresql://social_monitor_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_ci
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run prisma:generate
+      - run: npx tsc --noEmit
+      - run: npm run check:source-line-cap
+      - run: npm run check:architecture
+      - name: Weekly evidence policy and parser regressions
+        run: >-
+          npx jest --config jest.config.ts --runInBand --runTestsByPath
+          libs/summary/adapters/model/openai-responses-reader-summary-weekly-legacy-evidence-policy.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-weekly-legacy-normalization.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-parser.spec.ts
