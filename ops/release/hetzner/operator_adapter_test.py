@@ -64,6 +64,8 @@ class WireAndBoundsTests(unittest.TestCase):
         from operator_adapter import REQUESTS
         for verb in REQUESTS:
             value = {} if verb in ('preflight', 'postgres-identity') else dict(BINDING)
+            if verb == 'frontend-authority':
+                value = {'sha': BINDING['sha'], 'ci_run_id': BINDING['ci_run_id']}
             if verb == 'release-evidence':
                 value['production_revision'] = BASE
             if verb == 'backend-release-evidence':
@@ -220,14 +222,17 @@ class WireAndBoundsTests(unittest.TestCase):
             module = root / 'opt/social-monitor-release/operator_config.py'
             original = module.read_bytes()
             module.write_bytes(b'(\n')
-            result = subprocess.run(['/usr/sbin/chroot', str(root),
-                '/etc/social-monitor/release/operator-adapter', 'postgres-identity'],
-                input=b'{}', capture_output=True, timeout=8, env=env)
-            self.assertEqual(result.returncode, 1)
-            self.assertEqual(result.stdout, b'')
-            self.assertIn(b'SyntaxError', result.stderr)
-            self.assertIn(b'/opt/social-monitor-release/operator_config.py', result.stderr)
-            self.assertFalse((root / 'poison-imported').exists())
+            for verb in ('postgres-identity', 'frontend-authority', 'backend-release-evidence',
+                         'worker-capability', 'worker-drain', 'worker-probe'):
+                with self.subTest(verb=verb):
+                    result = subprocess.run(['/usr/sbin/chroot', str(root),
+                        '/etc/social-monitor/release/operator-adapter', verb],
+                        input=b'{}', capture_output=True, timeout=8, env=env)
+                    self.assertEqual(result.returncode, 1)
+                    self.assertEqual(result.stdout, b'')
+                    self.assertIn(b'SyntaxError', result.stderr)
+                    self.assertIn(b'/opt/social-monitor-release/operator_config.py', result.stderr)
+                    self.assertFalse((root / 'poison-imported').exists())
             module.write_bytes(original)
             copy(interpreter, '/opt/social-monitor-release-python/bin/copied-python')
             interpreter.unlink()
