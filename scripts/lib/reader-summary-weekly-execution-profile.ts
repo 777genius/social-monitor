@@ -77,7 +77,7 @@ export const assertReaderSummaryWeeklyCommandExecution = (
   if (!Number.isSafeInteger(profile.gatewayMinOutputTokens) || profile.gatewayMinOutputTokens! < 1 ||
       attestation.canonicalRequestSha256 !== gatewayLlmCanonicalRequestSha256(command, {
         profileId: readerSummaryWeeklyGatewayProfileId, model: profile.model,
-        reasoningEffort: profile.reasoningEffort as "low" | "high",
+        reasoningEffort: profile.reasoningEffort as "low" | "medium" | "high",
         minOutputTokens: profile.gatewayMinOutputTokens!,
       })) {
     throw new Error("Reader summary weekly gateway canonical request diverged");

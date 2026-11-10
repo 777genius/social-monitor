@@ -24,19 +24,19 @@ import { admittedRunnerInput, sha } from "./reader-summary-weekly-production-tes
 import { completeModelInput, outputFor } from "./reader-summary-weekly-production-test-output";
 
 const profile = Object.freeze({ transport: "gateway-llm" as const,
-  model: "gpt-6.1-sol", reasoningEffort: "low", gatewayMinOutputTokens: 16_384 });
-const route = { profileId: "openai-codex-oauth-responses-v1", model: "gpt-6.1-sol",
-  reasoningEffort: "low" as const, minOutputTokens: 16_384 };
+  model: "gpt-6.1-terra", reasoningEffort: "medium", gatewayMinOutputTokens: 16_384 });
+const route = { profileId: "openai-codex-oauth-responses-v1", model: "gpt-6.1-terra",
+  reasoningEffort: "medium" as const, minOutputTokens: 16_384 };
 const attestation = (command: AgentRuntimeTaskCommand, output: Record<string, unknown>): AgentRuntimeExecutionAttestation => ({
   schemaVersion: 1, requestId: command.requestId, purpose: command.purpose,
   canonicalRequestSha256: gatewayLlmCanonicalRequestSha256(command, route),
-  provider: "codex", model: "gpt-6.1-sol", reasoningEffort: "low", runtimeEngine: "gateway-llm",
+  provider: "codex", model: "gpt-6.1-terra", reasoningEffort: "medium", runtimeEngine: "gateway-llm",
   runtimePackageVersion: approvedGatewayLlmSdkIdentity.packageVersion,
   launcherSha256: approvedGatewayLlmSdkIdentity.archiveSha256,
   selectedOutputKind: "structured_output", selectedOutputSha256: canonicalJsonSha256(output),
   gateway: { profileId: route.profileId, taskId: "test_weekly_task", attempt: 1,
     executionRef: "test_weekly_execution", requestRef: "test_weekly_request",
-    accountRef: "test_weekly_account", observedModel: "gpt-6.1-sol-2026-10-01", requestSha256: sha("wire") },
+    accountRef: "test_weekly_account", observedModel: "gpt-6.1-terra-2026-10-01", requestSha256: sha("wire") },
 });
 const runtime = (change?: (proof: AgentRuntimeExecutionAttestation) => AgentRuntimeExecutionAttestation): jest.Mocked<AgentRuntimeClientPort> => ({
   runTask: jest.fn(async (command) => {
@@ -59,8 +59,8 @@ describe("weekly gateway execution evidence", () => {
       generatedAt: new Date("2026-07-27T06:30:00.000Z") });
     expect(first.status).toBe("complete");
     const proof = JSON.parse(readFileSync(first.proofPath!, "utf8"));
-    expect(proof.model).toMatchObject({ provider: "gateway-llm", model: "gpt-6.1-sol",
-      reasoningEffort: "low", runtimeOutput: "structured_output",
+    expect(proof.model).toMatchObject({ provider: "gateway-llm", model: "gpt-6.1-terra",
+      reasoningEffort: "medium", runtimeOutput: "structured_output",
       executionAttestation: { runtimeEngine: "gateway-llm", gateway: { executionRef: "test_weekly_execution" } } });
     const replayModel = { generate: jest.fn(async () => { throw new Error("paid replay"); }) };
     const replay = await runReaderSummaryWeeklyProduction({ ...args, outputDirectory, model: replayModel,
@@ -90,7 +90,7 @@ describe("weekly gateway execution evidence", () => {
 
   it("fails closed on a partial switch or an unapproved weekly profile", () => {
     const env = { AGENT_RUNTIME_TRANSPORT: "gateway-llm", AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
-      AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-6.1-sol",
+      AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-6.1-terra",
       AGENT_RUNTIME_GATEWAY_LLM_ACCOUNT_REFS: "test_account", AGENT_RUNTIME_GATEWAY_LLM_POLICY_SUBJECT_REF: "test_subject",
       AGENT_RUNTIME_GATEWAY_LLM_POLICY_REVISION: "1", AGENT_RUNTIME_GATEWAY_LLM_BINDING_REVISION: "1",
       AGENT_RUNTIME_GATEWAY_LLM_CONTROL_ORIGIN: "https://gateway.test", AGENT_RUNTIME_GATEWAY_LLM_CONTROL_TOKEN_FILE: "/test/not-read" };
