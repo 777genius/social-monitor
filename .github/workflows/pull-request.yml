@@ -142,17 +142,24 @@ jobs:
         id: select
         shell: bash
         env:
-          CI_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          PR_BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
           if [[ "$GITHUB_EVENT_NAME" != pull_request ]]; then
             echo "tier=full" >> "$GITHUB_OUTPUT"
-          elif [[ "$CI_BASE_SHA" =~ ^[a-f0-9]{40}$ ]] &&
+          elif [[ "$PR_BASE_REF" =~ ^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,199}$ ]] &&
+               [[ "$PR_BASE_REF" != *..* && "$PR_BASE_REF" != *//* ]] &&
+               git fetch --no-tags origin "refs/heads/$PR_BASE_REF" &&
+               CI_BASE_SHA="$(git rev-parse FETCH_HEAD)" &&
+               [[ "$CI_BASE_SHA" =~ ^[a-f0-9]{40}$ ]] &&
+               git merge-base --is-ancestor "$CI_BASE_SHA" "$GITHUB_SHA" &&
                git cat-file -e "${CI_BASE_SHA}:scripts/ci/ci-impact.mjs"; then
+            # Current trusted base must be an ancestor of the exact reviewed
+            # merge SHA; a moved parent branch makes the result full, not docs.
             git show "${CI_BASE_SHA}:scripts/ci/ci-impact.mjs" > "$RUNNER_TEMP/social-ci-impact-trusted.mjs"
-            node "$RUNNER_TEMP/social-ci-impact-trusted.mjs"
+            CI_BASE_SHA="$CI_BASE_SHA" node "$RUNNER_TEMP/social-ci-impact-trusted.mjs"
           else
-            echo "CI impact: no trusted-base policy; full qualification"
+            echo "CI impact: current trusted base not in reviewed merge; full qualification"
             echo "tier=full" >> "$GITHUB_OUTPUT"
           fi
 
