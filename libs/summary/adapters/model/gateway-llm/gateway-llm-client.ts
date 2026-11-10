@@ -14,6 +14,7 @@ import { gatewayLlmFailure } from "./gateway-llm-failure";
 import type { GatewayLlmSdkIdentity } from "./gateway-llm-sdk-identity";
 import { prepareGatewayLlmTask, type GatewayLlmPrepared } from "./gateway-llm-task-preparation";
 import { completeGatewayLlmTask } from "./gateway-llm-task-completion";
+import { gatewayLlmUsage } from "./gateway-llm-usage";
 
 /**
  * The one gateway profile and model a client serves. Tasks must name exactly
@@ -92,7 +93,7 @@ export class GatewayLlmClient implements AgentRuntimeClientPort {
           gatewayElapsedMs: String(elapsedMs),
           gatewaySoftTimeoutMs: String(command.timeoutMs),
           gatewayHardTimeoutMs: String(prepared.task.deadline.getTime() - startedAt),
-        } }, elapsedMs);
+        } }, elapsedMs), ...gatewayLlmUsage(result.usage) };
       }
       await this.options.sleep(afterMs, options?.signal);
       if (retry.kind === "new_attempt") {
