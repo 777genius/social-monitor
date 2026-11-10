@@ -35,7 +35,4 @@ jobs:
           npm run check:source-line-cap
       - name: Focused Jest trust regressions
         run: |
-          npx jest --config jest.config.ts --runInBand --runTestsByPath \\
-            libs/summary/adapters/model/agent-runtime-reader-summary-response-validation.spec.ts \\
-            libs/summary/adapters/model/agent-runtime-reader-summary-model.adapter.spec.ts \\
-            libs/summary/adapters/model/openai-responses-reader-summary-draft-normalizer.spec.ts
+          npx jest --config jest.config.ts --runInBand --runTestsByPath libs/summary/adapters/model/agent-runtime-reader-summary-response-validation.spec.ts libs/summary/adapters/model/agent-runtime-reader-summary-model.adapter.spec.ts libs/summary/adapters/model/openai-responses-reader-summary-draft-normalizer.spec.ts
