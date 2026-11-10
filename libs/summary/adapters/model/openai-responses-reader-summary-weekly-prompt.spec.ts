@@ -176,6 +176,43 @@ describe("OpenAI reader summary weekly prompt contract", () => {
       },
     });
   });
+
+  it("keeps story and section schema constraints strict at the evidence boundary", () => {
+    const input = weeklyInput();
+    const schema = buildOpenAiReaderSummaryWeeklyJsonSchema(input);
+    const expectedStoryIds = input.stories.map((story) => story.storyId);
+    const expectedCitationIds = input.citations.map((citation) => citation.citationId);
+    const story = schema.$defs.story;
+    const section = schema.$defs.section;
+
+    expect(story.required).toEqual([
+      "storyId", "headline", "summary", "status",
+      "observedFrom", "observedThrough", "citationIds",
+    ]);
+    expect(section.required).toEqual([
+      "sectionId", "storyId", "kind", "claimType", "heading",
+      "text", "observedFrom", "observedThrough", "citationIds",
+    ]);
+    for (const definition of [story, section]) {
+      expect(definition).toMatchObject({
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          storyId: { enum: expectedStoryIds },
+          observedFrom: { enum: dates, pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+          observedThrough: { enum: dates },
+          citationIds: {
+            minItems: 1, maxItems: expectedCitationIds.length,
+            uniqueItems: true, items: { enum: expectedCitationIds },
+          },
+        },
+      });
+    }
+    expect(section.properties.claimType).toEqual({
+      enum: ["snapshot", "evolution", "resolution"],
+    });
+  });
+
 });
 
 const weeklyInput = (injection?: string): ReaderSummaryWeeklyModelInput => {

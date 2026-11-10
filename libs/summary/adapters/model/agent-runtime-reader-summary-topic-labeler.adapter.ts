@@ -1,7 +1,7 @@
-import { fromJSONSchema } from "zod";
+import { buildAgentRuntimeTopicLabelCommand } from "./agent-runtime-reader-summary-topic-label-command";
+import { assertMimoTopicLabelSchema } from "./agent-runtime-reader-summary-topic-label-schema";
 import {
   READER_SUMMARY_TOPIC_MAP_MAX_NODES,
-  readerSummaryScopeKey,
   type ReaderSummaryTopicLabelPlan,
 } from "../../domain";
 import type {
@@ -11,9 +11,7 @@ import type {
   ReaderSummaryTopicMapAttemptContext,
 } from "../../ports";
 import {
-  buildAgentRuntimeRequestId,
   nonEmptyOrFallback,
-  parsePositiveInteger,
   positiveIntegerOrFallback,
   readAgentRuntimeObjectOutput,
 } from "./agent-runtime-model-support";
@@ -21,12 +19,7 @@ import {
   normalizeAgentRuntimeReaderSummaryTopicLabelPlan,
   parseAgentRuntimeReaderSummaryTopicLabelerJsonObject,
 } from "./agent-runtime-reader-summary-topic-label-plan-normalizer";
-import {
-  agentRuntimeReaderSummaryTopicLabelerInstructions,
-  agentRuntimeReaderSummaryTopicLabelerJsonSchema,
-  buildAgentRuntimeReaderSummaryTopicLabelPrompt,
-  selectAgentRuntimeReaderSummaryTopicCandidates,
-} from "./agent-runtime-reader-summary-topic-labeler-prompt";
+import { selectAgentRuntimeReaderSummaryTopicCandidates } from "./agent-runtime-reader-summary-topic-labeler-prompt";
 import {
   verifyAndRecordReaderSummaryExecution,
   type VerifiedReaderSummaryExecutionAttestationSink,
@@ -34,15 +27,10 @@ import {
 import {
   activeReaderSummaryModel,
   activeReaderSummaryProvider,
-  activeReaderSummaryPurposes,
   activeReaderSummaryReasoningEffort,
-  assertActiveReaderSummaryProvider,
   assertReaderSummaryBackendModel,
   mimoReaderSummaryBackend,
-  readerSummaryRouteControls,
   resolveReaderSummaryBackendEffort,
-  resolveReaderSummaryDailyTaskIdentityFromEnv,
-  resolveReaderSummaryReasoningEffortFromEnv,
   type ReaderSummaryGenerationBackend,
   verifyAndRecordMimoDailyExecution,
 } from "./active-reader-summary-generation-profile";
@@ -68,7 +56,6 @@ const defaultPromptVersion = "reader_summary.topic_map.agent_runtime.v21";
 export const defaultTimeoutMs = 600_000;
 const defaultMaxOutputTokens = 6_000;
 const defaultMaxCandidates = 30;
-let mimoTopicLabelSchema: ReturnType<typeof fromJSONSchema> | undefined;
 
 export class AgentRuntimeReaderSummaryTopicLabeler implements ReaderSummaryTopicLabelerPort {
   private readonly client: AgentRuntimeClientPort;
@@ -119,52 +106,19 @@ export class AgentRuntimeReaderSummaryTopicLabeler implements ReaderSummaryTopic
       input,
       Math.min(this.maxCandidates, READER_SUMMARY_TOPIC_MAP_MAX_NODES),
     );
-    const command = {
-      requestId: buildAgentRuntimeRequestId(
-        `reader-summary-topic-map-attempt-${attemptContext.attemptNumber}`,
-        input.tenantId,
-        input.workspaceId,
-        readerSummaryScopeKey(input.scope),
-        input.requestedAt,
-      ),
-      tenantId: input.tenantId,
-      workspaceId: input.workspaceId,
-      correlationId: buildAgentRuntimeRequestId(
-        "reader-summary-topic-map-correlation",
-        input.tenantId,
-        input.workspaceId,
-        readerSummaryScopeKey(input.scope),
-        input.requestedAt,
-      ),
-      provider: this.agentProvider,
+    const command = buildAgentRuntimeTopicLabelCommand({
+      input,
+      candidates,
+      attemptContext,
+      agentProvider: this.agentProvider,
       providerInstanceId: this.providerInstanceId,
-      purpose: activeReaderSummaryPurposes.topicLabel,
-      systemPrompt: agentRuntimeReaderSummaryTopicLabelerInstructions,
-      prompt: buildAgentRuntimeReaderSummaryTopicLabelPrompt(
-        input,
-        candidates,
-        attemptContext,
-      ),
-      outputSchema: agentRuntimeReaderSummaryTopicLabelerJsonSchema,
-      controls: {
-        interactive: false,
-        outputSchemaName: "social_monitor_reader_summary_topic_map_labels",
-        schemaVersion: "reader_summary.topic_map.v1",
-        model: this.model,
-        ...(this.modelBackend === mimoReaderSummaryBackend
-          ? { modelBackend: this.modelBackend, toolsEnabled: false, toolPolicy: "none" }
-          : {}),
-        ...readerSummaryRouteControls(this.modelBackend, this.reasoningEffort),
-        maxOutputTokens: this.maxOutputTokens,
-      },
+      model: this.model,
+      modelBackend: this.modelBackend,
+      reasoningEffort: this.reasoningEffort,
+      promptVersion: this.promptVersion,
       timeoutMs: this.timeoutMs,
-      metadata: {
-        adapter: "agent-runtime-reader-summary-topic-labeler",
-        promptVersion: this.promptVersion,
-        attemptNumber: String(attemptContext.attemptNumber),
-        totalAttempts: String(attemptContext.totalAttempts),
-      },
-    } as const;
+      maxOutputTokens: this.maxOutputTokens,
+    });
     const result = await this.client.runTask(command);
     const raw = readAgentRuntimeObjectOutput(
       result,
@@ -172,13 +126,7 @@ export class AgentRuntimeReaderSummaryTopicLabeler implements ReaderSummaryTopic
       "Reader summary topic map",
     );
     if (this.modelBackend === mimoReaderSummaryBackend) {
-      mimoTopicLabelSchema ??= fromJSONSchema(
-        agentRuntimeReaderSummaryTopicLabelerJsonSchema as Record<string, unknown>,
-      );
-      if (!mimoTopicLabelSchema.safeParse(raw).success) {
-        throw new Error("MiMo topic label output conflicts with purpose schema");
-      }
-      assertMimoTopicLabelOwnKeys(raw);
+      assertMimoTopicLabelSchema(raw);
     }
 
     const plan = normalizeAgentRuntimeReaderSummaryTopicLabelPlan(
@@ -204,47 +152,4 @@ const defaultAttemptContext: ReaderSummaryTopicMapAttemptContext = {
   totalAttempts: 1,
 };
 
-const assertMimoTopicLabelOwnKeys = (raw: Record<string, unknown>): void => {
-  const schema = agentRuntimeReaderSummaryTopicLabelerJsonSchema;
-  const hasOnlyKeys = (value: Record<string, unknown>, allowed: readonly string[]) =>
-    Object.keys(value).every((key) => allowed.includes(key));
-  if (!hasOnlyKeys(raw, Object.keys(schema.properties))) {
-    throw new Error("MiMo topic label output conflicts with purpose schema");
-  }
-  for (const [values, itemSchema] of [
-    [raw.nodeLabels, schema.properties.nodeLabels.items],
-    [raw.groups, schema.properties.groups.items],
-  ] as const) {
-    if (!Array.isArray(values) || values.some((value) =>
-      value === null || typeof value !== "object" || Array.isArray(value) ||
-      !hasOnlyKeys(value as Record<string, unknown>, Object.keys(itemSchema.properties)))) {
-      throw new Error("MiMo topic label output conflicts with purpose schema");
-    }
-  }
-};
-
-export const resolveAgentRuntimeReaderSummaryTopicLabelerOptions = (
-  env: NodeJS.ProcessEnv,
-  client: AgentRuntimeClientPort,
-): AgentRuntimeReaderSummaryTopicLabelerOptions => ({
-  client,
-    agentProvider: assertActiveReaderSummaryProvider(
-      env.AGENT_RUNTIME_PROVIDER,
-    ),
-  providerInstanceId: env.AGENT_RUNTIME_PROVIDER_INSTANCE_ID,
-    ...resolveReaderSummaryDailyTaskIdentityFromEnv(
-      env, env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MODEL,
-    ),
-    reasoningEffort: resolveReaderSummaryReasoningEffortFromEnv(env),
-  promptVersion: env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_PROMPT_VERSION,
-  timeoutMs: parsePositiveInteger(
-    env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_TIMEOUT_MS ??
-      env.AGENT_RUNTIME_TIMEOUT_MS,
-  ),
-  maxOutputTokens: parsePositiveInteger(
-    env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MAX_OUTPUT_TOKENS,
-  ),
-  maxCandidates: parsePositiveInteger(
-    env.AGENT_RUNTIME_READER_SUMMARY_TOPIC_LABELER_MAX_CANDIDATES,
-  ),
-});
+export { resolveAgentRuntimeReaderSummaryTopicLabelerOptions } from "./agent-runtime-reader-summary-topic-labeler-options";

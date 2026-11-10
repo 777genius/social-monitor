@@ -1,11 +1,6 @@
 import type {
   GeneratedReaderSummaryDraft,
-  ReaderSummaryCitation,
-  ReaderSummaryConfidence,
   ReaderSummaryQualityFlag,
-  ReaderSummaryRepeatedSignal,
-  ReaderSummaryRisk,
-  ReaderSummaryInterestHighlight,
 } from "../../domain";
 import { buildReaderSummary, readerSummaryHeadline } from "../../domain";
 import type {
@@ -13,40 +8,27 @@ import type {
   ReaderSummaryModelRoute,
 } from "../../ports";
 import {
-  openAiReaderSummaryConfidenceLevels,
-  openAiReaderSummaryQualityFlags,
-  openAiReaderSummaryRiskReasons,
-} from "./openai-responses-reader-summary-contract";
-import {
   asRecord,
-  knownStringSubset,
-  normalizeSetValue,
   optionalString,
-  requiredOptionalStringArray,
   requiredString,
-  requiredStringArray,
   uniqueNonEmptyStrings,
 } from "./openai-responses-reader-summary-json";
+import { normalizeTopStories } from "./openai-responses-reader-summary-story-normalizer";
 import {
-  clusterIdFromCitations,
-  normalizeTopStories,
-} from "./openai-responses-reader-summary-story-normalizer";
+  normalizeRisks,
+  normalizeConfidence,
+  normalizeQualityFlags,
+} from "./openai-responses-reader-summary-quality";
+import {
+  normalizeInterestHighlights,
+  normalizeRepeatedSignals,
+} from "./openai-responses-reader-summary-evidence-relations";
 import {
   normalizeOpenAiReaderSummaryNarrative,
   readerSummaryNarrativeMarkdown,
 } from "./openai-responses-reader-summary-narrative";
 import { buildReaderSummaryEvidenceCitationMap,
   readerSummaryCitableEvidence } from "./reader-summary-evidence-citation-map";
-
-const qualityFlags = new Set<ReaderSummaryQualityFlag>(
-  openAiReaderSummaryQualityFlags,
-);
-const confidenceLevels = new Set<ReaderSummaryConfidence["level"]>(
-  openAiReaderSummaryConfidenceLevels,
-);
-const riskReasons = new Set<NonNullable<ReaderSummaryRisk["reason"]>>(
-  openAiReaderSummaryRiskReasons,
-);
 
 export const normalizeOpenAiReaderSummaryDraft = (
   raw: Record<string, unknown>,
@@ -219,142 +201,6 @@ export const assertOpenAiReaderSummaryDraftShape = (
   }
 };
 
-const normalizeInterestHighlight = (
-  value: Record<string, unknown>,
-): ReaderSummaryInterestHighlight => ({
-  interestId: optionalString(value.interestId) ?? "",
-  title: optionalString(value.title) ?? "Interest signal",
-  summary:
-    optionalString(value.summary) ??
-    optionalString(value.description) ??
-    "Selected evidence mentions this interest.",
-  citationIds: normalizeStringArrayLike(
-    value.citationIds,
-    "interest highlight citations",
-  ),
-});
-
-const normalizeInterestHighlights = (
-  values: readonly Record<string, unknown>[],
-  input: ReaderSummaryModelInput,
-  citationMap: readonly ReaderSummaryCitation[],
-): readonly ReaderSummaryInterestHighlight[] => {
-  const knownCitationIds = new Set(
-    citationMap.map((citation) => citation.citationId),
-  );
-  const citationById = new Map(
-    citationMap.map((citation) => [citation.citationId, citation] as const),
-  );
-  const evidenceByFeedItemId = new Map(
-    input.evidence.selectedEvidence.map(
-      (item) => [item.feedItemId, item] as const,
-    ),
-  );
-
-  return values
-    .map(normalizeInterestHighlight)
-    .flatMap((highlight): readonly ReaderSummaryInterestHighlight[] => {
-      const citationIds = knownStringSubset(
-        highlight.citationIds,
-        knownCitationIds,
-      );
-      if (citationIds.length === 0) {
-        return [];
-      }
-
-      const interestId =
-        optionalString(highlight.interestId) ??
-        citationIds
-          .map((citationId) => citationById.get(citationId)?.feedItemId)
-          .map((feedItemId) =>
-            feedItemId === undefined
-              ? undefined
-              : evidenceByFeedItemId.get(feedItemId)?.interestId,
-          )
-          .find((value): value is string => value !== undefined);
-      if (interestId === undefined) {
-        return [];
-      }
-
-      return [
-        {
-          ...highlight,
-          interestId,
-          citationIds,
-        },
-      ];
-    });
-};
-
-const normalizeRepeatedSignal = (
-  value: Record<string, unknown>,
-): ReaderSummaryRepeatedSignal => ({
-  storyClusterId: optionalString(value.storyClusterId) ?? "",
-  title: optionalString(value.title) ?? "Repeated signal",
-  interestIds: normalizeStringArrayLike(
-    value.interestIds,
-    "repeated signal interests",
-  ),
-  citationIds: normalizeStringArrayLike(
-    value.citationIds,
-    "repeated signal citations",
-  ),
-});
-
-const normalizeRepeatedSignals = (
-  values: readonly Record<string, unknown>[],
-  input: ReaderSummaryModelInput,
-  citationMap: readonly ReaderSummaryCitation[],
-): readonly ReaderSummaryRepeatedSignal[] => {
-  const knownClusterIds = new Set(
-    input.evidence.clusters.map((cluster) => cluster.id),
-  );
-  const citationById = new Map(
-    citationMap.map((citation) => [citation.citationId, citation] as const),
-  );
-  const knownCitationIds = new Set(citationById.keys());
-
-  return values
-    .map(normalizeRepeatedSignal)
-    .flatMap((signal): readonly ReaderSummaryRepeatedSignal[] => {
-      const storyClusterId = knownClusterIds.has(signal.storyClusterId)
-        ? signal.storyClusterId
-        : clusterIdFromCitations(signal.citationIds, citationById, input);
-      if (storyClusterId === undefined) {
-        return [];
-      }
-
-      const citationIds = knownStringSubset(
-        signal.citationIds,
-        knownCitationIds,
-      );
-      const interestIds = uniqueNonEmptyStrings(signal.interestIds);
-      if (citationIds.length === 0 || interestIds.length < 2) {
-        return [];
-      }
-
-      return [
-        {
-          ...signal,
-          storyClusterId,
-          interestIds,
-          citationIds,
-        },
-      ];
-    });
-};
-
-const normalizeRisk = (value: Record<string, unknown>): ReaderSummaryRisk => ({
-  description:
-    optionalString(value.description ?? value.risk) ??
-    "Selected evidence has unresolved uncertainty.",
-  citationIds: normalizeStringArrayLike(
-    value.citationIds ?? value.citations,
-    "risk citations",
-  ),
-  reason: normalizeSetValue(value.reason, riskReasons, "risk reason"),
-});
-
 const normalizeRecordArray = (
   value: unknown,
 ): readonly Record<string, unknown>[] => {
@@ -367,68 +213,3 @@ const normalizeRecordArray = (
     .filter((record): record is Record<string, unknown> => record !== null);
 };
 
-const normalizeStringArrayLike = (
-  value: unknown,
-  label: string,
-): readonly string[] => {
-  if (Array.isArray(value)) {
-    return requiredStringArray(value, label);
-  }
-
-  const scalar = optionalString(value);
-  if (scalar === undefined) {
-    return [];
-  }
-
-  return uniqueNonEmptyStrings(scalar.split(","));
-};
-
-const normalizeRisks = (
-  values: readonly Record<string, unknown>[],
-  citationMap: readonly ReaderSummaryCitation[],
-): readonly ReaderSummaryRisk[] => {
-  const knownCitationIds = new Set(
-    citationMap.map((citation) => citation.citationId),
-  );
-
-  return values.map((value) => {
-    const risk = normalizeRisk(value);
-    return {
-      ...risk,
-      citationIds:
-        risk.citationIds === undefined
-          ? undefined
-          : knownStringSubset(risk.citationIds, knownCitationIds),
-    };
-  });
-};
-
-const normalizeConfidence = (
-  value: Record<string, unknown>,
-  topStoryCount: number,
-): ReaderSummaryConfidence => {
-  const level =
-    normalizeSetValue(value.level, confidenceLevels, "confidence level") ??
-    (topStoryCount > 0 ? "low" : "none");
-  const score =
-    typeof value.score === "number" && Number.isFinite(value.score)
-      ? value.score
-      : topStoryCount > 0
-        ? 0.55
-        : 0;
-
-  return {
-    level: topStoryCount > 0 && level === "none" ? "low" : level,
-    score,
-    rationale:
-      optionalString(value.rationale) ??
-      "Confidence inferred from cited reader summary evidence.",
-  };
-};
-
-const normalizeQualityFlags = (
-  value: unknown,
-): readonly ReaderSummaryQualityFlag[] =>
-  requiredOptionalStringArray(value, "quality flags")
-    .map((flag) => normalizeSetValue(flag, qualityFlags, "quality flag"))
-    .filter((flag): flag is ReaderSummaryQualityFlag => flag !== undefined);

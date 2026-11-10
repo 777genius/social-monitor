@@ -8,7 +8,7 @@ import type {
   ReaderSummaryTopicLabelerInput,
   ReaderSummaryTopicMapAttemptContext,
 } from "../../ports";
-import { buildAgentRuntimeTopicEvidenceSamples } from "./agent-runtime-reader-summary-topic-evidence-prompt";
+import { buildAgentRuntimeTopicPromptNodes } from "./agent-runtime-reader-summary-topic-evidence-prompt";
 import {
   buildGroundedTopicCohortsForCandidates,
 } from "./agent-runtime-reader-summary-topic-grounded-cohorts";
@@ -63,12 +63,6 @@ export const buildAgentRuntimeReaderSummaryTopicLabelPrompt = (
   candidates: readonly ReaderSummaryTopicLabelerInput["candidates"][number][],
   attemptContext?: ReaderSummaryTopicMapAttemptContext,
 ): string => {
-  const evidenceByFeedItemId = new Map(
-    input.selectedEvidence.map((item) => [item.feedItemId, item] as const),
-  );
-  const clusterById = new Map(
-    input.clusters.map((cluster) => [cluster.id, cluster] as const),
-  );
   const requiredGroundedCohorts = buildGroundedTopicCohortsForCandidates(
     candidates,
   );
@@ -144,105 +138,11 @@ export const buildAgentRuntimeReaderSummaryTopicLabelPrompt = (
         timezone: input.period.timezone,
       },
       relationshipHints: buildReaderSummaryTopicRelationCandidates(candidates),
-      nodes: candidates.map((candidate) => ({
-        nodeId: candidate.nodeId,
-        fallbackLabel: candidate.fallbackLabel,
-        summary: candidate.summary,
-        score: candidate.score,
-        evidenceCount: candidate.evidenceCount,
-        providerKeys: candidate.providerKeys,
-        interestIds: candidate.interestIds,
-        keywords: candidate.keywords,
-        labelCandidates: candidate.labelCandidates.map((labelCandidate) => ({
-          label: labelCandidate.label,
-          source: labelCandidate.source,
-          score: labelCandidate.score,
-          evidenceFeedItemIds: labelCandidate.evidenceFeedItemIds,
-          rationale: labelCandidate.rationale,
-        })),
-        evidenceSamples: buildAgentRuntimeTopicEvidenceSamples({
-          candidate,
-          clusterById,
-          evidenceByFeedItemId,
-        }),
-      })),
+      nodes: buildAgentRuntimeTopicPromptNodes(input, candidates),
     },
     null,
     2,
   );
 };
 
-export const agentRuntimeReaderSummaryTopicLabelerJsonSchema = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    nodeLabels: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          nodeId: { type: "string" },
-          topicId: { type: "string" },
-          subject: { type: "string" },
-          parentSubject: { type: "string" },
-          claimType: {
-            type: "string",
-            enum: readerSummaryTopicClaimTypes,
-          },
-          qualifier: { type: "string" },
-          confidenceScore: { type: "number", minimum: 0, maximum: 1 },
-          groupId: {
-            type: "string",
-            pattern: "^group:[a-z0-9]+(?:-[a-z0-9]+)*$",
-          },
-          keywords: { type: "array", items: { type: "string" } },
-          rationale: { type: "string" },
-        },
-        required: [
-          "nodeId",
-          "subject",
-          "parentSubject",
-          "claimType",
-          "confidenceScore",
-          "groupId",
-          "keywords",
-        ],
-      },
-    },
-    groups: {
-      type: "array",
-      minItems: 1,
-      maxItems: READER_SUMMARY_TOPIC_MAP_MAX_SEMANTIC_GROUPS,
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          id: {
-            type: "string",
-            pattern: "^group:[a-z0-9]+(?:-[a-z0-9]+)*$",
-          },
-          label: { type: "string" },
-          semanticAnchors: {
-            type: "array",
-            minItems: 1,
-            maxItems: 8,
-            items: { type: "string" },
-          },
-          nodeIds: { type: "array", items: { type: "string" } },
-          confidenceScore: { type: "number" },
-          rationale: { type: "string" },
-        },
-        required: [
-          "id",
-          "label",
-          "semanticAnchors",
-          "nodeIds",
-          "confidenceScore",
-        ],
-      },
-    },
-    warnings: { type: "array", items: { type: "string" } },
-  },
-  required: ["nodeLabels", "groups"],
-} as const satisfies Record<string, unknown>;
+export { agentRuntimeReaderSummaryTopicLabelerJsonSchema } from "./agent-runtime-reader-summary-topic-labeler-response-schema";

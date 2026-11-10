@@ -1,10 +1,8 @@
-import type {
-  GeneratedReaderSummaryDraft,
-} from "../../domain";
-import type { ReaderSummaryModelEstimate } from "../../ports";
+// Keep the direct response-parser entrypoint compatible for existing callers.
+export { assertOpenAiReaderSummaryClaimCitationIds } from "./openai-responses-reader-summary-claim-citations";
+export { resolveOpenAiReaderSummaryUsage } from "./openai-responses-reader-summary-usage";
+
 import {
-  asRecord,
-  numberOrFallback,
   requiredArray,
   requiredRecord,
 } from "./openai-responses-reader-summary-json";
@@ -36,27 +34,6 @@ export const extractOpenAiOutputText = (
   return undefined;
 };
 
-export const resolveOpenAiReaderSummaryUsage = (
-  response: Record<string, unknown>,
-  fallback: ReaderSummaryModelEstimate,
-): GeneratedReaderSummaryDraft["usage"] => {
-  const usage = asRecord(response.usage);
-  const inputTokens = numberOrFallback(
-    usage?.input_tokens,
-    fallback.inputTokens,
-  );
-  const outputTokens = numberOrFallback(
-    usage?.output_tokens,
-    fallback.outputTokens,
-  );
-
-  return {
-    inputTokens,
-    outputTokens,
-    estimatedCostUsd: fallback.estimatedCostUsd,
-  };
-};
-
 export const parseOpenAiReaderSummaryJsonObject = (
   value: string,
 ): Record<string, unknown> => {
@@ -66,32 +43,6 @@ export const parseOpenAiReaderSummaryJsonObject = (
     const detail =
       error instanceof Error ? error.message : "unknown parse failure";
     throw new OpenAiReaderSummaryOutputParseError(detail);
-  }
-};
-
-export const assertOpenAiReaderSummaryClaimCitationIds = (
-  raw: Record<string, unknown>,
-): void => {
-  assertNonEmptyClaimCitationIds(raw.topStories, "topStory");
-  assertNonEmptyClaimCitationIds(raw.interestHighlights, "interestHighlight");
-  assertNonEmptyClaimCitationIds(raw.repeatedSignals, "repeatedSignal");
-  assertNonEmptyClaimCitationIds(
-    asRecord(raw.content)?.claimBoard,
-    "readerClaim",
-  );
-};
-
-const assertNonEmptyClaimCitationIds = (
-  entries: unknown,
-  surface: string,
-): void => {
-  if (!Array.isArray(entries)) return;
-
-  for (const entry of entries) {
-    const record = asRecord(entry);
-    if (Array.isArray(record?.citationIds) && record.citationIds.length === 0) {
-      throw new Error(`${surface} citationIds must not be empty`);
-    }
   }
 };
 

@@ -1,4 +1,4 @@
-type SchemaNode = Record<string, unknown>;
+import { isSchemaNode as isNode, schemaJsonType as jsonType, type SchemaNode } from "./gateway-llm-schema-primitives";
 
 export const maxReportedOutputViolations = 12;
 const maxDepth = 64;
@@ -108,14 +108,6 @@ const canonical = (value: unknown): string => {
   return JSON.stringify(value);
 };
 
-const isNode = (value: unknown): value is SchemaNode =>
-  value !== null && typeof value === "object" && !Array.isArray(value);
 const count = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0;
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 
-const jsonType = (value: unknown): string => {
-  if (value === null) return "null";
-  if (Array.isArray(value)) return "array";
-  if (typeof value === "number") return Number.isInteger(value) ? "integer" : "number";
-  return typeof value;
-};

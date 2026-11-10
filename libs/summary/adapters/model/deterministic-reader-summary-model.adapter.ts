@@ -11,12 +11,18 @@ import type {
 } from "../../ports";
 import { buildReaderSummary, primaryReaderSummaryEvidence } from "../../domain";
 import {
-  normalizeReaderSummaryStoryLimit,
+  assertDeterministicReaderSummaryBudget,
+  estimateDeterministicReaderSummaryTokens,
+} from "./deterministic-reader-summary-budget-policy";
+import { buildDeterministicNoSignalReaderSummaryAttempt } from "./deterministic-reader-summary-no-signal";
+import {
+  selectClustersForEvidence,
   selectProviderDiverseRankedEvidence,
 } from "./deterministic-reader-summary-evidence-selection";
 import { buildReaderHeadline } from "./deterministic-reader-summary-headline";
 import { buildDeterministicReaderSummaryNarrative } from "./deterministic-reader-summary-narrative";
-import { buildReaderSummaryEvidenceCitationMap } from "./reader-summary-evidence-citation-map";
+import { buildExecutiveSummary } from "./deterministic-reader-summary-text";
+import { buildStorySummary, buildInterestHighlights } from "./deterministic-reader-summary-story-projection";
 
 const route: ReaderSummaryModelRoute = {
   provider: "deterministic-local",
@@ -33,15 +39,7 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
   ): ReaderSummaryModelRoute {
     const estimate = this.estimate(input, route);
 
-    if (
-      estimate.inputTokens > policy.maxInputTokens ||
-      estimate.outputTokens > policy.maxOutputTokens ||
-      estimate.estimatedCostUsd > policy.maxEstimatedCostUsd ||
-      estimate.inputTokens + estimate.outputTokens > budget.remainingTokens ||
-      estimate.estimatedCostUsd > budget.remainingCostUsd
-    ) {
-      throw new Error("Reader summary model budget exceeded");
-    }
+    assertDeterministicReaderSummaryBudget(estimate, policy, budget);
 
     return route;
   }
@@ -51,29 +49,7 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
     selectedRoute: ReaderSummaryModelRoute,
   ): ReaderSummaryModelEstimate {
     void selectedRoute;
-
-    const evidenceTextLength = primaryReaderSummaryEvidence(
-      input.evidence,
-    ).selectedEvidence.reduce(
-      (total, item) =>
-        total + item.title.length + (item.bodyPreview?.length ?? 0),
-      0,
-    );
-    const contextTextLength = input.contextArtifacts.reduce(
-      (total, artifact) => total + artifact.summaryText.length,
-      0,
-    );
-    const inputTokens = Math.ceil((evidenceTextLength + contextTextLength) / 4);
-    const outputTokens =
-      primaryReaderSummaryEvidence(input.evidence).selectedEvidence.length === 0
-        ? 64
-        : 260;
-
-    return {
-      inputTokens,
-      outputTokens,
-      estimatedCostUsd: 0,
-    };
+    return estimateDeterministicReaderSummaryTokens(input);
   }
 
   async generate(
@@ -94,53 +70,17 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
     const firstItem = primaryEvidence.selectedEvidence[0];
 
     if (firstItem === undefined) {
-      const noSignalDraft = {
-        headline: "No reliable workspace signal yet",
-        executiveSummary:
-          "No eligible feed items were available for this summary window.",
-        topStories: [],
-        interestHighlights: [],
-        repeatedSignals: [],
-        risksAndUnknowns: [
-          {
-            description:
-              "The summary window did not contain enough primary evidence to produce claims.",
-            reason: "insufficient_evidence" as const,
-          },
-        ],
-        citationMap: buildReaderSummaryEvidenceCitationMap(
-          input.evidence.selectedEvidence,
-        ),
-        qualityFlags: ["no_signal", "limited_sources"] as const,
-        confidence: {
-          level: "none" as const,
-          score: 0,
-          rationale: "No primary evidence was selected for the summary window.",
-        },
+      return buildDeterministicNoSignalReaderSummaryAttempt({
+        input,
+        selectedRoute,
         lineage,
         usage,
-        noSignalReason:
-          "No eligible evidence items selected for this summary scope.",
-      };
-
-      return {
-        route: selectedRoute,
-        draft: {
-          ...noSignalDraft,
-          content: buildReaderSummary({
-            ...noSignalDraft,
-            storyClusters: input.evidence.clusters,
-            sourceWindow: input.evidence.sourceWindow,
-            selectedEvidence: input.evidence.selectedEvidence,
-            editorialSlate: input.evidence.editorialSlate,
-          }),
-        },
-      };
+      });
     }
 
     const citedEvidence = input.evidence.selectedEvidence;
     const selectedEvidence = input.evidence.editorialSlate === undefined
-      ? selectRankedEvidence(
+      ? selectProviderDiverseRankedEvidence(
           primaryEvidence.selectedEvidence,
           input.policy.maxStories,
         )
@@ -331,128 +271,3 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
   }
 }
 
-const buildExecutiveSummary = (input: ReaderSummaryModelInput): string => {
-  const formatLabel = summaryFormatLabel(input.policy.format);
-  const toneLabel = input.policy.tone;
-  const scopeLabel =
-    input.scope.type === "workspace"
-      ? "workspace"
-      : `interest ${input.scope.interestId}`;
-  const repeatedCount = input.evidence.clusters.filter(
-    (cluster) => cluster.interestIds.length >= 2,
-  ).length;
-  const storyCount = input.evidence.selectedEvidence.length;
-  const base = `Current ${formatLabel} covers ${storyCount} selected ${storyCount === 1 ? "story" : "stories"} for ${scopeLabel} in ${articleFor(toneLabel)} ${toneLabel} tone.`;
-  const repeated =
-    repeatedCount === 0
-      ? "No repeated cross-interest signals were detected."
-      : `${repeatedCount} repeated cross-interest ${repeatedCount === 1 ? "signal was" : "signals were"} detected.`;
-
-  if (input.policy.customInstructions === undefined) {
-    return `${base} ${repeated}`;
-  }
-
-  return `${base} ${repeated} Custom focus: ${input.policy.customInstructions}`;
-};
-
-const summaryFormatLabel = (format: string): string => {
-  if (format === "executive_brief") {
-    return "executive summary";
-  }
-  const label = format.split("_").join(" ");
-  return label.includes("summary") ? label : `${label} summary`;
-};
-
-const articleFor = (word: string): "a" | "an" =>
-  /^[aeiou]/i.test(word) ? "an" : "a";
-
-const buildStorySummary = (
-  title: string,
-  interestIds: readonly string[],
-  providerKeys: readonly string[],
-): string =>
-  `${title} appeared across ${interestIds.length} interest(s) and ${providerKeys.length} provider(s).`;
-
-const buildInterestHighlights = (
-  selectedEvidence: ReaderSummaryModelInput["evidence"]["selectedEvidence"],
-  citationMap: ProviderReaderSummaryAttempt["draft"]["citationMap"],
-) => {
-  const firstByInterest = new Map<
-    string,
-    ReaderSummaryModelInput["evidence"]["selectedEvidence"][number]
-  >();
-  for (const item of selectedEvidence) {
-    if (!firstByInterest.has(item.interestId)) {
-      firstByInterest.set(item.interestId, item);
-    }
-  }
-
-  return [...firstByInterest.entries()]
-    .slice(0, 8)
-    .map(([interestId, item]) => ({
-      interestId,
-      title: item.title,
-      summary: item.whyImportant[0] ?? "Selected as a relevant summary signal.",
-      citationIds: [
-        citationMap.find((citation) => citation.feedItemId === item.feedItemId)
-          ?.citationId ?? "c1",
-      ],
-    }));
-};
-
-const selectRankedEvidence = (
-  evidence: ReaderSummaryModelInput["evidence"]["selectedEvidence"],
-  limit: number,
-): ReaderSummaryModelInput["evidence"]["selectedEvidence"] =>
-  selectProviderDiverseRankedEvidence(evidence, limit);
-
-const selectClustersForEvidence = (
-  clusters: ReaderSummaryModelInput["evidence"]["clusters"],
-  evidence: ReaderSummaryModelInput["evidence"]["selectedEvidence"],
-  limit: number,
-  pinnedClusterIds: readonly string[],
-): ReaderSummaryModelInput["evidence"]["clusters"] => {
-  const normalizedLimit = normalizeReaderSummaryStoryLimit(limit);
-  const clusterByRepresentative = new Map(
-    clusters.map(
-      (cluster) => [cluster.representativeFeedItemId, cluster] as const,
-    ),
-  );
-  const clusterById = new Map(
-    clusters.map((cluster) => [cluster.id, cluster] as const),
-  );
-  const selectedClusters: ReaderSummaryModelInput["evidence"]["clusters"][number][] =
-    [];
-  const selectedClusterIds = new Set<string>();
-  const addCluster = (
-    cluster:
-      ReaderSummaryModelInput["evidence"]["clusters"][number] | undefined,
-  ): void => {
-    if (
-      cluster === undefined ||
-      selectedClusters.length >= normalizedLimit ||
-      selectedClusterIds.has(cluster.id)
-    ) {
-      return;
-    }
-    selectedClusters.push(cluster);
-    selectedClusterIds.add(cluster.id);
-  };
-
-  for (const pinnedClusterId of pinnedClusterIds) {
-    addCluster(clusterById.get(pinnedClusterId));
-  }
-  for (const item of evidence) {
-    addCluster(clusterByRepresentative.get(item.feedItemId));
-  }
-
-  for (const cluster of clusters) {
-    if (selectedClusters.length >= normalizedLimit) {
-      break;
-    }
-
-    addCluster(cluster);
-  }
-
-  return selectedClusters.slice(0, normalizedLimit);
-};

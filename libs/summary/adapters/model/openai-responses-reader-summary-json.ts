@@ -110,3 +110,20 @@ export const firstNonEmptyString = (
 
   return "Review cited source evidence.";
 };
+
+export const normalizeStringArrayLike = (
+  value: unknown,
+  label: string,
+): readonly string[] => {
+  if (Array.isArray(value)) {
+    return requiredStringArray(value, label);
+  }
+
+  const scalar = optionalString(value);
+  if (scalar === undefined) {
+    return [];
+  }
+
+  return uniqueNonEmptyStrings(scalar.split(","));
+};
+

@@ -1,3 +1,4 @@
+import { buildSummaryNoSignalAttempt } from "./summary-no-signal-attempt";
 import type {
   ProviderSummaryAttempt,
   SummaryModelBudget,
@@ -15,48 +16,33 @@ import {
 } from './openai-responses-summary-prompt';
 import {
   assertOpenAiSummaryDraftShape,
-  buildOpenAiSummaryLineage,
   normalizeOpenAiSummaryDraft,
 } from './openai-responses-summary-draft-normalizer';
 import {
-  openAiApiKeySourceDescription,
-  resolveOpenAiApiKey,
-} from './openai-api-key-source';
-import {
-  classifyOpenAiHttpFailure,
-  readOpenAiResponseBody,
   SummaryModelProviderError,
+  classifyOpenAiSummaryError,
 } from './openai-responses-summary-model-error';
-import {
-  extractOpenAiSummaryOutputText,
-  parseOpenAiSummaryJsonObject,
-  resolveOpenAiSummaryUsage,
-} from './openai-responses-summary-response-parser';
+import { extractOpenAiSummaryOutputText } from './openai-responses-summary-output-text';
+import { parseOpenAiSummaryJsonObject } from './openai-responses-summary-response-parser';
+import { resolveOpenAiSummaryUsage } from './openai-responses-summary-usage';
 import { openAiSummaryJsonSchema } from './openai-responses-summary-schema';
 import {
-  asRecord,
+  assertOpenAiSummaryWithinBudget,
+  estimateOpenAiSummaryUsage,
+} from "./openai-responses-summary-budget";
+import {
   nonEmptyOrFallback,
   nonNegativeNumberOrFallback,
-  parseNonNegativeNumber,
-  parsePositiveInteger,
   positiveIntegerOrFallback,
-} from './openai-responses-summary-json';
+} from './openai-responses-summary-option-values';
 
-type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
-
-export type OpenAiResponsesSummaryModelAdapterOptions = {
-  readonly apiKey?: string;
-  readonly endpointUrl?: string;
-  readonly model?: string;
-  readonly promptVersion?: string;
-  readonly evalDatasetVersion?: string;
-  readonly timeoutMs?: number;
-  readonly maxOutputTokens?: number;
-  readonly inputTokenDivisor?: number;
-  readonly estimatedInputCostUsdPerMillionTokens?: number;
-  readonly estimatedOutputCostUsdPerMillionTokens?: number;
-  readonly fetchFn?: FetchLike;
-};
+import {
+  createOpenAiSummaryResponse,
+  type OpenAiSummaryFetchLike as FetchLike,
+} from './openai-responses-summary-transport';
+import type { OpenAiResponsesSummaryModelAdapterOptions } from './openai-responses-summary-options';
+export type { OpenAiResponsesSummaryModelAdapterOptions } from './openai-responses-summary-options';
+export { resolveOpenAiResponsesSummaryModelOptions } from './openai-responses-summary-options';
 
 const provider = 'openai-responses';
 const defaultModel = 'gpt-5.4-mini';
@@ -124,22 +110,7 @@ export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
     budget: SummaryModelBudget,
   ): SummaryModelRoute {
     const route = this.buildRoute();
-    const estimate = this.estimate(input, route);
-
-    if (
-      estimate.inputTokens > policy.maxInputTokens ||
-      estimate.outputTokens > policy.maxOutputTokens ||
-      estimate.estimatedCostUsd > policy.maxEstimatedCostUsd ||
-      estimate.inputTokens + estimate.outputTokens > budget.remainingTokens ||
-      estimate.estimatedCostUsd > budget.remainingCostUsd
-    ) {
-      throw new SummaryModelProviderError({
-        kind: 'budget_exceeded',
-        retryable: false,
-        message: 'Summary model budget exceeded',
-      });
-    }
-
+    assertOpenAiSummaryWithinBudget(this.estimate(input, route), policy, budget);
     return route;
   }
 
@@ -149,26 +120,12 @@ export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
   ): SummaryModelEstimate {
     void selectedRoute;
 
-    const inputTokens = Math.ceil(
-      buildPromptPayload(input).length / this.inputTokenDivisor,
-    );
-    const outputTokens =
-      input.evidence.items.length === 0
-        ? 96
-        : Math.min(
-            this.maxOutputTokens,
-            Math.max(256, input.policy.maxKeyPoints * 220),
-          );
-    const estimatedCostUsd =
-      (inputTokens * this.estimatedInputCostUsdPerMillionTokens +
-        outputTokens * this.estimatedOutputCostUsdPerMillionTokens) /
-      1_000_000;
-
-    return {
-      inputTokens,
-      outputTokens,
-      estimatedCostUsd,
-    };
+    return estimateOpenAiSummaryUsage(input, {
+      maxOutputTokens: this.maxOutputTokens,
+      inputTokenDivisor: this.inputTokenDivisor,
+      estimatedInputCostUsdPerMillionTokens: this.estimatedInputCostUsdPerMillionTokens,
+      estimatedOutputCostUsdPerMillionTokens: this.estimatedOutputCostUsdPerMillionTokens,
+    });
   }
 
   async summarize(
@@ -204,7 +161,13 @@ export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
       },
     };
 
-    const responseJson = await this.createResponse(request);
+    const responseJson = await createOpenAiSummaryResponse({
+      request,
+      endpointUrl: this.endpointUrl,
+      apiKey: this.apiKey,
+      timeoutMs: this.timeoutMs,
+      fetchFn: this.fetchFn,
+    });
     const outputText = extractOpenAiSummaryOutputText(responseJson);
 
     if (outputText === undefined) {
@@ -265,51 +228,7 @@ export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
   }
 
   classifyError(error: unknown): SummaryModelFailure {
-    if (error instanceof SummaryModelProviderError) {
-      return error.failure;
-    }
-
-    if (error instanceof Error && error.name === 'AbortError') {
-      return {
-        kind: 'provider_unavailable',
-        retryable: true,
-        message: 'OpenAI summary request timed out',
-      };
-    }
-
-    const message =
-      error instanceof Error ? error.message : 'Unknown summary model error';
-    const lower = message.toLowerCase();
-
-    if (lower.includes('budget')) {
-      return {
-        kind: 'budget_exceeded',
-        retryable: false,
-        message,
-      };
-    }
-
-    if (lower.includes('citation')) {
-      return {
-        kind: 'citation_validation_failed',
-        retryable: false,
-        message,
-      };
-    }
-
-    if (lower.includes('schema') || lower.includes('json')) {
-      return {
-        kind: 'invalid_schema',
-        retryable: false,
-        message,
-      };
-    }
-
-    return {
-      kind: 'unknown',
-      retryable: false,
-      message,
-    };
+    return classifyOpenAiSummaryError(error);
   }
 
   private buildRoute(): SummaryModelRoute {
@@ -325,121 +244,13 @@ export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
     input: SummaryModelInput,
     selectedRoute: SummaryModelRoute,
   ): ProviderSummaryAttempt {
-    return {
-      route: selectedRoute,
-      draft: {
-        headline: 'No reliable signal yet',
-        executiveSummary:
-          'No eligible evidence items were available for this interest window.',
-        keyPoints: [],
-        risksAndUnknowns: [
-          {
-            description:
-              'The summary window did not contain enough source material to produce claims.',
-            reason: 'insufficient_evidence',
-          },
-        ],
-        sourceHighlights: [],
-        citationMap: [],
-        qualityFlags: ['no_signal', 'limited_sources'],
-        confidence: {
-          level: 'none',
-          score: 0,
-          rationale: 'No evidence was selected for the summary window.',
-        },
-        lineage: buildOpenAiSummaryLineage(
-          input,
-          selectedRoute,
-          this.evalDatasetVersion,
-        ),
-        usage: this.estimate(input, selectedRoute),
-        noSignalReason: 'No eligible evidence items selected for this interest.',
-      },
-    };
+    return buildSummaryNoSignalAttempt({
+      input,
+      selectedRoute,
+      evalDatasetVersion: this.evalDatasetVersion,
+      usage: this.estimate(input, selectedRoute),
+    });
   }
 
-  private async createResponse(
-    request: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 
-    try {
-      const response = await this.fetchFn(this.endpointUrl, {
-        method: 'POST',
-        headers: {
-          authorization: `Bearer ${this.apiKey}`,
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify(request),
-        signal: controller.signal,
-      });
-      const body = await readOpenAiResponseBody(response);
-
-      if (!response.ok) {
-        throw new SummaryModelProviderError(
-          classifyOpenAiHttpFailure(response.status, body),
-        );
-      }
-
-      const record = asRecord(body);
-
-      if (record === null) {
-        throw new SummaryModelProviderError({
-          kind: 'invalid_schema',
-          retryable: false,
-          message: 'OpenAI response body must be a JSON object',
-        });
-      }
-
-      return record;
-    } catch (error) {
-      if (
-        error instanceof SummaryModelProviderError ||
-        (error instanceof Error && error.name === 'AbortError')
-      ) {
-        throw error;
-      }
-
-      throw new SummaryModelProviderError({
-        kind: 'provider_unavailable',
-        retryable: true,
-        message:
-          error instanceof Error
-            ? error.message
-            : 'OpenAI summary request failed',
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
 }
-
-export const resolveOpenAiResponsesSummaryModelOptions = (
-  env: NodeJS.ProcessEnv,
-  params: { readonly requireApiKey: boolean },
-): OpenAiResponsesSummaryModelAdapterOptions => {
-  const apiKey = resolveOpenAiApiKey(env);
-
-  if (params.requireApiKey && apiKey.length === 0) {
-    throw new Error(
-      `SUMMARY_MODEL_PROVIDER=openai-responses requires ${openAiApiKeySourceDescription}`,
-    );
-  }
-
-  return {
-    apiKey,
-    endpointUrl: env.OPENAI_RESPONSES_ENDPOINT_URL,
-    model: env.OPENAI_SUMMARY_MODEL,
-    promptVersion: env.OPENAI_SUMMARY_PROMPT_VERSION,
-    evalDatasetVersion: env.SUMMARY_EVAL_DATASET_VERSION,
-    timeoutMs: parsePositiveInteger(env.OPENAI_SUMMARY_TIMEOUT_MS),
-    maxOutputTokens: parsePositiveInteger(env.OPENAI_SUMMARY_MAX_OUTPUT_TOKENS),
-    estimatedInputCostUsdPerMillionTokens: parseNonNegativeNumber(
-      env.OPENAI_SUMMARY_INPUT_COST_USD_PER_MILLION_TOKENS,
-    ),
-    estimatedOutputCostUsdPerMillionTokens: parseNonNegativeNumber(
-      env.OPENAI_SUMMARY_OUTPUT_COST_USD_PER_MILLION_TOKENS,
-    ),
-  };
-};

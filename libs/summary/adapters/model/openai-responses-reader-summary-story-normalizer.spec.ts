@@ -7,6 +7,7 @@ import {
 } from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
 import { normalizeTopStories } from "./openai-responses-reader-summary-story-normalizer";
+import { reconcileModelTopStoriesWithCitations } from "./openai-responses-reader-summary-story-citations";
 
 describe("normalizeTopStories coverage alignment", () => {
   it("adds the approved coverage lead when the model returns eight other stories", () => {
@@ -202,6 +203,36 @@ describe("normalizeTopStories coverage alignment", () => {
       storyClusterId: "story:3",
     }));
   });
+  it("rejects unknown, cross-cluster and mismatched provider citations before fallback", () => {
+    const input = modelInput(2);
+    const citations = citationMap(2);
+    const proposed = (storyClusterId: string, citationIds: string[]) => ({
+      storyClusterId,
+      title: "Provider assertions are untrusted",
+      summary: "A bounded synthetic claim",
+      interestIds: ["model-invented-interest"],
+      providerKeys: ["model-invented-provider"],
+      citationIds,
+    });
+
+    expect(reconcileModelTopStoriesWithCitations(
+      [proposed("story:1", ["unknown-id"])], input, citations,
+    )).toEqual([]);
+    expect(reconcileModelTopStoriesWithCitations(
+      [proposed("story:1", ["c1", "c2"])], input, citations,
+    )).toEqual([]);
+    expect(reconcileModelTopStoriesWithCitations(
+      [proposed("story:2", ["c1"])], input, citations,
+    )).toEqual([]);
+    expect(reconcileModelTopStoriesWithCitations(
+      [proposed("story:1", ["c1"])], input, citations,
+    )).toEqual([expect.objectContaining({
+      storyClusterId: "story:1",
+      citationIds: ["c1"],
+      providerKeys: ["reddit"],
+    })]);
+  });
+
 });
 
 const slateEntry = (

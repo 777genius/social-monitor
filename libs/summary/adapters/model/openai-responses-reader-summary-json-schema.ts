@@ -1,3 +1,6 @@
+import { readerClaimSchemaDefinitions } from "./openai-responses-reader-summary-claim-schema";
+import { readerReliabilitySchemaDefinitions } from "./openai-responses-reader-summary-reliability-schema";
+import { readerObjectSchema, readerStringArraySchema, readerStringSchema } from "./openai-responses-reader-summary-schema-primitives";
 import type { ReaderSummaryNextAction } from "../../domain";
 
 export const nextActionKinds = new Set<ReaderSummaryNextAction["kind"]>([
@@ -87,73 +90,8 @@ export const openAiReaderSummaryContentJsonSchemaDefs = {
       citationIds: readerStringArraySchema(2),
     },
   ),
-  readerClaim: readerObjectSchema(
-    ["claim", "evidence", "confidence", "risks", "citationIds"],
-    {
-      claim: readerStringSchema(180),
-      evidence: {
-        type: "array",
-        items: { $ref: "#/$defs/readerClaimEvidence" },
-        maxItems: 3,
-      },
-      confidence: { $ref: "#/$defs/readerClaimConfidence" },
-      risks: {
-        type: "array",
-        items: { $ref: "#/$defs/readerClaimRisk" },
-        maxItems: 2,
-      },
-      citationIds: { ...readerStringArraySchema(3), minItems: 1 },
-    },
-  ),
-  readerClaimEvidence: readerObjectSchema(
-    ["title", "providerKey", "citationId", "canonicalUrl"],
-    {
-      title: readerStringSchema(180),
-      providerKey: readerStringSchema(80),
-      citationId: readerStringSchema(40),
-      canonicalUrl: { type: ["string", "null"] },
-    },
-  ),
-  readerClaimConfidence: readerObjectSchema(["level", "score", "rationale"], {
-    level: { enum: ["low", "medium", "high"] },
-    score: { type: "number", minimum: 0, maximum: 1 },
-    rationale: readerStringSchema(240),
-  }),
-  readerClaimRisk: readerObjectSchema(["kind", "description"], {
-    kind: { enum: ["single_source", "low_confidence", "unresolved"] },
-    description: readerStringSchema(240),
-  }),
-  reliabilityReport: readerObjectSchema(
-    ["mode", "policyVersion", "riskLevel", "riskScore", "risks"],
-    {
-      mode: { enum: ["shadow"] },
-      policyVersion: readerStringSchema(80),
-      riskLevel: { enum: ["low", "medium", "high"] },
-      riskScore: { type: "number", minimum: 0, maximum: 1 },
-      risks: {
-        type: "array",
-        items: { $ref: "#/$defs/reliabilityRisk" },
-        maxItems: 0,
-      },
-    },
-  ),
-  reliabilityRisk: readerObjectSchema(
-    ["kind", "level", "score", "description"],
-    {
-      kind: {
-        enum: [
-          "duplicate_risk",
-          "stale_evidence",
-          "single_source",
-          "weak_source",
-          "low_evidence_diversity",
-        ],
-      },
-      level: { enum: ["low", "medium", "high"] },
-      score: { type: "number", minimum: 0, maximum: 1 },
-      description: readerStringSchema(240),
-    },
-  ),
+  ...readerClaimSchemaDefinitions,
+  ...readerReliabilitySchemaDefinitions,
   sourceMixEntry: readerObjectSchema(
     ["providerKey", "itemCount", "citationCount"],
     {
@@ -183,22 +121,3 @@ export const openAiReaderSummaryContentJsonSchemaDefs = {
   ),
 } as const;
 
-function readerObjectSchema(
-  required: readonly string[],
-  properties: Record<string, unknown>,
-) {
-  return {
-    type: "object",
-    additionalProperties: false,
-    required,
-    properties,
-  };
-}
-
-function readerStringSchema(maxLength: number) {
-  return { type: "string", maxLength };
-}
-
-function readerStringArraySchema(maxItems = 10, maxLength = 160) {
-  return { type: "array", items: readerStringSchema(maxLength), maxItems };
-}

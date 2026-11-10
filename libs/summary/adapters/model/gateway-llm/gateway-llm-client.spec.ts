@@ -490,3 +490,32 @@ describe("GatewayLlmClient", () => {
       launcherSha256: approvedGatewayLlmSdkIdentity.archiveSha256, warnings: [] });
   });
 });
+
+describe("GatewayLlmClient preparation and completion boundaries", () => {
+  it.each([
+    ["model/backend route mismatch", { controls: { model: "other", modelBackend: "kimi-code" } }, "unsupported_route"],
+    ["effort mismatch", { controls: { model: "k3-256k", modelBackend: "kimi-code", reasoningEffort: "high" } }, "invalid_request"],
+    ["missing instructions", { systemPrompt: "  " }, "invalid_request"],
+    ["nonpositive deadline", { timeoutMs: 0 }, "invalid_request"],
+  ] as readonly (readonly [string, Partial<AgentRuntimeTaskCommand>, string])[])(
+    "rejects %s before choosing accounts or dispatching",
+    async (_description, overrides, code) => {
+      const fake = harness();
+      const result = await fake.client.runTask(command(overrides));
+      expect(result).toMatchObject({ status: "failed", failure: {
+        code, retryable: false, details: { gatewayEffect: "not_dispatched" },
+      } });
+      expect(fake.prepares).toHaveLength(0);
+      expect(fake.requests()).toBe(0);
+    },
+  );
+
+  it("preserves text-only output without structured-schema decoding", async () => {
+    const fake = harness({ request: async () => completedStream("plain provider output") });
+    const result = await fake.client.runTask(command({ outputSchema: {} }));
+    expect(result).toMatchObject({ status: "completed", outputText: "plain provider output" });
+    expect(result.structuredOutput).toBeUndefined();
+    expect(result.executionAttestation).toMatchObject({ selectedOutputKind: "output_text" });
+    expect(fake.requests()).toBe(1);
+  });
+});
