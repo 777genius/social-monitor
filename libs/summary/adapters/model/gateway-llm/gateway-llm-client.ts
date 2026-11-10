@@ -89,7 +89,7 @@ export class GatewayLlmClient implements AgentRuntimeClientPort {
           remainingMs <= afterMs) {
         const elapsedMs = now.getTime() - startedAt;
         const failure = gatewayLlmFailure(result, identity, prepared.outputViolations());
-        return failed({ ...failure, details: { ...failure.details,
+        return { ...failed({ ...failure, details: { ...failure.details,
           gatewayElapsedMs: String(elapsedMs),
           gatewaySoftTimeoutMs: String(command.timeoutMs),
           gatewayHardTimeoutMs: String(prepared.task.deadline.getTime() - startedAt),
