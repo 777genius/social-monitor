@@ -200,7 +200,7 @@ jobs:
   backend_unit_shards:
     name: Backend unit shard ${{ matrix.shard }}/6
     needs: impact
-    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (github.event_name != 'pull_request' || needs.impact.outputs.tier == 'full')
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 60
     strategy:
@@ -209,25 +209,40 @@ jobs:
         shard: [1, 2, 3, 4, 5, 6]
 
     steps:
+      - name: Record protected check as scope-exempt (no backend tests executed)
+        if: needs.impact.outputs.tier != 'full'
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ needs.impact.outputs.tier }}" in
+            docs|frontend) echo 'Backend shard intentionally not executed for narrowly classified PR' >> "$GITHUB_STEP_SUMMARY" ;;
+            *) echo '::error::unknown scope'; exit 1 ;;
+          esac
+
       - name: Check out the review commit
+        if: needs.impact.outputs.tier == 'full'
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Set up Node.js
+        if: needs.impact.outputs.tier == 'full'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: 22
           cache: npm
 
       - name: Install exact dependencies
+        if: needs.impact.outputs.tier == 'full'
         run: npm ci --prefer-offline --no-audit
 
       - name: Generate the pinned Prisma client
+        if: needs.impact.outputs.tier == 'full'
         run: npm run prisma:generate
 
       - name: Supply genuine native PostgreSQL 18 executables
+        if: needs.impact.outputs.tier == 'full'
         env:
           CI_NATIVE_RUNNER: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
           CI_NATIVE_ENVIRONMENT: ${{ runner.environment }}
@@ -275,6 +290,7 @@ jobs:
           done
 
       - name: List the complete unit inventory before sharding
+        if: needs.impact.outputs.tier == 'full'
         run: |
           set -euo pipefail
           mkdir -p reports
@@ -282,6 +298,7 @@ jobs:
           node scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=2048 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --testPathIgnorePatterns="$unit_ignore" --listTests --json > reports/inventory.json
 
       - name: Run backend unit tests once with coverage
+        if: needs.impact.outputs.tier == 'full'
         run: |
           set -euo pipefail
           unit_ignore="$(node scripts/ci/verify-jest-shard-completeness.mjs --ignore-pattern ops/ci/jest-inventory-exclusions.txt)"
@@ -293,6 +310,7 @@ jobs:
           node scripts/run-with-timeout.mjs --timeout-ms 2700000 --node-options --max-old-space-size=4096 -- ./node_modules/.bin/jest --config jest.config.ts "${unit_workers[@]}" --shard=${{ matrix.shard }}/6 --testPathIgnorePatterns="$unit_ignore" --coverage --coverageDirectory=coverage --coverageReporters=lcovonly --json --outputFile=reports/execution.json
 
       - name: Upload unit execution and inventory data
+        if: needs.impact.outputs.tier == 'full'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: backend-unit-report-${{ matrix.shard }}
@@ -301,6 +319,7 @@ jobs:
           retention-days: 1
 
       - name: Upload coverage data
+        if: needs.impact.outputs.tier == 'full'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: backend-unit-coverage-${{ matrix.shard }}
@@ -403,7 +422,7 @@ jobs:
           expected_frontend=skipped
           [[ "$IMPACT_TIER" != docs ]] && expected_frontend=success
           assert_result frontend "$FRONTEND_RESULT" "$expected_frontend"
-          assert_result backend_unit_shards "$BACKEND_UNIT_SHARDS_RESULT" "$expected_heavy"
+          assert_result backend_unit_shards "$BACKEND_UNIT_SHARDS_RESULT" success
           assert_result backend_build_contracts "$BACKEND_BUILD_CONTRACTS_RESULT" "$expected_heavy"
           assert_result backend_e2e "$BACKEND_E2E_RESULT" "$expected_heavy"
           assert_result postgres_rls "$POSTGRES_RLS_RESULT" "$expected_heavy"
@@ -411,9 +430,9 @@ jobs:
           assert_result feed_promotion_snapshot_postgres18 "$FEED_PROMOTION_SNAPSHOT_POSTGRES18_RESULT" "$expected_heavy"
           assert_result reader_summary_weekly_review_manifest_postgres18 "$READER_SUMMARY_WEEKLY_REVIEW_MANIFEST_POSTGRES18_RESULT" "$expected_heavy"
           assert_result reader_value_v3_postgres18 "$READER_VALUE_V3_POSTGRES18_RESULT" "$expected_heavy"
-          assert_result production_candidate "$PRODUCTION_CANDIDATE_RESULT" "$expected_heavy"
-          assert_result production_lifecycle "$PRODUCTION_LIFECYCLE_RESULT" "$expected_heavy"
-          assert_result production_runtime "$PRODUCTION_RUNTIME_RESULT" "$expected_heavy"
+          assert_result production_candidate "$PRODUCTION_CANDIDATE_RESULT" success
+          assert_result production_lifecycle "$PRODUCTION_LIFECYCLE_RESULT" success
+          assert_result production_runtime "$PRODUCTION_RUNTIME_RESULT" success
 
       - name: Require every backend prerequisite to succeed
         if: needs.impact.outputs.tier == 'full'
@@ -748,8 +767,7 @@ jobs:
 
   production_candidate:
     name: Production immutable candidate
-    needs: impact
-    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (github.event_name != 'pull_request' || needs.impact.outputs.tier == 'full')
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 45
     permissions:
@@ -809,8 +827,7 @@ jobs:
 
   production_lifecycle:
     name: Production deploy lifecycle fixtures
-    needs: impact
-    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (github.event_name != 'pull_request' || needs.impact.outputs.tier == 'full')
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 45
     permissions:
@@ -836,8 +853,8 @@ jobs:
 
   production_runtime:
     name: Production container and deploy lifecycle
-    needs: [impact, production_candidate, production_lifecycle]
-    if: always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (github.event_name != 'pull_request' || needs.impact.outputs.tier == 'full')
+    needs: [production_candidate, production_lifecycle]
+    if: always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 5
     permissions:
