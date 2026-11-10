@@ -1,6 +1,7 @@
 import { Test } from "@nestjs/testing";
 
 import { IntelligenceWorkerModule } from "./intelligence-worker.module";
+import { WorkerShutdownMarker } from "./worker-shutdown-marker";
 import { ReaderSummaryJobPollingLoop } from "./reader-summary-job-polling-loop";
 
 const controlledKeys = [
@@ -38,6 +39,7 @@ describe("IntelligenceWorkerModule", () => {
     expect(module.get(ReaderSummaryJobPollingLoop)).toBeInstanceOf(
       ReaderSummaryJobPollingLoop,
     );
+    expect(module.get(WorkerShutdownMarker)).toBeInstanceOf(WorkerShutdownMarker);
     await module.close();
   });
 });

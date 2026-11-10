@@ -66,8 +66,20 @@ class WireAndBoundsTests(unittest.TestCase):
             value = {} if verb in ('preflight', 'postgres-identity') else dict(BINDING)
             if verb == 'release-evidence':
                 value['production_revision'] = BASE
-            if verb == 'probe':
+            if verb == 'backend-release-evidence':
+                value.update(api_revision=BASE, worker_revision=BASE,
+                             non_target_snapshot_sha256='sha256:' + '0' * 64)
+            if verb == 'worker-capability':
+                value = {'container_id': CONTAINER, 'image_id': BINDING['image_id']}
+            if verb == 'worker-drain':
+                value = {'container_id': CONTAINER, 'image_id': BINDING['image_id'],
+                         'signal_since_ms': '1794300000000', 'started_at_sha256': 'sha256:' + '0' * 64,
+                         'restart_count': '0'}
+            if verb in ('probe', 'worker-probe'):
                 value = {'sha': BINDING['sha'], 'image_id': BINDING['image_id'], 'container_id': CONTAINER}
+                if verb == 'worker-probe':
+                    value.update(runtime_sha256='sha256:' + '1' * 64,
+                                 restart_policy_sha256='sha256:' + '2' * 64)
             self.assertEqual(request(verb, canonical(value)), value)
             with self.assertRaises(Denied):
                 request(verb, canonical({**value, 'approve': True}))

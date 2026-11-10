@@ -244,6 +244,9 @@ class Controller:
         return receipt
 
     def exclusive(self, key):
+        for other in (self.state / 'backend' / 'transactions').glob('*.json'):
+            require(key.startswith('backend-') or read_json(other).get('outcome') is not None,
+                    'unfinished-backend-release')
         for other in (self.state / 'transactions').glob('*.json'):
             require(other == self.path('transactions', key)
                     or read_json(other).get('outcome') is not None, 'unfinished-release')
@@ -342,6 +345,9 @@ class Controller:
         verb, args = parse(command)
         self.fence()
         with Lock(self.state / 'controller.lock'):
+            if verb.startswith('backend-'):
+                from backend_controller import BackendRelease
+                return BackendRelease(self).dispatch(verb[8:], args, stream)
             if verb == 'status':
                 return {'latch': (self.state / 'latch.json').exists(), 'environment': 'production-hetzner'}
             if verb == 'preflight':

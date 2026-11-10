@@ -69,7 +69,7 @@ class Host:
         return digest({'model': model, 'private_inputs': {
             path: self.private_digest(path) for path in sorted(paths)}})
 
-    def snapshot(self):
+    def snapshot(self, target_services=None, allow_missing_targets=False):
         fmt = ('{"id":{{json .ID}},'
                '"project":{{json (.Label "com.docker.compose.project")}},'
                '"service":{{json (.Label "com.docker.compose.service")}},'
@@ -85,7 +85,16 @@ class Host:
                 continue
             ids.append(item['id'])
         # Explicit independently configured names also fence containers outside this project.
-        ids.extend(self.c['required_non_targets'].values())
+        for service, selector in self.c['required_non_targets'].items():
+            if allow_missing_targets and target_services is not None and service in target_services:
+                # Only a declared target may be absent in the journaled Compose create gap.
+                # Never catch a generic inspect error or skip any protected non-target.
+                matches = self.docker('ps', '-a', '--no-trunc', '--filter',
+                    'name=^/' + re.escape(selector) + '$', '--format', '{{.ID}}').decode().splitlines()
+                require(len(matches) <= 1, 'target-selector-count')
+                if not matches:
+                    continue
+            ids.append(selector)
         containers = {}
         target = []
         named = {v: k for k, v in self.c['required_non_targets'].items()}
@@ -99,11 +108,13 @@ class Host:
             if ident in named:
                 require(item['service'] == named[ident] and item['service'] != 'api',
                         'non-target-selector')
-            if item['service'] == 'api' and item['project'] == self.c['project']:
-                target.append(item)
+            if item['service'] in (target_services or ('api',)) and item['project'] == self.c['project']:
+                if not any(value['id'] == item['id'] for value in target):
+                    target.append(item)
             else:
                 containers[item['id']] = item
-        require(len({v['id'] for v in target}) == 1, 'api-target-count')
+        if target_services is None:
+            require(len({v['id'] for v in target}) == 1, 'api-target-count')
         units = {}
         for unit in self.c['fenced_units']:
             raw = self.command(['/usr/bin/systemctl', 'show', unit,
@@ -112,7 +123,7 @@ class Host:
             require(values.get('ActiveState') == 'inactive'
                     and values.get('UnitFileState') in ('disabled', 'masked'), 'writer-not-fenced')
             units[unit] = values
-        return {'containers': containers, 'units': units}, target[0]
+        return {'containers': containers, 'units': units}, target[0] if target_services is None else target
 
     def image(self, image_id):
         require(re.fullmatch(DIGEST, image_id), 'image-id')

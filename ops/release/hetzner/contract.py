@@ -21,6 +21,8 @@ GRAMMAR = {
     'admit': [SHA, RUN], 'activate': [SHA, RUN], 'verify': [SHA, RUN],
     'rollback': [SHA, RUN], 'receipt': [KEY + r'(?:-rollback)?'],
 }
+GRAMMAR.update({'backend-' + verb: patterns for verb, patterns in GRAMMAR.copy().items()
+                if verb != 'status'})
 
 
 class Denied(Exception):
