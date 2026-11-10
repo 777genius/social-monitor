@@ -75,3 +75,9 @@ test('relocated JSON handoff markers stay enforced at the actual module owner', 
       'runner and unrelated policy ownership must stay untouched');
   }
 });
+
+test('original checker reads the extracted handoff module into its fail-closed marker gate', () => {
+  const checkerSource = readFileSync(checkFile, 'utf8');
+  assert.match(checkerSource, /handoffSource:\s*readFileSync\(handoffPolicyPath,\s*'utf8'\)/);
+  assert.match(checkerSource, /validateRunnerImplementationMarkers\(/);
+});

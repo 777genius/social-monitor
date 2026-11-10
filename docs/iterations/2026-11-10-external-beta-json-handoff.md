@@ -21,3 +21,5 @@ Never touch independent #665 model-owner work, production #620, Hetzner SSH or c
 
 ## Exact original Draft CI finding and fix
 The first complete Draft Static CI on `3c4f3b6` exposed five pre-existing marker-gate entries that still assigned the relocated functions to the CLI runner. Do **not** remove or disable those markers: reassign exactly the five moved names to the extracted handoff module with a separate fail-closed owner-specific validation loop. Test all five mutations individually. The new extracted module and original CLI guards remain unchanged. No production behavior changes; requalify new exact HEAD on fresh natural CI.
+
+The original standalone checker also requires an explicit `handoffSource: readFileSync(handoffPolicyPath, 'utf8')` argument; the previous pure marker-gate refactor would otherwise throw on undefined at runtime. This call-site contract is preserved and pinned by a new negative-capable structural test, without increasing the strict **1474**-line original checker cap (one redundant import-spacing line removed).
