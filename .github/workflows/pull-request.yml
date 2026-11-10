@@ -828,9 +828,17 @@ jobs:
             test -s "$release/$lane/main.dart.js"
           done
           grep -F 'https://social-monitor.app' "$release/public/main.dart.js" >/dev/null
-          ! grep -F 'https://admin.social-monitor.app' "$release/public/main.dart.js" >/dev/null
+          if grep -F 'https://admin.social-monitor.app' "$release/public/main.dart.js" >/dev/null; then
+            echo 'public bundle contains admin origin' >&2; exit 1
+          else
+            status=$?; test "$status" -eq 1
+          fi
           grep -F 'https://admin.social-monitor.app' "$release/admin/main.dart.js" >/dev/null
-          ! grep -R -E 'nip\.io' "$release" >/dev/null
+          if grep -R -E 'nip\.io' "$release" >/dev/null; then
+            echo 'frontend bundle contains nip.io origin' >&2; exit 1
+          else
+            status=$?; test "$status" -eq 1
+          fi
           test -z "$(find "$release" ! -type f ! -type d -print -quit)"
           tar --format=ustar -C "$release" -czf "$RUNNER_TEMP/frontend-release.tgz" public admin
           node --experimental-strip-types "$GITHUB_WORKSPACE/scripts/ci/frontend-artifact-manifest.mts"

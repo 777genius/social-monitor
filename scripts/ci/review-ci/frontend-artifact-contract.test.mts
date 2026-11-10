@@ -39,7 +39,8 @@ test('frontend artifacts follow both builds and retain exact main CI provenance'
   assert.equal(upload['continue-on-error'], undefined);
 });
 
-function fixture(options: { publicAdminOrigin?: boolean; staleAdmin?: boolean; invalidRun?: boolean; symlink?: boolean } = {}) {
+function fixture(options: { publicAdminOrigin?: boolean; bothOrigins?: boolean; nipOrigin?: boolean;
+  staleAdmin?: boolean; invalidRun?: boolean; symlink?: boolean } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'TEST-sm-frontend-artifact-'));
   const sha = 'a'.repeat(40), bin = join(root, 'bin'), runner = join(root, 'runner');
   mkdirSync(bin); mkdirSync(runner); mkdirSync(join(root, 'build/web'), { recursive: true });
@@ -51,6 +52,9 @@ function fixture(options: { publicAdminOrigin?: boolean; staleAdmin?: boolean; i
     writeFileSync(join(directory, 'main.dart.js'), origin);
   };
   bundle(join(root, 'build/web'), options.publicAdminOrigin ? 'https://admin.social-monitor.app' : 'https://social-monitor.app');
+  if (options.bothOrigins) writeFileSync(join(root, 'build/web/main.dart.js'),
+    'https://social-monitor.app https://admin.social-monitor.app');
+  if (options.nipOrigin) writeFileSync(join(root, 'build/web/index.html'), `flutter_bootstrap.js?v=${sha} example.nip.io`);
   if (options.symlink) symlinkSync('main.dart.js', join(root, 'build/web/alias.js'));
   writeFileSync(join(bin, 'git'), `#!/bin/sh\nprintf '%s\\n' '${sha}'\n`, { mode: 0o755 });
   writeFileSync(join(bin, 'flutter'), `#!/bin/sh
@@ -109,6 +113,8 @@ test('packages existing public and one new admin build with bound archive and la
 
 for (const [name, options] of [
   ['public bundle points at admin', { publicAdminOrigin: true }],
+  ['public bundle contains both origins', { bothOrigins: true }],
+  ['a non-JavaScript file contains nip.io', { nipOrigin: true }],
   ['admin build has a stale release identity', { staleAdmin: true }],
   ['CI run identity is invalid', { invalidRun: true }],
   ['bundle contains a symlink', { symlink: true }],
