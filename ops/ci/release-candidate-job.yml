@@ -84,6 +84,15 @@ production_lifecycle:
         npm run check:runtime-compose
         npm run check:production-lifecycle-runner:containment
         npm run check:production-deploy-lifecycle
+    - name: Set up Python for X collector
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.13'
+    - name: Verify X collector without live requests
+      run: |
+        set -euo pipefail
+        python -m pip install --disable-pip-version-check -e 'apps/x-collector[dev]'
+        python -m pytest -m 'not real_e2e' apps/x-collector/tests
 
 production_runtime:
   name: Production container and deploy lifecycle

@@ -16,6 +16,7 @@ const WORKFLOW = '.github/workflows/pull-request.yml';
 const FRAGMENT = 'ops/ci/release-candidate-job.yml';
 const CHECKOUT = 'actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10';
 const NODE = 'actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e';
+const PYTHON = 'actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1';
 const DOCKER = 'docker/setup-docker-action@2bf61fb9464cc67f0cbdeabed6aa0380accd1c70';
 const UPLOAD = 'actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f';
 const DIRECTORY = '${{ runner.temp }}/api-candidate-${{ github.run_id }}';
@@ -90,10 +91,14 @@ export function candidateWorkflowViolations(workflow: unknown, fragment: unknown
   const aggregateSteps = aggregate.steps as Mapping[];
   const checkoutOptions = { ref: '${{ github.sha }}', 'fetch-depth': 0, 'persist-credentials': false };
   if (job.name !== 'Production immutable candidate' || (job.steps as Mapping[]).length !== 7 ||
-      lifecycle.name !== 'Production deploy lifecycle fixtures' || lifecycleSteps.length !== 3 ||
+      lifecycle.name !== 'Production deploy lifecycle fixtures' || lifecycleSteps.length !== 5 ||
       !action(lifecycleSteps[0], CHECKOUT, checkoutOptions) ||
       !action(lifecycleSteps[1], NODE, { 'node-version': 22 }) ||
       !run(lifecycleSteps[2], ['set -euo pipefail', ...GATES].join('\n')) ||
+      !action(lifecycleSteps[3], PYTHON, { 'python-version': '3.13' }) ||
+      !run(lifecycleSteps[4], ['set -euo pipefail',
+        "python -m pip install --disable-pip-version-check -e 'apps/x-collector[dev]'",
+        "python -m pytest -m 'not real_e2e' apps/x-collector/tests"].join('\n')) ||
       aggregate.name !== 'Production container and deploy lifecycle' ||
       !isDeepStrictEqual(aggregate.needs, ['production_candidate', 'production_lifecycle']) ||
       aggregateSteps.length !== 1 ||

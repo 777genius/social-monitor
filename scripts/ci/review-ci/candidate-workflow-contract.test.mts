@@ -94,6 +94,11 @@ const mutations: [string, (w: Workflow) => void][] = [
   ['checkout credentials', (w) => options(w, 0)['persist-credentials'] = true],
   ['shallow checkout', (w) => options(w, 0)['fetch-depth'] = 1],
   ['floating checkout action', (w) => step(w, 0).uses = 'actions/checkout@main'],
+  ['X collector test omitted', (w) => w.jobs.production_lifecycle.steps.splice(4, 1)],
+  ['X collector test failure ignored', (w) => w.jobs.production_lifecycle.steps[4]!['continue-on-error'] = true],
+  ['X collector test skipped', (w) => w.jobs.production_lifecycle.steps[4]!.if = false],
+  ['X collector live tests enabled', (w) => w.jobs.production_lifecycle.steps[4]!.run =
+    String(w.jobs.production_lifecycle.steps[4]!.run).replace("-m 'not real_e2e'", '')],
   ...['check:container', 'check:runtime-compose', 'check:production-lifecycle-runner:containment', 'check:production-deploy-lifecycle'].map(
     (gate): [string, (w: Workflow) => void] => [
       `missing ${gate}`, (w) => w.jobs.production_lifecycle.steps[2]!.run = String(w.jobs.production_lifecycle.steps[2]!.run).replace(`npm run ${gate}\n`, ''),
