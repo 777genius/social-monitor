@@ -2,8 +2,8 @@ import type {
   GeneratedReaderSummaryDraft,
   ReaderSummaryQualityFlag,
 } from "../../domain";
-import { buildReaderSummary, readerSummaryHeadline } from "../../domain";
-import { assertOpenAiReaderSummaryDraftShape } from "./reader-summary-draft-shape-contract";
+import { readerSummaryHeadline } from "../../domain";
+import { assembleOpenAiReaderSummaryDraft } from "./openai-responses-reader-summary-draft-assembly";
 export { assertOpenAiReaderSummaryDraftShape } from "./reader-summary-draft-shape-contract";
 import type {
   ReaderSummaryModelInput,
@@ -126,43 +126,22 @@ export const normalizeOpenAiReaderSummaryDraft = (
     asRecord(raw.confidence) ?? {},
     normalizedTopStories.length,
   );
-  const content = buildReaderSummary({
+  return assembleOpenAiReaderSummaryDraft({
+    input,
     headline,
     executiveSummary,
     narrativeSections,
-    topStories: normalizedTopStories,
+    normalizedTopStories,
     interestHighlights,
     repeatedSignals,
     risksAndUnknowns,
     citationMap,
-    storyClusters: input.evidence.clusters,
-    sourceWindow: input.evidence.sourceWindow,
-    selectedEvidence: input.evidence.selectedEvidence,
-    editorialSlate: input.evidence.editorialSlate,
-    promotionV3: input.evidence.promotionV3,
-    dailyGenerationInput: input.evidence.dailyGenerationInput,
-    dailyGenerationEvidence: input.evidence.dailyGenerationEvidence,
-    qualityFlags: normalizedQualityFlags,
-    noSignalReason,
-  });
-  const draft: GeneratedReaderSummaryDraft = {
-    headline: content.headline,
-    executiveSummary,
-    content,
-    topStories: normalizedTopStories,
-    interestHighlights,
-    repeatedSignals,
-    risksAndUnknowns,
-    citationMap,
-    qualityFlags: normalizedQualityFlags,
+    normalizedQualityFlags,
     confidence,
     lineage: buildOpenAiReaderSummaryLineage(input, route, evalDatasetVersion),
     usage,
     noSignalReason,
-  };
-  assertOpenAiReaderSummaryDraftShape(draft);
-
-  return draft;
+  });
 };
 
 export const buildOpenAiReaderSummaryLineage = (
