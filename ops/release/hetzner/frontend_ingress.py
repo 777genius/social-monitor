@@ -14,6 +14,7 @@ import zlib
 
 from contract import Denied, require
 from frontend_bundle import MAX_ARCHIVE, stage_frontend_bundle
+from frontend_tree import tree_digest
 
 MAX_ZIP = 300_000_000
 MAX_MANIFEST = 65536
@@ -136,14 +137,15 @@ def stage_frontend_artifact(zip_path, authority, staging_parent):
                 _extract(source, extracted)
                 raw = (extracted / 'frontend-manifest.json').read_bytes()
                 manifest = json.loads(raw.decode('utf-8'), object_pairs_hook=_pairs, parse_constant=_constant)
-                staged = stage_frontend_bundle(extracted / 'frontend-release.tgz', manifest,
-                    authority['sha'], authority['ci_run_id'], authority['ci_run_attempt'], parent)
+                staged, expected_tree = stage_frontend_bundle(extracted / 'frontend-release.tgz', manifest,
+                    authority['sha'], authority['ci_run_id'], authority['ci_run_attempt'], parent, with_tree=True)
                 require(_identity(before) == _identity(os.fstat(source.fileno())) == _identity(path.lstat()),
                         'frontend-zip-changed')
+                require(tree_digest(staged) == expected_tree, 'frontend-tree-archive-mismatch')
                 return {'root': str(staged), 'authority': authority,
                     'manifest_sha256': 'sha256:' + hashlib.sha256(raw).hexdigest(),
                     'archive_sha256': 'sha256:' + manifest['archive']['sha256'],
-                    'archive_bytes': manifest['archive']['bytes']}
+                    'archive_bytes': manifest['archive']['bytes'], 'tree_sha256': expected_tree}
     except Exception as error:
         if staged is not None:
             shutil.rmtree(staged)

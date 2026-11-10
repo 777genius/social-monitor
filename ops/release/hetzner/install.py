@@ -29,7 +29,9 @@ ADAPTER = Path('/etc/social-monitor/release/operator-adapter')
 USER = 'sm-release'
 FORCED = '/usr/bin/sudo -n /opt/social-monitor-release/root-executor'
 BASE_FILES = ('controller.py', 'contract.py', 'archive.py', 'bounds.py', 'evidence.py', 'prisma_history.py',
-              'host.py', 'worker_host.py', 'backend_host.py', 'backend_controller.py', 'compose_contract.py', 'requirements.txt', 'release-gate.sh',
+              'host.py', 'worker_host.py', 'backend_host.py', 'backend_controller.py', 'compose_contract.py',
+              'cohort_frontend_receive.py', 'cohort_backend_receive.py', 'frontend_ingress.py', 'frontend_bundle.py', 'frontend_tree.py',
+              'requirements.txt', 'release-gate.sh',
               'restricted-executor.c')
 # Only reviewed operator assets may be added to this finite installation list.
 # Until the operator lane supplies this closure in the approved SHA, install denies.

@@ -99,6 +99,8 @@ export function command(verb, args = []) {
     status: [], preflight: [], receive: [SHA, RUN, DIGEST, DIGEST, /^[1-9][0-9]{0,11}$/u],
     admit: [SHA, RUN], activate: [SHA, RUN], verify: [SHA, RUN], rollback: [SHA, RUN],
     receipt: [/^[0-9a-f]{40}-[1-9][0-9]{0,14}(?:-rollback)?$/u],
+    'cohort-receive-frontend': [SHA, RUN],
+    'cohort-receive-backend': [SHA, RUN, DIGEST, DIGEST, /^[1-9][0-9]{0,11}$/u],
     'backend-preflight': [], 'backend-receive': [SHA, RUN, DIGEST, DIGEST, /^[1-9][0-9]{0,11}$/u],
     'backend-admit': [SHA, RUN], 'backend-activate': [SHA, RUN], 'backend-verify': [SHA, RUN],
     'backend-rollback': [SHA, RUN], 'backend-receipt': [/^[0-9a-f]{40}-[1-9][0-9]{0,14}(?:-rollback)?$/u],
@@ -106,7 +108,7 @@ export function command(verb, args = []) {
   requireThat(Object.hasOwn(patterns, verb) && Array.isArray(args)
     && args.length === patterns[verb].length
     && args.every((arg, i) => typeof arg === 'string' && patterns[verb][i].test(arg)), 'ssh-grammar');
-  requireThat(!['receive', 'backend-receive'].includes(verb) || Number(args[4]) <= MAX_ARCHIVE, 'ssh-grammar');
+  requireThat(!['receive', 'backend-receive', 'cohort-receive-backend'].includes(verb) || Number(args[4]) <= MAX_ARCHIVE, 'ssh-grammar');
   return [verb, ...args].join(' ');
 }
 export function sshArgs(config, wire) {

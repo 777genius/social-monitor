@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { ClientError, command, deliver, runnerConfig, sshTransport, validateManifest } from './hetzner-release-client.mjs';
 import type { Manifest, Transport } from './hetzner-release-client.mjs';
 import type { Authority, FrontendAuthority, Get, Trigger } from './hetzner-release-authority.mjs';
@@ -253,6 +254,79 @@ export async function prepareFrontendCandidate(frontend: FrontendAuthority, scra
   // Retain the original CI artifact so the host can independently verify its provenance.
   return { ...candidate, transport: zip };
 }
+/** Stage a validated backend archive; host qualification still precedes any image effect. */
+export async function sendBackendCandidate(authority: Authority, candidate: Candidate, get: Get, transport: Transport) {
+  const manifestBytes = await boundedBytes(candidate.manifest, 65536);
+  A.requireValue('sha256:' + createHash('sha256').update(manifestBytes).digest('hex') === candidate.manifestHash,
+    'backend-manifest-changed');
+  const manifest = validateManifest(A.parseJson(manifestBytes, 65536), authority.sha, authority.run);
+  A.requireValue(isDeepStrictEqual(manifest, candidate.value), 'backend-manifest-changed');
+  await canonical(candidate.archive);
+  const handle = await open(candidate.archive, F.O_RDONLY | F.O_NOFOLLOW | F.O_NONBLOCK);
+  try {
+    const before = await handle.stat();
+    A.requireValue(before.isFile() && before.size === manifest.archive_bytes, 'backend-transport-size');
+    const hash = createHash('sha256');
+    for await (const chunk of handle.createReadStream({ autoClose: false, start: 0, end: before.size - 1 })) hash.update(chunk);
+    A.requireValue('sha256:' + hash.digest('hex') === manifest.archive_sha256
+      && identity(before) === identity(await handle.stat()) && identity(before) === identity(await lstat(candidate.archive)),
+      'backend-transport-changed');
+    const guarded = guardedTransport(get, authority, transport);
+    const response = await guarded(command('cohort-receive-backend', [authority.sha, authority.run,
+      manifest.archive_sha256, manifest.image_id, String(manifest.archive_bytes)]),
+      () => handle.createReadStream({ autoClose: false, start: 0, end: before.size - 1 }));
+    A.requireValue(response.code === 0 && Buffer.isBuffer(response.stdout), 'backend-host-denied');
+    A.requireValue(identity(before) === identity(await handle.stat()) && identity(before) === identity(await lstat(candidate.archive)),
+      'backend-transport-changed');
+    const item = A.exact(A.parseJson(response.stdout, 65536),
+      ['sha', 'ci_run_id', 'archive_sha256', 'image_id', 'archive_bytes', 'migrations', 'image_graph']);
+    A.requireValue(isDeepStrictEqual(item, manifest), 'backend-host-binding');
+    return item;
+  } finally { await handle.close(); }
+}
+/** Deliver original CI ZIP; the host repeats independent authority and archive checks. */
+export async function sendFrontendCandidate(frontend: FrontendAuthority,
+  candidate: { manifest: string; manifestHash: string; transport: string }, get: Get, transport: Transport) {
+  const artifact = frontend.artifact, base = frontend.base;
+  const manifestBytes = await boundedBytes(candidate.manifest, 65536);
+  A.requireValue('sha256:' + createHash('sha256').update(manifestBytes).digest('hex') === candidate.manifestHash,
+    'frontend-manifest-changed');
+  const manifest = A.object(A.parseJson(manifestBytes, 65536));
+  const archive = A.object(manifest.archive);
+  const archiveSha = A.text(archive.sha256, /^[0-9a-f]{64}$/u, 'frontend-archive-digest');
+  const archiveBytes = archive.bytes;
+  A.requireValue(Number.isSafeInteger(archiveBytes) && (archiveBytes as number) > 0, 'frontend-archive-size');
+  await canonical(candidate.transport);
+  const handle = await open(candidate.transport, F.O_RDONLY | F.O_NOFOLLOW | F.O_NONBLOCK);
+  try {
+    const before = await handle.stat();
+    A.requireValue(before.isFile() && before.size === artifact.bytes, 'frontend-transport-size');
+    const hash = createHash('sha256');
+    for await (const chunk of handle.createReadStream({ autoClose: false, start: 0, end: before.size - 1 })) hash.update(chunk);
+    A.requireValue('sha256:' + hash.digest('hex') === artifact.digest
+      && identity(before) === identity(await handle.stat()) && identity(before) === identity(await lstat(candidate.transport)),
+      'frontend-transport-changed');
+    const guarded = guardedTransport(get, base, transport, frontend);
+    const response = await guarded(command('cohort-receive-frontend', [base.sha, base.run]),
+      () => handle.createReadStream({ autoClose: false, start: 0, end: before.size - 1 }));
+    A.requireValue(response.code === 0 && Buffer.isBuffer(response.stdout), 'frontend-host-denied');
+    A.requireValue(identity(before) === identity(await handle.stat()) && identity(before) === identity(await lstat(candidate.transport)),
+      'frontend-transport-changed');
+    const proof = A.exact(A.parseJson(response.stdout, 65536),
+      ['root', 'authority', 'manifest_sha256', 'archive_sha256', 'archive_bytes', 'tree_sha256']);
+    const binding = A.exact(proof.authority, ['sha', 'ci_run_id', 'ci_run_attempt', 'artifact_id', 'artifact_name',
+      'artifact_sha256', 'artifact_bytes']);
+    A.requireValue(binding.sha === base.sha && binding.ci_run_id === base.run && binding.ci_run_attempt === String(base.attempt)
+      && binding.artifact_id === artifact.id && binding.artifact_name === artifact.name
+      && binding.artifact_sha256 === artifact.digest && binding.artifact_bytes === artifact.bytes
+      && proof.manifest_sha256 === candidate.manifestHash && proof.archive_sha256 === 'sha256:' + archiveSha
+      && proof.archive_bytes === archiveBytes
+      && proof.root === `/var/lib/social-monitor-release/cohort/frontend/candidates/${base.sha}-${base.run}/bundle`,
+      'frontend-host-binding');
+    A.text(proof.tree_sha256, A.DIGEST, 'frontend-tree-digest');
+    return proof;
+  } finally { await handle.close(); }
+}
 export interface Observation {
   environment: 'production-hetzner'; machine_id: string; latch: false;
   snapshot: string; api_image: string; compose: string;
@@ -289,7 +363,8 @@ export async function observeReadonly(transport: Transport): Promise<Observation
     api_image: A.text(value.api_image, A.DIGEST, 'host-image'),
     compose: A.text(value.compose, A.DIGEST, 'host-compose') };
 }
-export function guardedTransport(get: Get, authority: Authority, transport: Transport): Transport {
+export function guardedTransport(get: Get, authority: Authority, transport: Transport,
+  frontend?: FrontendAuthority): Transport {
   let backendActivationAttempted = false;
   return async (wire, source) => {
     const [verb, ...args] = wire.split(' '); A.requireValue(typeof verb === 'string', 'wire');
@@ -300,7 +375,14 @@ export function guardedTransport(get: Get, authority: Authority, transport: Tran
       A.requireValue(backendActivationAttempted && args[0] === authority.sha && args[1] === authority.run,
         'rollback-unsupported');
     }
-    if (['receive', 'admit', 'activate', 'backend-receive', 'backend-admit', 'backend-activate'].includes(verb)) {
+    if (verb === 'cohort-receive-frontend') {
+      A.requireValue(frontend && args[0] === authority.sha && args[1] === authority.run && source,
+        'frontend-authority-required');
+      A.sameAuthority(authority, frontend.base);
+      A.sameFrontendAuthority(frontend, await A.observeFrontendAuthority(get, authority));
+    }
+    if (['receive', 'admit', 'activate', 'backend-receive', 'backend-admit', 'backend-activate',
+      'cohort-receive-backend'].includes(verb)) {
       A.requireValue(args[0] === authority.sha && args[1] === authority.run, 'candidate-disagreement');
       const decision = await A.observeAuthority(get, authority.run);
       if (decision.phase === 'stale-main-skipped') throw new ClientError('stale-main-skip');

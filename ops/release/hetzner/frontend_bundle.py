@@ -10,7 +10,7 @@ import tarfile
 import tempfile
 from pathlib import Path
 
-from contract import Denied, require
+from contract import Denied, digest, require
 
 MAX_ARCHIVE = 256 * 1024 * 1024
 MAX_CONTENT = 512 * 1024 * 1024
@@ -43,7 +43,7 @@ def validate_manifest(manifest, sha, run, attempt):
     return archive
 
 
-def stage_frontend_bundle(archive_path, manifest, sha, run, attempt, staging_parent):
+def stage_frontend_bundle(archive_path, manifest, sha, run, attempt, staging_parent, *, with_tree=False):
     """Stage under a caller-verified private parent; caller owns activation and cleanup."""
     archive = validate_manifest(manifest, sha, run, attempt)
     path = Path(archive_path)
@@ -61,13 +61,15 @@ def stage_frontend_bundle(archive_path, manifest, sha, run, attempt, staging_par
         root = Path(tempfile.mkdtemp(prefix='.frontend-', dir=staging_parent))
         try:
             with _spool(source, root) as safe_tar:
-                _extract(safe_tar, root)
+                expected_tree = _extract(safe_tar, root)
             after, named = os.fstat(source.fileno()), os.lstat(path)
             fields = ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns', 'st_nlink')
             require(all(getattr(before, name) == getattr(after, name) == getattr(named, name)
                         for name in fields), 'frontend-archive-changed')
             _validate_bundle(root, sha)
-            return root
+            from frontend_tree import tree_digest
+            require(tree_digest(root) == expected_tree, 'frontend-tree-archive-mismatch')
+            return (root, expected_tree) if with_tree else root
         except Exception:
             shutil.rmtree(root)
             raise
@@ -113,7 +115,7 @@ def _spool(source, root):
 
 
 def _extract(archive, root):
-    seen, total = set(), 0
+    seen, records, total = set(), {}, 0
     try:
         with tarfile.open(fileobj=archive, mode='r:') as bundle:
             for index, member in enumerate(bundle):
@@ -125,19 +127,36 @@ def _extract(archive, root):
                 require(name not in seen and (member.isdir() or member.type in (tarfile.REGTYPE, tarfile.AREGTYPE))
                         and member.sparse is None, 'frontend-member-type')
                 seen.add(name)
-                destination = root.joinpath(*parts)
+                pending = {'/'.join(parts[:i]) for i in range(1, len(parts) + 1)}
+                require(len(set(records) | pending) <= MAX_MEMBERS, 'frontend-member-count')
+                directory_count = len(parts) if member.isdir() else len(parts) - 1
+                for i in range(1, directory_count + 1):
+                    directory = '/'.join(parts[:i])
+                    if directory not in records:
+                        path = root.joinpath(*parts[:i]); path.mkdir(mode=0o755)
+                        path.chmod(0o755)  # Asset directories must remain readable under umask 077.
+                        records[directory] = {'path': directory, 'mode': 0o755, 'type': 'directory'}
+                    require(records[directory]['type'] == 'directory', 'frontend-member-type')
                 if member.isdir():
-                    destination.mkdir(mode=0o755, parents=True, exist_ok=True)
                     continue
-                require(len(parts) > 1 and 0 <= member.size <= MAX_FILE, 'frontend-member-size')
+                require(name not in records and len(parts) > 1 and 0 <= member.size <= MAX_FILE,
+                        'frontend-member-size')
                 total += member.size
                 require(total <= MAX_CONTENT, 'frontend-content-size')
-                destination.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
                 source = bundle.extractfile(member)
                 require(source is not None, 'frontend-member-data')
+                checksum, observed = hashlib.sha256(), 0
+                destination = root.joinpath(*parts)
                 with destination.open('xb') as output:
-                    shutil.copyfileobj(source, output, 1024 * 1024)
+                    while chunk := source.read(1024 * 1024):
+                        observed += len(chunk)
+                        require(observed <= member.size, 'frontend-member-size')
+                        checksum.update(chunk); output.write(chunk)
+                require(observed == member.size, 'frontend-member-size')
                 destination.chmod(0o644)
+                records[name] = {'path': name, 'mode': 0o644, 'type': 'file',
+                                 'size': observed, 'sha256': checksum.hexdigest()}
+        return digest(sorted(records.values(), key=lambda item: item['path']))
     except (OSError, tarfile.TarError, EOFError) as error:
         raise Denied('frontend-archive-invalid') from error
 
