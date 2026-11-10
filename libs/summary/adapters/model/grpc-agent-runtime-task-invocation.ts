@@ -32,7 +32,9 @@ export const invokeGrpcAgentRuntimeTask = (params: {
   readonly signal: AbortSignal | undefined;
 }): Promise<AgentRuntimeTaskResult> => {
   const { command, signal } = params;
-  if (signal?.aborted === true) {
+  // A signal can change during a synchronous SDK call even when TS narrows it.
+  const hasAborted = (): boolean => signal?.aborted === true;
+  if (hasAborted()) {
     return Promise.reject(new Error("Agent runtime gRPC task was cancelled"));
   }
   const metadata = createGrpcRequestMetadata({
@@ -70,7 +72,7 @@ export const invokeGrpcAgentRuntimeTask = (params: {
       cancelTransport();
     };
     signal?.addEventListener("abort", abort, { once: true });
-    if (signal?.aborted === true) {
+    if (hasAborted()) {
       abort();
       return;
     }
@@ -112,7 +114,7 @@ export const invokeGrpcAgentRuntimeTask = (params: {
       );
       // An abort triggered inside the transport before it returns a call
       // handle must still cancel the actual in-flight operation.
-      if (cancellationRequested || signal?.aborted === true) {
+      if (cancellationRequested || hasAborted()) {
         if (!cancellationRequested) abort();
         else cancelTransport();
       }
