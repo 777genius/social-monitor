@@ -16,7 +16,8 @@ type RepoRadarRuntimeSmokeDependencies = {
   readonly assert: (condition: unknown, message: string) => asserts condition;
 };
 
-export async function verifyGitHubRepoRadarRuntimeModes({ withMockedFetch, assertFailure, contextFor, assert }: RepoRadarRuntimeSmokeDependencies): Promise<void> {
+export async function verifyGitHubRepoRadarRuntimeModes({ withMockedFetch, assertFailure, contextFor, assert: runtimeAssert }: RepoRadarRuntimeSmokeDependencies): Promise<void> {
+  const assert: RepoRadarRuntimeSmokeDependencies["assert"] = runtimeAssert;
   let observedBigQueryJob = false;
   let observedGitHubRepositoryFetch = false;
   const readOnlyToken = ["github", "repo-radar", "read", "token"].join("-");
