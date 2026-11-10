@@ -111,8 +111,10 @@ assertions as successful evidence or fill unknown inputs with success defaults.
   `paths_sha256` (canonical JSON list hash), `evidence_sha256` plus explicit
   `independent_review:true`, `all_shared_dependencies_reviewed:true`,
   `compatible:true`. No shared-code default approvals. Concrete schema/writer/
-  Compose code paths are denied; documentation names mentioning workers pass
-  path classification. Admission binds production revision, delta and proof
+  Compose code paths are denied; `docs/` and the exact
+  `apps/agent-runtime/README.md` are documentary paths. The latter must be a
+  regular, non-executable blob on both sides of the delta; additions, deletions,
+  symlinks and mode changes are denied. Admission binds production revision, delta and proof
   hashes; new activation revalidates the same evidence. The known production
   `dee89140...` to candidate delta still needs actual independent review.
 * `database`: use the separately provisioned read-only PG18 observer. Outer

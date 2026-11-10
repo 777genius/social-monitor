@@ -119,6 +119,11 @@ class GitHub:
         old, new = self.tree(base), self.tree(head)
         paths = sorted(path for path in old.keys() | new.keys() if old.get(path) != new.get(path))
         require(paths and len(paths) <= 10000, 'operator-delta-count')
+        if core_policies.WORKER_README in paths:
+            for tree in (old, new):
+                entry = tree.get(core_policies.WORKER_README)
+                require(entry is not None and entry['type'] == 'blob'
+                        and entry['mode'] == '100644', 'operator-worker-readme-mode')
         delta = [{'path': path, 'before': old.get(path), 'after': new.get(path)} for path in paths]
         return paths, digest(delta)
 
@@ -128,7 +133,7 @@ def scope(paths):
                  or '/prisma/migrations/' in p for p in paths if not p.startswith('docs/'))
     worker = any(p.startswith(('apps/intelligence-worker/', 'apps/ingestion-worker/',
                               'apps/agent-runtime/', 'apps/x-collector/', 'libs/agent-runtime/'))
-                 for p in paths if not p.startswith('docs/'))
+                 for p in paths if not p.startswith('docs/') and p != core_policies.WORKER_README)
     compose = any(p.startswith('ops/compose/') or match(
         r'(?:docker-compose|compose)(?:[.-][a-zA-Z0-9_-]+)*\.ya?ml', p.rsplit('/', 1)[-1])
         for p in paths if not p.startswith('docs/'))
