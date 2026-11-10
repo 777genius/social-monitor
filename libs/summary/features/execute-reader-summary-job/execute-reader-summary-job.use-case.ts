@@ -85,11 +85,8 @@ export class ExecuteReaderSummaryJobUseCase {
     private readonly nativeOwner?: Parameters<typeof resolveReaderSummaryAuthorityBoundary>[0]["nativeOwner"],
     private readonly usageScope: ReaderSummaryUsageScope = NOOP_READER_SUMMARY_USAGE_SCOPE,
   ) {}
-  async execute(
-    command: ExecuteReaderSummaryJobCommand,
-  ): Promise<
-    Result<ExecuteReaderSummaryJobResult, ExecuteReaderSummaryJobFailure>
-  > {
+  async execute(command: ExecuteReaderSummaryJobCommand):
+  Promise<Result<ExecuteReaderSummaryJobResult, ExecuteReaderSummaryJobFailure>> {
     const explicitCutoffTime = command.observedThrough?.getTime();
     if (command.readerSummaryJobId.trim().length === 0) {
       return err(
@@ -117,7 +114,6 @@ export class ExecuteReaderSummaryJobUseCase {
       periodStartedAt: snapshot.period.startedAt.toISOString() },
     () => this.executeLoadedJob(existingJob, command, explicitCutoffTime));
   }
-
   private async executeLoadedJob(existingJob: ReaderSummaryJob, command: ExecuteReaderSummaryJobCommand,
     explicitCutoffTime: number | undefined): Promise<Result<ExecuteReaderSummaryJobResult, ExecuteReaderSummaryJobFailure>> {
     const snapshot = existingJob.toSnapshot();
