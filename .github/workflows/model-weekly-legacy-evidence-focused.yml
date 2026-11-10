@@ -32,3 +32,4 @@ jobs:
           libs/summary/adapters/model/openai-responses-reader-summary-weekly-legacy-evidence-policy.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-weekly-legacy-normalization.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-parser.spec.ts
+          libs/summary/adapters/model/openai-responses-summary-evidence-schema.spec.ts
