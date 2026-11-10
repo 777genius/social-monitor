@@ -1,4 +1,4 @@
-name: Summary model metering and weekly evidence focused verification
+name: Reader prompt route, metering and weekly evidence focused verification
 on:
   push:
     branches:
@@ -34,3 +34,6 @@ jobs:
           libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-parser.spec.ts
           libs/summary/adapters/model/openai-responses-summary-evidence-schema.spec.ts
           libs/summary/adapters/model/metered-summary-model.adapter.spec.ts
+          libs/summary/adapters/model/reader-summary-input-prompt-route.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-model.adapter.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-model.adapter.spec.ts
