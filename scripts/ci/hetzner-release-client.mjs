@@ -132,17 +132,31 @@ export function sshTransport(config, spawnProcess = spawn) {
       if (size > 8 * 1024 * 1024) child.kill('SIGKILL');
       else chunks.push(chunk);
     });
-    // Discard stderr, including possible private paths, remote errors and payloads.
-    child.stderr.resume();
+    // Keep a bounded prefix solely to classify fixed SSH failures; never emit it.
+    let errorBytes = Buffer.alloc(0);
+    child.stderr.on('data', (chunk) => {
+      const part = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      if (errorBytes.length < 16384) errorBytes = Buffer.concat([errorBytes, part.subarray(0, 16384 - errorBytes.length)]);
+    });
     const sent = source ? pipeline(Readable.from(source()), child.stdin) :
       new Promise((accept) => { child.stdin.end(accept); });
     try {
       const [code] = await Promise.all([closed, sent]);
       requireThat(size <= 8 * 1024 * 1024, 'transport-uncertain');
-      return { code, stdout: Buffer.concat(chunks) };
+      return { code, stdout: Buffer.concat(chunks),
+        ...(code === 255 ? { diagnostic: classifySshFailure(errorBytes) } : {}) };
     } catch { child.kill('SIGKILL'); await closed.catch(() => {}); throw new ClientError('transport-uncertain'); }
     finally { clearTimeout(timer); }
   };
+}
+function classifySshFailure(bytes) {
+  const text = bytes.toString('utf8');
+  if (/REMOTE HOST IDENTIFICATION HAS CHANGED|Host key verification failed/iu.test(text)) return 'host-key';
+  if (/Permission denied \(publickey/iu.test(text)) return 'publickey';
+  if (/Load key [^\n]*: (?:error in libcrypto|invalid format|No such file)/iu.test(text)) return 'private-key';
+  if (/Connection timed out|Operation timed out/iu.test(text)) return 'timeout';
+  if (/Connection refused|No route to host|Network is unreachable/iu.test(text)) return 'network';
+  return 'unknown';
 }
 function parseJson(bytes) {
   const source = bytes.toString('utf8');
