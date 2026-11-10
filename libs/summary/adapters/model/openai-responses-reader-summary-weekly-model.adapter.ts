@@ -15,15 +15,16 @@ export {
 } from "./openai-responses-reader-summary-weekly-response-contract";
 
 import {
-  assertReaderSummaryWeeklyModelInput,
   type ReaderSummaryWeeklyModelInput,
   type ReaderSummaryWeeklyModelOutput,
   type ReaderSummaryWeeklyModelPort,
 } from "../../ports/reader-summary-weekly-model.port";
-import {
-  openAiApiKeySourceDescription,
-  resolveOpenAiApiKey,
-} from "./openai-api-key-source";
+import { openAiApiKeySourceDescription } from "./openai-api-key-source";
+import { assertValidWeeklyInput } from "./openai-responses-reader-summary-weekly-input-admission";
+import { postOpenAiReaderSummaryWeeklyResponse } from "./openai-responses-reader-summary-weekly-transport";
+import { normalizeOpenAiReaderSummaryWeeklyOptions, type OpenAiReaderSummaryWeeklyFetchLike, type OpenAiResponsesReaderSummaryWeeklyModelAdapterOptions } from "./openai-responses-reader-summary-weekly-options";
+export { resolveOpenAiResponsesReaderSummaryWeeklyModelOptions } from "./openai-responses-reader-summary-weekly-options";
+export type { OpenAiResponsesReaderSummaryWeeklyModelAdapterOptions } from "./openai-responses-reader-summary-weekly-options";
 import {
   buildOpenAiReaderSummaryWeeklyInstructions,
   buildOpenAiReaderSummaryWeeklyPromptPayload,
@@ -34,25 +35,6 @@ import {
 } from "./openai-responses-reader-summary-weekly-response-parser";
 import { buildOpenAiReaderSummaryWeeklyResponseFormat } from "./openai-responses-reader-summary-weekly-schema";
 
-type FetchLike = (
-  input: string | URL,
-  init?: RequestInit,
-) => Promise<Response>;
-
-export type OpenAiResponsesReaderSummaryWeeklyModelAdapterOptions = Readonly<{
-  apiKey?: string;
-  endpointUrl?: string;
-  model?: string;
-  timeoutMs?: number;
-  maxOutputTokens?: number;
-  fetchFn?: FetchLike;
-}>;
-
-const defaultEndpointUrl = "https://api.openai.com/v1/responses";
-const defaultModel = "gpt-5.4-mini";
-const defaultTimeoutMs = 180_000;
-const defaultMaxOutputTokens = 16_000;
-
 export class OpenAiResponsesReaderSummaryWeeklyModelAdapter
 implements ReaderSummaryWeeklyModelPort {
   private readonly apiKey: string;
@@ -60,26 +42,18 @@ implements ReaderSummaryWeeklyModelPort {
   private readonly model: string;
   private readonly timeoutMs: number;
   private readonly maxOutputTokens: number;
-  private readonly fetchFn: FetchLike;
+  private readonly fetchFn: OpenAiReaderSummaryWeeklyFetchLike;
 
   constructor(
     options: OpenAiResponsesReaderSummaryWeeklyModelAdapterOptions = {},
   ) {
-    this.apiKey = options.apiKey?.trim() ?? "";
-    this.endpointUrl = nonEmptyOrFallback(
-      options.endpointUrl,
-      defaultEndpointUrl,
-    );
-    this.model = nonEmptyOrFallback(options.model, defaultModel);
-    this.timeoutMs = positiveIntegerOrFallback(
-      options.timeoutMs,
-      defaultTimeoutMs,
-    );
-    this.maxOutputTokens = positiveIntegerOrFallback(
-      options.maxOutputTokens,
-      defaultMaxOutputTokens,
-    );
-    this.fetchFn = options.fetchFn ?? fetch;
+    const resolved = normalizeOpenAiReaderSummaryWeeklyOptions(options);
+    this.apiKey = resolved.apiKey;
+    this.endpointUrl = resolved.endpointUrl;
+    this.model = resolved.model;
+    this.timeoutMs = resolved.timeoutMs;
+    this.maxOutputTokens = resolved.maxOutputTokens;
+    this.fetchFn = resolved.fetchFn;
   }
 
   async generate(
@@ -94,7 +68,12 @@ implements ReaderSummaryWeeklyModelPort {
       );
     }
 
-    const response = await this.createResponse({
+    const response = await postOpenAiReaderSummaryWeeklyResponse({
+      apiKey: this.apiKey,
+      endpointUrl: this.endpointUrl,
+      timeoutMs: this.timeoutMs,
+      fetchFn: this.fetchFn,
+      request: {
       model: this.model,
       store: false,
       max_output_tokens: this.maxOutputTokens,
@@ -102,6 +81,7 @@ implements ReaderSummaryWeeklyModelPort {
       input: buildOpenAiReaderSummaryWeeklyPromptPayload(input),
       text: {
         format: buildOpenAiReaderSummaryWeeklyResponseFormat(input),
+      },
       },
     });
     const responseJson = await readCompletedResponse(response);
@@ -144,96 +124,6 @@ implements ReaderSummaryWeeklyModelPort {
     };
   }
 
-  private async createResponse(
-    request: Readonly<Record<string, unknown>>,
-  ): Promise<Response> {
-    try {
-      return await this.fetchFn(this.endpointUrl, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${this.apiKey}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(request),
-        signal: AbortSignal.timeout(this.timeoutMs),
-      });
-    } catch (error) {
-      if (error instanceof OpenAiReaderSummaryWeeklyModelError) {
-        throw error;
-      }
-      if (isTimeoutError(error)) {
-        throw new OpenAiReaderSummaryWeeklyModelError(timeoutFailure());
-      }
-      throw modelError(
-        "transport",
-        true,
-        "OpenAI reader summary weekly transport failed",
-      );
-    }
-  }
+
 }
 
-export const resolveOpenAiResponsesReaderSummaryWeeklyModelOptions = (
-  env: NodeJS.ProcessEnv,
-  params: Readonly<{ requireApiKey: boolean }>,
-): OpenAiResponsesReaderSummaryWeeklyModelAdapterOptions => {
-  const apiKey = resolveOpenAiApiKey(env);
-  if (params.requireApiKey && apiKey.length === 0) {
-    throw new Error(
-      `OpenAI reader summary weekly model requires ${openAiApiKeySourceDescription}`,
-    );
-  }
-  return {
-    apiKey,
-    endpointUrl: env.OPENAI_RESPONSES_ENDPOINT_URL,
-    model:
-      env.OPENAI_READER_SUMMARY_WEEKLY_MODEL ??
-      env.OPENAI_READER_SUMMARY_MODEL ??
-      env.OPENAI_SUMMARY_MODEL,
-    timeoutMs: parsePositiveInteger(
-      env.OPENAI_READER_SUMMARY_WEEKLY_TIMEOUT_MS,
-    ),
-    maxOutputTokens: parsePositiveInteger(
-      env.OPENAI_READER_SUMMARY_WEEKLY_MAX_OUTPUT_TOKENS,
-    ),
-  };
-};
-
-const assertValidWeeklyInput = (
-  input: ReaderSummaryWeeklyModelInput,
-): void => {
-  try {
-    assertReaderSummaryWeeklyModelInput(input);
-  } catch (error) {
-    throw modelError(
-      "invalid_input",
-      false,
-      error instanceof Error
-        ? error.message
-        : "Reader summary weekly model input is invalid",
-    );
-  }
-};
-
-const nonEmptyOrFallback = (
-  value: string | undefined,
-  fallback: string,
-): string => {
-  const trimmed = value?.trim();
-  return trimmed === undefined || trimmed.length === 0 ? fallback : trimmed;
-};
-
-const positiveIntegerOrFallback = (
-  value: number | undefined,
-  fallback: number,
-): number =>
-  value !== undefined && Number.isInteger(value) && value > 0
-    ? value
-    : fallback;
-
-const parsePositiveInteger = (
-  value: string | undefined,
-): number | undefined => {
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
-};
