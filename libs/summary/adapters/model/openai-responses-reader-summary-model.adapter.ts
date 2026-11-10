@@ -1,3 +1,4 @@
+import { withReaderSummaryInputPromptVersion } from "./reader-summary-input-prompt-route";
 import {
   estimateReaderSummaryTokenUsage,
   isReaderSummaryBudgetExceeded,
@@ -109,10 +110,7 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
     policy: ReaderSummaryModelPolicy,
     budget: ReaderSummaryModelBudget,
   ): ReaderSummaryModelRoute {
-    const route = { ...this.buildRoute(), ...(input.dailyEditorialPlan !== undefined
-      ? { promptVersion: "reader_summary.prompt.2026-11-03.daily_editorial_v1" }
-      : input.evidence.dailyGenerationInput === undefined ? {} :
-        { promptVersion: "reader_summary.prompt.2026-11-03.daily_likes_digest" }) };
+    const route = withReaderSummaryInputPromptVersion(this.buildRoute(), input);
     const estimate = this.estimate(input, route);
     if (isReaderSummaryBudgetExceeded(estimate, policy, budget)) {
       throw new ReaderSummaryModelProviderError({

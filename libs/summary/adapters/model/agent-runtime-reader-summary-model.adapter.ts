@@ -1,3 +1,4 @@
+import { withReaderSummaryInputPromptVersion } from "./reader-summary-input-prompt-route";
 import type { AgentRuntimeReaderSummaryModelAdapterOptions } from "./agent-runtime-reader-summary-options";
 import { runAgentRuntimeReaderSummaryGeneration } from "./agent-runtime-reader-summary-generation";
 export { resolveAgentRuntimeReaderSummaryModelOptions } from "./agent-runtime-reader-summary-options";
@@ -115,10 +116,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     policy: ReaderSummaryModelPolicy,
     budget: ReaderSummaryModelBudget,
   ): ReaderSummaryModelRoute {
-    const route = { ...this.buildRoute(), ...(input.dailyEditorialPlan !== undefined
-      ? { promptVersion: "reader_summary.prompt.2026-11-03.daily_editorial_v1" }
-      : input.evidence.dailyGenerationInput === undefined ? {} :
-        { promptVersion: "reader_summary.prompt.2026-11-03.daily_likes_digest" }) };
+    const route = withReaderSummaryInputPromptVersion(this.buildRoute(), input);
     const estimate = this.estimate(input, route);
     if (isReaderSummaryBudgetExceeded(estimate, policy, budget)) {
       throw new AgentRuntimeModelProviderError({
