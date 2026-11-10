@@ -7,6 +7,50 @@ from contract import DIGEST, digest, fresh, require
 WORKER_README = 'apps/agent-runtime/README.md'
 
 
+def backend_compatibility(evidence, revisions, candidate, snapshot):
+    """New fixed cohort policy; no assertions of independent human approval."""
+    require(evidence.get('policy') == 'backend-cohort-ci-v1' and
+            evidence.get('non_target_snapshot_sha256') == snapshot and
+            evidence.get('api_revision') == revisions['api'] and
+            evidence.get('worker_revision') == revisions['jev-intelligence-worker'] and
+            evidence.get('main_sha') == candidate and evidence.get('head_sha') == candidate and
+            evidence.get('event') == 'push' and evidence.get('branch') == 'main' and
+            evidence.get('legacy_workflow') == 'disabled_manually' and
+            isinstance(evidence.get('jobs'), list) and evidence['jobs'] and
+            all(status == 'success' for status in evidence['jobs']), 'backend-ci')
+    deltas = evidence.get('deltas')
+    require(isinstance(deltas, dict) and set(deltas) == set(revisions), 'backend-deltas')
+    for service, base in revisions.items():
+        delta = deltas[service]
+        require(delta.get('base') == base and delta.get('head') == candidate and
+                delta.get('complete_delta') is True and re.fullmatch(DIGEST, delta.get('delta_sha256', '')),
+                'backend-delta-binding')
+        paths = delta.get('changed_paths')
+        require(isinstance(paths, list) and all(isinstance(p, str) and p and '..' not in p.split('/')
+                and not p.startswith('/') for p in paths) and (paths or base == candidate), 'backend-delta-paths')
+        # Shared libs also run in retained consumers (including summary via delivery
+        # composition). Current-version CI does not prove mixed-version compatibility.
+        # This limited lane refuses all shared-library changes; it is not an all-backend
+        # automatic release. Compose source is not activated:
+        # only immutable host roots, runtime fingerprints and two image fields are used.
+        denied = ('prisma/', 'libs/', 'apps/ingestion-worker/', 'apps/agent-runtime/',
+                  'apps/x-collector/', 'apps/delivery-service/', 'apps/event-relay/')
+        lifecycle = {'Dockerfile', 'package.json', 'package-lock.json', 'npm-shrinkwrap.json',
+            'scripts/rewrite-build-aliases.mjs',
+            'apps/intelligence-worker/src/main.ts',
+            'apps/intelligence-worker/src/worker-shutdown-marker.ts',
+            'apps/intelligence-worker/src/worker-shutdown-marker.spec.ts',
+            'apps/intelligence-worker/src/intelligence-worker.module.spec.ts',
+            'apps/intelligence-worker/src/worker-shutdown-signal.spec.ts',
+            'apps/intelligence-worker/src/worker-shutdown-signal.fixture.mts',
+            'apps/intelligence-worker/src/worker-shutdown-signal.fixture.cts'}
+        require(not any(not p.startswith('docs/') and p != WORKER_README and
+                (p in lifecycle or p.startswith(denied) or p.rsplit('/', 1)[-1] == 'schema.prisma' or
+                 '/prisma/migrations/' in p) for p in paths), 'backend-sensitive-files')
+    return {'policy': 'backend-cohort-ci-v1', 'deltas': deltas,
+            'run_attempt': evidence['run_attempt'], 'jobs_sha256': digest(evidence['job_observations'])}
+
+
 def compatibility(evidence, revision, candidate):
     require(evidence.get('production_revision') == revision
             and evidence.get('diff_base') == revision and evidence.get('diff_head') == candidate

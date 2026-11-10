@@ -11,7 +11,7 @@ import time
 
 INSTALL = Path('/opt/social-monitor-release')
 MODULES = ('contract', 'evidence', 'prisma_history', 'operator_adapter', 'operator_config', 'operator_github',
-           'operator_backup', 'operator_database', 'operator_probe')
+           'operator_backup', 'operator_database', 'operator_probe', 'worker_host')
 
 # Only the fixed installed code directory enters the isolated interpreter path.
 # Normal test imports use the canonical worktree modules; ignored copies never load.
@@ -56,6 +56,14 @@ STANDARD = {'sha': SHA, 'ci_run_id': RUN, 'archive_sha256': DIGEST, 'image_id': 
 REQUESTS = {'preflight': {}, 'postgres-identity': {}, 'database': STANDARD,
             'backup': STANDARD, 'release-evidence': {**STANDARD, 'production_revision': SHA},
             'probe': {'sha': SHA, 'image_id': DIGEST, 'container_id': r'[0-9a-f]{64}'}}
+REQUESTS['backend-release-evidence'] = {**STANDARD, 'api_revision': SHA, 'worker_revision': SHA,
+                                      'non_target_snapshot_sha256': DIGEST}
+REQUESTS['worker-capability'] = {'container_id': r'[0-9a-f]{64}', 'image_id': DIGEST}
+REQUESTS['worker-drain'] = {'container_id': r'[0-9a-f]{64}', 'image_id': DIGEST,
+                            'signal_since_ms': r'[1-9][0-9]{12}', 'started_at_sha256': DIGEST,
+                            'restart_count': r'[0-9]{1,10}'}
+REQUESTS['worker-probe'] = {**REQUESTS['probe'], 'runtime_sha256': DIGEST,
+                            'restart_policy_sha256': DIGEST}
 
 
 def request(verb, raw):
@@ -143,6 +151,14 @@ def dispatch(verb, binding, config, runner):
         result = operator_probe.probe(config, runner, binding)
     elif verb == 'release-evidence':
         result = operator_github.release(config, runner, binding)
+    elif verb == 'backend-release-evidence':
+        result = operator_github.backend_release(config, runner, binding)
+    elif verb == 'worker-capability':
+        result = operator_probe.worker_capability(config, runner, binding)
+    elif verb == 'worker-drain':
+        result = operator_probe.worker_drain(config, runner, binding)
+    elif verb == 'worker-probe':
+        result = operator_probe.worker_probe(config, runner, binding)
     else:
         require(verb == 'preflight', 'operator-verb')
         legacy = operator_github.GitHub(config, runner).legacy()

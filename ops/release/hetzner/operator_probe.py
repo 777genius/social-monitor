@@ -1,6 +1,8 @@
 """Observe /ready using a fixed Node HTTP program inside one exact container."""
 from contract import require
 from operator_config import EXECUTABLES, decode, exact, match
+from contract import digest
+from worker_host import SERVICE, WorkerHost
 
 INSPECT = ('{"id":{{json .Id}},"image":{{json .Image}},'
            '"started":{{json .State.StartedAt}},"running":{{json .State.Running}},'
@@ -63,3 +65,110 @@ def probe(config, runner, binding):
     config.recheck()
     return {'transport': 'docker-exec-http', 'http_status': 200, 'status': 'ok',
             'service': 'api-gateway', 'postgres_pool_ok': True, 'ready': True}
+
+
+def worker_probe(config, runner, binding):
+    """Observe bootstrap completion, not a synthetic job or model request."""
+    def observation():
+        raw = runner.run([EXECUTABLES['docker'], 'inspect', binding['container_id']], limit=2 * 1024**2)
+        values = decode(raw, 2 * 1024**2)
+        require(isinstance(values, list) and len(values) == 1, 'worker-probe-inspect')
+        item = values[0]
+        labels = item['Config'].get('Labels') or {}
+        require(item['Id'] == binding['container_id'] and item['Image'] == binding['image_id'] and
+                labels.get('com.docker.compose.project') == config.core['project'] and
+                labels.get('com.docker.compose.service') == SERVICE and
+                item['State']['Running'] and not item['State']['Restarting'] and
+                WorkerHost.policy(item) == binding['runtime_sha256'] and
+                digest(item['HostConfig']['RestartPolicy']) == binding['restart_policy_sha256'],
+                'worker-probe-binding')
+        return item
+    config.recheck()
+    before = observation()
+    labels = decode(runner.run([EXECUTABLES['docker'], 'image', 'inspect', '--format',
+                               '{{json .Config.Labels}}', binding['image_id']], limit=65536), 65536)
+    require(labels.get('org.opencontainers.image.revision') == binding['sha'], 'worker-probe-revision')
+    require(WorkerHost(None).signal_ready(before), 'worker-probe-bootstrap')
+    after = observation()
+    require((before['Id'], before['State'], before['RestartCount']) ==
+            (after['Id'], after['State'], after['RestartCount']), 'worker-probe-race')
+    config.recheck()
+    return {'service': SERVICE, 'transport': 'docker-process', 'ready': True}
+
+
+def worker_drain(config, runner, binding):
+    """A marker from the exact signalled process plus terminal Docker state, never bare143."""
+    import json
+    from datetime import datetime
+    config.recheck()
+    def observe():
+        values = decode(runner.run([EXECUTABLES['docker'], 'inspect', binding['container_id']],
+                                   limit=2 * 1024**2), 2 * 1024**2)
+        require(isinstance(values, list) and len(values) == 1, 'worker-drain-inspect')
+        item = values[0]
+        labels = item['Config'].get('Labels') or {}
+        require(item['Id'] == binding['container_id'] and item['Image'] == binding['image_id'] and
+                labels.get('com.docker.compose.project') == config.core['project'] and
+                labels.get('com.docker.compose.service') == SERVICE and
+                digest(item['State']['StartedAt']) == binding['started_at_sha256'] and
+                str(item['RestartCount']) == binding['restart_count'] and
+                not item['State']['Running'] and not item['State']['OOMKilled'] and
+                item['State']['ExitCode'] in (0, 143) and
+                item['HostConfig']['RestartPolicy'] == {'Name': 'no', 'MaximumRetryCount': 0},
+                'worker-drain-state')
+        return item
+    before = observe()
+    # Bounded runner terminates oversized output. --since and container ID exclude an
+    # earlier lifecycle. Strict JSON-only lines exclude ordinary provider/user logs.
+    since = str(int(binding['signal_since_ms']) // 1000)
+    logs = runner.run([EXECUTABLES['docker'], 'logs', '--since', since, '--tail', '1000',
+                       binding['container_id']], limit=2 * 1024**2)
+    found = []
+    for line in logs.decode('utf-8', errors='replace').splitlines():
+        try:
+            item = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(item, dict) or set(item) != {'marker', 'signal', 'pid', 'completed_at_ms'}:
+            continue
+        if (item['marker'] == 'social-monitor-worker-modules-drained-v1' and item['signal'] == 'SIGTERM'
+                and item['pid'] == 1 and type(item['pid']) is int and type(item['completed_at_ms']) is int
+                and int(binding['signal_since_ms']) <= item['completed_at_ms'] <=
+                    datetime.fromisoformat(before['State']['FinishedAt'].replace('Z', '+00:00')).timestamp() * 1000):
+            found.append(item)
+    require(len(found) == 1, 'worker-drain-marker')
+    require(observe() == before, 'worker-drain-race')
+    config.recheck()
+    return {'drained': True, 'service': SERVICE, 'marker': found[0]}
+
+
+def worker_capability(config, runner, binding):
+    """Only inspect deployed code; this never imports or boots the application."""
+    def observation():
+        values = decode(runner.run([EXECUTABLES['docker'], 'inspect', binding['container_id']],
+                                   limit=2 * 1024**2), 2 * 1024**2)
+        require(isinstance(values, list) and len(values) == 1, 'worker-capability-inspect')
+        value = values[0]
+        labels = value['Config'].get('Labels') or {}
+        require(value['Id'] == binding['container_id'] and value['Image'] == binding['image_id'] and
+                value['State']['Running'] and not value['State']['Restarting'] and
+                labels.get('com.docker.compose.project') == config.core['project'] and
+                labels.get('com.docker.compose.service') == SERVICE, 'worker-capability-binding')
+        return value
+    config.recheck()
+    before = observation()
+    script = ("grep -Fxq node /proc/1/comm && grep -Fq 'social-monitor-worker-modules-drained-v1' "
+              "/app/dist/apps/intelligence-worker/src/worker-shutdown-marker.js && "
+              "grep -Fq 'worker-shutdown-marker' /app/dist/apps/intelligence-worker/src/intelligence-worker.module.js && "
+              "grep -Fq 'WorkerShutdownMarker' /app/dist/apps/intelligence-worker/src/intelligence-worker.module.js")
+    runner.run([EXECUTABLES['docker'], 'exec', binding['container_id'], '/bin/sh', '-c', script], limit=4096)
+    runner.run([EXECUTABLES['docker'], 'logs', '--tail', '0', binding['container_id']], limit=4096)
+    source = runner.run([EXECUTABLES['docker'], 'exec', binding['container_id'], 'sha256sum',
+                        '/app/node_modules/@nestjs/core/nest-application-context.js'], limit=4096)
+    require(source.decode().split() == [
+        '2e4f6131799125e3098bbdab8701b7380123ea2841799ebe932f190c21cb9d11',
+        '/app/node_modules/@nestjs/core/nest-application-context.js'], 'worker-signal-replay-source')
+    require(observation() == before, 'worker-capability-race')
+    config.recheck()
+    return {'supported': True, 'service': SERVICE, 'capability': 'modules-drained-v1',
+            'signal_replay': 'nest-guarded-v1'}

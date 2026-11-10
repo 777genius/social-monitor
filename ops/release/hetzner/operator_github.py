@@ -169,3 +169,27 @@ def release(config, runner, binding):
             and gh.jobs(run) == jobs and gh.legacy() == legacy, 'operator-ci-race')
     config.recheck()
     return result
+
+
+def backend_release(config, runner, binding):
+    """Exact current-main CI and complete deltas for both running image revisions."""
+    gh = GitHub(config, runner)
+    sha = binding['sha']
+    require(gh.main() == sha, 'operator-not-current-main')
+    legacy, run = gh.legacy(), gh.run(binding['ci_run_id'], sha)
+    jobs = gh.jobs(run)
+    revisions = {'api': binding['api_revision'], 'jev-intelligence-worker': binding['worker_revision']}
+    deltas = {}
+    for service, base in revisions.items():
+        paths, checksum = ([], digest([])) if base == sha else gh.delta(base, sha)
+        deltas[service] = {'base': base, 'head': sha, 'complete_delta': True,
+                           'changed_paths': paths, 'delta_sha256': checksum}
+    result = {**binding, 'policy': 'backend-cohort-ci-v1', 'main_sha': sha, 'head_sha': sha,
+              'event': 'push', 'branch': 'main', 'legacy_workflow': legacy,
+              'jobs': [job['conclusion'] for job in jobs], 'job_observations': jobs,
+              'run_attempt': run['run_attempt'], 'deltas': deltas}
+    core_policies.backend_compatibility(result, revisions, sha, binding['non_target_snapshot_sha256'])
+    require(gh.main() == sha and gh.run(binding['ci_run_id'], sha) == run and gh.jobs(run) == jobs
+            and gh.legacy() == legacy, 'operator-ci-race')
+    config.recheck()
+    return result
