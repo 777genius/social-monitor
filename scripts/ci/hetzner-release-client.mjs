@@ -195,7 +195,7 @@ function databaseDigest(value) {
     if (typeof entry === 'number') requireThat(Number.isSafeInteger(entry), 'database-number');
     else if (Array.isArray(entry)) entry.forEach(validate);
     else if (object(entry)) for (const [key, child] of Object.entries(entry)) {
-      requireThat(/^[\x00-\x7f]*$/u.test(key), 'database-key');
+      requireThat([...key].every((character) => character.codePointAt(0) <= 0x7f), 'database-key');
       validate(child);
     }
   }
