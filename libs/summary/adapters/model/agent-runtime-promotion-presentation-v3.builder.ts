@@ -27,8 +27,8 @@ import {
   resolveReaderSummaryBackendEffort,
   resolveReaderSummaryReasoningEffortFromEnv,
 } from "./active-reader-summary-generation-profile";
-import { presentationRuntimeFailureDisposition, presentationRuntimeFailureIdentity } from
-  "./agent-runtime-promotion-presentation-v3-runtime-failure";
+import { presentationRuntimeFailureDisposition } from "./agent-runtime-promotion-presentation-v3-runtime-failure";
+import { presentationRuntimeFailureIdentity } from "./agent-runtime-promotion-presentation-v3-runtime-failure-identity";
 import { requestBytes, parseObject } from "./agent-runtime-promotion-presentation-v3-request";
 import { createPromotionPresentationTaskCommand } from "./agent-runtime-promotion-presentation-v3-task-command";
 import {
