@@ -70,8 +70,20 @@ class Host:
             path: self.private_digest(path) for path in sorted(paths)}})
 
     def snapshot(self):
-        ids = self.docker('ps', '-aq', '--filter',
-                          'label=com.docker.compose.project=' + self.c['project']).decode().split()
+        fmt = ('{"id":{{json .ID}},'
+               '"project":{{json (.Label "com.docker.compose.project")}},'
+               '"service":{{json (.Label "com.docker.compose.service")}},'
+               '"oneoff":{{json (.Label "com.docker.compose.oneoff")}}}')
+        listing = self.docker('ps', '-a', '--no-trunc', '--filter',
+                              'label=com.docker.compose.project=' + self.c['project'],
+                              '--format', fmt).decode().splitlines()
+        ids = []
+        for line in listing:
+            item = json.loads(line)
+            if (item['project'] == self.c['project'] and item['service'] == 'collection'
+                    and item['oneoff'] == 'True'):
+                continue
+            ids.append(item['id'])
         # Explicit independently configured names also fence containers outside this project.
         ids.extend(self.c['required_non_targets'].values())
         containers = {}

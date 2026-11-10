@@ -100,6 +100,13 @@ const promptEvidenceItem = (
   verifiedV3Presentation: boolean,
 ): Record<string, unknown> => {
   const baselineSource = item.sourceText ?? item.bodyPreview;
+  const preview = baselineSource === undefined ? undefined : compactText(baselineSource, baselineTextLimit);
+  const sourceContent = expanded ? adaptiveSourceContent(item, sourceHydrationLimit) : undefined;
+  const sourceParts = sourceContent === undefined ? [] :
+    typeof sourceContent.text === "string" ? [sourceContent.text] :
+      Array.isArray(sourceContent.fragments) ? sourceContent.fragments : [];
+  const covered = preview !== undefined && preview.length > 0 &&
+    sourceParts.some((part: unknown) => typeof part === "string" && part.includes(preview));
 
   return {
     index: index + 1,
@@ -109,11 +116,8 @@ const promptEvidenceItem = (
     providerKey: item.providerKey,
     evidenceTier: expanded ? "expanded_candidate" : "baseline",
     title: compactText(item.title, baselineTextLimit),
-    bodyPreview:
-      baselineSource === undefined
-        ? undefined
-        : compactText(baselineSource, baselineTextLimit),
-    sourceContent: expanded ? adaptiveSourceContent(item, sourceHydrationLimit) : undefined,
+    bodyPreview: covered ? undefined : preview,
+    sourceContent,
     acceptedReaderPresentation: verifiedV3Presentation
       ? acceptedReaderPresentation(item) : undefined,
     canonicalUrl: item.canonicalUrl,
