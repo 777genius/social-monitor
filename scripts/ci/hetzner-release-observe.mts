@@ -288,17 +288,96 @@ export async function observeReadonly(transport: Transport): Promise<Observation
     compose: A.text(value.compose, A.DIGEST, 'host-compose') };
 }
 export function guardedTransport(get: Get, authority: Authority, transport: Transport): Transport {
+  let backendActivationAttempted = false;
   return async (wire, source) => {
     const [verb, ...args] = wire.split(' '); A.requireValue(typeof verb === 'string', 'wire');
     command(verb, args);
     A.requireValue(verb !== 'rollback', 'rollback-unsupported');
-    if (['receive', 'admit', 'activate'].includes(verb)) {
+    if (verb === 'backend-rollback') {
+      // Recovery may proceed after main changes, but only for this attempted transaction.
+      A.requireValue(backendActivationAttempted && args[0] === authority.sha && args[1] === authority.run,
+        'rollback-unsupported');
+    }
+    if (['receive', 'admit', 'activate', 'backend-receive', 'backend-admit', 'backend-activate'].includes(verb)) {
+      A.requireValue(args[0] === authority.sha && args[1] === authority.run, 'candidate-disagreement');
       const decision = await A.observeAuthority(get, authority.run);
       if (decision.phase === 'stale-main-skipped') throw new ClientError('stale-main-skip');
       A.sameAuthority(authority, decision.authority);
+      // Set before the transport: an interrupted SSH call may have reached the host.
+      if (verb === 'backend-activate') backendActivationAttempted = true;
     }
     return transport(wire, source);
   };
+}
+/** Recovery is operator-triggered and cannot authorize a new deployment. */
+export function recoveryTrigger(mode: string | undefined, event: unknown, name: string,
+  actor: string, repository: string, ref: string): { sha: string; run: string } {
+  A.requireValue((mode === 'manual' || mode === 'auto') && name === 'workflow_dispatch'
+    && actor === '777genius' && repository === A.REPOSITORY && ref === 'refs/heads/main', 'recovery-trigger');
+  const envelope = A.object(event), repo = A.object(envelope.repository), inputs = A.object(envelope.inputs);
+  A.requireValue(repo.full_name === A.REPOSITORY && inputs.action === 'recover-backend'
+    && Object.keys(inputs).every(key => ['ci_run_id', 'action', 'rollback_sha'].includes(key)), 'recovery-trigger');
+  return { sha: A.text(inputs.rollback_sha, A.SHA, 'recovery-sha'),
+    run: A.text(inputs.ci_run_id, A.RUN, 'recovery-run') };
+}
+/** A restarted runner can only observe or roll back the original transaction.
+ * Host-side recovery must independently require an existing durable transaction. */
+export function recoveryTransport(sha: string, run: string, transport: Transport): Transport {
+  A.text(sha, A.SHA, 'expected-sha'); A.text(run, A.RUN, 'expected-run');
+  return async (wire, source) => {
+    const [verb, ...args] = wire.split(' '); A.requireValue(typeof verb === 'string', 'wire');
+    command(verb, args);
+    const permitted = (verb === 'status' && args.length === 0)
+      || (verb === 'backend-rollback' && args[0] === sha && args[1] === run)
+      || (verb === 'backend-receipt' && (args[0] === `${sha}-${run}` || args[0] === `${sha}-${run}-rollback`));
+    A.requireValue(permitted && source === undefined, 'recovery-scope');
+    return transport(wire);
+  };
+}
+/** Resume a previously begun rollback; never admits or activates a candidate. */
+export async function recoverBackend(transport: Transport, sha: string, run: string,
+  pause: () => Promise<void> = () => new Promise(resolve => setTimeout(resolve, 1000))) {
+  const scoped = recoveryTransport(sha, run, transport);
+  for (let attempt = 0; attempt < 120; attempt++) {
+    const result = await scoped(command('backend-rollback', [sha, run]));
+    A.requireValue(result.code === 0 && Buffer.isBuffer(result.stdout), 'recovery-host-denied');
+    const value = A.object(A.parseJson(result.stdout, 65536));
+    A.requireValue(value.sha === sha && value.ci_run_id === run
+      && Array.isArray(value.scope) && value.scope.length === 2
+      && value.scope[0] === 'api' && value.scope[1] === 'jev-intelligence-worker', 'recovery-binding');
+    if (value.schema === 'social-monitor-backend-release-receipt-v1') {
+      A.exact(value, ['schema', 'sha', 'ci_run_id', 'archive_sha256', 'image_id', 'scope',
+        'previous_image_ids', 'previous_revisions', 'active_image_ids', 'target_container_ids',
+        'runtime_sha256', 'snapshot_sha256', 'compose_hash', 'compatibility', 'database', 'backup',
+        'outcome', 'timings']);
+      A.requireValue(value.outcome === 'rolled-back', 'recovery-outcome');
+      A.text(value.archive_sha256, A.DIGEST, 'recovery-archive');
+      A.text(value.image_id, A.DIGEST, 'recovery-image');
+      A.text(value.snapshot_sha256, A.DIGEST, 'recovery-snapshot');
+      A.text(value.compose_hash, A.DIGEST, 'recovery-compose');
+      const services = ['api', 'jev-intelligence-worker'];
+      const previous = A.exact(value.previous_image_ids, services), active = A.exact(value.active_image_ids, services);
+      const revisions = A.exact(value.previous_revisions, services), ids = A.exact(value.target_container_ids, services);
+      const runtime = A.exact(value.runtime_sha256, services);
+      for (const service of services) {
+        A.requireValue(A.text(previous[service], A.DIGEST, 'recovery-previous-image') ===
+          A.text(active[service], A.DIGEST, 'recovery-active-image'), 'recovery-image-mismatch');
+        A.text(revisions[service], A.SHA, 'recovery-revision');
+        A.text(ids[service], /^[0-9a-f]{64}$/u, 'recovery-container');
+        A.text(runtime[service], A.DIGEST, 'recovery-runtime');
+      }
+      for (const name of ['compatibility', 'database', 'backup'])
+        A.requireValue(Object.keys(A.object(value[name])).length > 0, 'recovery-evidence');
+      const timing = A.exact(value.timings, ['started_at_ns', 'finished_at_ns']);
+      A.requireValue(typeof timing.started_at_ns === 'number' && Number.isInteger(timing.started_at_ns)
+        && timing.started_at_ns > 0 && typeof timing.finished_at_ns === 'number'
+        && Number.isInteger(timing.finished_at_ns) && timing.finished_at_ns >= timing.started_at_ns, 'recovery-timing');
+      return value;
+    }
+    A.requireValue(value.phase === 'draining' || value.phase === 'starting', 'recovery-phase');
+    await pause();
+  }
+  throw new A.AuthorityError('recovery-timeout');
 }
 async function provisionRunner(directory: string, env: NodeJS.ProcessEnv) {
   await canonical(directory);
@@ -349,8 +428,29 @@ async function summary(phase: string, lane: string): Promise<void> {
   try { await handle.writeFile(`Hetzner release: ${phase}; phase ${lane}.\n`); }
   finally { await handle.close(); }
 }
+async function runRecovery(env: NodeJS.ProcessEnv): Promise<void> {
+  A.requireValue(env.GITHUB_JOB === 'recover', 'recovery-job');
+  const eventPath = A.text(env.GITHUB_EVENT_PATH, /^\/[a-zA-Z0-9_./-]+$/u, 'event-path');
+  const request = recoveryTrigger(env.HETZNER_RELEASE_MODE,
+    A.parseJson(await boundedBytes(eventPath, 1024 * 1024), 1024 * 1024), env.GITHUB_EVENT_NAME ?? '',
+    env.GITHUB_ACTOR ?? '', env.GITHUB_REPOSITORY ?? '', env.GITHUB_REF ?? '');
+  A.text(env.TRUSTED_MAIN, A.SHA, 'trusted-main');
+  const root = A.text(env.RUNNER_TEMP, /^\/[a-zA-Z0-9_./-]+$/u, 'runner-temp');
+  await canonical(root); A.requireValue((await lstat(root)).isDirectory(), 'runner-temp');
+  const scratch = await privateScratch(root, env.HETZNER_PRIVATE_DIRECTORY);
+  try {
+    const receipts = join(root, 'hetzner-receipts-recover');
+    await mkdir(receipts, { mode: 0o700 }); await canonical(receipts);
+    const config = await provisionRunner(scratch, env);
+    const receipt = await recoverBackend(sshTransport(config), request.sha, request.run);
+    await append(join(receipts, 'receipt.jsonl'), receipt);
+    await outputs({ phase: 'rolled-back', lane: 'recover' });
+    await summary('rolled-back', 'recover');
+  } finally { await rm(scratch, { recursive: true, force: true }); }
+}
 export async function main(args: readonly string[], env: NodeJS.ProcessEnv): Promise<void> {
-  A.requireValue(args.length === 1 && ['candidate', 'gate', 'preflight', 'activate'].includes(args[0] ?? ''), 'arguments');
+  A.requireValue(args.length === 1 && ['candidate', 'gate', 'preflight', 'activate', 'recover'].includes(args[0] ?? ''), 'arguments');
+  if (args[0] === 'recover') { await runRecovery(env); return; }
   const action = args[0];
   if (!['preflight', 'manual', 'auto'].includes(env.HETZNER_RELEASE_MODE ?? '')) {
     await outputs({ phase: 'disabled-skipped', lane: 'skip' }); return;

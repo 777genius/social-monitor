@@ -15,9 +15,9 @@ on:
         required: true
         default: preflight
         type: choice
-        options: [preflight, activate, rollback-previous]
+        options: [preflight, activate, rollback-previous, recover-backend]
       rollback_sha:
-        description: Full activation receipt SHA; rollback currently denies
+        description: Full transaction SHA for backend recovery
         required: false
         default: ""
         type: string
@@ -26,7 +26,7 @@ permissions: {}
 
 jobs:
   candidate:
-    if: (vars.HETZNER_RELEASE_MODE == 'preflight' || vars.HETZNER_RELEASE_MODE == 'manual' || vars.HETZNER_RELEASE_MODE == 'auto') && (github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository))
+    if: (vars.HETZNER_RELEASE_MODE == 'preflight' || vars.HETZNER_RELEASE_MODE == 'manual' || vars.HETZNER_RELEASE_MODE == 'auto') && (github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository)) && !(github.event_name == 'workflow_dispatch' && inputs.action == 'recover-backend')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -226,5 +226,46 @@ jobs:
           path: |
             ${{ runner.temp }}/hetzner-receipts-${{ github.job }}/receipt.jsonl
             ${{ runner.temp }}/hetzner-receipts-${{ github.job }}/phases.jsonl
+          if-no-files-found: ignore
+          retention-days: 90
+
+  recover:
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'recover-backend' && (vars.HETZNER_RELEASE_MODE == 'manual' || vars.HETZNER_RELEASE_MODE == 'auto')
+    concurrency:
+      group: social-monitor-hetzner-production
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production-hetzner
+    permissions:
+      contents: read
+    steps:
+      - *mode
+      - *main
+      - *checkout
+      - *head
+      - *node
+      - name: Recover the exact existing backend transaction
+        shell: bash
+        env:
+          HETZNER_RELEASE_MODE: ${{ vars.HETZNER_RELEASE_MODE }}
+          TRUSTED_MAIN: ${{ steps.main.outputs.sha }}
+          HETZNER_HOST: ${{ vars.HETZNER_HOST }}
+          HETZNER_PORT: ${{ vars.HETZNER_PORT }}
+          HETZNER_PRIVATE_KEY: ${{ secrets.HETZNER_PRIVATE_KEY }}
+          HETZNER_KNOWN_HOSTS: ${{ secrets.HETZNER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          private="$(mktemp -d "$RUNNER_TEMP/hetzner-private-XXXXXXXX")"
+          trap 'rm -rf -- "$private"' EXIT
+          export HETZNER_PRIVATE_DIRECTORY="$private"
+          node --experimental-strip-types scripts/ci/hetzner-release-observe.mts recover
+      - name: Preserve recovery receipt
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: hetzner-recover-${{ github.run_id }}
+          path: ${{ runner.temp }}/hetzner-receipts-recover/receipt.jsonl
           if-no-files-found: ignore
           retention-days: 90
