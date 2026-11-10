@@ -9,6 +9,7 @@ import { gatewayLlmModelMismatch } from "./gateway-llm-failure";
 import { gatewayLlmCanonicalRequestSha256 } from "./gateway-llm-request-identity";
 import type { GatewayLlmSdkIdentity } from "./gateway-llm-sdk-identity";
 import type { GatewayLlmPrepared } from "./gateway-llm-task-preparation";
+import { gatewayLlmUsage } from "./gateway-llm-usage";
 
 /** Build the runtime result and attestation only after the observed model matches.
  * A mismatching receipt never produces an execution attestation.
@@ -23,12 +24,12 @@ export const completeGatewayLlmTask = (
 ): AgentRuntimeTaskResult => {
   const receipt = result.receipt;
   if (!observedModelMatches(prepared.task.model, receipt.observedModel)) {
-    return { status: "failed", warnings: [], failure: gatewayLlmModelMismatch(identity), durationMs };
+    return { status: "failed", warnings: [], failure: gatewayLlmModelMismatch(identity),
+      durationMs, ...gatewayLlmUsage(result.usage) };
   }
   const output = prepared.structured
     ? { structuredOutput: result.value } : { outputText: result.text };
   const selected = selectedAgentRuntimeOutput(output);
-  const usage = result.usage;
   return {
     status: "completed",
     ...output,
@@ -38,10 +39,7 @@ export const completeGatewayLlmTask = (
       ...(durationMs > command.timeoutMs ? [{ code: "gateway_settlement_grace_used",
         message: "Gateway task settled after its nominal timeout" }] : []),
     ],
-    ...(usage.inputTokens === null || usage.outputTokens === null ? {} : {
-      usage: { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens,
-        totalTokens: usage.inputTokens + usage.outputTokens, estimatedCostUsd: 0 },
-    }),
+    ...gatewayLlmUsage(result.usage),
     durationMs,
     executionAttestation: {
       schemaVersion: 1,
