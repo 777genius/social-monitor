@@ -1,9 +1,12 @@
 import type { AgentRuntimeClientPort } from "../../ports";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   resolveReaderSummaryDailyTaskIdentityFromEnv,
   resolveReaderSummaryGenerationIdentityFromEnv,
   resolveReaderSummaryReasoningEffortFromEnv,
 } from "../model/active-reader-summary-generation-profile";
+import { codexGatewayReaderSummaryReasoningEffort } from "../model/codex-reader-summary-route";
 import { GatewayLlmClient } from "../model/gateway-llm/gateway-llm-client";
 import {
   assertReaderSummaryTransportBackend,
@@ -33,6 +36,33 @@ const gatewayEnv = (extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv => ({
 const clock = { now: () => new Date("2026-10-30T00:00:00.000Z") };
 
 describe("reader summary agent-runtime transport", () => {
+  it("uses the summary model setting for the gateway and daily identities", () => {
+    const contents = readFileSync(resolve(process.cwd(),
+      "ops/deploy/production-runtime/reader-summary-model.env"), "utf8");
+    const settings = Object.fromEntries(contents.split(/\r?\n/u)
+      .filter((line) => line.length > 0 && !line.startsWith("#"))
+      .map((line) => {
+        const separator = line.indexOf("=");
+        if (separator < 1) throw new Error("Invalid summary model setting");
+        return [line.slice(0, separator), line.slice(separator + 1)];
+      }));
+    expect(Object.keys(settings).sort()).toEqual([
+      "AGENT_RUNTIME_GATEWAY_LLM_MODEL", "AGENT_RUNTIME_READER_SUMMARY_BACKEND",
+      "AGENT_RUNTIME_TRANSPORT",
+    ]);
+    const env = gatewayEnv({ ...settings,
+      AGENT_RUNTIME_READER_SUMMARY_MODEL: undefined,
+      AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: undefined });
+    const model = settings.AGENT_RUNTIME_GATEWAY_LLM_MODEL;
+    const effort = codexGatewayReaderSummaryReasoningEffort(model);
+    expect(effort).toBeDefined();
+    expect(resolveGatewayLlmTransportConfig(env).route).toMatchObject({
+      model, reasoningEffort: effort, modelBackend: "openai-chatgpt" });
+    expect(resolveReaderSummaryGenerationIdentityFromEnv(env).model).toBe(model);
+    expect(resolveReaderSummaryDailyTaskIdentityFromEnv(env, undefined).model).toBe(model);
+    expect(resolveReaderSummaryReasoningEffortFromEnv(env)).toBe(effort);
+  });
+
   it("uses one shared transport selector and retains the legacy entry point", () => {
     expect(createReaderSummaryAgentRuntimeClient).toBe(createSummaryAgentRuntimeClient);
     expect(resolveSummaryAgentRuntimeTransport({})).toBe("agent-runtime");
