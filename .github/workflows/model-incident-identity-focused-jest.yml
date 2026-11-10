@@ -1,0 +1,42 @@
+# Temporary synthetic, branch-only qualification. Remove after recording evidence.
+name: Model presentation incident identity focused Jest
+on:
+  push:
+    branches:
+      - refactor/summary-model-adapters-10k-20261108
+    paths:
+      - .github/workflows/model-incident-identity-focused-jest.yml
+permissions:
+  contents: read
+env:
+  DATABASE_URL: postgresql://social_monitor_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_ci
+jobs:
+  identity_contracts:
+    name: Incident identity exact-source Jest and TypeScript
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact synthetic source commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install pinned dependencies
+        run: npm ci
+      - name: Generate pinned Prisma client
+        run: npm run prisma:generate
+      - name: Typecheck and verify line cap
+        run: |
+          set -euo pipefail
+          npx tsc --noEmit
+          npm run check:source-line-cap
+      - name: Verify incident identity and presentation behavior
+        run: |
+          set -euo pipefail
+          npx jest --runInBand --runTestsByPath \
+            libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-runtime-failure-identity.spec.ts \
+            libs/summary/adapters/model/agent-runtime-promotion-presentation-v3.builder.spec.ts
