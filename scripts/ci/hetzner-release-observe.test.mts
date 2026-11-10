@@ -371,7 +371,7 @@ test('native ineligible CLI skips every lane without GitHub token or SSH configu
 });
 
 test('guarded writes bind candidates and allow only recovery of an attempted backend activation', async () => {
-  let transported = 0, artifactId = 51, mainSha = sha;
+  let transported = 0, artifactId = 51, mainSha = sha, includeFrontend = false;
   const transport: Transport = async () => { transported++; return response({}); };
   const repo = { id: 10, name: 'social-monitor', full_name: '777genius/social-monitor',
     owner: { id: 20, login: '777genius' } };
@@ -387,9 +387,14 @@ test('guarded writes bind candidates and allow only recovery of an attempted bac
       path: '.github/workflows/production-deploy.yml', state: 'disabled_manually' };
     if (path.includes('/jobs?')) return { total_count: A.JOBS.length, jobs: A.JOBS.map((name, i) =>
       ({ id: 1000 + i, run_id: 123, run_attempt: 2, head_sha: sha, status: 'completed', conclusion: 'success', name })) };
-    if (path.includes('/artifacts?')) return { total_count: 1, artifacts: [{ id: artifactId,
-      name: authority.artifactName, expired: false, size_in_bytes: 4096, digest: image,
-      workflow_run: { id: 123, head_sha: sha, head_branch: 'main', repository_id: 10, head_repository_id: 10 } }] };
+    if (path.includes('/artifacts?')) {
+      const producer = { id: 123, head_sha: sha, head_branch: 'main', repository_id: 10, head_repository_id: 10 };
+      const artifacts = [{ id: artifactId, name: authority.artifactName, expired: false,
+        size_in_bytes: 4096, digest: image, workflow_run: producer }];
+      if (includeFrontend) artifacts.push({ id: 51, name: `frontend-candidate-${sha}-${run}-2`,
+        expired: false, size_in_bytes: 1024, digest: image, workflow_run: producer });
+      return { total_count: artifacts.length, artifacts };
+    }
     throw new Error('unexpected fixture endpoint');
   };
   const currentAuthority = { ...authority, jobs: A.JOBS.map((_, i) => String(1000 + i)).sort() };
@@ -408,6 +413,16 @@ test('guarded writes bind candidates and allow only recovery of an attempted bac
   await assert.rejects(guarded(`backend-rollback ${'c'.repeat(40)} ${run}`), /rollback-unsupported/);
   await guarded(`backend-rollback ${sha} ${run}`);
   await guarded('status'); assert.equal(transported, 3);
+  mainSha = sha; includeFrontend = true;
+  const source = async function* () { yield Buffer.from('synthetic'); };
+  await assert.rejects(guarded(`cohort-receive-frontend ${sha} ${run}`, source), /frontend-authority-required/);
+  const frontend = await A.observeFrontendAuthority(get, currentAuthority);
+  const guardedFrontend = O.guardedTransport(get, currentAuthority, transport, frontend);
+  await guardedFrontend(`cohort-receive-frontend ${sha} ${run}`, source);
+  assert.equal(transported, 4);
+  includeFrontend = false;
+  await assert.rejects(guardedFrontend(`cohort-receive-frontend ${sha} ${run}`, source));
+  assert.equal(transported, 4);
 });
 
 test('restarted runner can only inspect or roll back the bound backend transaction', async () => {

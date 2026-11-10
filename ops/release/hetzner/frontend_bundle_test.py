@@ -79,6 +79,14 @@ class FrontendBundleTests(unittest.TestCase):
                     stage_frontend_bundle(archive, manifest, SHA, '123', '1', root)
                 self.assertEqual(sorted(p.name for p in root.iterdir()), ['bundle.tgz'])
 
+    def test_implicit_parent_directories_count_before_creation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); archive = root / 'bundle.tgz'
+            manifest = archive_at(archive, {'public/a/b/c/d/e/file': b'x'})
+            with patch('frontend_bundle.MAX_MEMBERS', 5), self.assertRaisesRegex(Denied, 'frontend-member-count'):
+                stage_frontend_bundle(archive, manifest, SHA, '123', '1', root)
+            self.assertEqual(sorted(path.name for path in root.iterdir()), ['bundle.tgz'])
+
     def test_refuses_archive_symlink_and_hardlink(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

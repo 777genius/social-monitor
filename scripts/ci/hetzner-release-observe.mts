@@ -289,7 +289,8 @@ export async function observeReadonly(transport: Transport): Promise<Observation
     api_image: A.text(value.api_image, A.DIGEST, 'host-image'),
     compose: A.text(value.compose, A.DIGEST, 'host-compose') };
 }
-export function guardedTransport(get: Get, authority: Authority, transport: Transport): Transport {
+export function guardedTransport(get: Get, authority: Authority, transport: Transport,
+  frontend?: FrontendAuthority): Transport {
   let backendActivationAttempted = false;
   return async (wire, source) => {
     const [verb, ...args] = wire.split(' '); A.requireValue(typeof verb === 'string', 'wire');
@@ -299,6 +300,12 @@ export function guardedTransport(get: Get, authority: Authority, transport: Tran
       // Recovery may proceed after main changes, but only for this attempted transaction.
       A.requireValue(backendActivationAttempted && args[0] === authority.sha && args[1] === authority.run,
         'rollback-unsupported');
+    }
+    if (verb === 'cohort-receive-frontend') {
+      A.requireValue(frontend && args[0] === authority.sha && args[1] === authority.run && source,
+        'frontend-authority-required');
+      A.sameAuthority(authority, frontend.base);
+      A.sameFrontendAuthority(frontend, await A.observeFrontendAuthority(get, authority));
     }
     if (['receive', 'admit', 'activate', 'backend-receive', 'backend-admit', 'backend-activate'].includes(verb)) {
       A.requireValue(args[0] === authority.sha && args[1] === authority.run, 'candidate-disagreement');

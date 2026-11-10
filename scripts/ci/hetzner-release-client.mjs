@@ -99,6 +99,7 @@ export function command(verb, args = []) {
     status: [], preflight: [], receive: [SHA, RUN, DIGEST, DIGEST, /^[1-9][0-9]{0,11}$/u],
     admit: [SHA, RUN], activate: [SHA, RUN], verify: [SHA, RUN], rollback: [SHA, RUN],
     receipt: [/^[0-9a-f]{40}-[1-9][0-9]{0,14}(?:-rollback)?$/u],
+    'cohort-receive-frontend': [SHA, RUN],
     'backend-preflight': [], 'backend-receive': [SHA, RUN, DIGEST, DIGEST, /^[1-9][0-9]{0,11}$/u],
     'backend-admit': [SHA, RUN], 'backend-activate': [SHA, RUN], 'backend-verify': [SHA, RUN],
     'backend-rollback': [SHA, RUN], 'backend-receipt': [/^[0-9a-f]{40}-[1-9][0-9]{0,14}(?:-rollback)?$/u],

@@ -348,6 +348,11 @@ class Controller:
         verb, args = parse(command)
         self.fence()
         with Lock(self.state / 'controller.lock'):
+            if verb == 'cohort-receive-frontend':
+                from cohort_frontend_receive import receive_frontend
+                require(not (self.state / 'latch.json').exists(), 'latched')
+                self.exclusive('cohort-' + '-'.join(args))
+                return receive_frontend(self, args[0], args[1], stream)
             if verb.startswith('backend-'):
                 from backend_controller import BackendRelease
                 return BackendRelease(self).dispatch(verb[8:], args, stream)

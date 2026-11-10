@@ -2,6 +2,7 @@
 import copy
 import hashlib
 import json
+import os
 from pathlib import Path
 import stat
 import struct
@@ -160,13 +161,36 @@ class FrontendIngressTests(unittest.TestCase):
         self.refused(proof)
         alias.unlink()
         from frontend_bundle import stage_frontend_bundle
-        def replace(*args):
-            root = stage_frontend_bundle(*args)
+        def replace(*args, **kwargs):
+            root = stage_frontend_bundle(*args, **kwargs)
             replacement = self.root / 'replacement.zip'
             replacement.write_bytes(self.path.read_bytes())
             replacement.replace(self.path)
             return root
         with patch('frontend_ingress.stage_frontend_bundle', side_effect=replace): self.refused(proof)
+
+    def test_archive_tree_seal_rejects_mutation_before_receiver(self):
+        proof = self.package()
+        from frontend_bundle import stage_frontend_bundle
+        def mutate(*args, **kwargs):
+            root, expected = stage_frontend_bundle(*args, **kwargs)
+            path = root / 'public/main.dart.js'
+            path.write_bytes(path.read_bytes() + b' injected')
+            return root, expected
+        with patch('frontend_ingress.stage_frontend_bundle', side_effect=mutate): self.refused(proof)
+
+    def test_private_umask_keeps_asset_directories_readable(self):
+        proof = self.package()
+        previous = os.umask(0o077)
+        try:
+            result = self.stage(proof)
+        finally:
+            os.umask(previous)
+        root = Path(result['root'])
+        self.assertEqual(root.stat().st_mode & 0o777, 0o700)
+        self.assertEqual((root / 'public').stat().st_mode & 0o777, 0o755)
+        self.assertEqual((root / 'admin').stat().st_mode & 0o777, 0o755)
+        shutil.rmtree(root)
 
     def test_small_zip64_end_records_and_streamed_zip64_members_are_supported(self):
         self.package()
