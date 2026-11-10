@@ -1,3 +1,4 @@
+// Disposable CI impact frontend-only E2E marker; do not merge.
 library;
 
 export 'src/components/app_adaptive_shell.dart';
@@ -26,3 +27,4 @@ export 'src/responsive/app_breakpoints.dart';
 export 'src/theme/app_theme.dart';
 export 'src/tokens/app_colors.dart';
 export 'src/tokens/app_spacing.dart';
+// Second exact-base frontend-only qualification marker.
