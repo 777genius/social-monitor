@@ -27,6 +27,26 @@ class CohortInterlockTests(unittest.TestCase):
             core.exclusive('backend-first')
             core.exclusive('cohort-second')
 
+    def test_invalid_outcomes_in_existing_lanes_also_block(self):
+        from backend_controller import BackendRelease
+        for family, key in (('transactions', 'cohort-next'), ('backend/transactions', 'cohort-next')):
+            for invalid in (None, False, 'starting', {}):
+                with self.subTest(family=family, outcome=invalid), tempfile.TemporaryDirectory() as directory:
+                    state = Path(directory)
+                    folder = state / family
+                    folder.mkdir(parents=True)
+                    atomic(folder / 'other.json', {'outcome': invalid})
+                    core = Controller({'state': str(state), 'inbox': str(state / 'inbox')}, None)
+                    with self.assertRaises(Denied): core.exclusive(key)
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory)
+            folder = state / 'backend' / 'transactions'
+            folder.mkdir(parents=True)
+            atomic(folder / 'other.json', {'outcome': 'starting'})
+            core = Controller({'state': str(state), 'inbox': str(state / 'inbox')}, None)
+            with self.assertRaisesRegex(Denied, 'unfinished-backend-release'):
+                BackendRelease(core).exclusive('mine')
+
     def test_another_unfinished_cohort_blocks_even_same_transaction(self):
         with tempfile.TemporaryDirectory() as directory:
             state = Path(directory)

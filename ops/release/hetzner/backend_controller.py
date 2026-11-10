@@ -132,7 +132,7 @@ class BackendRelease:
     def exclusive(self, key):
         self.core.exclusive('backend-' + key)
         for path in (self.root / 'transactions').glob('*.json'):
-            require(path == self.path('transactions', key) or read_json(path).get('outcome') is not None,
+            require(path == self.path('transactions', key) or read_json(path).get('outcome') in ('activated', 'rolled-back'),
                     'unfinished-backend-release')
 
     def desired(self, admission, rollback):

@@ -248,11 +248,11 @@ class Controller:
             same = key.startswith('cohort-') and other.name == key[len('cohort-'):] + '.json'
             require(same or read_json(other).get('outcome') in ('activated', 'rolled-back'), 'unfinished-cohort-release')
         for other in (self.state / 'backend' / 'transactions').glob('*.json'):
-            require(key.startswith('backend-') or read_json(other).get('outcome') is not None,
+            require(key.startswith('backend-') or read_json(other).get('outcome') in ('activated', 'rolled-back'),
                     'unfinished-backend-release')
         for other in (self.state / 'transactions').glob('*.json'):
             require(other == self.path('transactions', key)
-                    or read_json(other).get('outcome') is not None, 'unfinished-release')
+                    or read_json(other).get('outcome') in ('activated', 'rolled-back'), 'unfinished-release')
 
     def activate(self, key):
         require(not (self.state / 'latch.json').exists(), 'latched')
