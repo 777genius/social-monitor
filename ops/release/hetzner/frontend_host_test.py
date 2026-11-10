@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 from contract import Denied
 from frontend_host import FrontendHost, MOUNTS
@@ -70,6 +71,48 @@ class FrontendHostTests(unittest.TestCase):
                     with self.subTest(kind=kind), self.assertRaises(Denied):
                         FrontendHost(host).up(root, root / 'override.json', 'trusted')
                 self.assertEqual(len(host.calls), 1)
+
+    def test_previous_sources_are_exact_readonly_trusted_and_pin_verifier(self):
+        host = FakeHost()
+        inspected = {'Id': 'a' * 64, 'RestartCount': 0, 'State': {'Pid': 123, 'Running': True, 'StartedAt': 'now'},
+                     'Mounts': [{'Destination': target, 'Source': '/trusted/old/' + name,
+                                  'Type': 'bind', 'RW': False} for target, (name, _) in MOUNTS.items()]}
+        host.docker = lambda *args: json.dumps([inspected]).encode()
+        with patch('frontend_host.trusted', side_effect=lambda path, directory=False: Path(path)), \
+             patch('frontend_host.os.stat', return_value=SimpleNamespace(st_dev=1, st_ino=2)), \
+             patch('frontend_host.private_file_digest', return_value='sha256:fixture') as digest:
+            result = FrontendHost(host).current_sources(inspected)
+            self.assertEqual(set(result['sources']), set(MOUNTS))
+            self.assertEqual(result['verifier_sha256'], 'sha256:fixture')
+            digest.assert_called_once_with('/trusted/old/verify-static-release.sh')
+            for index in range(3):
+                stats = [SimpleNamespace(st_dev=1, st_ino=2) for _ in range(index * 2 + 2)]
+                stats[-1] = SimpleNamespace(st_dev=1, st_ino=3)
+                with self.subTest(inode_target=index), patch('frontend_host.os.stat', side_effect=stats):
+                    with self.assertRaisesRegex(Denied, 'frontend-live-inode-drift'):
+                        FrontendHost(host).current_sources(inspected)
+            host.after = model()
+            host.after['services']['frontend']['volumes'][0]['source'] = '/trusted/new/public'
+            live_override = copy.deepcopy(inspected)
+            live_override['Mounts'][0]['Source'] = '/trusted/new/public'
+            with self.assertRaisesRegex(Denied, 'frontend-live-mount-drift'):
+                FrontendHost(host).current_sources(live_override)
+            self.assertEqual(FrontendHost(host).current_sources(live_override, 'verified-override')['sources'][
+                '/usr/share/nginx/public'], '/trusted/new/public')
+            for alteration in ('writeable', 'duplicate', 'interpolation', 'live-drift', 'model-shadow', 'live-shadow'):
+                host.before = model()
+                if alteration == 'writeable': host.before['services']['frontend']['volumes'][0]['read_only'] = False
+                if alteration == 'duplicate': host.before['services']['frontend']['volumes'].append(
+                    copy.deepcopy(host.before['services']['frontend']['volumes'][0]))
+                if alteration == 'interpolation': host.before['services']['frontend']['volumes'][0]['source'] = '/trusted/${BAD}'
+                live = copy.deepcopy(inspected)
+                if alteration == 'live-drift': live['Mounts'][0]['Source'] = '/trusted/other'
+                if alteration == 'model-shadow': host.before['services']['frontend']['volumes'].append(
+                    {'target': '/usr/share/nginx/public/main.dart.js', 'type': 'bind', 'read_only': True})
+                if alteration == 'live-shadow': live['Mounts'].append(
+                    {'Destination': '/usr/share/nginx/public/main.dart.js', 'Type': 'bind', 'RW': False})
+                with self.subTest(alteration=alteration), self.assertRaises(Denied):
+                    FrontendHost(host).current_sources(live)
 
     def test_snapshot_excludes_only_frontend_and_keeps_api(self):
         host = FakeHost()
