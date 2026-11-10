@@ -752,6 +752,11 @@ jobs:
       - name: Check out the review commit
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
 
+      - name: Set up Node 22 for frontend release metadata
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
+
       - name: Resolve the exact Flutter cache version
         id: flutter_version
         run: |
@@ -801,3 +806,53 @@ jobs:
           grep -F "const configuredRelease = '$GITHUB_SHA'" build/web/flutter_bootstrap.js >/dev/null
           test -s build/web/main.dart.wasm
           test -s build/web/main.dart.js
+      - name: Preserve public bundle and build admin bundle
+        working-directory: apps/frontend/app
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          release="$RUNNER_TEMP/frontend-release"
+          artifact="$RUNNER_TEMP/frontend-candidate"
+          mkdir -m 700 "$release" "$artifact"
+          mkdir "$release/public" "$release/admin"
+          cp -R build/web/. "$release/public/"
+          invalid=$(find "$release/public" ! -type f ! -type d -print -quit)
+          test -z "$invalid"
+          flutter build web --release --wasm --no-web-resources-cdn \
+            --dart-define=SOCIAL_MONITOR_API_BASE_URL=https://admin.social-monitor.app \
+            --web-define=SOCIAL_MONITOR_RELEASE_ID="$GITHUB_SHA"
+          cp -R build/web/. "$release/admin/"
+          invalid=$(find "$release/admin" ! -type f ! -type d -print -quit)
+          test -z "$invalid"
+          for lane in public admin; do
+            printf '%s\n' "$GITHUB_SHA" > "$release/$lane/release-sha.txt"
+            grep -F "flutter_bootstrap.js?v=$GITHUB_SHA" "$release/$lane/index.html" >/dev/null
+            grep -F "const configuredRelease = '$GITHUB_SHA'" "$release/$lane/flutter_bootstrap.js" >/dev/null
+            grep -F 'self.registration.unregister()' "$release/$lane/flutter_service_worker.js" >/dev/null
+            test -s "$release/$lane/main.dart.wasm"
+            test -s "$release/$lane/main.dart.js"
+          done
+          grep -F 'https://social-monitor.app' "$release/public/main.dart.js" >/dev/null
+          if grep -F 'https://admin.social-monitor.app' "$release/public/main.dart.js" >/dev/null; then
+            echo 'public bundle contains admin origin' >&2; exit 1
+          else
+            status=$?; test "$status" -eq 1
+          fi
+          grep -F 'https://admin.social-monitor.app' "$release/admin/main.dart.js" >/dev/null
+          if grep -r -E 'nip\.io' "$release" >/dev/null; then
+            echo 'frontend bundle contains nip.io origin' >&2; exit 1
+          else
+            status=$?; test "$status" -eq 1
+          fi
+          tar --format=ustar -C "$release" -czf "$artifact/frontend-release.tgz" public admin
+          FRONTEND_ARTIFACT_DIR="$artifact" node --experimental-strip-types "$GITHUB_WORKSPACE/scripts/ci/frontend-artifact-manifest.mts"
+      - name: Store qualified public and admin frontend artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: frontend-candidate-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/frontend-candidate/frontend-release.tgz
+            ${{ runner.temp }}/frontend-candidate/frontend-manifest.json
+          if-no-files-found: error
+          retention-days: 7
