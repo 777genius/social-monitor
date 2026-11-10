@@ -14,14 +14,14 @@ export type CodexReaderSummaryRoute = {
 
 /**
  * Codex model/effort pairs openai-chatgpt may run on the gateway transport;
- * the first is the default. gpt-5.6-sol/high is also the CLI identity, while
- * gpt-6.1-sol runs only behind the account-gateway Codex profile, whose live
- * account model catalog admits it for accounts enrolled under gpt-5.6-sol.
+ * the first is the default. gpt-5.6-sol/high is also the CLI identity; the
+ * newer model routes run only behind the account-gateway Codex profile.
  */
 export const defaultCodexGatewayReaderSummaryRoute: CodexReaderSummaryRoute =
   Object.freeze({ model: "gpt-6.1-sol", reasoningEffort: "low" });
 export const codexGatewayReaderSummaryRoutes: readonly CodexReaderSummaryRoute[] = Object.freeze([
   defaultCodexGatewayReaderSummaryRoute,
+  Object.freeze({ model: "gpt-6.1-terra", reasoningEffort: "medium" }),
   Object.freeze({ model: activeReaderSummaryModel, reasoningEffort: activeReaderSummaryReasoningEffort }),
 ]);
 

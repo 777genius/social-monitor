@@ -46,11 +46,12 @@ const grant = (intent: Prepare, accountRef = intent.accountRefs[0]!): Access => 
     expiresAt: intent.deadline },
 });
 
-const completedStream = (text: string, model = "k3-256k"): NativeResponse => {
+const completedStream = (text: string, model = "k3-256k", cached?: number): NativeResponse => {
   const bytes = new TextEncoder().encode(`data: ${JSON.stringify({ type: "response.completed",
     response: { id: "resp-1", model, status: "completed",
       output: [{ type: "message", content: [{ type: "output_text", text }] }],
-      usage: { input_tokens: 40, output_tokens: 9 } } })}\n\n`);
+      usage: { input_tokens: 40, output_tokens: 9,
+        ...(cached === undefined ? {} : { input_tokens_details: { cached_tokens: cached } }) } } })}\n\n`);
   const body = new ReadableStream<Uint8Array>({ start(controller) {
     controller.enqueue(bytes);
     controller.close();
@@ -358,6 +359,28 @@ describe("GatewayLlmClient", () => {
       attestation: expect.objectContaining({ provider: "codex", model: "gpt-6.1-sol",
         reasoningEffort: "low", runtimeEngine: "gateway-llm",
         gateway: expect.objectContaining({ profileId: "openai-codex-oauth-responses-v1" }) }) })]);
+  });
+
+  it("executes and verifies the Terra medium summary route", async () => {
+    const fake = harness({ request: async () => completedStream('{"label":"x","note":null}', "gpt-6.1-terra", 20) },
+      "run-1", { profileId: "openai-codex-oauth-responses-v1", modelBackend: "openai-chatgpt",
+        model: "gpt-6.1-terra", reasoningEffort: "medium", accountRefs: [accountA], minOutputTokens: 16_384 });
+    const task = command({ purpose: activeReaderSummaryPurposes.generate,
+      controls: { model: "gpt-6.1-terra", reasoningEffort: "medium", maxOutputTokens: 16_000 } });
+    const result = await fake.client.runTask(task);
+    expect(fake.bodies[0]).toMatchObject({ model: "gpt-6.1-terra", reasoning: { effort: "medium" } });
+    expect(result.usage).toMatchObject({ inputTokens: 40, outputTokens: 9, cachedInputTokens: 20 });
+    await expect(verifyAndRecordReaderSummaryExecution({ command: task, result,
+      taskRole: "summary", attempt: "primary", normalizedOutput: result.structuredOutput })).resolves.toBeUndefined();
+  });
+
+  it("retains provider usage when the returned model does not match the route", async () => {
+    const fake = harness({ request: async () => completedStream('{"label":"x","note":null}', "other-model", 20) },
+      "run-1", { profileId: "openai-codex-oauth-responses-v1", modelBackend: "openai-chatgpt",
+        model: "gpt-6.1-terra", reasoningEffort: "medium", accountRefs: [accountA], minOutputTokens: 16_384 });
+    const result = await fake.client.runTask(command({ purpose: activeReaderSummaryPurposes.generate,
+      controls: { model: "gpt-6.1-terra", reasoningEffort: "medium", maxOutputTokens: 16_000 } }));
+    expect(result).toMatchObject({ status: "failed", usage: { inputTokens: 40, outputTokens: 9, cachedInputTokens: 20 } });
   });
 
   it("verifies gpt-6.1-sol only from the gateway engine at its allowed effort", async () => {
