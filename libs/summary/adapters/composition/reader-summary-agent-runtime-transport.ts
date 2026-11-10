@@ -24,6 +24,7 @@ import { CooldownRotatingAccountSelector, gatewayLlmMaxAccountRefs } from
 import { RunScopedGatewayLlmAttempts } from "../model/gateway-llm/gateway-llm-attempts";
 import { GatewayLlmClient, type GatewayLlmRoute } from "../model/gateway-llm/gateway-llm-client";
 import { approvedGatewayLlmSdkIdentity } from "../model/gateway-llm/gateway-llm-sdk-identity";
+import { withReaderSummaryUsageLog } from "./reader-summary-usage-log";
 
 /** How reader-summary model tasks are executed: the CLI runtime over gRPC, or account-gateway. */
 export type ReaderSummaryAgentRuntimeTransport = "agent-runtime" | typeof readerSummaryGatewayTransport;
@@ -241,10 +242,12 @@ export const createSummaryAgentRuntimeClient = (params: {
     resolveSummaryAgentRuntimeTransport(params.env) !== params.transport) {
     throw new Error("Selected summary transport conflicts with AGENT_RUNTIME_TRANSPORT");
   }
-  return params.transport === "gateway-llm"
+  const client = params.transport === "gateway-llm"
     ? createGatewayLlmAgentRuntimeClient(resolveGatewayLlmTransportConfig(params.env),
       { clock: params.clock, runId: params.runId })
     : params.agentRuntime();
+  return withReaderSummaryUsageLog(client, params.env.DURABLE_READER_SUMMARY_EVIDENCE_PATH,
+    params.runId, params.clock, params.env.DURABLE_READER_SUMMARY_PERIOD_STARTED_AT);
 };
 
 /** Compatibility entry point for existing reader-summary composition. */

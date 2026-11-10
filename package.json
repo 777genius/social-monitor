@@ -81,6 +81,7 @@
     "capture:summary-feedback-samples": "node scripts/capture-summary-feedback-samples.mjs",
     "capture:summary-feedback-dogfood-samples": "node scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/capture-summary-feedback-dogfood-samples.ts",
     "capture:durable-reader-summary": "node scripts/run-with-timeout.mjs --timeout-ms 10560000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/capture-durable-reader-summary-from-postgres.ts",
+    "report:reader-summary-usage": "ts-node -P tsconfig.build.json scripts/report-reader-summary-usage.ts",
     "capture:reader-summary-multi-day-quality-corpus": "node scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/capture-reader-summary-multi-day-quality-corpus.ts",
     "capture:reader-summary-multi-day-quality-target-manifest": "node scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/capture-reader-summary-multi-day-quality-target-manifest.ts",
     "export:summary-feedback-samples": "node scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=768 -- ts-node -r tsconfig-paths/register scripts/export-summary-feedback-samples.ts",
