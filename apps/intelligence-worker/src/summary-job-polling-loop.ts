@@ -28,6 +28,10 @@ export class SummaryJobPollingLoop implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    if (this.options.executionPaused) {
+      this.logger.info("summary job execution paused", { worker: "intelligence-worker" });
+      return;
+    }
     if (!this.options.enabled) {
       this.logger.info('summary job polling loop disabled', { worker: 'intelligence-worker' });
       return;

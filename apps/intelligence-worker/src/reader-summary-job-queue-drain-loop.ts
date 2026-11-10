@@ -46,6 +46,10 @@ export class ReaderSummaryJobQueueDrainLoop
   ) {}
 
   async onModuleInit(): Promise<void> {
+    if (this.options.executionPaused) {
+      this.logger.info("readerSummary queue execution paused", { worker: "intelligence-worker" });
+      return;
+    }
     if (!this.options.enabled) {
       this.logger.info("readerSummary queue drain loop disabled", {
         worker: "intelligence-worker",
