@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildExternalBetaPlan } from './external-beta-evidence-plan.mjs';
+import { buildExternalBetaPlan } from '../lib/external-beta-evidence-plan.mjs';
 
 function job(jobId, runPolicy, extra = {}) {
   return {

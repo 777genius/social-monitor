@@ -30,6 +30,15 @@ function assertDirectPlanDelegation(text) {
   assert.ok(ts.isObjectLiteralExpression(call.arguments[1]));
   const keys = call.arguments[1].properties.map(p => p.name?.text);
   assert.deepEqual(keys, requiredBindings);
+  const [runnerId, mode] = call.arguments[1].properties;
+  assert.ok(ts.isPropertyAssignment(runnerId));
+  assert.equal(runnerId.initializer.getText(ast), 'contract.runnerId', 'CLI must pass the tracked runner id');
+  assert.ok(ts.isPropertyAssignment(mode));
+  assert.equal(
+    mode.initializer.getText(ast),
+    "execute ? 'execute' : validateArtifacts ? 'validate_artifacts' : 'plan_only'",
+    'CLI must pass the existing selected execution mode',
+  );
   for (const property of call.arguments[1].properties.slice(2)) {
     assert.ok(ts.isShorthandPropertyAssignment(property), 'original checker dependency identity must be preserved');
   }
@@ -57,5 +66,12 @@ test('missing imports or altered policy callbacks are rejected', () => {
   )));
   assert.throws(() => assertDirectPlanDelegation(source.replace(
     '    jobExecutionReadiness,', "    jobExecutionReadiness: () => 'live_command_executable',",
+  )));
+  assert.throws(() => assertDirectPlanDelegation(source.replace(
+    '    runnerId: contract.runnerId,', "    runnerId: 'forged',",
+  )));
+  assert.throws(() => assertDirectPlanDelegation(source.replace(
+    "    mode: execute ? 'execute' : validateArtifacts ? 'validate_artifacts' : 'plan_only',",
+    "    mode: 'plan_only',",
   )));
 });
