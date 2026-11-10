@@ -7,13 +7,13 @@ import {
   defaultAgentRuntimeSummaryModel,
   type AgentRuntimeSummaryModelAdapterOptions,
 } from "./agent-runtime-summary-options";
+import { resolveAgentRuntimeSummaryRuntimeSettings, type AgentRuntimeSummaryRuntimeSettings } from "./agent-runtime-summary-runtime-settings";
 import { validateAgentRuntimeSummaryProviderResponse } from "./agent-runtime-summary-response-validation";
 export { resolveAgentRuntimeSummaryModelOptions } from "./agent-runtime-summary-options";
 export type { AgentRuntimeSummaryModelAdapterOptions } from "./agent-runtime-summary-options";
 import { buildSummaryNoSignalAttempt } from "./summary-no-signal-attempt";
 import type {
   AgentRuntimeClientPort,
-  AgentRuntimeProvider,
   ProviderSummaryAttempt,
   SummaryModelBudget,
   SummaryModelEstimate,
@@ -28,62 +28,20 @@ import { normalizeOpenAiSummaryDraft } from "./openai-responses-summary-draft-no
 import {
   parseOpenAiSummaryJsonObject,
 } from "./openai-responses-summary-response-parser";
-import { readerSummaryRouteControls } from "./active-reader-summary-generation-profile";
 import {
   classifyAgentRuntimeError,
-  nonEmptyOrFallback,
-  positiveIntegerOrFallback,
   readAgentRuntimeObjectOutput,
   usageFromAgentRuntime,
 } from "./agent-runtime-model-support";
 
 const provider = "agent-runtime";
-const defaultAgentProvider: AgentRuntimeProvider = "codex";
-const defaultPromptVersion = "summary.prompt.agent_runtime.v1";
-const defaultEvalDatasetVersion = "summary.eval.mvp.v1";
-const defaultTimeoutMs = 120_000;
-const defaultMaxOutputTokens = 4_000;
-const defaultInputTokenDivisor = 4;
-
 export class AgentRuntimeSummaryModelAdapter implements SummaryModelPort {
   private readonly client: AgentRuntimeClientPort;
-  private readonly agentProvider: AgentRuntimeProvider;
-  private readonly providerInstanceId?: string;
-  private readonly model: string;
-  private readonly routeControls: Readonly<Record<string, unknown>>;
-  private readonly promptVersion: string;
-  private readonly evalDatasetVersion: string;
-  private readonly timeoutMs: number;
-  private readonly maxOutputTokens: number;
-  private readonly inputTokenDivisor: number;
+  private readonly settings: AgentRuntimeSummaryRuntimeSettings;
 
   constructor(options: AgentRuntimeSummaryModelAdapterOptions) {
     this.client = options.client;
-    this.agentProvider = options.agentProvider ?? defaultAgentProvider;
-    this.providerInstanceId = options.providerInstanceId;
-    this.model = nonEmptyOrFallback(options.model, defaultAgentRuntimeSummaryModel);
-    this.routeControls = options.modelBackend === undefined ? {} :
-      readerSummaryRouteControls(options.modelBackend, options.reasoningEffort ?? "default");
-    this.promptVersion = nonEmptyOrFallback(
-      options.promptVersion,
-      defaultPromptVersion,
-    );
-    this.evalDatasetVersion = nonEmptyOrFallback(
-      options.evalDatasetVersion,
-      defaultEvalDatasetVersion,
-    );
-    this.timeoutMs = positiveIntegerOrFallback(
-      options.timeoutMs,
-      defaultTimeoutMs,
-    );
-    this.maxOutputTokens = positiveIntegerOrFallback(
-      options.maxOutputTokens,
-      defaultMaxOutputTokens,
-    );
-    this.inputTokenDivisor = positiveIntegerOrFallback(
-      options.inputTokenDivisor,
-      defaultInputTokenDivisor,
-    );
+    this.settings = resolveAgentRuntimeSummaryRuntimeSettings(options);
   }
 
   route(
@@ -105,7 +63,7 @@ export class AgentRuntimeSummaryModelAdapter implements SummaryModelPort {
   ): SummaryModelEstimate {
     void selectedRoute;
 
-    return estimateAgentRuntimeSummaryUsage(input, this.inputTokenDivisor, this.maxOutputTokens);
+    return estimateAgentRuntimeSummaryUsage(input, this.settings.inputTokenDivisor, this.settings.maxOutputTokens);
   }
 
   async summarize(
@@ -119,13 +77,13 @@ export class AgentRuntimeSummaryModelAdapter implements SummaryModelPort {
     const result = await this.client.runTask(buildAgentRuntimeSummaryTaskCommand({
       input,
       selectedRoute,
-      agentProvider: this.agentProvider,
-      providerInstanceId: this.providerInstanceId,
-      model: this.model,
+      agentProvider: this.settings.agentProvider,
+      providerInstanceId: this.settings.providerInstanceId,
+      model: this.settings.model,
       defaultModelAlias: defaultAgentRuntimeSummaryModel,
-      routeControls: this.routeControls,
-      maxOutputTokens: this.maxOutputTokens,
-      timeoutMs: this.timeoutMs,
+      routeControls: this.settings.routeControls,
+      maxOutputTokens: this.settings.maxOutputTokens,
+      timeoutMs: this.settings.timeoutMs,
     }));
     const rawDraft = readAgentRuntimeObjectOutput(
       result,
@@ -141,7 +99,7 @@ export class AgentRuntimeSummaryModelAdapter implements SummaryModelPort {
       input,
       selectedRoute,
       usage,
-      this.evalDatasetVersion,
+      this.settings.evalDatasetVersion,
     );
 
     return {
@@ -166,8 +124,8 @@ export class AgentRuntimeSummaryModelAdapter implements SummaryModelPort {
   private buildRoute(): SummaryModelRoute {
     return {
       provider,
-      model: `${this.agentProvider}:${this.model}`,
-      promptVersion: this.promptVersion,
+      model: `${this.settings.agentProvider}:${this.settings.model}`,
+      promptVersion: this.settings.promptVersion,
       schemaVersion: "summary.artifact.v1",
     };
   }
@@ -179,7 +137,7 @@ export class AgentRuntimeSummaryModelAdapter implements SummaryModelPort {
     return buildSummaryNoSignalAttempt({
       input,
       selectedRoute,
-      evalDatasetVersion: this.evalDatasetVersion,
+      evalDatasetVersion: this.settings.evalDatasetVersion,
       usage: this.estimate(input, selectedRoute),
     });
   }

@@ -11,10 +11,36 @@ import {
   AgentRuntimeSummaryModelAdapter,
   resolveAgentRuntimeSummaryModelOptions,
 } from "./agent-runtime-summary-model.adapter";
+import { resolveAgentRuntimeSummaryRuntimeSettings } from "./agent-runtime-summary-runtime-settings";
 import { gatewayModelTaskFixture } from "../composition/gateway-model-task.spec-support";
 import { resolveGatewayLlmTransportConfig } from "../composition/reader-summary-agent-runtime-transport";
 
 describe("AgentRuntimeSummaryModelAdapter", () => {
+  it("preserves default and explicitly supplied execution options", () => {
+    const client = new CapturingAgentRuntimeClient({ status: "completed", warnings: [] });
+    expect(resolveAgentRuntimeSummaryRuntimeSettings({
+      client, model: " ", promptVersion: "", timeoutMs: -1,
+      maxOutputTokens: 0, inputTokenDivisor: Number.NaN,
+    })).toEqual({
+      agentProvider: "codex", providerInstanceId: undefined,
+      model: "agent-runtime-summary", routeControls: {},
+      promptVersion: "summary.prompt.agent_runtime.v1",
+      evalDatasetVersion: "summary.eval.mvp.v1",
+      timeoutMs: 120_000, maxOutputTokens: 4_000, inputTokenDivisor: 4,
+    });
+    expect(resolveAgentRuntimeSummaryRuntimeSettings({
+      client, agentProvider: "claude", providerInstanceId: "fixture-instance",
+      model: "synthetic-model", promptVersion: "custom.prompt.v1",
+      evalDatasetVersion: "synthetic-eval.v1", timeoutMs: 60_000,
+      maxOutputTokens: 512, inputTokenDivisor: 8,
+    })).toEqual({
+      agentProvider: "claude", providerInstanceId: "fixture-instance",
+      model: "synthetic-model", routeControls: {},
+      promptVersion: "custom.prompt.v1", evalDatasetVersion: "synthetic-eval.v1",
+      timeoutMs: 60_000, maxOutputTokens: 512, inputTokenDivisor: 8,
+    });
+  });
+
   it("executes an ordinary summary through the real gateway SDK request contract", async () => {
     const env = { AGENT_RUNTIME_TRANSPORT: "gateway-llm", AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
       AGENT_RUNTIME_GATEWAY_LLM_CONTROL_ORIGIN: "https://gateway.example.test",

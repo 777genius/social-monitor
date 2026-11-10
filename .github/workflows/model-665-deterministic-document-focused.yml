@@ -10,7 +10,7 @@ permissions:
   contents: read
 jobs:
   focused:
-    name: Types, architecture, cap, deterministic reader contracts
+    name: Types, architecture, cap, deterministic reader and runtime settings
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
@@ -38,4 +38,5 @@ jobs:
           set -euo pipefail
           npx jest --config jest.config.ts --runInBand \
             libs/summary/adapters/model/deterministic-reader-summary-model.adapter.spec.ts \
-            libs/summary/adapters/model/deterministic-reader-summary-narrative.spec.ts
+            libs/summary/adapters/model/deterministic-reader-summary-narrative.spec.ts \
+            libs/summary/adapters/model/agent-runtime-summary-model.adapter.spec.ts
