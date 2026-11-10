@@ -62,4 +62,16 @@ describe("reader summary usage log", () => {
       targetDate: "2026-11-09", runId: "prod-run", inputTokens: 10, outputTokens: 3,
     });
   });
+
+  it("preserves a completed result if formatting usage metadata fails", async () => {
+    const brokenClock = { now: jest.fn().mockReturnValueOnce(new Date("2026-11-10T00:00:00Z"))
+      .mockReturnValue(new Date("invalid")) };
+    const client = { runTask: jest.fn().mockResolvedValue({ status: "completed", warnings: [] }),
+      checkHealth: jest.fn() } satisfies AgentRuntimeClientPort;
+    const stderr = jest.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      await expect(withReaderSummaryUsageLog(client, evidence, "run-3", brokenClock).runTask(command))
+        .resolves.toMatchObject({ status: "completed" });
+    } finally { stderr.mockRestore(); }
+  });
 });

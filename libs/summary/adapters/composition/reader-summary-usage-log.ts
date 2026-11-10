@@ -9,23 +9,23 @@ export const withReaderSummaryUsageLog = (
   if (!evidencePath) return client;
   const path = `${evidencePath}.usage.jsonl`;
   const record = (command: AgentRuntimeTaskCommand, started: number, result?: AgentRuntimeTaskResult): void => {
-    const usage = result?.usage;
-    const item = {
-      version: 1, runId: safeIdentity(runId), timestamp: clock.now().toISOString(),
-      targetDate: /^(\d{4}-\d{2}-\d{2})T/u.exec(periodStart ?? "")?.[1] ??
-        /durable-reader-summary-(\d{4}-\d{2}-\d{2})/u.exec(evidencePath)?.[1] ?? null,
-      requestId: safeIdentity(command.requestId),
-      stage: safeIdentity(command.purpose),
-      model: safeIdentity(result?.executionAttestation?.model ?? command.controls.model),
-      effort: safeIdentity(result?.executionAttestation?.reasoningEffort ?? command.controls.reasoningEffort),
-      identitySource: result?.executionAttestation ? "runtime_reported" : "requested",
-      status: result?.status ?? "error", durationMs: Math.max(0, clock.now().getTime() - started),
-      inputTokens: usage?.inputTokens ?? null, outputTokens: usage?.outputTokens ?? null,
-      cachedInputTokens: usage?.cachedInputTokens ?? null, reasoningTokens: usage?.reasoningTokens ?? null,
-      usageSource: usage ? "runtime_reported" : "unavailable",
-      costUsd: null, costSource: "unavailable",
-    };
     try {
+      const usage = result?.usage;
+      const item = {
+        version: 1, runId: safeIdentity(runId), timestamp: clock.now().toISOString(),
+        targetDate: /^(\d{4}-\d{2}-\d{2})T/u.exec(periodStart ?? "")?.[1] ??
+          /durable-reader-summary-(\d{4}-\d{2}-\d{2})/u.exec(evidencePath)?.[1] ?? null,
+        requestId: safeIdentity(command.requestId),
+        stage: safeIdentity(command.purpose),
+        model: safeIdentity(result?.executionAttestation?.model ?? command.controls.model),
+        effort: safeIdentity(result?.executionAttestation?.reasoningEffort ?? command.controls.reasoningEffort),
+        identitySource: result?.executionAttestation ? "runtime_reported" : "requested",
+        status: result?.status ?? "error", durationMs: Math.max(0, clock.now().getTime() - started),
+        inputTokens: usage?.inputTokens ?? null, outputTokens: usage?.outputTokens ?? null,
+        cachedInputTokens: usage?.cachedInputTokens ?? null, reasoningTokens: usage?.reasoningTokens ?? null,
+        usageSource: usage ? "runtime_reported" : "unavailable",
+        costUsd: null, costSource: "unavailable",
+      };
       const fd = openSync(path, constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW, 0o600);
       try { appendFileSync(fd, `${JSON.stringify(item)}\n`); } finally { closeSync(fd); }
     } catch {
