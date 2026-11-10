@@ -6,7 +6,7 @@ import { createRequire } from 'node:module';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { ClientError, command, deliver, runnerConfig, sshTransport, validateManifest } from './hetzner-release-client.mjs';
 import type { Manifest, Transport } from './hetzner-release-client.mjs';
-import type { Authority, Get, Trigger } from './hetzner-release-authority.mjs';
+import type { Authority, FrontendAuthority, Get, Trigger } from './hetzner-release-authority.mjs';
 
 // Typed synchronous .mts loading avoids top-level await and permits the unchanged
 // CommonJS root compiler as well as the standalone NodeNext compiler to check this.
@@ -71,11 +71,11 @@ export async function checksum(path: string, limit: number): Promise<{ digest: s
     return { digest: 'sha256:' + hash.digest('hex'), bytes };
   } finally { await handle.close(); }
 }
-async function download(authority: Authority, target: string, env: NodeJS.ProcessEnv): Promise<void> {
+async function download(artifact: { id: string; bytes: number; digest: string }, target: string, env: NodeJS.ProcessEnv): Promise<void> {
   const file = await open(target, F.O_WRONLY | F.O_CREAT | F.O_EXCL | F.O_NOFOLLOW, 0o600);
   const child = spawn('/usr/bin/gh', ['api', '--hostname', 'github.com', '--method', 'GET',
     '-H', 'Accept: application/vnd.github+json', '-H', 'X-GitHub-Api-Version: 2022-11-28',
-    `repos/${A.REPOSITORY}/actions/artifacts/${authority.artifact}/zip`],
+    `repos/${A.REPOSITORY}/actions/artifacts/${artifact.id}/zip`],
   { shell: false, env: A.githubEnvironment(env), stdio: ['ignore', 'pipe', 'ignore'] });
   const closed = new Promise<void>((accept, reject) => {
     child.once('error', () => reject(new A.AuthorityError('artifact-download')));
@@ -87,12 +87,12 @@ async function download(authority: Authority, target: string, env: NodeJS.Proces
   try {
     for await (const chunk of child.stdout) {
       const bytes = Buffer.from(chunk as Uint8Array); size += bytes.length;
-      A.requireValue(size <= authority.artifactBytes && size <= 10_100_000_000, 'artifact-size');
+      A.requireValue(size <= artifact.bytes && size <= 10_100_000_000, 'artifact-size');
       hash.update(bytes); await file.writeFile(bytes);
     }
     await closed;
-    A.requireValue(size === authority.artifactBytes
-      && 'sha256:' + hash.digest('hex') === authority.artifactDigest, 'artifact-hash');
+    A.requireValue(size === artifact.bytes
+      && 'sha256:' + hash.digest('hex') === artifact.digest, 'artifact-hash');
     await file.sync();
   } catch {
     child.kill('SIGKILL'); await closed.catch(() => {});
@@ -102,18 +102,23 @@ async function download(authority: Authority, target: string, env: NodeJS.Proces
 // Trusted stdlib decodes only the GitHub ZIP. candidate.tar is never extracted.
 const ZIP_READER = `
 import os, stat, sys, zipfile
-names = {'candidate.tar', 'candidate.tar.sha256', 'manifest.json',
-         'phases.json', 'image-id.txt', 'source-sha.txt'}
+mode = sys.argv[3]
+need_mode = mode in ('api', 'frontend')
+if not need_mode: raise ValueError('transport-mode')
+names = ({'candidate.tar', 'candidate.tar.sha256', 'manifest.json',
+          'phases.json', 'image-id.txt', 'source-sha.txt'} if mode == 'api' else
+         {'frontend-release.tgz', 'frontend-manifest.json'})
 def need(ok):
     if not ok: raise ValueError('transport-zip')
 with zipfile.ZipFile(sys.argv[1]) as archive:
     entries = archive.infolist()
-    need(len(entries) == 6 and {e.filename for e in entries} == names)
+    need(len(entries) == len(names) and {e.filename for e in entries} == names)
     need(min(e.header_offset for e in entries) == 0)
-    need(len({e.header_offset for e in entries}) == 6)
+    need(len({e.header_offset for e in entries}) == len(names))
     total = 0
     for entry in entries:
-        ceiling = 10000000000 if entry.filename == 'candidate.tar' else 65536
+        ceiling = (10000000000 if entry.filename == 'candidate.tar' else
+                   268435456 if entry.filename == 'frontend-release.tgz' else 65536)
         kind = stat.S_IFMT(entry.external_attr >> 16)
         need(kind in (0, stat.S_IFREG) and not entry.is_dir())
         need(not entry.flag_bits & 1 and entry.compress_type in (0, 8))
@@ -135,15 +140,16 @@ with zipfile.ZipFile(sys.argv[1]) as archive:
             output.flush()
             os.fsync(output.fileno())
 `;
-export async function extractArtifact(zip: string, directory: string): Promise<void> {
+async function extractZip(zip: string, directory: string, mode: 'api' | 'frontend'): Promise<void> {
   await canonical(zip); await canonical(directory);
   const input = await lstat(zip), destination = await lstat(directory);
-  A.requireValue(input.isFile() && input.size > 0 && input.size <= 10_100_000_000,
+  A.requireValue(input.isFile() && input.size > 0
+    && input.size <= (mode === 'frontend' ? 300_000_000 : 10_100_000_000),
     'artifact-zip-bounds');
   A.requireValue(destination.isDirectory() && destination.uid === process.getuid?.()
     && !(destination.mode & 0o077)
     && (await readdir(directory)).length === 0, 'artifact-directory');
-  const child = spawn('/usr/bin/python3', ['-I', '-B', '-c', ZIP_READER, zip, directory],
+  const child = spawn('/usr/bin/python3', ['-I', '-B', '-c', ZIP_READER, zip, directory, mode],
     { shell: false, env: { PATH: '/usr/bin:/bin', LC_ALL: 'C' }, stdio: 'ignore' });
   const timer = setTimeout(() => child.kill('SIGKILL'), 1_200_000);
   try {
@@ -153,6 +159,8 @@ export async function extractArtifact(zip: string, directory: string): Promise<v
     });
   } finally { clearTimeout(timer); }
 }
+export const extractArtifact = (zip: string, directory: string): Promise<void> => extractZip(zip, directory, 'api');
+export const extractFrontendArtifact = (zip: string, directory: string): Promise<void> => extractZip(zip, directory, 'frontend');
 export interface Candidate { manifest: string; archive: string; manifestHash: string; value: Manifest }
 export async function validateCandidate(directory: string, authority: Authority): Promise<Candidate> {
   await canonical(directory);
@@ -189,10 +197,59 @@ export async function validateCandidate(directory: string, authority: Authority)
   await chmod(manifest, 0o400); await chmod(archive, 0o400);
   return { manifest, archive, manifestHash, value };
 }
+
+/** Validate the separate public/admin bundle after its GitHub ZIP has been verified. */
+export async function validateFrontendCandidate(directory: string, frontend: FrontendAuthority): Promise<{
+  readonly manifest: string; readonly archive: string; readonly manifestHash: string;
+}> {
+  await canonical(directory);
+  const info = await lstat(directory);
+  A.requireValue(info.isDirectory() && info.uid === process.getuid?.() && !(info.mode & 0o077), 'frontend-candidate-directory');
+  const authority = frontend.base, proof = frontend.artifact;
+  A.requireValue(proof && proof.name === `frontend-candidate-${authority.sha}-${authority.run}-${authority.attempt}`,
+    'frontend-artifact-missing');
+  const names = await readdir(directory);
+  A.requireValue(names.length === 2 && names.includes('frontend-release.tgz') && names.includes('frontend-manifest.json'),
+    'frontend-candidate-files');
+  const manifest = join(directory, 'frontend-manifest.json'), archive = join(directory, 'frontend-release.tgz');
+  const bytes = await boundedBytes(manifest, 65536);
+  const value = A.exact(A.parseJson(bytes, 65536), ['version', 'sourceSha', 'ciRunId', 'ciRunAttempt', 'archive', 'bundles']);
+  A.requireValue(value.version === 1 && value.sourceSha === authority.sha && value.ciRunId === authority.run
+    && value.ciRunAttempt === String(authority.attempt), 'frontend-candidate-identity');
+  const declared = A.exact(value.archive, ['name', 'sha256', 'bytes']);
+  A.requireValue(declared.name === 'frontend-release.tgz' && typeof declared.bytes === 'number'
+    && Number.isSafeInteger(declared.bytes) && declared.bytes > 0 && declared.bytes <= 256 * 1024 * 1024
+    && typeof declared.sha256 === 'string' && /^[0-9a-f]{64}$/u.test(declared.sha256), 'frontend-archive');
+  A.requireValue(Array.isArray(value.bundles) && value.bundles.length === 2, 'frontend-bundles');
+  for (const [index, lane, origin] of [[0, 'public', 'https://social-monitor.app'],
+    [1, 'admin', 'https://admin.social-monitor.app']] as const) {
+    const bundle = A.exact(value.bundles[index], ['lane', 'sourceSha', 'ciRunId', 'ciRunAttempt', 'apiOrigin']);
+    A.requireValue(bundle.lane === lane && bundle.sourceSha === authority.sha && bundle.ciRunId === authority.run
+      && bundle.ciRunAttempt === String(authority.attempt) && bundle.apiOrigin === origin, 'frontend-bundle-identity');
+  }
+  const actual = await checksum(archive, 256 * 1024 * 1024);
+  A.requireValue(actual.bytes === declared.bytes && actual.digest === `sha256:${declared.sha256}`, 'frontend-archive-binding');
+  await chmod(manifest, 0o400); await chmod(archive, 0o400);
+  return { manifest, archive, manifestHash: 'sha256:' + createHash('sha256').update(bytes).digest('hex') };
+}
 async function candidate(authority: Authority, scratch: string, env: NodeJS.ProcessEnv): Promise<Candidate> {
   const zip = join(scratch, 'transport.zip'), directory = join(scratch, 'data');
-  await mkdir(directory, { mode: 0o700 }); await download(authority, zip, env);
+  await mkdir(directory, { mode: 0o700 }); await download({ id: authority.artifact,
+    bytes: authority.artifactBytes, digest: authority.artifactDigest }, zip, env);
   await extractArtifact(zip, directory); return validateCandidate(directory, authority);
+}
+/** Download the bound artifact; the caller must re-observe authority before any host effect. */
+export async function prepareFrontendCandidate(frontend: FrontendAuthority, scratch: string, env: NodeJS.ProcessEnv) {
+  const artifact = frontend.artifact;
+  A.requireValue(artifact, 'frontend-artifact-missing');
+  await canonical(scratch);
+  const info = await lstat(scratch);
+  A.requireValue(info.isDirectory() && info.uid === process.getuid?.() && !(info.mode & 0o077), 'frontend-scratch');
+  const zip = join(scratch, 'frontend-transport.zip'), directory = join(scratch, 'frontend-data');
+  await mkdir(directory, { mode: 0o700 });
+  await download(artifact, zip, env);
+  await extractFrontendArtifact(zip, directory);
+  return validateFrontendCandidate(directory, frontend);
 }
 export interface Observation {
   environment: 'production-hetzner'; machine_id: string; latch: false;

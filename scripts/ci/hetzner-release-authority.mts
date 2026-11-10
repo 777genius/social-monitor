@@ -111,6 +111,8 @@ export interface Authority {
   readonly artifact: string; readonly artifactName: string;
   readonly artifactDigest: string; readonly artifactBytes: number;
 }
+export interface FrontendAuthority { readonly base: Authority; readonly artifact: {
+  readonly id: string; readonly name: string; readonly digest: string; readonly bytes: number } }
 export type Decision = { phase: 'stale-main-skipped'; sha: string; run: string } |
   { phase: 'ready'; authority: Authority };
 function repository(value: unknown): string {
@@ -211,8 +213,39 @@ export async function observeAuthority(get: Get, runId: string): Promise<Decisio
     artifactName, artifactDigest, artifactBytes: artifact.size_in_bytes,
   }) };
 }
+/** A separate frontend proof never changes authority for the existing API lane. */
+export async function observeFrontendAuthority(get: Get, base: Authority): Promise<FrontendAuthority> {
+  const repo = object(await get(''));
+  repository(repo);
+  const artifacts = await pages(get, `actions/runs/${base.run}/artifacts`, 'artifacts');
+  const artifact = frontendArtifact(artifacts, base, repo);
+  const last = await observeAuthority(get, base.run);
+  requireValue(last.phase === 'ready', 'frontend-stale-main');
+  sameAuthority(base, last.authority);
+  const closing = frontendArtifact(await pages(get, `actions/runs/${base.run}/artifacts`, 'artifacts'), base, repo);
+  requireValue(JSON.stringify(artifact) === JSON.stringify(closing), 'frontend-authority-changed');
+  return Object.freeze({ base, artifact });
+}
+function frontendArtifact(artifacts: Record<string, unknown>[], base: Authority, repo: Record<string, unknown>) {
+  const name = `frontend-candidate-${base.sha}-${base.run}-${base.attempt}`;
+  const matches = artifacts.filter(row => row.name === name);
+  requireValue(matches.length === 1, 'frontend-artifact-identity');
+  const item = matches[0]; requireValue(item, 'frontend-artifact-identity');
+  const producer = object(item.workflow_run);
+  requireValue(id(producer.id) === base.run && producer.head_sha === base.sha
+    && producer.head_branch === 'main' && id(producer.repository_id) === id(repo.id)
+    && id(producer.head_repository_id) === id(repo.id) && item.expired === false
+    && typeof item.size_in_bytes === 'number' && Number.isSafeInteger(item.size_in_bytes)
+    && item.size_in_bytes > 0 && item.size_in_bytes <= 300_000_000, 'frontend-artifact-binding');
+  return Object.freeze({ id: id(item.id), name,
+    digest: text(item.digest, DIGEST, 'frontend-artifact-digest'), bytes: item.size_in_bytes });
+}
 export function sameAuthority(left: Authority, right: Authority): void {
   requireValue(JSON.stringify(left) === JSON.stringify(right), 'authority-changed');
+}
+export function sameFrontendAuthority(left: FrontendAuthority, right: FrontendAuthority): void {
+  sameAuthority(left.base, right.base);
+  requireValue(JSON.stringify(left.artifact) === JSON.stringify(right.artifact), 'frontend-authority-changed');
 }
 export function githubEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   requireValue(typeof env.GH_TOKEN === 'string' && env.GH_TOKEN.length > 0
