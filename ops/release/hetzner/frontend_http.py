@@ -1,6 +1,5 @@
 """Bounded direct HTTPS reads for fixed public/admin frontend readiness URLs."""
 import re
-from urllib.parse import urlsplit
 from contract import require
 from operator_config import EXECUTABLES
 
@@ -9,14 +8,8 @@ def http_get(url, *, timeout_seconds, max_bytes, follow_redirects=False, use_pro
     require(isinstance(url, str) and len(url) <= 256 and timeout_seconds == 5 and
             type(max_bytes) is int and 0 < max_bytes <= 262144 and
             follow_redirects is False and use_proxy is False, 'frontend-http-options')
-    parsed = urlsplit(url)
-    require(parsed.scheme == 'https' and parsed.netloc in ('social-monitor.app', 'admin.social-monitor.app')
-            and not parsed.fragment and not parsed.username and not parsed.password, 'frontend-http-url')
-    target = parsed.path + (('?' + parsed.query) if parsed.query else '')
-    allowed = ((parsed.netloc == 'social-monitor.app' and
-                (target in ('/', '/favicon.svg') or re.fullmatch(r'/release-sha\.txt\?release=[0-9a-f]{40}', target)))
-               or (parsed.netloc == 'admin.social-monitor.app' and target == '/'))
-    require(bool(allowed), 'frontend-http-url')
+    require(re.fullmatch(r'https://(?:social-monitor\.app/(?:favicon\.svg|release-sha\.txt\?release=[0-9a-f]{40})?'
+                         r'|admin\.social-monitor\.app/)', url) is not None, 'frontend-http-url')
     if runner is None:
         # Runner supervises the entire process, including DNS, with a hard deadline and output cap.
         from operator_adapter import Runner

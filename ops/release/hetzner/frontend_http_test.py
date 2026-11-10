@@ -48,7 +48,8 @@ class FrontendHttpTests(unittest.TestCase):
         for url in ('http://social-monitor.app/', 'https://social-monitor.app.evil/',
                     'https://admin.social-monitor.app/release-sha.txt',
                     'https://social-monitor.app/release-sha.txt?release=wrong',
-                    'https://user@social-monitor.app/', 'https://social-monitor.app/#fragment'):
+                    'https://user@social-monitor.app/', 'https://social-monitor.app/#fragment',
+                    'https://social-monitor.app/favicon.svg\n', 'https://social-monitor.app/?'):
             with self.subTest(url=url), self.assertRaises(Denied): self.call(url)
         for options in ({'timeout_seconds': 6}, {'max_bytes': 262145}, {'use_proxy': True}, {'follow_redirects': True}):
             with self.subTest(options=options), self.assertRaises(Denied):
