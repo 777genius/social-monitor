@@ -11,7 +11,7 @@ import time
 
 INSTALL = Path('/opt/social-monitor-release')
 MODULES = ('contract', 'evidence', 'prisma_history', 'operator_adapter', 'operator_config', 'operator_github',
-           'operator_backup', 'operator_database', 'operator_probe', 'worker_host')
+           'operator_backup', 'operator_database', 'operator_probe', 'worker_host', 'frontend_authority')
 
 # Only the fixed installed code directory enters the isolated interpreter path.
 # Normal test imports use the canonical worktree modules; ignored copies never load.
@@ -50,12 +50,14 @@ from operator_config import ENV, EXECUTABLES, decode, exact, load, match, privat
 import operator_backup
 import operator_database
 import operator_github
+import frontend_authority
 import operator_probe
 
 STANDARD = {'sha': SHA, 'ci_run_id': RUN, 'archive_sha256': DIGEST, 'image_id': DIGEST}
 REQUESTS = {'preflight': {}, 'postgres-identity': {}, 'database': STANDARD,
             'backup': STANDARD, 'release-evidence': {**STANDARD, 'production_revision': SHA},
             'probe': {'sha': SHA, 'image_id': DIGEST, 'container_id': r'[0-9a-f]{64}'}}
+REQUESTS['frontend-authority'] = {'sha': SHA, 'ci_run_id': RUN}
 REQUESTS['backend-release-evidence'] = {**STANDARD, 'api_revision': SHA, 'worker_revision': SHA,
                                       'non_target_snapshot_sha256': DIGEST}
 REQUESTS['worker-capability'] = {'container_id': r'[0-9a-f]{64}', 'image_id': DIGEST}
@@ -151,6 +153,8 @@ def dispatch(verb, binding, config, runner):
         result = operator_probe.probe(config, runner, binding)
     elif verb == 'release-evidence':
         result = operator_github.release(config, runner, binding)
+    elif verb == 'frontend-authority':
+        result = frontend_authority.frontend_authority(config, runner, binding)
     elif verb == 'backend-release-evidence':
         result = operator_github.backend_release(config, runner, binding)
     elif verb == 'worker-capability':
