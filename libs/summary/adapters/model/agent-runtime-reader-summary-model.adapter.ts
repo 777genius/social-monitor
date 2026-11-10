@@ -33,81 +33,24 @@ import type { VerifiedReaderSummaryExecutionAttestationSink } from "./reader-sum
 import {
   AgentRuntimeModelProviderError,
   classifyAgentRuntimeError,
-  nonEmptyOrFallback,
-  positiveIntegerOrFallback,
 } from "./agent-runtime-model-support";
 import {
-  type activeReaderSummaryProvider,
-  activeReaderSummaryReasoningEffort,
-  resolveReaderSummaryBackendEffort,
-  resolveReaderSummaryGenerationIdentity,
-  type ReaderSummaryGenerationBackend,
-  frozenLegacyReaderSummaryRecoveryContract,
-} from "./active-reader-summary-generation-profile";
+  resolveAgentRuntimeReaderSummaryRuntimeSettings,
+  type AgentRuntimeReaderSummaryRuntimeSettings,
+} from "./agent-runtime-reader-summary-runtime-settings";
 
 const provider = "agent-runtime";
-const defaultReasoningEffort = activeReaderSummaryReasoningEffort;
-const defaultEvalDatasetVersion = "reader_summary.eval.mvp.v1";
-export const defaultTimeoutMs = 600_000;
+export { defaultTimeoutMs } from "./agent-runtime-reader-summary-runtime-settings";
 export { readerSummaryNarrativeAttempts } from "./agent-runtime-reader-summary-generation";
-const defaultMaxOutputTokens = 16_000;
-const defaultInputTokenDivisor = 4;
 
 export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModelPort {
   private readonly client: AgentRuntimeClientPort;
-  private readonly agentProvider: typeof activeReaderSummaryProvider;
-  private readonly providerInstanceId?: string;
-  private readonly model: string;
-  private readonly modelBackend: ReaderSummaryGenerationBackend;
-  private readonly reasoningEffort: string;
-  private readonly legacyRecovery: boolean;
-  private readonly evalDatasetVersion: string;
-  private readonly timeoutMs: number;
-  private readonly maxOutputTokens: number;
-  private readonly inputTokenDivisor: number;
+  private readonly settings: AgentRuntimeReaderSummaryRuntimeSettings;
   private readonly verifiedAttestationSink?: VerifiedReaderSummaryExecutionAttestationSink;
 
   constructor(options: AgentRuntimeReaderSummaryModelAdapterOptions) {
     this.client = options.client;
-    const generationIdentity = resolveReaderSummaryGenerationIdentity({
-      provider: options.agentProvider,
-      model: options.model,
-      backend: options.modelBackend,
-      legacyRecovery: options.legacyRecoveryContract !== undefined,
-    });
-    this.agentProvider = generationIdentity.provider;
-    this.modelBackend = generationIdentity.backend;
-    this.providerInstanceId = options.providerInstanceId;
-    this.model = generationIdentity.model;
-    this.legacyRecovery = options.legacyRecoveryContract !== undefined;
-    if (
-      options.legacyRecoveryContract !== undefined &&
-      options.legacyRecoveryContract !== frozenLegacyReaderSummaryRecoveryContract
-    ) {
-      throw new Error("Reader summary legacy recovery contract is not canonical");
-    }
-    this.reasoningEffort = resolveReaderSummaryBackendEffort(
-      this.modelBackend,
-      options.reasoningEffort,
-      this.legacyRecovery ? "xhigh" : defaultReasoningEffort,
-      this.model,
-    );
-    this.evalDatasetVersion = nonEmptyOrFallback(
-      options.evalDatasetVersion,
-      defaultEvalDatasetVersion,
-    );
-    this.timeoutMs = positiveIntegerOrFallback(
-      options.timeoutMs,
-      defaultTimeoutMs,
-    );
-    this.maxOutputTokens = positiveIntegerOrFallback(
-      options.maxOutputTokens,
-      defaultMaxOutputTokens,
-    );
-    this.inputTokenDivisor = positiveIntegerOrFallback(
-      options.inputTokenDivisor,
-      defaultInputTokenDivisor,
-    );
+    this.settings = resolveAgentRuntimeReaderSummaryRuntimeSettings(options);
     this.verifiedAttestationSink = options.verifiedAttestationSink;
   }
 
@@ -135,18 +78,18 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
   ): ReaderSummaryModelEstimate {
     void selectedRoute;
     return estimateReaderSummaryTokenUsage(input, {
-      inputTokenDivisor: this.inputTokenDivisor,
-      maxOutputTokens: this.maxOutputTokens,
+      inputTokenDivisor: this.settings.inputTokenDivisor,
+      maxOutputTokens: this.settings.maxOutputTokens,
     });
   }
 
   async planDaily(input: ReaderSummaryModelInput, route: ReaderSummaryModelRoute):
     Promise<ReaderSummaryDailyEditorialAttempt> {
-    if (this.legacyRecovery || input.evidence.dailyGenerationInput === undefined)
+    if (this.settings.legacyRecovery || input.evidence.dailyGenerationInput === undefined)
       throw new Error("Daily editorial planning is not available for this profile");
     return runAgentRuntimeDailyEditor({ input, client: this.client,
       baseCommand: this.buildTaskCommand(input, route, "primary"),
-      inputTokenDivisor: this.inputTokenDivisor, maxOutputTokens: this.maxOutputTokens,
+      inputTokenDivisor: this.settings.inputTokenDivisor, maxOutputTokens: this.settings.maxOutputTokens,
       sink: this.verifiedAttestationSink });
   }
   async generate(input: ReaderSummaryModelInput,
@@ -166,8 +109,8 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
       buildTaskCommand: (attempt, schemaViolations) =>
         this.buildTaskCommand(input, selectedRoute, attempt, schemaViolations),
       estimate: () => this.estimate(input, selectedRoute),
-      evalDatasetVersion: this.evalDatasetVersion,
-      legacyRecovery: this.legacyRecovery,
+      evalDatasetVersion: this.settings.evalDatasetVersion,
+      legacyRecovery: this.settings.legacyRecovery,
       verifiedAttestationSink: this.verifiedAttestationSink,
     });
   }
@@ -189,14 +132,14 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
       selectedRoute,
       attempt,
       schemaViolations,
-      agentProvider: this.agentProvider,
-      providerInstanceId: this.providerInstanceId,
-      legacyRecovery: this.legacyRecovery,
-      modelBackend: this.modelBackend,
-      reasoningEffort: this.reasoningEffort,
-      model: this.model,
-      maxOutputTokens: this.maxOutputTokens,
-      timeoutMs: this.timeoutMs,
+      agentProvider: this.settings.agentProvider,
+      providerInstanceId: this.settings.providerInstanceId,
+      legacyRecovery: this.settings.legacyRecovery,
+      modelBackend: this.settings.modelBackend,
+      reasoningEffort: this.settings.reasoningEffort,
+      model: this.settings.model,
+      maxOutputTokens: this.settings.maxOutputTokens,
+      timeoutMs: this.settings.timeoutMs,
     });
   }
 
@@ -216,7 +159,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
   private buildRoute(): ReaderSummaryModelRoute {
     return {
       provider,
-      model: `${this.agentProvider}:${this.model}:${this.reasoningEffort}`,
+      model: `${this.settings.agentProvider}:${this.settings.model}:${this.settings.reasoningEffort}`,
       promptVersion: currentReaderSummaryPromptRelease.id,
       schemaVersion: "reader_summary.artifact.v1",
     };
@@ -229,7 +172,7 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     return buildReaderSummaryNoSignalAttempt({
       input,
       selectedRoute,
-      evalDatasetVersion: this.evalDatasetVersion,
+      evalDatasetVersion: this.settings.evalDatasetVersion,
       usage: this.estimate(input, selectedRoute),
     });
   }
