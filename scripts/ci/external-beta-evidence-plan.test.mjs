@@ -19,11 +19,12 @@ function dependencies(overrides = {}) {
     missingRequiredEnv: () => [],
     missingOptionalEnvNames: () => [],
     jobPreflightViolations: () => [],
-    jobExecutionReadiness: (item, missing) =>
+    jobExecutionReadiness: (item, missing, violations) =>
       missing.length ? 'blocked_missing_required_env'
-        : item.runPolicy === 'local_contract' ? 'local_contract_passed'
-          : item.runPolicy === 'manual_artifact_then_validator' ? 'manual_artifact_required'
-            : 'live_command_executable',
+        : violations.length ? 'blocked_invalid_env'
+          : item.runPolicy === 'local_contract' ? 'local_contract_ready'
+            : item.runPolicy === 'manual_artifact_then_validator' ? 'manual_artifact_required'
+              : 'live_command_executable',
     percent: (a, b) => b <= 0 ? 0 : Math.round(a / b * 100),
     ...overrides,
   };
@@ -117,4 +118,19 @@ test('all original live and local-runtime readiness counters remain distinct', (
   assert.equal(result.externalEvidenceEnvReadinessPercent, 75);
   assert.equal(result.blockedInvalidInputJobCount, 0);
   assert.deepEqual(result.readinessCounts, Object.fromEntries([...readiness.values()].map(v => [v, 1])));
+});
+
+test('default readiness policy forwards preflight violations and prioritizes missing env', () => {
+  const items = [job('invalid', 'live_command'), job('missing', 'live_command')];
+  const result = buildExternalBetaPlan(items, dependencies({
+    missingRequiredEnv: item => item.jobId === 'missing' ? ['LIVE_TOKEN'] : [],
+    jobPreflightViolations: () => ['unsafe evidence path'],
+  }));
+  assert.deepEqual(result.jobs.map(item => item.executionReadiness), [
+    'blocked_invalid_env', 'blocked_missing_required_env',
+  ]);
+  assert.equal(result.blockedInvalidInputJobCount, 1);
+  assert.equal(result.blockedMissingRequiredEnvJobCount, 1);
+  assert.equal(result.executableLiveJobCount, 0);
+  assert.equal(result.externalEvidenceEnvReadinessPercent, 0);
 });
