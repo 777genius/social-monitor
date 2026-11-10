@@ -35,74 +35,21 @@ import { buildReaderSummaryNoSignalAttempt } from "./reader-summary-no-signal-at
 import {
   ReaderSummaryModelProviderError,
   createOpenAiReaderSummaryResponse,
-  type OpenAiReaderSummaryFetchLike as FetchLike,
 } from "./openai-responses-reader-summary-transport";
 
-export type OpenAiResponsesReaderSummaryModelAdapterOptions = {
-  readonly apiKey?: string;
-  readonly endpointUrl?: string;
-  readonly model?: string;
-  readonly evalDatasetVersion?: string;
-  readonly timeoutMs?: number;
-  readonly maxOutputTokens?: number;
-  readonly inputTokenDivisor?: number;
-  readonly estimatedInputCostUsdPerMillionTokens?: number;
-  readonly estimatedOutputCostUsdPerMillionTokens?: number;
-  readonly fetchFn?: FetchLike;
-};
+import {
+  resolveOpenAiReaderSummarySettings,
+  type OpenAiReaderSummarySettings,
+  type OpenAiResponsesReaderSummaryModelAdapterOptions,
+} from "./openai-responses-reader-summary-runtime-settings";
+export type { OpenAiResponsesReaderSummaryModelAdapterOptions } from "./openai-responses-reader-summary-runtime-settings";
 
 const provider = "openai-responses";
-const defaultModel = "gpt-5.4-mini";
-const defaultEvalDatasetVersion = "reader_summary.eval.mvp.v1";
-const defaultEndpointUrl = "https://api.openai.com/v1/responses";
-const defaultTimeoutMs = 180_000;
-const defaultMaxOutputTokens = 16_000;
-const defaultInputTokenDivisor = 4;
-
 export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryModelPort {
-  private readonly apiKey: string;
-  private readonly endpointUrl: string;
-  private readonly model: string;
-  private readonly evalDatasetVersion: string;
-  private readonly timeoutMs: number;
-  private readonly maxOutputTokens: number;
-  private readonly inputTokenDivisor: number;
-  private readonly estimatedInputCostUsdPerMillionTokens: number;
-  private readonly estimatedOutputCostUsdPerMillionTokens: number;
-  private readonly fetchFn: FetchLike;
+  private readonly settings: OpenAiReaderSummarySettings;
 
   constructor(options: OpenAiResponsesReaderSummaryModelAdapterOptions = {}) {
-    this.apiKey = options.apiKey?.trim() ?? "";
-    this.endpointUrl = nonEmptyOrFallback(
-      options.endpointUrl,
-      defaultEndpointUrl,
-    );
-    this.model = nonEmptyOrFallback(options.model, defaultModel);
-    this.evalDatasetVersion = nonEmptyOrFallback(
-      options.evalDatasetVersion,
-      defaultEvalDatasetVersion,
-    );
-    this.timeoutMs = positiveIntegerOrFallback(
-      options.timeoutMs,
-      defaultTimeoutMs,
-    );
-    this.maxOutputTokens = positiveIntegerOrFallback(
-      options.maxOutputTokens,
-      defaultMaxOutputTokens,
-    );
-    this.inputTokenDivisor = positiveIntegerOrFallback(
-      options.inputTokenDivisor,
-      defaultInputTokenDivisor,
-    );
-    this.estimatedInputCostUsdPerMillionTokens = nonNegativeNumberOrFallback(
-      options.estimatedInputCostUsdPerMillionTokens,
-      0,
-    );
-    this.estimatedOutputCostUsdPerMillionTokens = nonNegativeNumberOrFallback(
-      options.estimatedOutputCostUsdPerMillionTokens,
-      0,
-    );
-    this.fetchFn = options.fetchFn ?? fetch;
+    this.settings = resolveOpenAiReaderSummarySettings(options);
   }
 
   route(
@@ -129,11 +76,11 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
   ): ReaderSummaryModelEstimate {
     void selectedRoute;
     return estimateReaderSummaryTokenUsage(input, {
-      inputTokenDivisor: this.inputTokenDivisor,
-      maxOutputTokens: this.maxOutputTokens,
+      inputTokenDivisor: this.settings.inputTokenDivisor,
+      maxOutputTokens: this.settings.maxOutputTokens,
       pricing: {
-        inputPerMillionUsd: this.estimatedInputCostUsdPerMillionTokens,
-        outputPerMillionUsd: this.estimatedOutputCostUsdPerMillionTokens,
+        inputPerMillionUsd: this.settings.estimatedInputCostUsdPerMillionTokens,
+        outputPerMillionUsd: this.settings.estimatedOutputCostUsdPerMillionTokens,
       },
     });
   }
@@ -144,10 +91,10 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
   ): Promise<ReaderSummaryDailyEditorialAttempt> {
     return runOpenAiDailyEditor({
       input, route: selectedRoute,
-      maxOutputTokens: this.maxOutputTokens,
-      inputTokenDivisor: this.inputTokenDivisor,
-      estimatedInputCostUsdPerMillionTokens: this.estimatedInputCostUsdPerMillionTokens,
-      estimatedOutputCostUsdPerMillionTokens: this.estimatedOutputCostUsdPerMillionTokens,
+      maxOutputTokens: this.settings.maxOutputTokens,
+      inputTokenDivisor: this.settings.inputTokenDivisor,
+      estimatedInputCostUsdPerMillionTokens: this.settings.estimatedInputCostUsdPerMillionTokens,
+      estimatedOutputCostUsdPerMillionTokens: this.settings.estimatedOutputCostUsdPerMillionTokens,
       createResponse: (request) => this.createResponse(request),
     });
   }
@@ -162,7 +109,7 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
       return this.buildNoSignalAttempt(input, selectedRoute);
     }
 
-    if (this.apiKey.length === 0) {
+    if (this.settings.apiKey.length === 0) {
       throw new ReaderSummaryModelProviderError({
         kind: "provider_unavailable",
         retryable: false,
@@ -176,7 +123,7 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
     const responseJson = await this.createResponse({
       model: selectedRoute.model,
       store: false,
-      max_output_tokens: this.maxOutputTokens,
+      max_output_tokens: this.settings.maxOutputTokens,
       instructions: buildOpenAiReaderSummaryInstructions(input),
       input: prompt,
       text: {
@@ -193,7 +140,7 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
       input,
       selectedRoute,
       estimateUsage: () => this.estimate(input, selectedRoute),
-      evalDatasetVersion: this.evalDatasetVersion,
+      evalDatasetVersion: this.settings.evalDatasetVersion,
       dailyGenerationReceipt,
     });
   }
@@ -211,7 +158,7 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
   private buildRoute(): ReaderSummaryModelRoute {
     return {
       provider,
-      model: this.model,
+      model: this.settings.model,
       promptVersion: currentReaderSummaryPromptRelease.id,
       schemaVersion: "reader_summary.artifact.v1",
     };
@@ -224,7 +171,7 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
     return buildReaderSummaryNoSignalAttempt({
       input,
       selectedRoute,
-      evalDatasetVersion: this.evalDatasetVersion,
+      evalDatasetVersion: this.settings.evalDatasetVersion,
       usage: this.estimate(input, selectedRoute),
     });
   }
@@ -234,35 +181,10 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
   ): Promise<Record<string, unknown>> {
     return createOpenAiReaderSummaryResponse({
       request,
-      endpointUrl: this.endpointUrl,
-      apiKey: this.apiKey,
-      timeoutMs: this.timeoutMs,
-      fetchFn: this.fetchFn,
+      endpointUrl: this.settings.endpointUrl,
+      apiKey: this.settings.apiKey,
+      timeoutMs: this.settings.timeoutMs,
+      fetchFn: this.settings.fetchFn,
     });
   }
 }
-
-
-const nonEmptyOrFallback = (
-  value: string | undefined,
-  fallback: string,
-): string => {
-  const trimmed = value?.trim();
-  return trimmed === undefined || trimmed.length === 0 ? fallback : trimmed;
-};
-
-const positiveIntegerOrFallback = (
-  value: number | undefined,
-  fallback: number,
-): number =>
-  value !== undefined && Number.isInteger(value) && value > 0
-    ? value
-    : fallback;
-
-const nonNegativeNumberOrFallback = (
-  value: number | undefined,
-  fallback: number,
-): number =>
-  typeof value === "number" && Number.isFinite(value) && value >= 0
-    ? value
-    : fallback;
