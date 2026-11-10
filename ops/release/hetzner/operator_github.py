@@ -28,7 +28,7 @@ class GitHub:
     def get(self, suffix):
         self.config.recheck()
         result = decode(self.runner.run([
-            EXECUTABLES['curl'], '--disable', '--fail', '--silent', '--proto', '=https',
+            EXECUTABLES['curl'], '--disable', '--fail', '--silent', '--location', '--proto', '=https',
             '--max-redirs', '0', '--header', 'Accept: application/vnd.github+json',
             '--header', 'X-GitHub-Api-Version: 2022-11-28', '--user-agent', 'social-monitor-release',
             'https://api.github.com/repos/' + REPO + '/' + suffix], env={}, limit=16 * 1024**2))

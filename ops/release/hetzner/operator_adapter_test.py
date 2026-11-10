@@ -375,7 +375,8 @@ class GitHubTests(unittest.TestCase):
         new = [{'path': 'libs/shared/kernel.ts', 'type': 'blob', 'mode': '100644', 'sha': '2' * 40},
                {'path': 'docs/worker-notes.md', 'type': 'blob', 'mode': '100644', 'sha': '3' * 40}]
         def provider(argv, data, env):
-            self.assertEqual(argv[1:7], ['--disable', '--fail', '--silent', '--proto', '=https', '--max-redirs'])
+            self.assertEqual(argv[1:8], ['--disable', '--fail', '--silent', '--location', '--proto', '=https', '--max-redirs'])
+            self.assertEqual(argv[8], '0')
             self.assertNotIn('GITHUB_TOKEN', env)
             endpoint = argv[-1].split(github.REPO + '/', 1)[1]
             if endpoint == 'git/ref/heads/main':
