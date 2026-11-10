@@ -17,7 +17,7 @@ test("GET and POST preserve path, header, request-body and successful JSON contr
   const calls = [];
   await usingFetch(async (url, options) => {
     calls.push({ url: String(url), options });
-    return new Response('{"ok":true}', { status: 200 });
+    return new globalThis.Response('{"ok":true}', { status: 200 });
   }, async () => {
     assert.deepEqual(await client().requestJson("GET", "/items", { headers: { "x-tenant-id": "scope" } }), { ok: true });
     assert.deepEqual(await client().requestJson("POST", "/items", { headers: { authorization: "fixture-authorization" }, body: { name: "demo" } }), { ok: true });
@@ -33,8 +33,8 @@ test("429 retry honors Retry-After and polls at the same request boundary", asyn
   let requests = 0;
   const waits = [];
   await usingFetch(async () => ++requests === 1
-    ? new Response('{"details":{"retryAfterSeconds":9}}', { status: 429, headers: { "retry-after": "2" } })
-    : new Response('{"state":"done"}', { status: 200 }), async () => {
+    ? new globalThis.Response('{"details":{"retryAfterSeconds":9}}', { status: 429, headers: { "retry-after": "2" } })
+    : new globalThis.Response('{"state":"done"}', { status: 200 }), async () => {
     const seen = [];
     const result = await client(async (ms) => { waits.push(ms); }).pollJson("/job", {}, (v) => {
       seen.push(v);
@@ -48,20 +48,20 @@ test("429 retry honors Retry-After and polls at the same request boundary", asyn
 });
 
 test("429 falls back to valid response details when header missing", async () => {
-  await usingFetch(async () => new Response('{"details":{"retryAfterSeconds":3}}', { status: 429 }), async () => {
+  await usingFetch(async () => new globalThis.Response('{"details":{"retryAfterSeconds":3}}', { status: 429 }), async () => {
     await assert.rejects(client().requestJson("GET", "/limited", { headers: {} }), /HTTP 429; retryAfterSeconds=3/);
   });
 });
 
 test("403, array response, empty body and offline errors retain original outcomes", async () => {
-  await usingFetch(async () => new Response('{"reason":"denied"}', { status: 403 }), async () => {
+  await usingFetch(async () => new globalThis.Response('{"reason":"denied"}', { status: 403 }), async () => {
     await assert.rejects(client().requestJson("GET", "/private", { headers: {} }), /GET \/private failed with HTTP 403/);
     await assert.rejects(client().requestJsonWithContext("evidence", "GET", "/private", { headers: {} }), /evidence: GET \/private failed with HTTP 403/);
   });
-  await usingFetch(async () => new Response("[]", { status: 200 }), async () => {
+  await usingFetch(async () => new globalThis.Response("[]", { status: 200 }), async () => {
     await assert.rejects(client().requestJson("GET", "/invalid", { headers: {} }), /did not return a JSON object/);
   });
-  await usingFetch(async () => new Response("", { status: 200 }), async () => {
+  await usingFetch(async () => new globalThis.Response("", { status: 200 }), async () => {
     assert.deepEqual(await client().requestJson("GET", "/empty", { headers: {} }), {});
   });
   await usingFetch(async () => { throw new TypeError("offline"); }, async () => {
@@ -75,7 +75,7 @@ test("raw status probe and expired polling do not reinterpret HTTP status", asyn
   await usingFetch(async (_url, opts) => {
     requests++;
     assert.equal(opts.method, "GET");
-    return new Response("denied", { status: 401 });
+    return new globalThis.Response("denied", { status: 401 });
   }, async () => {
     assert.equal(await client().requestStatus("/status", { "x-workspace-id": "scope" }), 401);
     await assert.rejects(client().pollJson("/expired", {}, () => undefined, { timeoutMs: 0, label: "deadline" }), /deadline did not complete before timeout; last=\{\}/);
