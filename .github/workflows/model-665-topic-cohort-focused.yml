@@ -1,5 +1,5 @@
 # Temporary Draft-only exact-head focused verification. Remove after a successful run.
-name: Model 665 topic cohort focused check
+name: Model 665 topic cohort and gateway schema focused check
 
 on:
   push:
@@ -37,6 +37,7 @@ jobs:
           set -euo pipefail
           npx tsc --noEmit
           npm run check:architecture
+          npm run check:code-quality
           npm run check:source-line-cap
       - name: Verify grounded cohort semantics and end-to-end normalization
         run: >-
@@ -44,3 +45,4 @@ jobs:
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-grounding.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-integrity.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-publication.spec.ts
+          libs/summary/adapters/model/gateway-llm/gateway-llm-schema-limits.spec.ts
