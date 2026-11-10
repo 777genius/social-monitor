@@ -6,6 +6,11 @@ The separate trusted adapter (PR5), Docker 29 export/load/E2E, PG18, SSH, GitHub
 and host shellcheck qualification belong to the main/operator lanes. No provider,
 production operation, candidate program or migration was executed here.
 
+Main-branch CI also publishes a SHA/run/attempt-bound frontend artifact containing
+the public and admin bundles. `frontend_bundle.py` validates and stages that
+artifact without activating it. The current release controller remains API-only;
+the existence of this artifact does not enable automatic frontend deployment.
+
 ## Trust and installation
 
 Only machine `b28fc7b17042414386eb9b114046e50c` is authorized. Install
