@@ -42,6 +42,35 @@ function assertDirectPlanDelegation(text) {
   for (const property of call.arguments[1].properties.slice(2)) {
     assert.ok(ts.isShorthandPropertyAssignment(property), 'original checker dependency identity must be preserved');
   }
+
+  // An intact helper still breaks the CLI if its original call site is removed.
+  const callSites = [];
+  const visit = (node) => {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'buildPlan') {
+      callSites.push(node);
+    }
+    ts.forEachChild(node, visit);
+  };
+  for (const statement of ast.statements) visit(statement);
+  assert.equal(callSites.length, 1, 'original CLI must invoke buildPlan exactly once');
+  const planCall = callSites[0];
+  assert.equal(planCall.arguments.length, 1);
+  assert.ok(ts.isIdentifier(planCall.arguments[0]) && planCall.arguments[0].text === 'jobs',
+    'the selected CLI jobs must be passed to buildPlan');
+  const declaration = planCall.parent;
+  assert.ok(ts.isVariableDeclaration(declaration) && ts.isIdentifier(declaration.name)
+    && declaration.name.text === 'plan', 'the original plan variable must capture the result');
+  assert.ok(ts.isVariableDeclarationList(declaration.parent)
+    && (declaration.parent.flags & ts.NodeFlags.Const), 'the plan must retain its const declaration');
+  const variableStatement = declaration.parent.parent;
+  assert.ok(ts.isVariableStatement(variableStatement));
+  const parentBlock = variableStatement.parent;
+  assert.ok(ts.isBlock(parentBlock));
+  const guard = parentBlock.parent;
+  assert.ok(ts.isIfStatement(guard) && guard.thenStatement === parentBlock
+    && ts.isSourceFile(guard.parent), 'the plan invocation must remain in the top-level CLI guard');
+  assert.equal(guard.expression.getText(ast), '!execute && !validateArtifacts',
+    'the original CLI mode guard must remain unchanged');
 }
 
 test('original CLI directly delegates plan creation with original policies', () => {
@@ -74,4 +103,21 @@ test('missing imports or altered policy callbacks are rejected', () => {
     "    mode: execute ? 'execute' : validateArtifacts ? 'validate_artifacts' : 'plan_only',",
     "    mode: 'plan_only',",
   )));
+});
+
+
+test('the CLI plan call cannot be removed, dormant, duplicated, or fed unselected jobs', () => {
+  const callSite = '  const plan = buildPlan(jobs);';
+  const originalGuard = 'if (!execute && !validateArtifacts) {';
+  assert.ok(source.includes(callSite));
+  assert.ok(source.includes(originalGuard));
+  for (const modified of [
+    source.replace(callSite, '  const plan = { jobs: [] }; // buildPlan(jobs);'),
+    source.replace(callSite, '  const plan = buildPlan([]);'),
+    source.replace(originalGuard, 'if (false) {'),
+    source.replace(callSite, callSite + '\n  buildPlan(jobs);'),
+    source.replace(callSite, '  if (false) { const plan = buildPlan(jobs); }'),
+  ]) {
+    assert.throws(() => assertDirectPlanDelegation(modified));
+  }
 });
