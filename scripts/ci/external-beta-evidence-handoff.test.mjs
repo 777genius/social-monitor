@@ -147,18 +147,12 @@ test('CLI must directly map JSON handoff using the original dependencies', () =>
 test('dormant, forged, or detached JSON handoff mappings fail the structural gate', () => {
   const anchor = 'buildExternalBetaHandoff(plan, {';
   const imp = "import { buildExternalBetaHandoff } from './lib/external-beta-evidence-handoff.mjs';";
-  assert.ok(source.includes(anchor) && source.includes(imp));
+  const caller = 'function printJsonHandoff(plan) {';
+  assert.ok(source.includes(anchor) && source.includes(imp) && source.includes(caller));
   for (const altered of [
     source.replace(imp, ''),
     source.replace(anchor, 'buildExternalBetaHandoff([], {'),
     source.replace(anchor, 'buildExternalBetaHandoff(plan, { contract: { runnerId: "forged" },'),
-    source.replace('  writeStdout(`' + '
-  ]) assert.throws(() => assertDirectHandoffDelegation(altered));
-});
- + '{JSON.stringify(buildExternalBetaHandoff',
-      '  if (false) writeStdout(`' + '
-  ]) assert.throws(() => assertDirectHandoffDelegation(altered));
-});
- + '{JSON.stringify(buildExternalBetaHandoff'),
+    source.replace(caller, caller + ' if (false) '),
   ]) assert.throws(() => assertDirectHandoffDelegation(altered));
 });
