@@ -19,6 +19,45 @@ env:
   DATABASE_URL: postgresql://social_monitor_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_ci
 
 jobs:
+  impact:
+    name: CI impact selection
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      tier: ${{ steps.classify.outputs.tier }}
+    steps:
+      - name: Check out reviewed PR merge SHA
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Setup pinned Node
+        if: github.event_name == 'pull_request'
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
+      - name: Select impact from reviewed immutable range
+        id: classify
+        env:
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" != pull_request ]]; then
+            echo "tier=full" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$CI_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] &&
+             git cat-file -e "${CI_BASE_SHA}:scripts/ci/ci-impact.mjs"; then
+            # Policy must come from the trusted base, never PR-controlled source.
+            git show "${CI_BASE_SHA}:scripts/ci/ci-impact.mjs" > "$RUNNER_TEMP/social-ci-impact-trusted.mjs"
+            node "$RUNNER_TEMP/social-ci-impact-trusted.mjs"
+          else
+            echo "CI impact: trusted policy unavailable; fail-closed full"
+            echo "tier=full" >> "$GITHUB_OUTPUT"
+          fi
   static_quality:
     name: Static architecture and quality
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
@@ -160,7 +199,8 @@ jobs:
 
   backend_unit_shards:
     name: Backend unit shard ${{ matrix.shard }}/6
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    needs: impact
+    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (github.event_name != 'pull_request' || needs.impact.outputs.tier == 'full')
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 60
     strategy:
@@ -270,7 +310,8 @@ jobs:
 
   backend_build_contracts:
     name: Backend build and sandbox contracts
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    needs: impact
+    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (github.event_name != 'pull_request' || needs.impact.outputs.tier == 'full')
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 45
 
@@ -315,30 +356,87 @@ jobs:
 
   backend_unit:
     name: Backend build and unit tests
-    needs: [backend_unit_shards, backend_build_contracts]
+    needs: [impact, static_quality, security_contracts, frontend, backend_unit_shards, backend_build_contracts, backend_e2e, postgres_rls, reader_promotion_v2_canary_postgres18, feed_promotion_snapshot_postgres18, reader_summary_weekly_review_manifest_postgres18, reader_value_v3_postgres18, production_candidate, production_lifecycle, production_runtime]
     if: always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 10
 
     steps:
+      - name: Enforce exact scope and all existing protected CI lanes
+        env:
+          IMPACT_RESULT: ${{ needs.impact.result }}
+          IMPACT_TIER: ${{ needs.impact.outputs.tier }}
+          STATIC_RESULT: ${{ needs.static_quality.result }}
+          SECURITY_RESULT: ${{ needs.security_contracts.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          BACKEND_UNIT_SHARDS_RESULT: ${{ needs.backend_unit_shards.result }}
+          BACKEND_BUILD_CONTRACTS_RESULT: ${{ needs.backend_build_contracts.result }}
+          BACKEND_E2E_RESULT: ${{ needs.backend_e2e.result }}
+          POSTGRES_RLS_RESULT: ${{ needs.postgres_rls.result }}
+          READER_PROMOTION_V2_CANARY_POSTGRES18_RESULT: ${{ needs.reader_promotion_v2_canary_postgres18.result }}
+          FEED_PROMOTION_SNAPSHOT_POSTGRES18_RESULT: ${{ needs.feed_promotion_snapshot_postgres18.result }}
+          READER_SUMMARY_WEEKLY_REVIEW_MANIFEST_POSTGRES18_RESULT: ${{ needs.reader_summary_weekly_review_manifest_postgres18.result }}
+          READER_VALUE_V3_POSTGRES18_RESULT: ${{ needs.reader_value_v3_postgres18.result }}
+          PRODUCTION_CANDIDATE_RESULT: ${{ needs.production_candidate.result }}
+          PRODUCTION_LIFECYCLE_RESULT: ${{ needs.production_lifecycle.result }}
+          PRODUCTION_RUNTIME_RESULT: ${{ needs.production_runtime.result }}
+        run: |
+          set -euo pipefail
+          assert_result() {
+            if [[ "$2" != "$3" ]]; then
+              echo "::error::$1 got '$2'; expected '$3' for impact '$IMPACT_TIER'"
+              exit 1
+            fi
+          }
+          assert_result impact "$IMPACT_RESULT" success
+          case "$IMPACT_TIER" in
+            docs|frontend|full) ;;
+            *) echo "::error::unknown or missing CI impact tier: $IMPACT_TIER"; exit 1 ;;
+          esac
+          if [[ "$GITHUB_EVENT_NAME" != pull_request ]]; then
+            assert_result main_or_merge_group "$IMPACT_TIER" full
+          fi
+          assert_result static "$STATIC_RESULT" success
+          assert_result security "$SECURITY_RESULT" success
+          expected_heavy=skipped
+          [[ "$IMPACT_TIER" == full ]] && expected_heavy=success
+          expected_frontend=skipped
+          [[ "$IMPACT_TIER" != docs ]] && expected_frontend=success
+          assert_result frontend "$FRONTEND_RESULT" "$expected_frontend"
+          assert_result backend_unit_shards "$BACKEND_UNIT_SHARDS_RESULT" "$expected_heavy"
+          assert_result backend_build_contracts "$BACKEND_BUILD_CONTRACTS_RESULT" "$expected_heavy"
+          assert_result backend_e2e "$BACKEND_E2E_RESULT" "$expected_heavy"
+          assert_result postgres_rls "$POSTGRES_RLS_RESULT" "$expected_heavy"
+          assert_result reader_promotion_v2_canary_postgres18 "$READER_PROMOTION_V2_CANARY_POSTGRES18_RESULT" "$expected_heavy"
+          assert_result feed_promotion_snapshot_postgres18 "$FEED_PROMOTION_SNAPSHOT_POSTGRES18_RESULT" "$expected_heavy"
+          assert_result reader_summary_weekly_review_manifest_postgres18 "$READER_SUMMARY_WEEKLY_REVIEW_MANIFEST_POSTGRES18_RESULT" "$expected_heavy"
+          assert_result reader_value_v3_postgres18 "$READER_VALUE_V3_POSTGRES18_RESULT" "$expected_heavy"
+          assert_result production_candidate "$PRODUCTION_CANDIDATE_RESULT" "$expected_heavy"
+          assert_result production_lifecycle "$PRODUCTION_LIFECYCLE_RESULT" "$expected_heavy"
+          assert_result production_runtime "$PRODUCTION_RUNTIME_RESULT" "$expected_heavy"
+
       - name: Require every backend prerequisite to succeed
+        if: needs.impact.outputs.tier == 'full'
         run: |
           set -euo pipefail
           test "${{ needs.backend_unit_shards.result }}" = "success"
           test "${{ needs.backend_build_contracts.result }}" = "success"
 
       - name: Check out the exact tested commit
+        if: needs.impact.outputs.tier == 'full'
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Set up clean Node.js without dependencies
+        if: needs.impact.outputs.tier == 'full'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: 22
 
       - name: Download all unit report artifacts without merging
+        if: needs.impact.outputs.tier == 'full'
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           pattern: backend-unit-report-*
@@ -346,11 +444,12 @@ jobs:
           merge-multiple: false
 
       - name: Prove complete and unique unit suite execution
+        if: needs.impact.outputs.tier == 'full'
         run: node scripts/ci/verify-jest-shard-completeness.mjs --reports unit-reports --root . --exclusions ops/ci/jest-inventory-exclusions.txt --shards 6
-
   backend_e2e:
     name: Backend end-to-end tests
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    needs: impact
+    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (github.event_name != 'pull_request' || needs.impact.outputs.tier == 'full')
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 45
     services:
@@ -402,7 +501,8 @@ jobs:
 
   postgres_rls:
     name: PostgreSQL tenant isolation
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    needs: impact
+    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (github.event_name != 'pull_request' || needs.impact.outputs.tier == 'full')
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 30
     services:
@@ -495,7 +595,8 @@ jobs:
 
   reader_promotion_v2_canary_postgres18:
     name: Reader Promotion V2 canary PostgreSQL 18
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    needs: impact
+    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (github.event_name != 'pull_request' || needs.impact.outputs.tier == 'full')
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 10
     steps:
@@ -507,7 +608,8 @@ jobs:
 
   feed_promotion_snapshot_postgres18:
     name: Feed promotion snapshot and native plans PostgreSQL 18
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    needs: impact
+    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (github.event_name != 'pull_request' || needs.impact.outputs.tier == 'full')
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 30
     services:
@@ -551,7 +653,8 @@ jobs:
 
   reader_summary_weekly_review_manifest_postgres18:
     name: Reader-summary weekly review manifest PostgreSQL 18
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    needs: impact
+    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (github.event_name != 'pull_request' || needs.impact.outputs.tier == 'full')
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 30
     services:
@@ -596,7 +699,8 @@ jobs:
 
   reader_value_v3_postgres18:
     name: Reader Value V3 PostgreSQL 18 contracts
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    needs: impact
+    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (github.event_name != 'pull_request' || needs.impact.outputs.tier == 'full')
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 45
     services:
@@ -644,7 +748,8 @@ jobs:
 
   production_candidate:
     name: Production immutable candidate
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    needs: impact
+    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (github.event_name != 'pull_request' || needs.impact.outputs.tier == 'full')
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 45
     permissions:
@@ -704,7 +809,8 @@ jobs:
 
   production_lifecycle:
     name: Production deploy lifecycle fixtures
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    needs: impact
+    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (github.event_name != 'pull_request' || needs.impact.outputs.tier == 'full')
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 45
     permissions:
@@ -730,8 +836,8 @@ jobs:
 
   production_runtime:
     name: Production container and deploy lifecycle
-    needs: [production_candidate, production_lifecycle]
-    if: always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+    needs: [impact, production_candidate, production_lifecycle]
+    if: always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (github.event_name != 'pull_request' || needs.impact.outputs.tier == 'full')
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 5
     permissions:
@@ -745,6 +851,8 @@ jobs:
 
   frontend:
     name: Flutter architecture and tests
+    needs: impact
+    if: github.event_name != 'pull_request' || needs.impact.outputs.tier != 'docs'
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 45
 
