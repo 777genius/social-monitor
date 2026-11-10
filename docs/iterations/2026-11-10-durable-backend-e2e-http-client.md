@@ -12,7 +12,7 @@ CLI owns configuration loading, tenant/workspace headers and secrets, DB setup, 
 
 1. **SOLID / simplicity:** retain only one cohesive client, not a new HTTP framework. Orchestrator retains every business decision and error-handling call site.
 2. **Security / behavior:** preserve original fail-closed object validation, 429 recovery and error messages; never log credentials. Client closes over the original dependencies without duplicating state.
-3. **Tests / integrations:** mock fetch with deterministic request/status/error/rate-limit cases, guard the exact CLI bridge. Wire new tests ahead of the original source cap; all existing CI gates stay enabled.
+3. **Tests / integrations:** mock fetch with deterministic request/status/error/rate-limit cases, guard the exact CLI bridge. Wire new tests into the original Static architecture command ahead of the unchanged exact source-cap command; all existing CI gates stay enabled.
 
 ## Acceptance before merge
 
