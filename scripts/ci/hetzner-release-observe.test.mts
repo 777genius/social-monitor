@@ -548,6 +548,22 @@ test('frontend delivery sends exact CI ZIP and checks host proof against both ar
       return response(proof);
     };
     assert.deepEqual(await O.sendFrontendCandidate(frontend, candidate, get, transport), proof);
+    const backendManifest = { sha, ci_run_id: run, archive_sha256: digest(zipBytes), image_id: image,
+      archive_bytes: zipBytes.length, migrations: ['synthetic'], image_graph: {} };
+    const backendBytes = Buffer.from(JSON.stringify(backendManifest));
+    const backendManifestPath = join(root, 'backend-manifest.json');
+    await writeFile(backendManifestPath, backendBytes);
+    const backend = { manifest: backendManifestPath, manifestHash: digest(backendBytes),
+      archive: transportPath, value: backendManifest };
+    const sentBackend: Transport = async (wire, source) => {
+      assert.equal(wire, `cohort-receive-backend ${sha} ${run} ${digest(zipBytes)} ${image} ${zipBytes.length}`);
+      assert.ok(source); const chunks: Buffer[] = [];
+      for await (const chunk of source()) chunks.push(Buffer.from(chunk));
+      assert.deepEqual(Buffer.concat(chunks), zipBytes); return response(backendManifest);
+    };
+    assert.deepEqual(await O.sendBackendCandidate(base, backend, get, sentBackend), backendManifest);
+    await assert.rejects(O.sendBackendCandidate(base, backend, get,
+      async () => response({ ...backendManifest, image_id: 'sha256:' + 'f'.repeat(64) })), /backend-host-binding/);
     await assert.rejects(O.sendFrontendCandidate(frontend, candidate, get, async () => response({ ...proof,
       archive_sha256: image })), /frontend-host-binding/);
     currentMain = 'd'.repeat(40);

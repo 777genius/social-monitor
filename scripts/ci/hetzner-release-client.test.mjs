@@ -81,6 +81,8 @@ test('fixed release grammar rejects options, whitespace, shell syntax and bad bi
     `backend-receive ${sha} 123 ${manifest.archive_sha256} ${image} 7`);
   assert.equal(command('backend-receipt', [`${sha}-123-rollback`]), `backend-receipt ${sha}-123-rollback`);
   assert.throws(() => command('backend-receive', [sha, run, image, image, '10000000001']));
+  assert.equal(command('cohort-receive-backend', [sha, run, image, image, '100']), `cohort-receive-backend ${sha} ${run} ${image} ${image} 100`);
+  assert.throws(() => command('cohort-receive-backend', [sha, run, image, image, '10000000001']));
   for (const [verb, args] of [['status;', []], ['status', ['x']], ['activate', [sha, '01']],
     ['admit', [sha + '\n', run]], ['receive', [sha, run, image, image, '0']],
     ['receipt', [`${sha}-123;id`]], ['toString', []]]) assert.throws(() => command(verb, args));

@@ -24,6 +24,7 @@ GRAMMAR = {
 GRAMMAR.update({'backend-' + verb: patterns for verb, patterns in GRAMMAR.copy().items()
                 if verb != 'status'})
 GRAMMAR['cohort-receive-frontend'] = [SHA, RUN]
+GRAMMAR['cohort-receive-backend'] = [SHA, RUN, DIGEST, DIGEST, r'[1-9][0-9]{0,11}']
 
 
 class Denied(Exception):
