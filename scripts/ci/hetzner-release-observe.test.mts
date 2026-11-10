@@ -19,6 +19,58 @@ const authority: Authority = { sha, run, attempt: 2, workflow: '30',
   jobs: Array.from({ length: 16 }, (_, i) => String(1000 + i)).sort(),
   artifact: '50', artifactName: `api-candidate-${sha}-${run}`,
   artifactDigest: image, artifactBytes: 4096 };
+
+test('frontend candidate binds both lanes to the exact run and archive', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'TEST-sm-frontend-candidate-'));
+  const tar = Buffer.from('synthetic frontend archive'), tarHash = createHash('sha256').update(tar).digest('hex');
+  const proof = { base: authority, artifact: { id: '51', name: `frontend-candidate-${sha}-${run}-2`,
+    digest: image, bytes: 1024 } };
+  const manifest = { version: 1, sourceSha: sha, ciRunId: run, ciRunAttempt: '2',
+    archive: { name: 'frontend-release.tgz', sha256: tarHash, bytes: tar.length },
+    bundles: ['public', 'admin'].map(lane => ({ lane, sourceSha: sha, ciRunId: run, ciRunAttempt: '2',
+      apiOrigin: lane === 'public' ? 'https://social-monitor.app' : 'https://admin.social-monitor.app' })) };
+  const path = join(root, 'frontend-manifest.json');
+  try {
+    await writeFile(join(root, 'frontend-release.tgz'), tar);
+    await writeFile(path, JSON.stringify(manifest));
+    const accepted = await O.validateFrontendCandidate(root, proof);
+    assert.equal(accepted.archive, join(root, 'frontend-release.tgz'));
+    await chmod(path, 0o600);
+    for (const candidate of [
+      { ...manifest, ciRunAttempt: '1' },
+      { ...manifest, archive: { ...manifest.archive, sha256: '0'.repeat(64) } },
+      { ...manifest, bundles: [manifest.bundles[0], { ...manifest.bundles[1], apiOrigin: 'https://wrong.invalid' }] },
+    ]) {
+      await writeFile(path, JSON.stringify(candidate));
+      await assert.rejects(O.validateFrontendCandidate(root, proof));
+    }
+    await assert.rejects(O.validateFrontendCandidate(root, { ...proof, artifact: { ...proof.artifact, name: 'wrong' } }),
+      /frontend-artifact-missing/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('frontend transport ZIP accepts exactly its two regular files', async () => {
+  for (const mode of ['valid', 'extra', 'traversal', 'symlink'] as const) {
+    const root = await mkdtemp(join(tmpdir(), 'TEST-sm-frontend-zip-'));
+    try {
+      const zip = join(root, 'transport.zip'), target = join(root, 'data');
+      await mkdir(target, { mode: 0o700 });
+      execFileSync('/usr/bin/python3', ['-I', '-B', '-c', `
+import stat,sys,zipfile
+with zipfile.ZipFile(sys.argv[1], 'w') as z:
+    z.writestr('frontend-release.tgz', b'archive')
+    info=zipfile.ZipInfo('../frontend-manifest.json' if sys.argv[2]=='traversal' else 'frontend-manifest.json')
+    if sys.argv[2]=='symlink': info.external_attr=(stat.S_IFLNK | 0o777) << 16
+    z.writestr(info,b'manifest')
+    if sys.argv[2]=='extra': z.writestr('extra',b'x')
+`, zip, mode]);
+      if (mode === 'valid') {
+        await O.extractFrontendArtifact(zip, target);
+        assert.deepEqual((await readdir(target)).sort(), ['frontend-manifest.json', 'frontend-release.tgz']);
+      } else await assert.rejects(O.extractFrontendArtifact(zip, target));
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }
+});
 async function fixture(body: (root: string, directory: string, bytes: Buffer) => Promise<void>): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), 'sm-release-observe-')), directory = join(root, 'data');
   const bytes = Buffer.from('candidate-data-only; no tar extraction or execution\n');

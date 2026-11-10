@@ -140,6 +140,58 @@ test('artifact identity, producer repository, digest, size and expiration are ma
   await assert.rejects(A.observeAuthority(f.get, runId), code('artifact-identity'));
 });
 
+test('separate frontend authority binds exact run attempt without changing API authority', async () => {
+  const f = fixture();
+  const candidate = { id: 51, name: `frontend-candidate-${sha}-123-2`, expired: false,
+    size_in_bytes: 2048, digest: 'sha256:' + 'd'.repeat(64),
+    workflow_run: { id: 123, head_sha: sha, head_branch: 'main', repository_id: 10, head_repository_id: 10 } };
+  f.artifacts.push(candidate);
+  const result = await A.observeAuthority(f.get, runId);
+  assert.equal(result.phase, 'ready');
+  if (result.phase !== 'ready') assert.fail('qualified main must be ready');
+  const frontend = await A.observeFrontendAuthority(f.get, result.authority);
+  assert.deepEqual(frontend.artifact, { id: '51', name: candidate.name,
+    digest: candidate.digest, bytes: 2048 });
+  A.sameFrontendAuthority(frontend, await A.observeFrontendAuthority(f.get, result.authority));
+  assert.throws(() => A.sameFrontendAuthority(frontend,
+    { ...frontend, artifact: { ...frontend.artifact, id: '52' } }), code('frontend-authority-changed'));
+  for (const mutation of [{ expired: true }, { digest: null }, { size_in_bytes: 300_000_001 },
+    { workflow_run: { ...candidate.workflow_run, head_repository_id: 99 } }]) {
+    const next = fixture(); next.artifacts.push({ ...candidate, ...mutation });
+    const api = await A.observeAuthority(next.get, runId);
+    if (api.phase !== 'ready') assert.fail('frontend failure must not block API authority');
+    await assert.rejects(A.observeFrontendAuthority(next.get, api.authority));
+  }
+  const previous = fixture(); previous.artifacts.push({ ...candidate, name: `frontend-candidate-${sha}-123-1` });
+  const older = await A.observeAuthority(previous.get, runId);
+  if (older.phase !== 'ready') assert.fail('older API run must remain ready');
+  await assert.rejects(A.observeFrontendAuthority(previous.get, older.authority), code('frontend-artifact-identity'));
+});
+
+test('frontend closing observation rejects artifact replacement, deletion and duplicates', async () => {
+  for (const change of ['id', 'digest', 'expired', 'duplicate'] as const) {
+    const f = fixture();
+    const candidate = { id: 51, name: `frontend-candidate-${sha}-123-2`, expired: false,
+      size_in_bytes: 2048, digest: 'sha256:' + 'd'.repeat(64),
+      workflow_run: { id: 123, head_sha: sha, head_branch: 'main', repository_id: 10, head_repository_id: 10 } };
+    f.artifacts.push(candidate);
+    const api = await A.observeAuthority(f.get, runId);
+    if (api.phase !== 'ready') assert.fail('API authority required');
+    let listings = 0;
+    await assert.rejects(A.observeFrontendAuthority(async path => {
+      const value = await f.get(path);
+      if (!path.includes('/artifacts?') || ++listings !== 3) return value;
+      const page = A.object(value), rows = (page.artifacts as Row[]).map(row => ({ ...row }));
+      const row = rows.find(item => item.name === candidate.name)!;
+      if (change === 'id') row.id = 52;
+      if (change === 'digest') row.digest = 'sha256:' + 'e'.repeat(64);
+      if (change === 'expired') row.expired = true;
+      if (change === 'duplicate') rows.push({ ...row, id: 52 });
+      return { total_count: rows.length, artifacts: rows };
+    }, api.authority), change);
+  }
+});
+
 test('exact hundred-page artifact boundary is complete; duplicate and changing pages deny', async () => {
   const f = fixture(), candidate = f.artifacts[0]!;
   f.artifacts.splice(0, 1, ...Array.from({ length: 9999 }, (_, i) =>
