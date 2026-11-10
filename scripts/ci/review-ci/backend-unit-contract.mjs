@@ -1,4 +1,5 @@
 import yaml from 'js-yaml';
+import { projectScopedBackendWorkflow } from './ci-impact-contract.mjs';
 
 // js-yaml is already reproducibly locked at the root by ESLint's dependency graph.
 // Parse the full document with duplicate-key rejection. Commands below use a
@@ -134,16 +135,7 @@ const coverageMetadataProof = [
   "        .workflow_run.id == $run_id and .workflow_run.head_sha == $head_sha)))",
   "' artifact-pages.json",
 ].join('\n');
-const coverageScopeProof = [
-  'set -euo pipefail',
-  '# Draft pull requests skip the heavy unit shards; their runs have no coverage to upload.',
-  'conclusions="$(gh api --paginate "/repos/$GH_REPO/actions/runs/$RUN_ID/jobs?per_page=100" --jq \'.jobs[] | select(.name | startswith("Backend unit shard")) | .conclusion\')"',
-  'ready=true',
-  'if [ -n "$conclusions" ] && [ -z "$(printf \'%s\\n\' "$conclusions" | grep -v \'^skipped$\' || true)" ]; then',
-  '  ready=false',
-  'fi',
-  'echo "ready=$ready" >> "$GITHUB_OUTPUT"',
-].join('\n');
+const coverageScopeProof = "set -euo pipefail\n# Light PRs keep six successful required check names, but execute no\n# unit tests. A green job alone is never coverage evidence.\ngh api --paginate --slurp \"/repos/$GH_REPO/actions/runs/$RUN_ID/jobs?per_page=100\" > jobs-pages.json\nready=\"$(jq -er '\n  if type != \"array\" or length == 0 then\n    error(\"missing job inventory\")\n  else\n    ([.[].jobs[] | select(.name | startswith(\"Backend unit shard \"))] as $shards |\n      if ($shards | length) == 1 and $shards[0].conclusion == \"skipped\" then\n        \"false\"\n      elif ($shards | length) == 6 and\n           ([$shards[].name] | unique | length) == 6 and\n           all($shards[]; .conclusion == \"success\") then\n        ([$shards[] | [.steps[]? |\n          select(.name == \"Run backend unit tests once with coverage\") | .conclusion]] as $runs |\n          if all($runs[]; . == [\"success\"]) then \"true\"\n          elif all($runs[]; . == [\"skipped\"]) then \"false\"\n          else error(\"mixed or missing shard execution evidence\") end)\n      else\n        error(\"incomplete or inconsistent unit shard inventory\")\n      end)\n  end\n' jobs-pages.json)\"\ncase \"$ready\" in true|false) ;; *) exit 1 ;; esac\necho \"ready=$ready\" >> \"$GITHUB_OUTPUT\"";
 const coverageProof = [
   'set -euo pipefail',
   'shopt -s nullglob dotglob',
@@ -168,7 +160,8 @@ export const prTypes = ['opened', 'synchronize', 'reopened', 'ready_for_review']
 export function backendUnitShardingViolations(source) {
   let workflow;
   try { workflow = parse(source); } catch (error) { return [`pull-request.yml: invalid YAML: ${error.message}`]; }
-  const errors = [];
+  const scoped = record(workflow) ? projectScopedBackendWorkflow(workflow) : null;
+  const errors = scoped ? [...scoped.errors] : [];
   if (!record(workflow)) return ['pull-request.yml: workflow must be a mapping'];
   if (workflow.name !== 'Pull request checks' || !equal(workflow.on, {
     push: { branches: ['main'] }, pull_request: { types: prTypes }, merge_group: null, workflow_dispatch: null,
@@ -184,7 +177,7 @@ export function backendUnitShardingViolations(source) {
       errors.push('pull-request.yml: jobs must not grant write authority');
     }
   }
-  const jobs = workflow.jobs ?? {};
+  const jobs = scoped.projected.jobs ?? {};
   jobChecks(jobs.security_contracts, 'security_contracts', 'Security and public contracts', [
     { uses: checkout }, nodeStep(), { run: 'npm ci' }, { run: 'npm run prisma:generate' },
     { run: ['set -euo pipefail', ...[
