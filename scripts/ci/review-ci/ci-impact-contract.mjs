@@ -3,11 +3,11 @@ import { isDeepStrictEqual } from "node:util";
 // This reviewer-owned projection admits exactly one scope wrapper and retains
 // the prior exhaustive backend, PG18, shell and release contract verifier.
 const READY = "github.event_name != 'pull_request' || github.event.pull_request.draft == false";
-const LIGHT = "needs.impact.outputs.tier != 'full'";
-const FULL_STEP = "needs.impact.outputs.tier == 'full'";
+const LIGHT = "needs.security_contracts.outputs.tier != 'full'";
+const FULL_STEP = "needs.security_contracts.outputs.tier == 'full'";
 const HEAVY = "(" + READY + ") && (github.event_name != 'pull_request' || " + FULL_STEP + ")";
 const AGGREGATE_NEEDS = [
-  "impact", "static_quality", "security_contracts", "frontend", "backend_unit_shards",
+  "static_quality", "security_contracts", "frontend", "backend_unit_shards",
   "backend_build_contracts", "backend_e2e", "postgres_rls",
   "reader_promotion_v2_canary_postgres18", "feed_promotion_snapshot_postgres18",
   "reader_summary_weekly_review_manifest_postgres18", "reader_value_v3_postgres18",
@@ -19,7 +19,7 @@ const HEAVY_JOBS = [
   "reader_summary_weekly_review_manifest_postgres18", "reader_value_v3_postgres18",
 ];
 const SELECT_SCRIPT = "set -euo pipefail\nif [[ \"$GITHUB_EVENT_NAME\" != pull_request ]]; then\n  echo \"tier=full\" >> \"$GITHUB_OUTPUT\"\n  exit 0\nfi\n# Changes to a stacked PR base may leave event base.sha stale.\n# Only use current base if it is part of the exact reviewed merge.\nif [[ \"$PR_BASE_REF\" =~ ^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,199}$ ]] &&\n   [[ \"$PR_BASE_REF\" != *..* && \"$PR_BASE_REF\" != *//* ]] &&\n   git fetch --no-tags origin \"refs/heads/$PR_BASE_REF\" &&\n   CI_BASE_SHA=\"$(git rev-parse FETCH_HEAD)\" &&\n   [[ \"$CI_BASE_SHA\" =~ ^[a-f0-9]{40}$ ]] &&\n   git merge-base --is-ancestor \"$CI_BASE_SHA\" \"$GITHUB_SHA\" &&\n   git cat-file -e \"${CI_BASE_SHA}:scripts/ci/ci-impact.mjs\"; then\n  # Never execute untrusted PR-authored policy, tests or dependencies.\n  git show \"${CI_BASE_SHA}:scripts/ci/ci-impact.mjs\" > \"$RUNNER_TEMP/social-ci-impact-trusted.mjs\"\n  CI_BASE_SHA=\"$CI_BASE_SHA\" node \"$RUNNER_TEMP/social-ci-impact-trusted.mjs\"\nelse\n  echo \"CI impact: trusted current base not part of reviewed merge; full qualification\"\n  echo \"tier=full\" >> \"$GITHUB_OUTPUT\"\nfi";
-const SCOPE_ONLY_SCRIPT = "set -euo pipefail\ncase \"${{ needs.impact.outputs.tier }}\" in\n  docs|frontend) echo 'Backend shard intentionally not executed for narrowly classified PR' >> \"$GITHUB_STEP_SUMMARY\" ;;\n  *) echo '::error::unknown scope'; exit 1 ;;\nesac";
+const SCOPE_ONLY_SCRIPT = "set -euo pipefail\ncase \"${{ needs.security_contracts.outputs.tier }}\" in\n  docs|frontend) echo 'Backend shard intentionally not executed for narrowly classified PR' >> \"$GITHUB_STEP_SUMMARY\" ;;\n  *) echo '::error::unknown scope'; exit 1 ;;\nesac";
 const AGGREGATE_GATE_SCRIPT = "set -euo pipefail\nassert_result() {\n  if [[ \"$2\" != \"$3\" ]]; then\n    echo \"::error::$1 got '$2'; expected '$3' for impact '$IMPACT_TIER'\"\n    exit 1\n  fi\n}\nassert_result impact \"$IMPACT_RESULT\" success\ncase \"$IMPACT_TIER\" in\n  docs|frontend|full) ;;\n  *) echo \"::error::unknown or missing CI impact tier: $IMPACT_TIER\"; exit 1 ;;\nesac\nif [[ \"$GITHUB_EVENT_NAME\" != pull_request ]]; then\n  assert_result main_or_merge_group \"$IMPACT_TIER\" full\nfi\nassert_result static \"$STATIC_RESULT\" success\nassert_result security \"$SECURITY_RESULT\" success\nexpected_heavy=skipped\n[[ \"$IMPACT_TIER\" == full ]] && expected_heavy=success\nexpected_frontend=skipped\n[[ \"$IMPACT_TIER\" != docs ]] && expected_frontend=success\nassert_result frontend \"$FRONTEND_RESULT\" \"$expected_frontend\"\nassert_result backend_unit_shards \"$BACKEND_UNIT_SHARDS_RESULT\" success\nassert_result backend_build_contracts \"$BACKEND_BUILD_CONTRACTS_RESULT\" \"$expected_heavy\"\nassert_result backend_e2e \"$BACKEND_E2E_RESULT\" \"$expected_heavy\"\nassert_result postgres_rls \"$POSTGRES_RLS_RESULT\" \"$expected_heavy\"\nassert_result reader_promotion_v2_canary_postgres18 \"$READER_PROMOTION_V2_CANARY_POSTGRES18_RESULT\" \"$expected_heavy\"\nassert_result feed_promotion_snapshot_postgres18 \"$FEED_PROMOTION_SNAPSHOT_POSTGRES18_RESULT\" \"$expected_heavy\"\nassert_result reader_summary_weekly_review_manifest_postgres18 \"$READER_SUMMARY_WEEKLY_REVIEW_MANIFEST_POSTGRES18_RESULT\" \"$expected_heavy\"\nassert_result reader_value_v3_postgres18 \"$READER_VALUE_V3_POSTGRES18_RESULT\" \"$expected_heavy\"\nassert_result production_candidate \"$PRODUCTION_CANDIDATE_RESULT\" success\nassert_result production_lifecycle \"$PRODUCTION_LIFECYCLE_RESULT\" success\nassert_result production_runtime \"$PRODUCTION_RUNTIME_RESULT\" success";
 
 const checkoutAction = "actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10";
@@ -40,22 +40,23 @@ export function projectScopedBackendWorkflow(workflow) {
   if (!jobs || typeof jobs !== "object") return { errors: ["impact: no jobs"], projected };
   const fail = (s) => errors.push("ci-impact: " + s);
 
-  const impact = jobs.impact;
-  const expectedImpact = {
-    name: "CI impact selection",
-    "runs-on": "ubuntu-24.04",
-    "timeout-minutes": 5,
-    outputs: { tier: "${{ steps.select.outputs.tier }}" },
-    steps: [
-      { name: "Checkout reviewed merge source", if: "github.event_name == 'pull_request'",
-        uses: checkoutAction, with: { "fetch-depth": 0, "persist-credentials": false } },
-      { name: "Setup Node", if: "github.event_name == 'pull_request'",
-        uses: nodeAction, with: { "node-version": 22 } },
-      { name: "Select fail-closed scope from reviewed trusted base",
-        id: "select", shell: "bash", env: { PR_BASE_REF: "${{ github.base_ref }}" }, run: SELECT_SCRIPT + "\n" },
-    ],
+  const security = jobs.security_contracts;
+  const expectedSelector = {
+    name: "Select fail-closed scope from reviewed trusted base",
+    id: "select", shell: "bash", env: { PR_BASE_REF: "${{ github.base_ref }}" }, run: SELECT_SCRIPT + "\n",
   };
-  if (!exact(impact, expectedImpact)) fail("trusted read-only selector job must match exact policy");
+  if (!security || !exact(security.outputs, { tier: "${{ steps.select.outputs.tier }}" }) ||
+      !Array.isArray(security.steps) || security.steps.length !== 6 ||
+      !exact(security.steps[0], { name: "Check out the review commit", uses: checkoutAction,
+        with: { "fetch-depth": 0, "persist-credentials": false } }) ||
+      !exact(security.steps[2], expectedSelector)) {
+    fail("required security job must select trusted scope before any PR dependencies");
+  } else {
+    const safe = projected.jobs.security_contracts;
+    delete safe.outputs;
+    safe.steps.splice(2, 1);
+    delete safe.steps[0].with;
+  }
 
   const shards = jobs.backend_unit_shards;
   if (!shards || !Array.isArray(shards.steps) || shards.steps.length !== 10) {
@@ -66,7 +67,7 @@ export function projectScopedBackendWorkflow(workflow) {
       name: "Record protected check as scope-exempt (no backend tests executed)",
       if: LIGHT, shell: "bash", run: SCOPE_ONLY_SCRIPT + "\n",
     })) fail("light shard must be a pure receipt; never count it as Jest");
-    if (shards.needs !== "impact" || shards.if !== READY)
+    if (shards.needs !== "security_contracts" || shards.if !== READY)
       fail("protected six-shard jobs retain draft gate and trusted selector prerequisite");
     for (const step of shards.steps.slice(1)) {
       if (step.if !== FULL_STEP) fail("all original Jest/PG18/artifact steps must be full-only");
@@ -79,7 +80,7 @@ export function projectScopedBackendWorkflow(workflow) {
 
   for (const key of HEAVY_JOBS) {
     const item = jobs[key];
-    if (!item || item.needs !== "impact" || item.if !== HEAVY)
+    if (!item || item.needs !== "security_contracts" || item.if !== HEAVY)
       fail(key + " requires exact full-only execution and trusted scope");
     if (projected.jobs[key]) {
       delete projected.jobs[key].needs;
@@ -89,8 +90,8 @@ export function projectScopedBackendWorkflow(workflow) {
   // Full-stack workflows preserve exact release/PG18 ownership; only Flutter
   // may skip ordinary docs, never auth/backend/shared sources.
   const flutter = jobs.frontend;
-  if (!flutter || flutter.needs !== "impact" ||
-      flutter.if !== "github.event_name != 'pull_request' || needs.impact.outputs.tier != 'docs'")
+  if (!flutter || flutter.needs !== "security_contracts" ||
+      flutter.if !== "github.event_name != 'pull_request' || needs.security_contracts.outputs.tier != 'docs'")
     fail("Flutter must run for frontend/full and every main push");
   if (projected.jobs.frontend) {
     delete projected.jobs.frontend.needs;
@@ -99,8 +100,8 @@ export function projectScopedBackendWorkflow(workflow) {
 
   const agg = jobs.backend_unit;
   const expectedEnv = {
-    IMPACT_RESULT: "${{ needs.impact.result }}",
-    IMPACT_TIER: "${{ needs.impact.outputs.tier }}",
+    IMPACT_RESULT: "${{ needs.security_contracts.result }}",
+    IMPACT_TIER: "${{ needs.security_contracts.outputs.tier }}",
     STATIC_RESULT: "${{ needs.static_quality.result }}",
     SECURITY_RESULT: "${{ needs.security_contracts.result }}",
     FRONTEND_RESULT: "${{ needs.frontend.result }}",

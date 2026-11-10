@@ -19,51 +19,6 @@ env:
   DATABASE_URL: postgresql://social_monitor_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_ci
 
 jobs:
-  impact:
-    name: CI impact selection
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    outputs:
-      tier: ${{ steps.select.outputs.tier }}
-    steps:
-      - name: Checkout reviewed merge source
-        if: github.event_name == 'pull_request'
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Setup Node
-        if: github.event_name == 'pull_request'
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: 22
-      - name: Select fail-closed scope from reviewed trusted base
-        id: select
-        shell: bash
-        env:
-          PR_BASE_REF: ${{ github.base_ref }}
-        run: |
-          set -euo pipefail
-          if [[ "$GITHUB_EVENT_NAME" != pull_request ]]; then
-            echo "tier=full" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          # Changes to a stacked PR base may leave event base.sha stale.
-          # Only use current base if it is part of the exact reviewed merge.
-          if [[ "$PR_BASE_REF" =~ ^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,199}$ ]] &&
-             [[ "$PR_BASE_REF" != *..* && "$PR_BASE_REF" != *//* ]] &&
-             git fetch --no-tags origin "refs/heads/$PR_BASE_REF" &&
-             CI_BASE_SHA="$(git rev-parse FETCH_HEAD)" &&
-             [[ "$CI_BASE_SHA" =~ ^[a-f0-9]{40}$ ]] &&
-             git merge-base --is-ancestor "$CI_BASE_SHA" "$GITHUB_SHA" &&
-             git cat-file -e "${CI_BASE_SHA}:scripts/ci/ci-impact.mjs"; then
-            # Never execute untrusted PR-authored policy, tests or dependencies.
-            git show "${CI_BASE_SHA}:scripts/ci/ci-impact.mjs" > "$RUNNER_TEMP/social-ci-impact-trusted.mjs"
-            CI_BASE_SHA="$CI_BASE_SHA" node "$RUNNER_TEMP/social-ci-impact-trusted.mjs"
-          else
-            echo "CI impact: trusted current base not part of reviewed merge; full qualification"
-            echo "tier=full" >> "$GITHUB_OUTPUT"
-          fi
   static_quality:
     name: Static architecture and quality
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
@@ -167,16 +122,49 @@ jobs:
     name: Security and public contracts
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 45
+    outputs:
+      tier: ${{ steps.select.outputs.tier }}
 
     steps:
       - name: Check out the review commit
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: 22
           cache: npm
+
+      - name: Select fail-closed scope from reviewed trusted base
+        id: select
+        shell: bash
+        env:
+          PR_BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" != pull_request ]]; then
+            echo "tier=full" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Changes to a stacked PR base may leave event base.sha stale.
+          # Only use current base if it is part of the exact reviewed merge.
+          if [[ "$PR_BASE_REF" =~ ^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,199}$ ]] &&
+             [[ "$PR_BASE_REF" != *..* && "$PR_BASE_REF" != *//* ]] &&
+             git fetch --no-tags origin "refs/heads/$PR_BASE_REF" &&
+             CI_BASE_SHA="$(git rev-parse FETCH_HEAD)" &&
+             [[ "$CI_BASE_SHA" =~ ^[a-f0-9]{40}$ ]] &&
+             git merge-base --is-ancestor "$CI_BASE_SHA" "$GITHUB_SHA" &&
+             git cat-file -e "${CI_BASE_SHA}:scripts/ci/ci-impact.mjs"; then
+            # Never execute untrusted PR-authored policy, tests or dependencies.
+            git show "${CI_BASE_SHA}:scripts/ci/ci-impact.mjs" > "$RUNNER_TEMP/social-ci-impact-trusted.mjs"
+            CI_BASE_SHA="$CI_BASE_SHA" node "$RUNNER_TEMP/social-ci-impact-trusted.mjs"
+          else
+            echo "CI impact: trusted current base not part of reviewed merge; full qualification"
+            echo "tier=full" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Install exact dependencies
         run: npm ci
@@ -205,7 +193,7 @@ jobs:
 
   backend_unit_shards:
     name: Backend unit shard ${{ matrix.shard }}/6
-    needs: impact
+    needs: security_contracts
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 60
@@ -216,39 +204,39 @@ jobs:
 
     steps:
       - name: Record protected check as scope-exempt (no backend tests executed)
-        if: needs.impact.outputs.tier != 'full'
+        if: needs.security_contracts.outputs.tier != 'full'
         shell: bash
         run: |
           set -euo pipefail
-          case "${{ needs.impact.outputs.tier }}" in
+          case "${{ needs.security_contracts.outputs.tier }}" in
             docs|frontend) echo 'Backend shard intentionally not executed for narrowly classified PR' >> "$GITHUB_STEP_SUMMARY" ;;
             *) echo '::error::unknown scope'; exit 1 ;;
           esac
 
       - name: Check out the review commit
-        if: needs.impact.outputs.tier == 'full'
+        if: needs.security_contracts.outputs.tier == 'full'
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Set up Node.js
-        if: needs.impact.outputs.tier == 'full'
+        if: needs.security_contracts.outputs.tier == 'full'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: 22
           cache: npm
 
       - name: Install exact dependencies
-        if: needs.impact.outputs.tier == 'full'
+        if: needs.security_contracts.outputs.tier == 'full'
         run: npm ci --prefer-offline --no-audit
 
       - name: Generate the pinned Prisma client
-        if: needs.impact.outputs.tier == 'full'
+        if: needs.security_contracts.outputs.tier == 'full'
         run: npm run prisma:generate
 
       - name: Supply genuine native PostgreSQL 18 executables
-        if: needs.impact.outputs.tier == 'full'
+        if: needs.security_contracts.outputs.tier == 'full'
         env:
           CI_NATIVE_RUNNER: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
           CI_NATIVE_ENVIRONMENT: ${{ runner.environment }}
@@ -296,7 +284,7 @@ jobs:
           done
 
       - name: List the complete unit inventory before sharding
-        if: needs.impact.outputs.tier == 'full'
+        if: needs.security_contracts.outputs.tier == 'full'
         run: |
           set -euo pipefail
           mkdir -p reports
@@ -304,7 +292,7 @@ jobs:
           node scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=2048 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --testPathIgnorePatterns="$unit_ignore" --listTests --json > reports/inventory.json
 
       - name: Run backend unit tests once with coverage
-        if: needs.impact.outputs.tier == 'full'
+        if: needs.security_contracts.outputs.tier == 'full'
         run: |
           set -euo pipefail
           unit_ignore="$(node scripts/ci/verify-jest-shard-completeness.mjs --ignore-pattern ops/ci/jest-inventory-exclusions.txt)"
@@ -316,7 +304,7 @@ jobs:
           node scripts/run-with-timeout.mjs --timeout-ms 2700000 --node-options --max-old-space-size=4096 -- ./node_modules/.bin/jest --config jest.config.ts "${unit_workers[@]}" --shard=${{ matrix.shard }}/6 --testPathIgnorePatterns="$unit_ignore" --coverage --coverageDirectory=coverage --coverageReporters=lcovonly --json --outputFile=reports/execution.json
 
       - name: Upload unit execution and inventory data
-        if: needs.impact.outputs.tier == 'full'
+        if: needs.security_contracts.outputs.tier == 'full'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: backend-unit-report-${{ matrix.shard }}
@@ -325,7 +313,7 @@ jobs:
           retention-days: 1
 
       - name: Upload coverage data
-        if: needs.impact.outputs.tier == 'full'
+        if: needs.security_contracts.outputs.tier == 'full'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: backend-unit-coverage-${{ matrix.shard }}
@@ -335,8 +323,8 @@ jobs:
 
   backend_build_contracts:
     name: Backend build and sandbox contracts
-    needs: impact
-    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (github.event_name != 'pull_request' || needs.impact.outputs.tier == 'full')
+    needs: security_contracts
+    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (github.event_name != 'pull_request' || needs.security_contracts.outputs.tier == 'full')
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 45
 
@@ -381,7 +369,7 @@ jobs:
 
   backend_unit:
     name: Backend build and unit tests
-    needs: [impact, static_quality, security_contracts, frontend, backend_unit_shards, backend_build_contracts, backend_e2e, postgres_rls, reader_promotion_v2_canary_postgres18, feed_promotion_snapshot_postgres18, reader_summary_weekly_review_manifest_postgres18, reader_value_v3_postgres18, production_candidate, production_lifecycle, production_runtime]
+    needs: [static_quality, security_contracts, frontend, backend_unit_shards, backend_build_contracts, backend_e2e, postgres_rls, reader_promotion_v2_canary_postgres18, feed_promotion_snapshot_postgres18, reader_summary_weekly_review_manifest_postgres18, reader_value_v3_postgres18, production_candidate, production_lifecycle, production_runtime]
     if: always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 10
@@ -389,8 +377,8 @@ jobs:
     steps:
       - name: Enforce exact scope and all existing protected CI lanes
         env:
-          IMPACT_RESULT: ${{ needs.impact.result }}
-          IMPACT_TIER: ${{ needs.impact.outputs.tier }}
+          IMPACT_RESULT: ${{ needs.security_contracts.result }}
+          IMPACT_TIER: ${{ needs.security_contracts.outputs.tier }}
           STATIC_RESULT: ${{ needs.static_quality.result }}
           SECURITY_RESULT: ${{ needs.security_contracts.result }}
           FRONTEND_RESULT: ${{ needs.frontend.result }}
@@ -441,27 +429,27 @@ jobs:
           assert_result production_runtime "$PRODUCTION_RUNTIME_RESULT" success
 
       - name: Require every backend prerequisite to succeed
-        if: needs.impact.outputs.tier == 'full'
+        if: needs.security_contracts.outputs.tier == 'full'
         run: |
           set -euo pipefail
           test "${{ needs.backend_unit_shards.result }}" = "success"
           test "${{ needs.backend_build_contracts.result }}" = "success"
 
       - name: Check out the exact tested commit
-        if: needs.impact.outputs.tier == 'full'
+        if: needs.security_contracts.outputs.tier == 'full'
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Set up clean Node.js without dependencies
-        if: needs.impact.outputs.tier == 'full'
+        if: needs.security_contracts.outputs.tier == 'full'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: 22
 
       - name: Download all unit report artifacts without merging
-        if: needs.impact.outputs.tier == 'full'
+        if: needs.security_contracts.outputs.tier == 'full'
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           pattern: backend-unit-report-*
@@ -469,12 +457,12 @@ jobs:
           merge-multiple: false
 
       - name: Prove complete and unique unit suite execution
-        if: needs.impact.outputs.tier == 'full'
+        if: needs.security_contracts.outputs.tier == 'full'
         run: node scripts/ci/verify-jest-shard-completeness.mjs --reports unit-reports --root . --exclusions ops/ci/jest-inventory-exclusions.txt --shards 6
   backend_e2e:
     name: Backend end-to-end tests
-    needs: impact
-    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (github.event_name != 'pull_request' || needs.impact.outputs.tier == 'full')
+    needs: security_contracts
+    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (github.event_name != 'pull_request' || needs.security_contracts.outputs.tier == 'full')
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 45
     services:
@@ -526,8 +514,8 @@ jobs:
 
   postgres_rls:
     name: PostgreSQL tenant isolation
-    needs: impact
-    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (github.event_name != 'pull_request' || needs.impact.outputs.tier == 'full')
+    needs: security_contracts
+    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (github.event_name != 'pull_request' || needs.security_contracts.outputs.tier == 'full')
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 30
     services:
@@ -620,8 +608,8 @@ jobs:
 
   reader_promotion_v2_canary_postgres18:
     name: Reader Promotion V2 canary PostgreSQL 18
-    needs: impact
-    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (github.event_name != 'pull_request' || needs.impact.outputs.tier == 'full')
+    needs: security_contracts
+    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (github.event_name != 'pull_request' || needs.security_contracts.outputs.tier == 'full')
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 10
     steps:
@@ -633,8 +621,8 @@ jobs:
 
   feed_promotion_snapshot_postgres18:
     name: Feed promotion snapshot and native plans PostgreSQL 18
-    needs: impact
-    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (github.event_name != 'pull_request' || needs.impact.outputs.tier == 'full')
+    needs: security_contracts
+    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (github.event_name != 'pull_request' || needs.security_contracts.outputs.tier == 'full')
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 30
     services:
@@ -678,8 +666,8 @@ jobs:
 
   reader_summary_weekly_review_manifest_postgres18:
     name: Reader-summary weekly review manifest PostgreSQL 18
-    needs: impact
-    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (github.event_name != 'pull_request' || needs.impact.outputs.tier == 'full')
+    needs: security_contracts
+    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (github.event_name != 'pull_request' || needs.security_contracts.outputs.tier == 'full')
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 30
     services:
@@ -724,8 +712,8 @@ jobs:
 
   reader_value_v3_postgres18:
     name: Reader Value V3 PostgreSQL 18 contracts
-    needs: impact
-    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (github.event_name != 'pull_request' || needs.impact.outputs.tier == 'full')
+    needs: security_contracts
+    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (github.event_name != 'pull_request' || needs.security_contracts.outputs.tier == 'full')
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 45
     services:
@@ -874,8 +862,8 @@ jobs:
 
   frontend:
     name: Flutter architecture and tests
-    needs: impact
-    if: github.event_name != 'pull_request' || needs.impact.outputs.tier != 'docs'
+    needs: security_contracts
+    if: github.event_name != 'pull_request' || needs.security_contracts.outputs.tier != 'docs'
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
     timeout-minutes: 45
 
