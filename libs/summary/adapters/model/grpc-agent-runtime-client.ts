@@ -1,14 +1,10 @@
-import {
-  agentRuntimeWireSchemaVersion,
-  fromGrpcHealthStatus,
-  fromGrpcTaskResponse,
-  toGrpcProvider,
-} from "./grpc-agent-runtime-wire-codec";
+import { fromGrpcHealthStatus } from "./grpc-agent-runtime-wire-codec";
+import { invokeGrpcAgentRuntimeTask } from "./grpc-agent-runtime-task-invocation";
+export { agentRuntimeTaskDeadlineTimeoutMs } from "./grpc-agent-runtime-task-invocation";
 
 import {
   credentials,
   type ChannelCredentials,
-  type ClientUnaryCall,
 } from "@grpc/grpc-js";
 import { isAbsolute, normalize } from "node:path";
 import {
@@ -44,12 +40,6 @@ export const validateAgentRuntimeDefaultCwd = (value: string): string => {
   return value;
 };
 
-const taskTransportGraceMs = 5_000;
-
-export const agentRuntimeTaskDeadlineTimeoutMs = (
-  taskTimeoutMs: number,
-): number => taskTimeoutMs + taskTransportGraceMs;
-
 export class GrpcAgentRuntimeClient implements AgentRuntimeClientPort {
   static connect(params: {
     readonly address: string;
@@ -84,69 +74,13 @@ export class GrpcAgentRuntimeClient implements AgentRuntimeClientPort {
     command: AgentRuntimeTaskCommand,
     options?: { readonly signal?: AbortSignal },
   ): Promise<AgentRuntimeTaskResult> {
-    if (options?.signal?.aborted === true) {
-      throw new Error("Agent runtime gRPC task was cancelled");
-    }
-    const metadata = createGrpcRequestMetadata({
-      correlationId: command.correlationId,
+    return invokeGrpcAgentRuntimeTask({
+      client: this.client,
+      clock: this.clock,
+      command,
+      defaultCwd: this.options.defaultCwd,
       serviceToken: this.options.serviceToken,
-    });
-    const deadline = createGrpcDeadline(
-      this.clock,
-      agentRuntimeTaskDeadlineTimeoutMs(command.timeoutMs),
-    );
-
-    return new Promise((resolve, reject) => {
-      const callState: { value?: ClientUnaryCall } = {};
-      let settled = false;
-      const finish = (complete: () => void): void => {
-        if (settled) return;
-        settled = true;
-        if (options?.signal !== undefined) {
-          options.signal.removeEventListener("abort", abort);
-        }
-        complete();
-      };
-      const abort = (): void => {
-        callState.value?.cancel();
-        finish(() => reject(new Error("Agent runtime gRPC task was cancelled")));
-      };
-      options?.signal?.addEventListener("abort", abort, { once: true });
-      callState.value = this.client.runAgentTask(
-        {
-          schemaVersion: agentRuntimeWireSchemaVersion,
-          requestId: command.requestId,
-          tenantId: String(command.tenantId),
-          workspaceId: String(command.workspaceId),
-          correlationId: command.correlationId,
-          provider: toGrpcProvider(command.provider),
-          providerInstanceId: command.providerInstanceId ?? "",
-          purpose: command.purpose,
-          systemPrompt: command.systemPrompt,
-          prompt: command.prompt,
-          outputSchemaJson: JSON.stringify(command.outputSchema),
-          controlsJson: JSON.stringify(command.controls),
-          timeoutMs: command.timeoutMs,
-          cwd: command.cwd ?? this.options.defaultCwd ?? "",
-          metadata: command.metadata ?? {},
-        },
-        metadata,
-        { deadline },
-        (error, response) => {
-          if (error !== null) {
-            finish(() => reject(error));
-            return;
-          }
-
-          try {
-            const result = fromGrpcTaskResponse(response, command);
-            finish(() => resolve(result));
-          } catch (parseError) {
-            finish(() => reject(parseError));
-          }
-        },
-      );
-      if (options?.signal?.aborted === true) abort();
+      signal: options?.signal,
     });
   }
 

@@ -106,6 +106,64 @@ describe("gRPC agent runtime client", () => {
     );
   });
 
+  it("cancels an abort that fires before the transport returns its call handle", async () => {
+    const controller = new AbortController();
+    let cancelCount = 0;
+    const transport = {
+      runAgentTask(): ClientUnaryCall {
+        controller.abort();
+        return { cancel: () => { cancelCount += 1; } } as ClientUnaryCall;
+      },
+    } as unknown as AgentRuntimeServiceClient;
+    const client = new GrpcAgentRuntimeClient(
+      transport, { now: () => new Date("2026-07-17T00:00:00.000Z") },
+      { timeoutMs: 1_000 },
+    );
+
+    await expect(client.runTask(command(), { signal: controller.signal }))
+      .rejects.toThrow(/cancelled/u);
+    expect(cancelCount).toBe(1);
+  });
+
+  it("removes abort subscription on a synchronous gRPC transport exception", async () => {
+    const controller = new AbortController();
+    const unsubscribe = jest.spyOn(controller.signal, "removeEventListener");
+    const transport = {
+      runAgentTask(): ClientUnaryCall {
+        throw new Error("transport dial failed");
+      },
+    } as unknown as AgentRuntimeServiceClient;
+    const client = new GrpcAgentRuntimeClient(
+      transport, { now: () => new Date("2026-07-17T00:00:00.000Z") },
+      { timeoutMs: 1_000 },
+    );
+
+    await expect(client.runTask(command(), { signal: controller.signal }))
+      .rejects.toThrow("transport dial failed");
+    expect(unsubscribe).toHaveBeenCalledWith("abort", expect.any(Function));
+  });
+
+  it("does not cancel a completed synchronous unary response after a later abort", async () => {
+    const controller = new AbortController();
+    let cancelCount = 0;
+    const transport = {
+      runAgentTask(_request: unknown, _metadata: unknown, _options: unknown,
+        callback: (error: ServiceError | null, result: AgentRuntimeTaskResponse) => void): ClientUnaryCall {
+        callback(null, response());
+        return { cancel: () => { cancelCount += 1; } } as ClientUnaryCall;
+      },
+    } as unknown as AgentRuntimeServiceClient;
+    const client = new GrpcAgentRuntimeClient(
+      transport, { now: () => new Date("2026-07-17T00:00:00.000Z") },
+      { timeoutMs: 1_000 },
+    );
+
+    await expect(client.runTask(command(), { signal: controller.signal }))
+      .resolves.toMatchObject({ durationMs: 25 });
+    controller.abort();
+    expect(cancelCount).toBe(0);
+  });
+
   it("cancels the underlying unary call when the caller aborts", async () => {
     const controller = new AbortController();
     let cancelled = false;
