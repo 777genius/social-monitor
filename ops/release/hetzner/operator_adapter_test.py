@@ -450,6 +450,40 @@ class GitHubTests(unittest.TestCase):
             self.assertFalse(github.scope([path])['api_only'])
         self.assertTrue(github.scope(['docs/worker-api-guide.md'])['api_only'])
 
+    def test_worker_readme_is_documentation_only_for_regular_unchanged_mode(self):
+        import evidence
+        path = evidence.WORKER_README
+        def fixture_with_readme(old_mode='100644', new_mode='100644'):
+            def modify(endpoint, value):
+                if endpoint.startswith('git/trees/'):
+                    old = '4' * 40 in endpoint
+                    mode = old_mode if old else new_mode
+                    if mode is not None:
+                        value['tree'].append({'path': path, 'type': 'blob', 'mode': mode,
+                                              'sha': ('6' if old else '7') * 40})
+            return github.GitHub(FixtureConfig(), self.fixture(modify))
+
+        paths, delta = fixture_with_readme().delta(BASE, BINDING['sha'])
+        self.assertIn(path, paths)
+        self.assertTrue(github.scope(paths)['api_only'])
+        proof = {'base': BASE, 'head': BINDING['sha'], 'delta_sha256': delta,
+                 'paths_sha256': digest(paths), 'evidence_sha256': 'sha256:' + 'a' * 64,
+                 'independent_review': True, 'all_shared_dependencies_reviewed': True,
+                 'compatible': True}
+        data = {'production_revision': BASE, 'diff_base': BASE, 'diff_head': BINDING['sha'],
+                'complete_delta': True, 'changed_paths': paths, 'delta_sha256': delta,
+                'compatibility': proof}
+        evidence.compatibility(data, BASE, BINDING['sha'])
+        for modes in (('120000', '100644'), ('100644', '120000'),
+                      ('100755', '100644'), ('100644', None), (None, '100644')):
+            with self.subTest(modes=modes), self.assertRaises(Denied):
+                fixture_with_readme(*modes).delta(BASE, BINDING['sha'])
+        for sensitive in ('apps/agent-runtime/src/main.ts', 'apps/agent-runtime/other/README.md',
+                          'prisma/schema.prisma'):
+            self.assertFalse(github.scope([path, sensitive])['api_only'])
+            with self.assertRaises(Denied):
+                evidence.compatibility({**data, 'changed_paths': paths + [sensitive]}, BASE, BINDING['sha'])
+
 
 if __name__ == '__main__':
     unittest.main()

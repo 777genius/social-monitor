@@ -188,6 +188,22 @@ function canonical(value) {
   if (object(value)) return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`;
   return JSON.stringify(value);
 }
+// Controller database proofs contain ASCII object keys and integral numbers;
+// match its json.dumps(..., sort_keys=True, separators=(',', ':')) bytes.
+function databaseDigest(value) {
+  function validate(entry) {
+    if (typeof entry === 'number') requireThat(Number.isSafeInteger(entry), 'database-number');
+    else if (Array.isArray(entry)) entry.forEach(validate);
+    else if (object(entry)) for (const [key, child] of Object.entries(entry)) {
+      requireThat([...key].every((character) => character.codePointAt(0) <= 0x7f), 'database-key');
+      validate(child);
+    }
+  }
+  validate(value);
+  const text = canonical(value).replace(/[\u007f-\uffff]/g,
+    (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`);
+  return 'sha256:' + createHash('sha256').update(text).digest('hex');
+}
 function decode(result) {
   requireThat(result && Number.isInteger(result.code) && result.stdout?.length <= 8 * 1024 * 1024,
     'transport-uncertain');
@@ -219,12 +235,15 @@ export function receipt(value, manifest, admission) {
   binding(value, manifest);
   requireThat(exact(value, ['schema', 'sha', 'ci_run_id', 'archive_sha256', 'image_id',
     'previous_image_id', 'previous_sha', 'image_graph', 'compatibility', 'scope',
-    'snapshot_before_hash', 'snapshot_after_hash', 'backup', 'migration_status', 'probes', 'outcome', 'timings'])
+    'snapshot_before_hash', 'snapshot_after_hash', 'backup', 'migration_status', 'probes', 'outcome', 'timings',
+    'admission_database', 'admission_database_hash', 'database', 'database_hash'])
     && value.schema === 'social-monitor-release-receipt-v1' && value.outcome === 'activated'
     && value.scope?.length === 1 && value.scope[0] === 'api' && value.migration_status === 'unchanged'
     && value.probes?.target === true && DIGEST.test(value.previous_image_id) && SHA.test(value.previous_sha)
     && DIGEST.test(value.snapshot_before_hash) && value.snapshot_after_hash === value.snapshot_before_hash
     && object(value.image_graph) && object(value.compatibility) && object(value.backup)
+    && object(value.admission_database) && object(value.database)
+    && DIGEST.test(value.admission_database_hash) && DIGEST.test(value.database_hash)
     && object(value.timings) && Number.isSafeInteger(value.timings.started_at)
     && Number.isSafeInteger(value.timings.finished_at)
     && value.timings.finished_at >= value.timings.started_at, 'terminal-receipt');
@@ -232,6 +251,10 @@ export function receipt(value, manifest, admission) {
     'snapshot_before_hash', 'migration_status']) {
     requireThat(canonical(value[key]) === canonical(admission[key]), 'receipt-admission');
   }
+  requireThat(canonical(value.admission_database) === canonical(admission.database)
+    && value.admission_database_hash === admission.database_hash
+    && databaseDigest(value.admission_database) === value.admission_database_hash
+    && databaseDigest(value.database) === value.database_hash, 'receipt-database');
   return value;
 }
 function sameFile(a, b) {

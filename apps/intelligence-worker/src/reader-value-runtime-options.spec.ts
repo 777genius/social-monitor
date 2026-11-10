@@ -58,6 +58,14 @@ describe('reader-value runtime options', () => {
       INTELLIGENCE_READER_SUMMARY_JOB_LOOP_WORKSPACE_ID: '33333333-3333-4333-8333-333333333333',
     })).toThrow(/cover every/u);
   });
+  it('keeps primary Jev scoring configured during an explicit summary pause', () => {
+    const primary = { ...configured, READER_VALUE_MODE: 'jev_primary_v3',
+      INTELLIGENCE_SUMMARY_QUEUE_READER: 'rabbitmq', INTELLIGENCE_READER_SUMMARY_JOB_LOOP: 'enabled' };
+    expect(resolveReaderValueRuntimeOptions({ ...primary, INTELLIGENCE_SUMMARY_EXECUTION_PAUSED: 'true' }))
+      .toEqual(resolveReaderValueRuntimeOptions(primary));
+    expect(() => resolveReaderValueRuntimeOptions({ ...primary, INTELLIGENCE_SUMMARY_EXECUTION_PAUSED: 'true',
+      INTELLIGENCE_READER_SUMMARY_JOB_LOOP: 'disabled' })).toThrow(/poller/u);
+  });
   it.each(['{}', '[null]', '[{"tenantId":"bad","workspaceId":"bad","interestId":"bad"}]',
     '[{"tenantId":"*"}]',
     '[{"tenantId":"11111111-1111-4111-8111-111111111111","workspaceId":"22222222-2222-4222-8222-222222222222"}]'])(

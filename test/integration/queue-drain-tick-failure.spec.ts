@@ -5,6 +5,7 @@ import { ScanQueueDrainLoop } from '../../apps/ingestion-worker/src/scan-queue-d
 import { DeliveryAttemptQueueDrainLoop } from '../../apps/delivery-service/src/delivery-attempt-queue-drain-loop';
 import { SummaryReadyEventDrainLoop } from '../../apps/delivery-service/src/summary-ready-event-drain-loop';
 import { SummaryJobQueueDrainLoop } from '../../apps/intelligence-worker/src/summary-job-queue-drain-loop';
+import { SummaryJobPollingLoop } from '../../apps/intelligence-worker/src/summary-job-polling-loop';
 import { ReaderSummaryJobQueueDrainLoop } from '../../apps/intelligence-worker/src/reader-summary-job-queue-drain-loop';
 
 type Loop = { onModuleInit(): Promise<void>; onModuleDestroy(): Promise<void> };
@@ -16,11 +17,12 @@ const cases = [
   { name: 'reader summary job', implementation: ReaderSummaryJobQueueDrainLoop },
 ];
 
-function fixture(implementation: typeof cases[number]['implementation'], scan = false, runOnStart = false) {
+function fixture(implementation: typeof cases[number]['implementation'], scan = false, runOnStart = false,
+  executionPaused = false) {
   const queue = { drain: jest.fn(async () => [] as unknown[]) };
   const handler = { handle: jest.fn(async () => undefined) };
   const retryQueue = { claimRetries: jest.fn(async () => []) };
-  const options = { enabled: true, runOnStart, intervalMs: 10, limit: 1 };
+  const options = { enabled: true, runOnStart, intervalMs: 10, limit: 1, executionPaused };
   const metrics = { recordGauge: jest.fn() };
   const clock = new FixedClock(new Date('2026-10-30T12:00:00Z'));
   const loop = Reflect.construct(implementation, scan
@@ -39,6 +41,37 @@ function delivery() {
     nack: jest.fn(async (options: { requeue: boolean }) => { void options; }),
   };
 }
+
+test.each([ReaderSummaryJobQueueDrainLoop, SummaryJobQueueDrainLoop])('paused summary execution leaves queue deliveries untouched', async (implementation) => {
+  jest.useFakeTimers();
+  try {
+    const f = fixture(implementation, false, true, true);
+    await f.loop.onModuleInit();
+    await jest.advanceTimersByTimeAsync(100);
+    expect(f.queue.drain).not.toHaveBeenCalled();
+    expect(f.handler.handle).not.toHaveBeenCalled();
+    await f.loop.onModuleDestroy();
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test('paused summary execution does not poll legacy jobs', async () => {
+  jest.useFakeTimers();
+  try {
+    const repository = { findRequested: jest.fn() };
+    const handler = { handle: jest.fn() };
+    const loop = Reflect.construct(SummaryJobPollingLoop, [handler, repository,
+      { enabled: true, executionPaused: true, runOnStart: true, intervalMs: 10, limit: 1 }]) as Loop;
+    await loop.onModuleInit();
+    await jest.advanceTimersByTimeAsync(100);
+    expect(repository.findRequested).not.toHaveBeenCalled();
+    expect(handler.handle).not.toHaveBeenCalled();
+    await loop.onModuleDestroy();
+  } finally {
+    jest.useRealTimers();
+  }
+});
 
 describe.each(cases)('$name queue tick failure boundary', ({ implementation, ...entry }) => {
   let errorLog: jest.SpyInstance;

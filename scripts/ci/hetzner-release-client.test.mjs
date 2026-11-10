@@ -13,6 +13,8 @@ import { ClientError, deliver, command, sshArgs, sshTransport, runnerConfig,
 
 const sha = 'a'.repeat(40), run = '123', image = 'sha256:' + 'b'.repeat(64);
 const previous = 'sha256:' + 'c'.repeat(64), snapshot = 'sha256:' + 'd'.repeat(64);
+const database = { synthetic: true };
+const databaseHash = 'sha256:' + createHash('sha256').update(JSON.stringify(database)).digest('hex');
 const bytes = Buffer.from([0, 255, 10, 13, 65, 0, 99]);
 const manifest = { sha, ci_run_id: run,
   image_id: image, archive_sha256: 'sha256:' + createHash('sha256').update(bytes).digest('hex'),
@@ -22,11 +24,12 @@ const manifest = { sha, ci_run_id: run,
 const admission = { ...manifest, previous_image_id: previous, previous_sha: 'e'.repeat(40),
   snapshot_before_hash: snapshot, migration_status: 'unchanged', image_graph: { kind: 'oci-manifest' },
   compatibility: { independent_review: true }, backup: { reference: 'synthetic-full' },
-  compose_hash: snapshot, database_hash: snapshot, snapshot_before: { synthetic: true } };
+  compose_hash: snapshot, database, database_hash: databaseHash, snapshot_before: { synthetic: true } };
 const terminal = { sha, ci_run_id: run, image_id: image, archive_sha256: manifest.archive_sha256,
   previous_image_id: previous, previous_sha: 'e'.repeat(40), snapshot_before_hash: snapshot,
   migration_status: 'unchanged', image_graph: admission.image_graph, compatibility: admission.compatibility,
   backup: admission.backup, schema: 'social-monitor-release-receipt-v1', outcome: 'activated',
+  admission_database: database, admission_database_hash: databaseHash, database, database_hash: databaseHash,
   scope: ['api'], snapshot_after_hash: snapshot, probes: { target: true },
   timings: { started_at: 1, finished_at: 2, started_at_ns: 1000 } };
 const config = { host: 'synthetic.invalid', port: 2222, user: 'sm-release',
@@ -156,8 +159,20 @@ test('terminal receipts must prove every binding, admission, target and state', 
     { archive_sha256: previous }, { outcome: 'rolled-back' }, { probes: { target: false } },
     { scope: ['api', 'worker'] }, { snapshot_after_hash: previous }, { image_graph: {} },
     { compatibility: {} }, { migration_status: 'changed' }, { previous_sha: sha },
+    { admission_database: { synthetic: false } }, { admission_database_hash: snapshot },
+    { database: { synthetic: false } }, { database_hash: snapshot },
     { timings: { started_at: 2, finished_at: 1 } }])
     assert.throws(() => receipt({ ...terminal, ...mutation }, manifest, admission));
+});
+
+test('receipt database digest uses the controller canonical UTF-8 JSON bytes', () => {
+  const observed = { x: 'é😀' };
+  const hash = 'sha256:d551d85b5fdc1cf5d5acb57c11e2fd83efa25022bae4e58bc74a593b84b131e7';
+  const admitted = { ...admission, database: observed, database_hash: hash };
+  const value = { ...terminal, admission_database: observed, admission_database_hash: hash,
+    database: observed, database_hash: hash };
+  assert.equal(receipt(value, manifest, admitted), value);
+  assert.throws(() => receipt({ ...value, database: { x: 1.5 } }, manifest, admitted));
 });
 
 test('lost activation reconciles exact receipt without a second destructive write', async () => fixture(async options => {

@@ -1,5 +1,26 @@
 # Reader summary model usage
 
+The summary runner takes its non-secret model selection from
+`ops/deploy/production-runtime/reader-summary-model.env`. Load this file after
+the runner's general environment so it overrides the transport and model there.
+`AGENT_RUNTIME_GATEWAY_LLM_MODEL` is the single model setting: the Codex gateway
+route derives the allowed effort for it (currently `gpt-6.1-terra` / `medium`).
+Remove old `AGENT_RUNTIME_READER_SUMMARY_MODEL`,
+`AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT`, and
+`AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT` overrides from the runner's general
+environment. Keep gateway origins, policy and account references in the
+environment-specific configuration, and mount its control token and CA as
+separate protected files. Loading this model file alone does not connect the
+runner to the gateway or deploy a new image.
+
+For a controlled worker update without running summary jobs, set
+`INTELLIGENCE_SUMMARY_EXECUTION_PAUSED=true` on the intelligence worker.
+Its summary pollers and queue drains do not claim work while paused; queued
+messages and requested jobs remain available. The periodic scheduler can still
+create requests, and other services or manual summary commands are not paused.
+Set the value to `false` and restart the worker when summary execution may
+resume. This setting does not pause collection or Jev scoring.
+
 When the durable reader summary capture has `DURABLE_READER_SUMMARY_EVIDENCE_PATH`,
 the agent-runtime client appends one metadata-only JSON line per task attempt to
 `<evidence path>.usage.jsonl`. Production's summary runner writes evidence under

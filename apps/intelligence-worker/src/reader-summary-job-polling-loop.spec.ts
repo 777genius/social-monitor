@@ -19,6 +19,15 @@ describe("ReaderSummaryJobPollingLoop completion counters", () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
 
+  it("does not query or execute queued jobs while execution is paused", async () => {
+    const scenario = buildScenario("requested", true);
+    await scenario.loop.onModuleInit();
+    await jest.advanceTimersByTimeAsync(2_000);
+    expect(scenario.repository.findDueForPolling).not.toHaveBeenCalled();
+    expect(scenario.handler.handle).not.toHaveBeenCalled();
+    await scenario.loop.onModuleDestroy();
+  });
+
   it("dispatches due recovery candidates with the six-hour stale boundary", async () => {
     const scenario = buildScenario("failed");
 
@@ -163,7 +172,7 @@ describe("ReaderSummaryJobPollingLoop completion counters", () => {
   });
 });
 
-const buildScenario = (status: "requested" | "running" | "completed" | "failed") => {
+const buildScenario = (status: "requested" | "running" | "completed" | "failed", executionPaused = false) => {
   const handler = {
     handle: jest.fn().mockResolvedValue({
       readerSummaryJobId: "reader-summary-job-1",
@@ -189,7 +198,7 @@ const buildScenario = (status: "requested" | "running" | "completed" | "failed")
   const loop = new ReaderSummaryJobPollingLoop(
     handler as unknown as ExecuteReaderSummaryJobCommandHandler,
     repository as unknown as ReaderSummaryJobPollingRepositoryPort,
-    { enabled: true, intervalMs: 1_000, limit: 1, runOnStart: true },
+    { enabled: true, intervalMs: 1_000, limit: 1, runOnStart: true, executionPaused },
     undefined,
     new FixedClock(new Date("2026-09-22T00:00:00.000Z")),
   );
