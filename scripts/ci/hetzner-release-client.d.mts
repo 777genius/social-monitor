@@ -10,7 +10,7 @@ export interface RunnerConfig {
   readonly host: string; readonly port: number; readonly user: 'sm-release';
   readonly private_key: string; readonly known_hosts: string;
 }
-export interface TransportResult { code: number; stdout: Buffer }
+export interface TransportResult { code: number; stdout: Buffer; diagnostic?: 'host-key' | 'publickey' | 'private-key' | 'timeout' | 'network' | 'unknown' }
 export type Source = () => Readable | AsyncIterable<Uint8Array>;
 export type Transport = (wire: string, source?: Source) => Promise<TransportResult>;
 export class ClientError extends Error { readonly code: string; constructor(code: string) }

@@ -203,13 +203,20 @@ async function readonlyCall(transport: Transport, verb: 'status' | 'preflight'):
     try {
       const result = await transport(command(verb));
       A.requireValue(Number.isInteger(result.code) && Buffer.isBuffer(result.stdout), 'transport-result');
-      if (result.code === 255) throw new ClientError('transport-uncertain');
+      if (result.code === 255) {
+        if (attempt === 2 && result.diagnostic) throw new ClientError(`ssh-${result.diagnostic}`);
+        throw new ClientError('transport-uncertain');
+      }
       A.requireValue(result.code === 0, 'host-denied'); return A.parseJson(result.stdout, 65536);
     } catch (error) {
       if (!(error instanceof ClientError && error.code === 'transport-uncertain' && attempt < 2)) throw error;
     }
   }
   throw new A.AuthorityError('readonly-exhausted');
+}
+export function safePreflightDiagnostic(action: string | undefined, error: unknown): string | undefined {
+  const allowed = new Set(['ssh-host-key', 'ssh-publickey', 'ssh-private-key', 'ssh-timeout', 'ssh-network', 'ssh-unknown']);
+  return action === 'preflight' && error instanceof ClientError && allowed.has(error.code) ? error.code : undefined;
 }
 export async function observeReadonly(transport: Transport): Promise<Observation> {
   const status = A.exact(await readonlyCall(transport, 'status'), ['latch', 'environment']);
@@ -352,9 +359,10 @@ export async function main(args: readonly string[], env: NodeJS.ProcessEnv): Pro
     A.requireValue(['completed', 'stale-main-skipped'].includes(result.phase), 'terminal-phase');
     await append(join(publicDirectory, 'receipt.jsonl'), { phase: result.phase, lane: action, ...binding });
     await summary(result.phase, 'activate'); await outputs({ phase: result.phase, lane: 'activate' });
-  } catch {
+  } catch (error) {
     if (publicDirectory) {
-      await append(join(publicDirectory, 'receipt.jsonl'), { phase: 'failed', lane: action });
+      const diagnostic = safePreflightDiagnostic(action, error);
+      await append(join(publicDirectory, 'receipt.jsonl'), { phase: 'failed', lane: action, ...(diagnostic ? { diagnostic } : {}) });
       await summary('failed; operator reconciliation required', action ?? 'unknown');
     }
     throw new A.AuthorityError('release-phase-failed');
