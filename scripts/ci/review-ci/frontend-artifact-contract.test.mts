@@ -30,7 +30,7 @@ test('frontend artifacts follow both builds and retain exact main CI provenance'
   assert.equal(upload.with!.name, 'frontend-candidate-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}');
   assert.equal(upload.with!['if-no-files-found'], 'error');
   assert.deepEqual((upload.with!.path as string).trim().split('\n'), [
-    '${{ runner.temp }}/frontend-release.tgz', '${{ runner.temp }}/frontend-manifest.json',
+    '${{ runner.temp }}/frontend-candidate/frontend-release.tgz', '${{ runner.temp }}/frontend-candidate/frontend-manifest.json',
   ]);
   assert.equal(prepare.if, undefined);
   assert.equal(prepare['continue-on-error'], undefined);
@@ -40,7 +40,8 @@ test('frontend artifacts follow both builds and retain exact main CI provenance'
 });
 
 function fixture(options: { publicAdminOrigin?: boolean; bothOrigins?: boolean; nipOrigin?: boolean;
-  staleAdmin?: boolean; invalidRun?: boolean; symlink?: boolean } = {}) {
+  staleAdmin?: boolean; invalidRun?: boolean; symlink?: boolean; markerSymlink?: boolean;
+  failingFind?: boolean; outputSymlink?: boolean } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'TEST-sm-frontend-artifact-'));
   const sha = 'a'.repeat(40), bin = join(root, 'bin'), runner = join(root, 'runner');
   mkdirSync(bin); mkdirSync(runner); mkdirSync(join(root, 'build/web'), { recursive: true });
@@ -56,6 +57,16 @@ function fixture(options: { publicAdminOrigin?: boolean; bothOrigins?: boolean; 
     'https://social-monitor.app https://admin.social-monitor.app');
   if (options.nipOrigin) writeFileSync(join(root, 'build/web/index.html'), `flutter_bootstrap.js?v=${sha} example.nip.io`);
   if (options.symlink) symlinkSync('main.dart.js', join(root, 'build/web/alias.js'));
+  if (options.markerSymlink) {
+    writeFileSync(join(root, 'victim'), 'unchanged');
+    symlinkSync(join(root, 'victim'), join(root, 'build/web/release-sha.txt'));
+  }
+  if (options.failingFind) writeFileSync(join(bin, 'find'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+  if (options.outputSymlink) {
+    mkdirSync(join(root, 'outside'));
+    writeFileSync(join(root, 'outside/frontend-release.tgz'), 'unchanged');
+    symlinkSync(join(root, 'outside'), join(runner, 'frontend-candidate'));
+  }
   writeFileSync(join(bin, 'git'), `#!/bin/sh\nprintf '%s\\n' '${sha}'\n`, { mode: 0o755 });
   writeFileSync(join(bin, 'flutter'), `#!/bin/sh
 set -eu
@@ -67,7 +78,7 @@ printf '%s' "const configuredRelease = '${options.staleAdmin ? 'b'.repeat(40) : 
     env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, RUNNER_TEMP: runner,
       GITHUB_WORKSPACE: fileURLToPath(new URL('../../../', import.meta.url)),
       GITHUB_SHA: sha, GITHUB_RUN_ID: options.invalidRun ? 'invalid' : '123', GITHUB_RUN_ATTEMPT: '2' } });
-  return { root, runner, sha, result };
+  return { root, runner: join(runner, 'frontend-candidate'), sha, result };
 }
 
 test('packages existing public and one new admin build with bound archive and lane identities', () => {
@@ -105,7 +116,7 @@ test('packages existing public and one new admin build with bound archive and la
       assert.equal(js.status, 0);
       assert.equal(js.stdout, lane === 'public' ? 'https://social-monitor.app' : 'https://admin.social-monitor.app');
     }
-    const calls = readFileSync(join(f.runner, 'build-invocations'), 'utf8').trim().split('\n');
+    const calls = readFileSync(join(f.root, 'runner/build-invocations'), 'utf8').trim().split('\n');
     assert.equal(calls.length, 1, 'public must not be rebuilt');
     assert.ok(calls[0]!.includes('--dart-define=SOCIAL_MONITOR_API_BASE_URL=https://admin.social-monitor.app'));
   } finally { rmSync(f.root, { recursive: true, force: true }); }
@@ -118,8 +129,15 @@ for (const [name, options] of [
   ['admin build has a stale release identity', { staleAdmin: true }],
   ['CI run identity is invalid', { invalidRun: true }],
   ['bundle contains a symlink', { symlink: true }],
+  ['bundle marker is a symlink', { markerSymlink: true }],
+  ['filesystem inspection fails', { failingFind: true }],
+  ['artifact output directory is a symlink', { outputSymlink: true }],
 ] as const) test(`rejects ${name}`, () => {
   const f = fixture(options);
-  try { assert.notEqual(f.result.status, 0); }
+  try {
+    assert.notEqual(f.result.status, 0);
+    if ('markerSymlink' in options) assert.equal(readFileSync(join(f.root, 'victim'), 'utf8'), 'unchanged');
+    if ('outputSymlink' in options) assert.equal(readFileSync(join(f.root, 'outside/frontend-release.tgz'), 'utf8'), 'unchanged');
+  }
   finally { rmSync(f.root, { recursive: true, force: true }); }
 });

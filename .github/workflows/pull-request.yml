@@ -812,13 +812,18 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           release="$RUNNER_TEMP/frontend-release"
-          test ! -e "$release"
-          mkdir -p "$release/public" "$release/admin"
+          artifact="$RUNNER_TEMP/frontend-candidate"
+          mkdir -m 700 "$release" "$artifact"
+          mkdir "$release/public" "$release/admin"
           cp -R build/web/. "$release/public/"
+          invalid=$(find "$release/public" ! -type f ! -type d -print -quit)
+          test -z "$invalid"
           flutter build web --release --wasm --no-web-resources-cdn \
             --dart-define=SOCIAL_MONITOR_API_BASE_URL=https://admin.social-monitor.app \
             --web-define=SOCIAL_MONITOR_RELEASE_ID="$GITHUB_SHA"
           cp -R build/web/. "$release/admin/"
+          invalid=$(find "$release/admin" ! -type f ! -type d -print -quit)
+          test -z "$invalid"
           for lane in public admin; do
             printf '%s\n' "$GITHUB_SHA" > "$release/$lane/release-sha.txt"
             grep -F "flutter_bootstrap.js?v=$GITHUB_SHA" "$release/$lane/index.html" >/dev/null
@@ -834,21 +839,20 @@ jobs:
             status=$?; test "$status" -eq 1
           fi
           grep -F 'https://admin.social-monitor.app' "$release/admin/main.dart.js" >/dev/null
-          if grep -R -E 'nip\.io' "$release" >/dev/null; then
+          if grep -r -E 'nip\.io' "$release" >/dev/null; then
             echo 'frontend bundle contains nip.io origin' >&2; exit 1
           else
             status=$?; test "$status" -eq 1
           fi
-          test -z "$(find "$release" ! -type f ! -type d -print -quit)"
-          tar --format=ustar -C "$release" -czf "$RUNNER_TEMP/frontend-release.tgz" public admin
-          node --experimental-strip-types "$GITHUB_WORKSPACE/scripts/ci/frontend-artifact-manifest.mts"
+          tar --format=ustar -C "$release" -czf "$artifact/frontend-release.tgz" public admin
+          FRONTEND_ARTIFACT_DIR="$artifact" node --experimental-strip-types "$GITHUB_WORKSPACE/scripts/ci/frontend-artifact-manifest.mts"
       - name: Store qualified public and admin frontend artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: frontend-candidate-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            ${{ runner.temp }}/frontend-release.tgz
-            ${{ runner.temp }}/frontend-manifest.json
+            ${{ runner.temp }}/frontend-candidate/frontend-release.tgz
+            ${{ runner.temp }}/frontend-candidate/frontend-manifest.json
           if-no-files-found: error
           retention-days: 7

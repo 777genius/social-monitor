@@ -21,7 +21,7 @@ interface FrontendArtifactManifest {
 const sha = process.env.GITHUB_SHA;
 const run = process.env.GITHUB_RUN_ID;
 const attempt = process.env.GITHUB_RUN_ATTEMPT;
-const root = process.env.RUNNER_TEMP;
+const root = process.env.FRONTEND_ARTIFACT_DIR;
 if (!sha || !/^[a-f0-9]{40}$/.test(sha) || !run || !/^[1-9][0-9]*$/.test(run) ||
     !attempt || !/^[1-9][0-9]*$/.test(attempt) || !root) {
   throw new Error('Invalid frontend release identity');
