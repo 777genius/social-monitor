@@ -182,7 +182,7 @@ def configuration(components, operator):
             and 'api' not in c['required_non_targets'] and all(isinstance(v, str)
             and re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}', v)
             for v in c['required_non_targets'].values()), 'non-targets')
-    require(isinstance(c['fenced_units'], list) and c['fenced_units'] and all(isinstance(v, str)
+    require(isinstance(c['fenced_units'], list) and all(isinstance(v, str)
             and re.fullmatch(r'[a-zA-Z0-9@_.-]+\.(timer|service)', v)
             for v in c['fenced_units']), 'fenced-units')
     require(isinstance(c['migration_root'], str) and re.fullmatch(r'/[a-zA-Z0-9_./-]+', c['migration_root'])
