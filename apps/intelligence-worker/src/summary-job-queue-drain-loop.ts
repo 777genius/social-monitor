@@ -33,6 +33,10 @@ export class SummaryJobQueueDrainLoop implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    if (this.options.executionPaused) {
+      this.logger.info("summary queue execution paused", { worker: "intelligence-worker" });
+      return;
+    }
     if (!this.options.enabled) {
       this.logger.info('summary queue drain loop disabled', { worker: 'intelligence-worker' });
       return;
