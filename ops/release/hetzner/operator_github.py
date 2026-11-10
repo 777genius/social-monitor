@@ -27,13 +27,11 @@ class GitHub:
 
     def get(self, suffix):
         self.config.recheck()
-        token = private_bytes(TOKEN, secret=True).strip().decode('ascii')
         result = decode(self.runner.run([
-            EXECUTABLES['gh'], 'api', '--hostname', 'github.com', '--method', 'GET',
-            '-H', 'Accept: application/vnd.github+json', '-H', 'X-GitHub-Api-Version: 2022-11-28',
-            'repos/' + REPO + '/' + suffix], env={
-                'GH_TOKEN': token, 'GH_CONFIG_DIR': GH_DIR, 'GH_PROMPT_DISABLED': '1',
-                'GH_NO_UPDATE_NOTIFIER': '1', 'GH_NO_EXTENSION_UPDATE_NOTIFIER': '1'}, limit=16 * 1024**2))
+            EXECUTABLES['curl'], '--disable', '--fail', '--silent', '--location', '--proto', '=https',
+            '--max-redirs', '0', '--header', 'Accept: application/vnd.github+json',
+            '--header', 'X-GitHub-Api-Version: 2022-11-28', '--user-agent', 'social-monitor-release',
+            'https://api.github.com/repos/' + REPO + '/' + suffix], env={}, limit=16 * 1024**2))
         self.config.recheck()
         return result
 

@@ -16,7 +16,7 @@ TOKEN = '/etc/social-monitor/release/github-readonly.token'
 GH_DIR = '/etc/social-monitor/release/github-empty'
 INCLUDE_DIR = '/etc/social-monitor/release/pgbackrest-empty'
 SYSTEM_ID = '7688442011877063482'
-EXECUTABLES = {'gh': '/usr/bin/gh', 'docker': '/usr/bin/docker',
+EXECUTABLES = {'curl': '/usr/bin/curl', 'docker': '/usr/bin/docker',
                'psql': '/usr/lib/postgresql/18/bin/psql',
                'backup': '/usr/local/sbin/pgbackrest-with-cipher-pass'}
 ENV = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'HOME': '/nonexistent', 'LC_ALL': 'C'}
@@ -170,9 +170,7 @@ class Configuration:
                     'connect_timeout': '5'}
         require(service[self.db['service']] == expected, 'operator-service-binding')
         private_bytes(PASS, secret=True)  # libpq alone interprets the separately provisioned password.
-        token = private_bytes(TOKEN, secret=True).strip()
-        require(20 <= len(token) <= 4096 and re.fullmatch(rb'[A-Za-z0-9_]+', token), 'operator-token')
-        for path in (SERVICE, PASS, TOKEN):
+        for path in (SERVICE, PASS):
             self.pin(path)
         self.recheck()
 

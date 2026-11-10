@@ -318,6 +318,12 @@ class ProbeTests(unittest.TestCase):
 
 
 class GitHubTests(unittest.TestCase):
+    def test_public_github_observation_does_not_need_token(self):
+        config = FixtureConfig()
+        runner = self.fixture()
+        with patch.object(github, 'TOKEN', '/nonexistent/unused-token'):
+            self.assertEqual(github.GitHub(config, runner).main(), BINDING['sha'])
+
     def test_current_workflow_jobs_are_required_independently_of_operator_fixture(self):
         import yaml
         root = Path(__file__).resolve().parents[3]
@@ -369,7 +375,8 @@ class GitHubTests(unittest.TestCase):
         new = [{'path': 'libs/shared/kernel.ts', 'type': 'blob', 'mode': '100644', 'sha': '2' * 40},
                {'path': 'docs/worker-notes.md', 'type': 'blob', 'mode': '100644', 'sha': '3' * 40}]
         def provider(argv, data, env):
-            self.assertEqual(argv[1:6], ['api', '--hostname', 'github.com', '--method', 'GET'])
+            self.assertEqual(argv[1:8], ['--disable', '--fail', '--silent', '--location', '--proto', '=https', '--max-redirs'])
+            self.assertEqual(argv[8], '0')
             self.assertNotIn('GITHUB_TOKEN', env)
             endpoint = argv[-1].split(github.REPO + '/', 1)[1]
             if endpoint == 'git/ref/heads/main':
