@@ -1,32 +1,14 @@
 import {
-  READER_POST_PRESENTATION_V3_MAX_REQUEST_BYTES,
-  type PromotionPresentationBuilder,
-  type ReaderPostPresentationV3Input,
-  type ReaderPostPresentationV3Result,
-} from "../../domain/services/reader-post-presentation-v3";
-import type { AgentRuntimeClientPort, AgentRuntimeProvider } from "../../ports";
-import {
-  parsePositiveInteger,
-  positiveIntegerOrFallback,
-  readAgentRuntimeObjectOutput,
-} from "./agent-runtime-model-support";
-import {
   activeReaderSummaryProvider,
   mimoReaderSummaryBackend,
   assertMimoReaderSummaryExecution,
-  resolveReaderSummaryGenerationIdentity,
-  resolveReaderSummaryDailyTaskIdentityFromEnv,
   type ReaderSummaryGenerationBackend,
   activeReaderSummaryPurposes,
-  activeReaderSummaryReasoningEffort,
-  mimoPresentationReasoningEffort,
-  mimoPresentationMaxTimeoutMs,
-  assertActiveReaderSummaryProvider,
-  isCodexGatewayOnlyReaderSummaryModel,
-  isGatewayReaderSummaryBackend,
-  resolveReaderSummaryBackendEffort,
-  resolveReaderSummaryReasoningEffortFromEnv,
 } from "./active-reader-summary-generation-profile";
+import {
+  resolvePromotionPresentationV3RuntimeOptions,
+  type AgentRuntimePromotionPresentationV3BuilderOptions,
+} from "./agent-runtime-promotion-presentation-v3-options";
 import { presentationRuntimeFailureDisposition } from "./agent-runtime-promotion-presentation-v3-runtime-failure";
 import { presentationRuntimeFailureIdentity } from "./agent-runtime-promotion-presentation-v3-runtime-failure-identity";
 import { requestBytes, parseObject } from "./agent-runtime-promotion-presentation-v3-request";
@@ -37,19 +19,11 @@ import {
 } from "./agent-runtime-promotion-presentation-v3-result-policy";
 
 
-export const defaultPresentationTimeoutMs = 90_000;
-
-export type AgentRuntimePromotionPresentationV3BuilderOptions = {
-  readonly client: AgentRuntimeClientPort;
-  readonly agentProvider?: AgentRuntimeProvider;
-  readonly providerInstanceId?: string;
-  readonly model?: string;
-  readonly modelBackend?: ReaderSummaryGenerationBackend;
-  /** high for gpt-5.6-sol, none for MiMo, the route effort for a gateway route. */
-  readonly reasoningEffort?: string;
-  readonly timeoutMs?: number;
-  readonly maxOutputTokens?: number;
-};
+export {
+  defaultPresentationTimeoutMs,
+  resolveAgentRuntimePromotionPresentationV3BuilderOptions,
+  type AgentRuntimePromotionPresentationV3BuilderOptions,
+} from "./agent-runtime-promotion-presentation-v3-options";
 
 /**
  * The presentation capability is intentionally routed through the existing
@@ -68,29 +42,15 @@ implements PromotionPresentationBuilder {
   private readonly maxOutputTokens: number;
 
   constructor(options: AgentRuntimePromotionPresentationV3BuilderOptions) {
-    this.client = options.client;
-    this.provider = assertActiveReaderSummaryProvider(options.agentProvider) ??
-      activeReaderSummaryProvider;
-    this.providerInstanceId = options.providerInstanceId;
-    const identity = resolveReaderSummaryGenerationIdentity({
-      model: options.model, backend: options.modelBackend,
-    });
-    this.model = identity.model;
-    this.modelBackend = identity.backend;
-    const cliEffort = this.modelBackend === mimoReaderSummaryBackend
-      ? mimoPresentationReasoningEffort : activeReaderSummaryReasoningEffort;
-    // A gateway route, including a gateway-only Codex model, owns its effort.
-    if (!isGatewayReaderSummaryBackend(this.modelBackend) &&
-      !isCodexGatewayOnlyReaderSummaryModel(this.model) &&
-      options.reasoningEffort !== undefined && options.reasoningEffort !== cliEffort) {
-      throw new Error("Presentation reasoning effort conflicts with purpose policy");
-    }
-    this.reasoningEffort = resolveReaderSummaryBackendEffort(
-      this.modelBackend, options.reasoningEffort, cliEffort, this.model);
-    const configuredTimeoutMs = positiveIntegerOrFallback(options.timeoutMs, defaultPresentationTimeoutMs);
-    this.timeoutMs = this.modelBackend === mimoReaderSummaryBackend
-      ? Math.min(configuredTimeoutMs, mimoPresentationMaxTimeoutMs) : configuredTimeoutMs;
-    this.maxOutputTokens = positiveIntegerOrFallback(options.maxOutputTokens, 2_400);
+    const runtime = resolvePromotionPresentationV3RuntimeOptions(options);
+    this.client = runtime.client;
+    this.provider = runtime.provider;
+    this.providerInstanceId = runtime.providerInstanceId;
+    this.model = runtime.model;
+    this.modelBackend = runtime.modelBackend;
+    this.reasoningEffort = runtime.reasoningEffort;
+    this.timeoutMs = runtime.timeoutMs;
+    this.maxOutputTokens = runtime.maxOutputTokens;
   }
 
   async build(inputs: readonly ReaderPostPresentationV3Input[]):
@@ -163,29 +123,7 @@ implements PromotionPresentationBuilder {
   }
 }
 
-export const resolveAgentRuntimePromotionPresentationV3BuilderOptions = (
-  env: NodeJS.ProcessEnv,
-  client: AgentRuntimeClientPort,
-): AgentRuntimePromotionPresentationV3BuilderOptions => {
-  const identity = resolveReaderSummaryDailyTaskIdentityFromEnv(env,
-    env.AGENT_RUNTIME_READER_SUMMARY_PRESENTATION_MODEL);
-  const sharedEffort = resolveReaderSummaryReasoningEffortFromEnv(env);
-  return {
-    client,
-    agentProvider: assertActiveReaderSummaryProvider(env.AGENT_RUNTIME_PROVIDER),
-    providerInstanceId: env.AGENT_RUNTIME_PROVIDER_INSTANCE_ID,
-    ...identity,
-    reasoningEffort: identity.modelBackend === mimoReaderSummaryBackend
-      ? mimoPresentationReasoningEffort : sharedEffort,
-    timeoutMs: parsePositiveInteger(
-      env.AGENT_RUNTIME_READER_SUMMARY_PRESENTATION_TIMEOUT_MS ??
-        env.AGENT_RUNTIME_TIMEOUT_MS,
-    ),
-    maxOutputTokens: parsePositiveInteger(
-      env.AGENT_RUNTIME_READER_SUMMARY_PRESENTATION_MAX_OUTPUT_TOKENS,
-    ),
-  };
-};
+
 
 /**
  * Codex is the only backend qualified on the canonical wire, where the model
