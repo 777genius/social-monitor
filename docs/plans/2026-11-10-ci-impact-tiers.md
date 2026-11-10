@@ -5,15 +5,16 @@ Reduce repeated GitHub Actions spend on narrowly scoped PRs without bypassing th
 
 ## Scope
 1. Introduce **trusted-base**, fail-closed change classifier: `docs` / `frontend` / `full`.
-2. Ordinary documentation (not used as a build/test contract) qualifies for `docs`: run existing Static architecture/quality and Security/public contracts; frontend/backend/production candidate lanes skip.
-3. Isolated Flutter frontend files qualify for `frontend`: same checks + existing Flutter analysis, tests and release WASM build. No backend shard, migrations, native PostgreSQL or production candidate.
+2. Ordinary documentation (not used as a build/test contract) qualifies for `docs`: run existing Static architecture/quality and Security/public contracts; the Flutter lane skips. Native backend, E2E and PostgreSQL work skip; existing protected production candidate and lifecycle contracts continue to run.
+3. Isolated Flutter frontend files qualify for `frontend`: same checks + existing Flutter analysis, tests and release WASM build. The six protected shard checks remain present and succeed with an explicit no-unit-execution receipt; no backend unit work, migrations or native PostgreSQL runs. Production candidate and lifecycle contracts still run to preserve release evidence.
 4. All other changes, unknowns, mixed files, root tooling, workflow, dependencies, APIs, Prisma, operations, release/security configuration, changed `AGENTS.md` and docs used as fixtures => `full`. `push`, `merge_group`, `workflow_dispatch` always full.
-5. Preserve names of all required status checks, six-shard coverage and release/prod workflows. Reuse existing required `Backend build and unit tests` aggregating check to enforce *exact* expected success/skipped per tier on ready PRs; no check can be silently omitted. Draft PR policy stays as currently intended.
+5. Preserve names of all required status checks, six-shard coverage and release/prod workflows. Reuse existing required `Backend build and unit tests` aggregating check to enforce *exact* expected success/skipped per tier on ready PRs; no check can be silently omitted. The `Security and public contracts` job performs trusted-base classification rather than adding another required check, preserving the immutable historical 20-status release authority job list. Draft PR policy stays as currently intended.
 6. Do not move/rename `static_quality` or alter its exact trusted-root fixture setup: `check-release-gate-ci` contracts depend on it.
 7. No production deploy, release, DB migrations, branch protection weakening or new dependencies.
 
 ## Security and merge criteria
-- Classifier executed from PR **base** revision rather than PR merge/worktree source; never run untrusted test scripts in impact job. Fall back to `full` when base Git data or classifier is missing/untrusted. Use NUL-delimited `git diff --name-only --no-renames`; reject malformed input; cross-tier renames are full.
+- Classifier executed from PR **base** revision rather than PR merge/worktree source; policy classification happens in the existing Security job before installing or running PR dependencies. Fall back to `full` when base Git data or classifier is missing/untrusted. Use NUL-delimited `git diff --name-only --no-renames`; reject malformed input; cross-tier renames are full.
+- The downstream coverage workflow must inspect actual unit execution steps, not merely the six green check names. No coverage can be attributed to an unexecuted shard.
 - This workflow file changing must classify as full. Exact required branch-protection job names remain present. Gate fails if any required full lane fails or was skipped unexpectedly.
 - Tests: synthetic path cases; real Git rename and no-diff/invalid-SHA; static checks, reusable contract checks; GitHub docs-only and frontend-only disposable PRs (never merge), full exact-HEAD CI; post-merge `main` full 17/17 required statuses, independent coverage and image workflows.
 - Protect ongoing work: check branch HEAD before each push; only merge after source review and successful full E2E; preserve all deploy gates and evidence.
