@@ -12,6 +12,7 @@ import type {
   ReaderSummaryModelInput,
 } from "../../ports";
 import { DeterministicReaderSummaryModelAdapter } from "./deterministic-reader-summary-model.adapter";
+import { buildDeterministicReaderSummaryStoryProjection } from "./deterministic-reader-summary-story-projection";
 import { acceptedDeterministicFixtureHeadline } from "./deterministic-reader-summary-model.spec-support";
 import {
   composeReaderSummaryEditorialSlate,
@@ -232,6 +233,90 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
     expect(attempt.draft.headline).not.toBe(sourceTitle);
     expectPublished(input, attempt);
   });
+
+  it("keeps citations attached to original evidence when ranked presentation order differs", () => {
+    const input = dailySynthesisReaderSummaryInput();
+    const citedEvidence = input.evidence.selectedEvidence;
+    const firstItem = citedEvidence[0];
+    if (firstItem === undefined) {
+      throw new Error("Projection fixture needs primary evidence");
+    }
+    const projection = buildDeterministicReaderSummaryStoryProjection({
+      input,
+      citedEvidence,
+      selectedEvidence: [...citedEvidence].reverse(),
+      topStoryClusters: input.evidence.clusters,
+      firstItem,
+    });
+
+    expect(projection.citationMap.map((item) => item.feedItemId)).toEqual(
+      citedEvidence.map((item) => item.feedItemId),
+    );
+    for (const story of projection.topStories) {
+      const representative = input.evidence.clusters.find(
+        (cluster) => cluster.id === story.storyClusterId,
+      );
+      const citation = projection.citationMap.find(
+        (item) => item.feedItemId === representative?.representativeFeedItemId,
+      );
+      expect(story.citationIds).toEqual([citation?.citationId ?? "c1"]);
+    }
+  });
+
+  it("preserves first-evidence fallbacks and repeated-interest policy on missing cluster representatives", () => {
+    const input = dailySynthesisReaderSummaryInput();
+    const firstItem = input.evidence.selectedEvidence[0];
+    const firstCluster = input.evidence.clusters[0];
+    if (firstItem === undefined || firstCluster === undefined) {
+      throw new Error("Projection fixture needs a cluster and evidence");
+    }
+    const missingRepresentative = {
+      ...firstCluster,
+      id: "story:missing-representative",
+      representativeFeedItemId: "feed-not-selected",
+      interestIds: ["interest-0", "interest-1"],
+    };
+    const projection = buildDeterministicReaderSummaryStoryProjection({
+      input: {
+        ...input,
+        evidence: { ...input.evidence, clusters: [missingRepresentative] },
+      },
+      citedEvidence: input.evidence.selectedEvidence,
+      selectedEvidence: [firstItem],
+      topStoryClusters: [missingRepresentative],
+      firstItem,
+    });
+    expect(projection.topStories[0]).toMatchObject({
+      storyClusterId: missingRepresentative.id,
+      title: firstItem.title,
+      citationIds: ["c1"],
+    });
+    expect(projection.repeatedSignals).toEqual([{
+      storyClusterId: missingRepresentative.id,
+      title: firstItem.title,
+      interestIds: ["interest-0", "interest-1"],
+      citationIds: ["c1"],
+    }]);
+    expect(projection.interestHighlights).toHaveLength(1);
+
+    const disabled = buildDeterministicReaderSummaryStoryProjection({
+      input: {
+        ...input,
+        policy: {
+          ...input.policy,
+          includeInterestHighlights: false,
+          includeRepeatedSignals: false,
+        },
+      },
+      citedEvidence: input.evidence.selectedEvidence,
+      selectedEvidence: [firstItem],
+      topStoryClusters: [missingRepresentative],
+      firstItem,
+    });
+    expect(disabled.interestHighlights).toEqual([]);
+    expect(disabled.repeatedSignals).toEqual([]);
+  });
+
 });
 
 const expectPublished = (

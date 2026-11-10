@@ -22,7 +22,7 @@ import {
 import { buildReaderHeadline } from "./deterministic-reader-summary-headline";
 import { buildDeterministicReaderSummaryNarrative } from "./deterministic-reader-summary-narrative";
 import { buildExecutiveSummary } from "./deterministic-reader-summary-text";
-import { buildStorySummary, buildInterestHighlights } from "./deterministic-reader-summary-story-projection";
+import { buildDeterministicReaderSummaryStoryProjection } from "./deterministic-reader-summary-story-projection";
 
 const route: ReaderSummaryModelRoute = {
   provider: "deterministic-local",
@@ -85,14 +85,6 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
           input.policy.maxStories,
         )
       : primaryEvidence.selectedEvidence;
-    const citationMap = citedEvidence.map((item, index) => ({
-      citationId: `c${index + 1}`,
-      feedItemId: item.feedItemId,
-      sourceItemId: item.sourceItemId,
-      providerKey: item.providerKey,
-      field: "title" as const,
-      canonicalUrl: item.canonicalUrl,
-    }));
     const topStoryClusters = input.evidence.editorialSlate === undefined
       ? selectClustersForEvidence(
           input.evidence.clusters,
@@ -106,56 +98,14 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
           ],
         )
       : primaryEvidence.clusters;
-    const topStories = topStoryClusters.map((cluster, index) => {
-      const representative =
-        selectedEvidence.find(
-          (item) => item.feedItemId === cluster.representativeFeedItemId,
-        ) ??
-        selectedEvidence[index] ??
-        firstItem;
-      const citationId =
-        citationMap.find(
-          (citation) => citation.feedItemId === representative.feedItemId,
-        )?.citationId ?? "c1";
-
-      return {
-        storyClusterId: cluster.id,
-        title: representative.title,
-        summary: buildStorySummary(
-          representative.title,
-          cluster.interestIds,
-          cluster.providerKeys,
-        ),
-        interestIds: cluster.interestIds,
-        providerKeys: cluster.providerKeys,
-        citationIds: [citationId],
-      };
-    });
-    const interestHighlights = input.policy.includeInterestHighlights
-      ? buildInterestHighlights(selectedEvidence, citationMap)
-      : [];
-    const repeatedSignals = input.policy.includeRepeatedSignals
-      ? input.evidence.clusters
-          .filter((cluster) => cluster.interestIds.length >= 2)
-          .slice(0, 5)
-          .map((cluster) => {
-            const representative =
-              selectedEvidence.find(
-                (item) => item.feedItemId === cluster.representativeFeedItemId,
-              ) ?? firstItem;
-            const citationId =
-              citationMap.find(
-                (citation) => citation.feedItemId === representative.feedItemId,
-              )?.citationId ?? "c1";
-
-            return {
-              storyClusterId: cluster.id,
-              title: representative.title,
-              interestIds: cluster.interestIds,
-              citationIds: [citationId],
-            };
-          })
-      : [];
+    const { citationMap, topStories, interestHighlights, repeatedSignals } =
+      buildDeterministicReaderSummaryStoryProjection({
+        input,
+        citedEvidence,
+        selectedEvidence,
+        topStoryClusters,
+        firstItem,
+      });
 
     const headlineEvidence = input.evidence.editorialSlate === undefined
       ? selectedEvidence

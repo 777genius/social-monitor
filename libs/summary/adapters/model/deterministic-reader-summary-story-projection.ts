@@ -33,3 +33,83 @@ export const buildInterestHighlights = (
       ],
     }));
 };
+
+/**
+ * Project citation-bound reader stories without owning ranking, editorial-slate
+ * selection, publication or model lifecycle. Citation IDs retain the order of
+ * the full cited evidence, not the subset selected for the first page.
+ */
+export const buildDeterministicReaderSummaryStoryProjection = ({
+  input,
+  citedEvidence,
+  selectedEvidence,
+  topStoryClusters,
+  firstItem,
+}: {
+  readonly input: ReaderSummaryModelInput;
+  readonly citedEvidence: ReaderSummaryModelInput["evidence"]["selectedEvidence"];
+  readonly selectedEvidence: ReaderSummaryModelInput["evidence"]["selectedEvidence"];
+  readonly topStoryClusters: ReaderSummaryModelInput["evidence"]["clusters"];
+  readonly firstItem: ReaderSummaryModelInput["evidence"]["selectedEvidence"][number];
+}) => {
+  const citationMap = citedEvidence.map((item, index) => ({
+    citationId: `c${index + 1}`,
+    feedItemId: item.feedItemId,
+    sourceItemId: item.sourceItemId,
+    providerKey: item.providerKey,
+    field: "title" as const,
+    canonicalUrl: item.canonicalUrl,
+  }));
+  const topStories = topStoryClusters.map((cluster, index) => {
+    const representative =
+      selectedEvidence.find(
+        (item) => item.feedItemId === cluster.representativeFeedItemId,
+      ) ??
+      selectedEvidence[index] ??
+      firstItem;
+    const citationId =
+      citationMap.find(
+        (citation) => citation.feedItemId === representative.feedItemId,
+      )?.citationId ?? "c1";
+
+    return {
+      storyClusterId: cluster.id,
+      title: representative.title,
+      summary: buildStorySummary(
+        representative.title,
+        cluster.interestIds,
+        cluster.providerKeys,
+      ),
+      interestIds: cluster.interestIds,
+      providerKeys: cluster.providerKeys,
+      citationIds: [citationId],
+    };
+  });
+  const interestHighlights = input.policy.includeInterestHighlights
+    ? buildInterestHighlights(selectedEvidence, citationMap)
+    : [];
+  const repeatedSignals = input.policy.includeRepeatedSignals
+    ? input.evidence.clusters
+        .filter((cluster) => cluster.interestIds.length >= 2)
+        .slice(0, 5)
+        .map((cluster) => {
+          const representative =
+            selectedEvidence.find(
+              (item) => item.feedItemId === cluster.representativeFeedItemId,
+            ) ?? firstItem;
+          const citationId =
+            citationMap.find(
+              (citation) => citation.feedItemId === representative.feedItemId,
+            )?.citationId ?? "c1";
+
+          return {
+            storyClusterId: cluster.id,
+            title: representative.title,
+            interestIds: cluster.interestIds,
+            citationIds: [citationId],
+          };
+        })
+    : [];
+
+  return { citationMap, topStories, interestHighlights, repeatedSignals };
+};

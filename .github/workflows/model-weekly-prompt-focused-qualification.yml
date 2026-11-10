@@ -1,6 +1,6 @@
 # Temporary, isolated synthetic contract regression; no paid model call.
 # Delete after evidence is recorded; do not alter canonical PR checks.
-name: Model weekly prompt focused synthetic qualification
+name: Deterministic reader story projection focused qualification
 
 on:
   push:
@@ -16,8 +16,8 @@ env:
   DATABASE_URL: postgresql://social_monitor_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_ci
 
 jobs:
-  weekly_prompt:
-    name: Weekly sealed contract and untrusted evidence
+  story_projection:
+    name: Citation-bound story projection and deterministic adapter
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -40,5 +40,5 @@ jobs:
           npx tsc --noEmit
           npm run check:architecture
           npm run check:source-line-cap
-      - name: Focused weekly prompt Jest
-        run: npx jest --config jest.config.ts --runInBand --runTestsByPath libs/summary/adapters/model/openai-responses-reader-summary-weekly-prompt.spec.ts
+      - name: Focused deterministic reader projection Jest
+        run: npx jest --config jest.config.ts --runInBand --runTestsByPath libs/summary/adapters/model/deterministic-reader-summary-model.adapter.spec.ts
