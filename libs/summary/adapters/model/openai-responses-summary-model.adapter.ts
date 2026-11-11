@@ -1,3 +1,8 @@
+import { buildOpenAiSummaryRequest } from "./openai-responses-summary-request-contract";
+import {
+  completeOpenAiSummaryAttempt,
+  validateOpenAiSummaryResponse,
+} from "./openai-responses-summary-response-policy";
 import { buildSummaryNoSignalAttempt } from "./summary-no-signal-attempt";
 import type {
   ProviderSummaryAttempt,
@@ -11,21 +16,9 @@ import type {
   SummaryModelValidationResult,
 } from '../../ports';
 import {
-  buildInstructions,
-  buildPromptPayload,
-} from './openai-responses-summary-prompt';
-import {
-  assertOpenAiSummaryDraftShape,
-  normalizeOpenAiSummaryDraft,
-} from './openai-responses-summary-draft-normalizer';
-import {
   SummaryModelProviderError,
   classifyOpenAiSummaryError,
 } from './openai-responses-summary-model-error';
-import { extractOpenAiSummaryOutputText } from './openai-responses-summary-output-text';
-import { parseOpenAiSummaryJsonObject } from './openai-responses-summary-response-parser';
-import { resolveOpenAiSummaryUsage } from './openai-responses-summary-usage';
-import { openAiSummaryJsonSchema } from './openai-responses-summary-schema';
 import {
   assertOpenAiSummaryWithinBudget,
   estimateOpenAiSummaryUsage,
@@ -90,22 +83,7 @@ export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
       });
     }
 
-    const request = {
-      model: selectedRoute.model,
-      store: false,
-      max_output_tokens: this.settings.maxOutputTokens,
-      instructions: buildInstructions(input),
-      input: buildPromptPayload(input),
-      text: {
-        format: {
-          type: 'json_schema',
-          name: 'social_monitor_summary_artifact',
-          strict: true,
-          schema: openAiSummaryJsonSchema,
-        },
-      },
-    };
-
+    const request = buildOpenAiSummaryRequest(input, selectedRoute.model, this.settings.maxOutputTokens);
     const responseJson = await createOpenAiSummaryResponse({
       request,
       endpointUrl: this.settings.endpointUrl,
@@ -113,63 +91,19 @@ export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
       timeoutMs: this.settings.timeoutMs,
       fetchFn: this.settings.fetchFn,
     });
-    const outputText = extractOpenAiSummaryOutputText(responseJson);
-
-    if (outputText === undefined) {
-      throw new SummaryModelProviderError({
-        kind: 'unsafe_or_refused',
-        retryable: false,
-        message: 'OpenAI response did not contain summary output text',
-      });
-    }
-
-    const rawDraft = parseOpenAiSummaryJsonObject(outputText);
-    const usage = resolveOpenAiSummaryUsage(
+    return completeOpenAiSummaryAttempt({
       responseJson,
-      this.estimate(input, selectedRoute),
-    );
-    const draft = normalizeOpenAiSummaryDraft(
-      rawDraft,
       input,
       selectedRoute,
-      usage,
-      this.settings.evalDatasetVersion,
-    );
-
-    return {
-      route: selectedRoute,
-      draft,
-    };
+      estimateUsage: () => this.estimate(input, selectedRoute),
+      evalDatasetVersion: this.settings.evalDatasetVersion,
+    });
   }
 
   validateRawProviderResponse(
     attempt: ProviderSummaryAttempt,
   ): SummaryModelValidationResult {
-    try {
-      assertOpenAiSummaryDraftShape(attempt.draft);
-
-      if (attempt.route.schemaVersion !== 'summary.artifact.v1') {
-        throw new Error('Unsupported summary schema version');
-      }
-
-      if (attempt.route.provider !== provider) {
-        throw new Error('Unexpected summary provider route');
-      }
-
-      return { ok: true };
-    } catch (error) {
-      return {
-        ok: false,
-        failure: {
-          kind: 'invalid_schema',
-          retryable: false,
-          message:
-            error instanceof Error
-              ? error.message
-              : 'Invalid summary provider response',
-        },
-      };
-    }
+    return validateOpenAiSummaryResponse(attempt);
   }
 
   classifyError(error: unknown): SummaryModelFailure {

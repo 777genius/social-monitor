@@ -10,6 +10,13 @@ import { join } from 'node:path';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import type { SummaryModelInput } from '../../ports';
+import { buildInstructions, buildPromptPayload } from './openai-responses-summary-prompt';
+import { openAiSummaryJsonSchema } from './openai-responses-summary-schema';
+import { buildOpenAiSummaryRequest } from './openai-responses-summary-request-contract';
+import {
+  completeOpenAiSummaryAttempt,
+  validateOpenAiSummaryResponse,
+} from './openai-responses-summary-response-policy';
 import { validateSummaryCitationsAgainstEvidence } from '../../features/shared/summary-citation-validator';
 import {
   OpenAiResponsesSummaryModelAdapter,
@@ -17,6 +24,84 @@ import {
 } from './openai-responses-summary-model.adapter';
 
 describe('OpenAiResponsesSummaryModelAdapter', () => {
+  it('isolates the exact no-retention Responses request contract from provider dispatch', () => {
+    const input = buildInput();
+    const request = buildOpenAiSummaryRequest(input, 'selected-model', 321);
+    expect(request).toEqual({
+      model: 'selected-model',
+      store: false,
+      max_output_tokens: 321,
+      instructions: buildInstructions(input),
+      input: buildPromptPayload(input),
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'social_monitor_summary_artifact',
+          strict: true,
+          schema: openAiSummaryJsonSchema,
+        },
+      },
+    });
+  });
+
+  it('fails closed without estimating usage when the provider omits summary output', () => {
+    const estimateUsage = jest.fn(() => ({
+      inputTokens: 10,
+      outputTokens: 10,
+      estimatedCostUsd: 0,
+    }));
+    const input = buildInput();
+    expect(() => completeOpenAiSummaryAttempt({
+      responseJson: { status: 'completed', output: [] },
+      input,
+      selectedRoute: {
+        provider: 'openai-responses',
+        model: 'selected-model',
+        promptVersion: 'summary.prompt.openai.responses.v1',
+        schemaVersion: 'summary.artifact.v1',
+      },
+      estimateUsage,
+      evalDatasetVersion: 'summary.eval.mvp.v1',
+    })).toThrow('OpenAI response did not contain summary output text');
+    expect(estimateUsage).not.toHaveBeenCalled();
+  });
+
+  it('rejects post-normalization provider and schema route mismatches', async () => {
+    const adapter = new OpenAiResponsesSummaryModelAdapter({
+      apiKey: fakeOpenAiApiKey,
+      fetchFn: async () => jsonResponse(200, { output_text: JSON.stringify(validProviderDraft()) }),
+    });
+    const input = buildInput();
+    const route = adapter.route(input, {
+      preferredProvider: 'openai-responses',
+      maxInputTokens: 12_000,
+      maxOutputTokens: 4_000,
+      maxEstimatedCostUsd: 1,
+    }, {
+      remainingTokens: 20_000,
+      remainingCostUsd: 1,
+    });
+    const attempt = await adapter.summarize(input, route);
+    expect(validateOpenAiSummaryResponse({
+      ...attempt,
+      route: { ...attempt.route, provider: 'unexpected-provider' as typeof attempt.route.provider },
+    })).toEqual({
+      ok: false,
+      failure: {
+        kind: 'invalid_schema',
+        retryable: false,
+        message: 'Unexpected summary provider route',
+      },
+    });
+    expect(validateOpenAiSummaryResponse({
+      ...attempt,
+      route: { ...attempt.route, schemaVersion: 'unsupported-schema' as typeof attempt.route.schemaVersion },
+    })).toMatchObject({
+      ok: false,
+      failure: { kind: 'invalid_schema', message: 'Unsupported summary schema version' },
+    });
+  });
+
   it('creates a Responses API request with structured summary output contract', async () => {
     const capturedCalls: CapturedFetchCall[] = [];
     const adapter = new OpenAiResponsesSummaryModelAdapter({
