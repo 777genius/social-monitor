@@ -16,7 +16,7 @@ from contract import Denied, atomic, digest, read_json, require
 from frontend_bundle_test import files
 from frontend_host import MOUNTS
 from frontend_tree import tree_digest
-from worker_host import SERVICE
+from worker_host import SERVICE, WorkerHost
 
 FRONT_IMAGE = 'sha256:' + 'f' * 64
 
@@ -238,6 +238,27 @@ class EngineTests(unittest.TestCase):
                 self.admit()
         self.assertEqual(self.runtime.effects, [])
 
+    def test_worker_policy_accepts_env_reordering_but_rejects_duplicates(self):
+        value = copy.deepcopy(self.runtime.values[SERVICE])
+        original = WorkerHost.policy(value)
+        value['Config']['Env'].reverse()
+        self.assertEqual(WorkerHost.policy(value), original)
+        value['Config']['Env'].append('NEW_CONTROL=value')
+        self.assertNotEqual(WorkerHost.policy(value), original)
+        value['Config']['Env'].pop()
+        value['Config']['Env'][0] += '=changed'
+        self.assertNotEqual(WorkerHost.policy(value), original)
+        value['Config']['Env'][0] = value['Config']['Env'][0][:-8]
+        value['Config']['Env'].append(value['Config']['Env'][0])
+        with self.assertRaisesRegex(Denied, 'worker-env-duplicate'):
+            WorkerHost.policy(value)
+        value['Config']['Env'][-1] = value['Config']['Env'][0].split('=', 1)[0] + '=different'
+        with self.assertRaisesRegex(Denied, 'worker-env-duplicate'):
+            WorkerHost.policy(value)
+        value['Config']['Env'][-1] = 'malformed'
+        with self.assertRaisesRegex(Denied, 'worker-env-invalid'):
+            WorkerHost.policy(value)
+
     def test_sha_run_attempt_provenance_and_verifier_mismatch_refused(self):
         for field, value in (('sha', 'e' * 40), ('ci_run_id', '124'), ('ci_run_attempt', '2')):
             proof = copy.deepcopy(self.proof); proof['authority'][field] = value
@@ -253,7 +274,7 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(self.runtime.effects, [])
 
     def test_non_target_and_worker_config_drift_refused(self):
-        self.runtime.values[SERVICE]['Config']['Env'].append('JEV=changed')
+        self.runtime.values[SERVICE]['Config']['Env'].append('JEV_OTHER=changed')
         with self.assertRaisesRegex(Denied, 'cohort-runtime-changed'): self.engine.activate(KEY)
         self.runtime.values[SERVICE]['Config']['Env'].pop()
         self.runtime.protected['postgres'] = 'changed'

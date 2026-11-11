@@ -14,6 +14,13 @@ class WorkerHost:
         config = value['Config']
         # Image/labels are release identity. All runtime controls remain byte-bound.
         settings = {k: v for k, v in config.items() if k not in ('Image', 'Labels', 'Hostname')}
+        env = settings.get('Env')
+        if env is not None:
+            require(isinstance(env, list) and all(isinstance(v, str) and '=' in v and
+                    v.split('=', 1)[0] for v in env), 'worker-env-invalid')
+            keys = [v.split('=', 1)[0] for v in env]
+            require(len(set(keys)) == len(keys), 'worker-env-duplicate')
+            settings['Env'] = sorted(env)
         host = {k: v for k, v in value['HostConfig'].items() if k != 'RestartPolicy'}
         # Docker29 reports the enabled OOM killer as null after start, false just
         # after create. Only these equivalent defaults normalize; disabling stays bound.
