@@ -1,11 +1,13 @@
 export const redactionPolicyPath = 'scripts/lib/external-beta-evidence-artifact-redaction.mjs';
 export const handoffPolicyPath = 'scripts/lib/external-beta-evidence-handoff.mjs';
 export const displayPolicyPath = 'scripts/lib/external-beta-evidence-display-formatters.mjs';
+export const consistencyPolicyPath = 'scripts/lib/external-beta-artifact-consistency-freshness.mjs';
 
 export function validateRunnerImplementationMarkers({
   runnerSource,
   handoffSource,
   displaySource,
+  consistencyPolicySource,
   checkSource,
   selectionHelperSource,
   redactionPolicySource,
@@ -187,6 +189,20 @@ export function validateRunnerImplementationMarkers({
     'must not include providerKey',
     'validateArtifactEnvConsistency',
     'validateArtifactFreshness',
+    'validateArtifactLiteralRedaction',
+    'validateArtifactStructuredRedaction',
+    'validateArtifactDecodedRedaction',
+
+  ]) {
+    if (!runnerSource.includes(marker)) {
+      violations.push(`${runnerFile}: runner must fail fast before executing unsafe job selections`);
+    }
+  }
+
+  // The extracted policy, not the runner, owns these artifact identity/freshness invariants.
+  for (const marker of [
+    'validateArtifactEnvConsistency',
+    'validateArtifactFreshness',
     'artifactFreshness',
     'isIso8601Timestamp',
     'requiresIso8601Timestamp',
@@ -205,13 +221,9 @@ export function validateRunnerImplementationMarkers({
     'SOURCE_LIVE_ENVIRONMENT_ID',
     'SOURCE_LIVE_OPERATOR',
     'STAGING_SECRET_STORE_ID',
-    'validateArtifactLiteralRedaction',
-    'validateArtifactStructuredRedaction',
-    'validateArtifactDecodedRedaction',
-
   ]) {
-    if (!runnerSource.includes(marker)) {
-      violations.push(`${runnerFile}: runner must fail fast before executing unsafe job selections`);
+    if (!consistencyPolicySource.includes(marker)) {
+      violations.push(`${consistencyPolicyPath}: extracted artifact consistency/freshness policy must preserve "${marker}"`);
     }
   }
 

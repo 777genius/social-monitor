@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { validateRunnerImplementationMarkers, redactionPolicyPath, handoffPolicyPath, displayPolicyPath } from '../lib/external-beta-evidence-runner-markers.mjs';
+import { validateRunnerImplementationMarkers, redactionPolicyPath, handoffPolicyPath, displayPolicyPath, consistencyPolicyPath } from '../lib/external-beta-evidence-runner-markers.mjs';
 
 const runnerFile = 'scripts/external-beta-evidence-runner.mjs';
 const checkFile = 'scripts/check-external-beta-evidence-runner.mjs';
@@ -11,6 +11,7 @@ const sources = {
   runnerSource: readFileSync(runnerFile, 'utf8'),
   handoffSource: readFileSync(handoffPolicyPath, 'utf8'),
   displaySource: readFileSync(displayPolicyPath, 'utf8'),
+  consistencyPolicySource: readFileSync(consistencyPolicyPath, 'utf8'),
   checkSource: readFileSync(checkFile, 'utf8'),
   selectionHelperSource: readFileSync(selectionHelperPath, 'utf8'),
   redactionPolicySource: readFileSync(redactionPolicyPath, 'utf8'),
@@ -104,4 +105,27 @@ test('original checker reads the extracted handoff module into its fail-closed m
   const checkerSource = readFileSync(checkFile, 'utf8');
   assert.match(checkerSource, /handoffSource:\s*readFileSync\(handoffPolicyPath,\s*'utf8'\)/);
   assert.match(checkerSource, /validateRunnerImplementationMarkers\(/);
+});
+
+test('relocated artifact consistency and freshness markers are fail-closed at their real owner', () => {
+  for (const marker of [
+    'validateArtifactEnvConsistency', 'validateArtifactFreshness',
+    'artifactFreshness', 'isIso8601Timestamp',
+    'maxArtifactAgeHours', 'maxArtifactFutureSkewMinutes',
+    'artifactEnvConsistencyRules', 'observedArtifactStringValues',
+    'STAGING_ENVIRONMENT_ID', 'BACKEND_IMAGE_DIGEST',
+  ]) {
+    const violations = validateRunnerImplementationMarkers({
+      ...sources,
+      consistencyPolicySource: sources.consistencyPolicySource.replaceAll(marker, 'missing-policy-marker'),
+    });
+    assert.ok(violations.includes(
+      `${consistencyPolicyPath}: extracted artifact consistency/freshness policy must preserve "${marker}"`,
+    ), `missing or disabled policy marker must fail closed: ${marker}`);
+  }
+});
+
+test('real checker reads consistency and freshness policy from its authoritative module', () => {
+  const checkerSource = readFileSync(checkFile, 'utf8');
+  assert.match(checkerSource, /consistencyPolicySource:\s*readFileSync\(consistencyPolicyPath,\s*'utf8'\)/);
 });
