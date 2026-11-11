@@ -10,11 +10,7 @@ import type {
   ReaderSummaryTopicRelationVerifierInput,
   ReaderSummaryTopicRelationVerifierPort,
 } from "../../ports";
-import {
-  nonEmptyOrFallback,
-  positiveIntegerOrFallback,
-  readAgentRuntimeObjectOutput,
-} from "./agent-runtime-model-support";
+import { readAgentRuntimeObjectOutput } from "./agent-runtime-model-support";
 import type {
   AgentRuntimeReaderSummaryTopicLabelerOptions,
 } from "./agent-runtime-reader-summary-topic-labeler.adapter";
@@ -23,12 +19,9 @@ import {
   type VerifiedReaderSummaryExecutionAttestationSink,
 } from "./reader-summary-execution-attestation";
 import { assertStoryRelationResponseSchema } from "./story-relation-response-schema";
+import { resolveTopicRelationVerifierConfig } from "./agent-runtime-reader-summary-topic-relation-options";
 import {
-  activeReaderSummaryModel,
-  activeReaderSummaryReasoningEffort,
-  assertReaderSummaryBackendModel,
   mimoReaderSummaryBackend,
-  resolveReaderSummaryBackendEffort,
   type ReaderSummaryGenerationBackend,
   verifyAndRecordMimoDailyExecution,
 } from "./active-reader-summary-generation-profile";
@@ -45,44 +38,18 @@ export type AgentRuntimeReaderSummaryTopicRelationVerifierOptions = Pick<
   readonly maxOutputTokens?: number;
 };
 
-const defaultModel = activeReaderSummaryModel;
-const defaultPromptVersion = "reader_summary.topic_relation.agent_runtime.v3";
-export const defaultTimeoutMs = 300_000;
-const defaultMaxOutputTokens = 4_000;
+export { topicRelationVerifierDefaultTimeoutMs as defaultTimeoutMs } from "./agent-runtime-reader-summary-topic-relation-options";
 
 export class AgentRuntimeReaderSummaryTopicRelationVerifier implements ReaderSummaryTopicRelationVerifierPort {
   private readonly client: AgentRuntimeClientPort;
-  private readonly provider: "codex";
+  private readonly config: ReturnType<typeof resolveTopicRelationVerifierConfig>;
   private readonly providerInstanceId?: string;
-  private readonly model: string;
-  private readonly modelBackend: ReaderSummaryGenerationBackend;
-  private readonly reasoningEffort: string;
-  private readonly promptVersion: string;
-  private readonly timeoutMs: number;
-  private readonly maxOutputTokens: number;
   private readonly verifiedAttestationSink?: VerifiedReaderSummaryExecutionAttestationSink;
 
   constructor(options: AgentRuntimeReaderSummaryTopicRelationVerifierOptions) {
     this.client = options.client;
-    this.provider = options.agentProvider ?? "codex";
+    this.config = resolveTopicRelationVerifierConfig(options);
     this.providerInstanceId = options.providerInstanceId;
-    this.model = options.model ?? defaultModel;
-    this.modelBackend = options.modelBackend ?? "openai-chatgpt";
-    assertReaderSummaryBackendModel(this.modelBackend, this.model);
-    this.reasoningEffort = resolveReaderSummaryBackendEffort(
-      this.modelBackend, options.reasoningEffort, activeReaderSummaryReasoningEffort, this.model);
-    this.promptVersion = nonEmptyOrFallback(
-      options.promptVersion,
-      defaultPromptVersion,
-    );
-    this.timeoutMs = positiveIntegerOrFallback(
-      options.timeoutMs,
-      defaultTimeoutMs,
-    );
-    this.maxOutputTokens = positiveIntegerOrFallback(
-      options.maxOutputTokens,
-      defaultMaxOutputTokens,
-    );
     this.verifiedAttestationSink = options.verifiedAttestationSink;
   }
 
@@ -96,14 +63,8 @@ export class AgentRuntimeReaderSummaryTopicRelationVerifier implements ReaderSum
     const command = buildAgentRuntimeTopicRelationCommand({
       input,
       attemptContext,
-      provider: this.provider,
+      ...this.config,
       providerInstanceId: this.providerInstanceId,
-      model: this.model,
-      modelBackend: this.modelBackend,
-      reasoningEffort: this.reasoningEffort,
-      promptVersion: this.promptVersion,
-      timeoutMs: this.timeoutMs,
-      maxOutputTokens: this.maxOutputTokens,
     });
     const result = await this.client.runTask(command);
     const raw = readAgentRuntimeObjectOutput(
@@ -111,12 +72,12 @@ export class AgentRuntimeReaderSummaryTopicRelationVerifier implements ReaderSum
       parseJsonObject,
       "Reader summary topic relation verifier",
     );
-    if (this.modelBackend === mimoReaderSummaryBackend) {
+    if (this.config.modelBackend === mimoReaderSummaryBackend) {
       assertStoryRelationResponseSchema(raw, command.outputSchema);
     }
 
     const decisions = normalizeDecisions(raw, input.relations);
-    await (this.modelBackend === mimoReaderSummaryBackend
+    await (this.config.modelBackend === mimoReaderSummaryBackend
       ? verifyAndRecordMimoDailyExecution
       : verifyAndRecordReaderSummaryExecution)({
       command,

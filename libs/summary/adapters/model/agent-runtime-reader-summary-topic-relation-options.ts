@@ -1,10 +1,46 @@
 import type { AgentRuntimeClientPort } from "../../ports";
-import { parsePositiveInteger } from "./agent-runtime-model-support";
-import { resolveReaderSummaryDailyTaskIdentityFromEnv } from "./active-reader-summary-generation-profile";
+import { nonEmptyOrFallback, parsePositiveInteger, positiveIntegerOrFallback } from "./agent-runtime-model-support";
+import {
+  activeReaderSummaryModel,
+  activeReaderSummaryReasoningEffort,
+  assertReaderSummaryBackendModel,
+  resolveReaderSummaryBackendEffort,
+  resolveReaderSummaryDailyTaskIdentityFromEnv,
+} from "./active-reader-summary-generation-profile";
 import { resolveAgentRuntimeReaderSummaryTopicLabelerOptions } from "./agent-runtime-reader-summary-topic-labeler-options";
 import type {
   AgentRuntimeReaderSummaryTopicRelationVerifierOptions,
 } from "./agent-runtime-reader-summary-topic-relation-verifier.adapter";
+
+const defaultModel = activeReaderSummaryModel;
+const defaultPromptVersion = "reader_summary.topic_relation.agent_runtime.v3";
+export const topicRelationVerifierDefaultTimeoutMs = 300_000;
+const defaultMaxOutputTokens = 4_000;
+
+/** Pure model identity and dispatch bounds, separate from verification and attestation. */
+export const resolveTopicRelationVerifierConfig = (
+  options: Pick<
+    AgentRuntimeReaderSummaryTopicRelationVerifierOptions,
+    "agentProvider" | "model" | "modelBackend" | "reasoningEffort" |
+      "promptVersion" | "timeoutMs" | "maxOutputTokens"
+  >,
+) => {
+  const provider = options.agentProvider ?? "codex";
+  const model = options.model ?? defaultModel;
+  const modelBackend = options.modelBackend ?? "openai-chatgpt";
+  assertReaderSummaryBackendModel(modelBackend, model);
+  const reasoningEffort = resolveReaderSummaryBackendEffort(
+    modelBackend, options.reasoningEffort, activeReaderSummaryReasoningEffort, model);
+  return {
+    provider,
+    model,
+    modelBackend,
+    reasoningEffort,
+    promptVersion: nonEmptyOrFallback(options.promptVersion, defaultPromptVersion),
+    timeoutMs: positiveIntegerOrFallback(options.timeoutMs, topicRelationVerifierDefaultTimeoutMs),
+    maxOutputTokens: positiveIntegerOrFallback(options.maxOutputTokens, defaultMaxOutputTokens),
+  } as const;
+};
 
 /** Related-topic env precedence stays separate from verification and attestation. */
 export const resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions = (
