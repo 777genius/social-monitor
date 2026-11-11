@@ -1,3 +1,5 @@
+import { readerEditorialSchemaDefinitions, readerSourceTrendSchemaDefinitions } from "./openai-responses-reader-summary-editorial-schema";
+import { nextActionKinds as nextActionKindsFromPolicy, readerNextActionSchemaDefinition } from "./openai-responses-reader-summary-next-action-schema";
 import { openAiReaderSummaryContentJsonSchemaDefs, nextActionKinds } from "./openai-responses-reader-summary-json-schema";
 import { readerClaimSchemaDefinitions } from "./openai-responses-reader-summary-claim-schema";
 import { readerReliabilitySchemaDefinitions } from "./openai-responses-reader-summary-reliability-schema";
@@ -84,5 +86,33 @@ describe("OpenAI reader content schema responsibility boundaries", () => {
         reliabilityReport: { $ref: "#/$defs/reliabilityReport" },
       },
     });
+  });
+
+  it("keeps independently owned interest, source and action schemas in the exact public contract", () => {
+    const defs = openAiReaderSummaryContentJsonSchemaDefs;
+    expect(defs.readerInterestSection).toBe(readerEditorialSchemaDefinitions.readerInterestSection);
+    expect(defs.readerItem).toBe(readerEditorialSchemaDefinitions.readerItem);
+    expect(defs.sourceMixEntry).toBe(readerSourceTrendSchemaDefinitions.sourceMixEntry);
+    expect(defs.trendDelta).toBe(readerSourceTrendSchemaDefinitions.trendDelta);
+    expect(defs.nextAction).toBe(readerNextActionSchemaDefinition);
+    expect(nextActionKinds).toBe(nextActionKindsFromPolicy);
+    expect(Object.keys(defs.nextAction.properties)).toEqual([
+      "kind", "label", "reason", "citationIds", "canonicalUrl",
+    ]);
+    expect(defs.nextAction).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: ["kind", "label", "reason", "citationIds", "canonicalUrl"],
+      properties: {
+        kind: { enum: [...nextActionKinds] },
+        citationIds: { type: "array", maxItems: 2 },
+        canonicalUrl: { type: ["string", "null"] },
+      },
+    });
+    expect(defs.readerInterestSection.properties.items).toMatchObject({
+      type: "array", maxItems: 3, items: { $ref: "#/$defs/readerItem" },
+    });
+    expect(defs.sourceMixEntry.properties.itemCount).toEqual({ type: "number", minimum: 0 });
+    expect(defs.trendDelta.properties.newSignals).toMatchObject({ type: "array", maxItems: 0 });
   });
 });

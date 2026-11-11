@@ -1,14 +1,15 @@
 # Temporary exact-source Draft PR #665 model request boundary gate. No provider calls.
-name: Model 665 reader request contract focused
+name: Model 665 reader schema responsibilities focused
 on:
   push:
     branches:
       - refactor/summary-model-adapters-10k-20261108
     paths:
-      - .github/workflows/model-665-reader-request-focused.yml
-      - libs/summary/adapters/model/openai-responses-reader-summary-model.adapter.ts
-      - libs/summary/adapters/model/openai-responses-reader-summary-response-request.ts
-      - libs/summary/adapters/model/openai-responses-reader-summary-response-request.spec.ts
+      - .github/workflows/model-665-reader-schema-focused.yml
+      - libs/summary/adapters/model/openai-responses-reader-summary-json-schema.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-json-schema.spec.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-editorial-schema.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-next-action-schema.ts
 permissions:
   contents: read
 jobs:
@@ -40,8 +41,8 @@ jobs:
           npm run check:code-quality
           npm run check:source-line-cap
           npm run check:runtime-profile-guards
-      - name: Verify reader request envelope and existing OpenAI adapter contract
+      - name: Verify reader schema ownership and existing OpenAI adapter contract
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
-          libs/summary/adapters/model/openai-responses-reader-summary-response-request.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-json-schema.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-model.adapter.spec.ts
