@@ -97,7 +97,7 @@ test('relocated display markers are still enforced at their real owner', () => {
 
 test('original checker reads display markers into its fail-closed source gate', () => {
   const checkerSource = readFileSync(checkFile, 'utf8');
-  assert.match(checkerSource, /displaySource:\\s*readFileSync\\(displayPolicyPath,\\s*'utf8'\\)/);
+  assert.match(checkerSource, /displaySource:\s*readFileSync\(displayPolicyPath,\s*'utf8'\)/);
 });
 
 test('original checker reads the extracted handoff module into its fail-closed marker gate', () => {
