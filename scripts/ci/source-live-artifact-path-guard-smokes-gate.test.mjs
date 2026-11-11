@@ -10,7 +10,7 @@ function assertLiveDelegation(source) {
   const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
   assert.match(code, /import\s*\{\s*createSourceLiveArtifactPathGuardSmokes\s*\}\s*from\s*'\.\/lib\/source-live-artifact-path-guard-smokes\.mjs'/);
   assert.match(code, /const\s*\{\s*validateCaptureOutputPathGuards,\s*validateDirectRedditLifecyclePathGuards\s*\}\s*=\s*createSourceLiveArtifactPathGuardSmokes\s*\(/);
-  assert.match(code, /import\\s*\\{\\s*createSourceLiveSmokeScriptContracts\\s*\\}\\s*from\\s*'\\.\\/lib\\/source-live-smoke-script-contracts\\.mjs'/);
+  assert.match(code, /import\s*\{\s*createSourceLiveSmokeScriptContracts\s*\}\s*from\s*'\.\/lib\/source-live-smoke-script-contracts\.mjs'/);
   assert.match(code, /^[ \t]*validateCaptureOutputPathGuards\(\);[ \t]*$/m);
   assert.match(code, /^[ \t]*validateDirectRedditLifecyclePathGuards\(\);[ \t]*$/m);
   assert.doesNotMatch(code, /\bfunction\s+validateCaptureOutputPathGuards\s*\(/);
