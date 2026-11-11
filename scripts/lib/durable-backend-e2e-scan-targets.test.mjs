@@ -132,7 +132,7 @@ function assertActiveDelegation(source) {
     return property.name.text;
   });
   assert.deepEqual(injected, ["process", "emptyToUndefined"]);
-  assert.match(source, /import \\{ createDurableScanTargets, type DurableScanProviderKey, type DurableScanTarget \\}/);
+  assert.match(source, /import \{ createDurableScanTargets, type DurableScanProviderKey, type DurableScanTarget \}/);
 }
 
 test("original runner has exactly one active direct factory with no duplicate implementation", () => {
