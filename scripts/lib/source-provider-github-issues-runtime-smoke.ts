@@ -17,7 +17,8 @@ type GitHubIssuesRuntimeSmokeDependencies = {
   readonly assert: (condition: unknown, message: string) => asserts condition;
 };
 
-export async function verifyGitHubIssuesRuntimeModes({ withMockedFetch, assertFailure, assert }: GitHubIssuesRuntimeSmokeDependencies): Promise<void> {
+export async function verifyGitHubIssuesRuntimeModes({ withMockedFetch, assertFailure, assert: runtimeAssert }: GitHubIssuesRuntimeSmokeDependencies): Promise<void> {
+  const assert: GitHubIssuesRuntimeSmokeDependencies["assert"] = runtimeAssert;
   const fetchedUrls: string[] = [];
   const readOnlyToken = ["github", "read", "token"].join("-");
   await withMockedFetch(
