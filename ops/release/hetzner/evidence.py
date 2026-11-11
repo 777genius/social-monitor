@@ -31,6 +31,31 @@ REVIEW_PATHS = frozenset((
     'scripts/lib/clean-real-day-source-config-reader.ts',
 ))
 
+# Narrow compatibility review of the merged GitHub Trending identity change.
+REVIEW_746_BASE = 'c2ea8b7b8b33786b1ce5580c59a3bd5d29fac54b'
+REVIEW_746_HEAD = 'b1a87f64fd414317a0f2cb5ceae6932133206c00'
+REVIEW_746_DIGEST = 'sha256:c05fb6e0822fbfa509b5b56a63ee6f18f8d281585021224f2c29ee77e58c5b15'
+REVIEW_746_PATHS = frozenset((
+    'docs/iterations/2026-11-11-github-trending-runtime-smoke.md',
+    'docs/iterations/2026-11-11-source-live-provider-evidence-validation.md',
+    'libs/ingestion/adapters/persistence/github-trending-source-identities.ts',
+    'libs/ingestion/adapters/persistence/in-memory-source-item.repository.ts',
+    'libs/ingestion/adapters/persistence/prisma/prisma-ingestion-client.ts',
+    'libs/ingestion/adapters/persistence/prisma/prisma-source-item-batch-writer.ts',
+    'libs/ingestion/adapters/persistence/prisma/prisma-source-item.repository.spec.ts',
+    'libs/ingestion/adapters/source/github-trending-page/github-trending-page-snapshot-integrity.spec.ts',
+    'libs/ingestion/domain/value-objects/github-trending-page.ts',
+    'package.json',
+    'scripts/check-source-line-cap.mjs',
+    'scripts/check-source-live-certification-evidence.mjs',
+    'scripts/check-source-provider-runtime-contract.ts',
+    'scripts/ci/source-provider-github-trending-runtime-gate.test.mjs',
+    'scripts/lib/source-live-certification-evidence-shape.test.mjs',
+    'scripts/lib/source-live-provider-evidence-validation.mjs',
+    'scripts/lib/source-live-provider-evidence-validation.test.mjs',
+    'scripts/lib/source-provider-github-trending-runtime-smoke.ts',
+))
+
 # These are the only .mjs sources copied by the pinned Dockerfile below.
 PACKAGE_COPIED_MJS = {'scripts/rewrite-build-aliases.mjs', 'scripts/run-with-timeout.mjs'}
 # These exact CI sources are absent from the pinned Dockerfile's COPY closure.
@@ -99,19 +124,26 @@ def backend_compatibility(evidence, revisions, candidate, snapshot):
         paths = delta.get('changed_paths')
         require(isinstance(paths, list) and all(isinstance(p, str) and p and '..' not in p.split('/')
                 and not p.startswith('/') for p in paths) and (paths or base == candidate), 'backend-delta-paths')
-        reviewed = delta.get('reviewed_231421')
-        if reviewed is not None:
-            require(base == REVIEW_BASE and isinstance(reviewed, dict) and
-                    set(reviewed) == {'base', 'head', 'delta_sha256', 'review_delta_sha256', 'continuation'} and
-                    reviewed['base'] == base and reviewed['head'] == candidate and
-                    reviewed['delta_sha256'] == delta['delta_sha256'] and
-                    reviewed['review_delta_sha256'] == REVIEW_DIGEST and
-                    isinstance(reviewed['continuation'], list) and
-                    all(isinstance(p, str) and package_ci_path(p) and p not in REVIEW_PATHS
-                        for p in reviewed['continuation']) and
-                    paths == sorted(REVIEW_PATHS | set(reviewed['continuation'])),
+        reviewed = None
+        review_paths = frozenset()
+        reviews = (('reviewed_231421', REVIEW_BASE, REVIEW_DIGEST, REVIEW_PATHS),
+                   ('reviewed_746', REVIEW_746_BASE, REVIEW_746_DIGEST, REVIEW_746_PATHS))
+        for field, expected_base, expected_digest, expected_paths in reviews:
+            proof = delta.get(field)
+            if proof is None:
+                continue
+            require(reviewed is None and base == expected_base and isinstance(proof, dict) and
+                    set(proof) == {'base', 'head', 'delta_sha256', 'review_delta_sha256', 'continuation'} and
+                    proof['base'] == base and proof['head'] == candidate and
+                    proof['delta_sha256'] == delta['delta_sha256'] and
+                    proof['review_delta_sha256'] == expected_digest and
+                    isinstance(proof['continuation'], list) and
+                    all(isinstance(p, str) and package_ci_path(p) and p not in expected_paths
+                        for p in proof['continuation']) and
+                    paths == sorted(expected_paths | set(proof['continuation'])),
                     'backend-sensitive-files')
-        allowed = lambda p: package_ci_path(p) or reviewed is not None and p in REVIEW_PATHS
+            reviewed, review_paths = proof, expected_paths
+        allowed = lambda p: package_ci_path(p) or reviewed is not None and p in review_paths
         if 'package.json' in paths:
             require(all(allowed(p) for p in paths),
                     'backend-sensitive-files')
@@ -134,7 +166,7 @@ def backend_compatibility(evidence, revisions, candidate, snapshot):
             'apps/intelligence-worker/src/worker-shutdown-signal.fixture.cts'}
         require(not any(not p.startswith('docs/') and p != WORKER_README and
                 ((p in lifecycle and p != 'package.json') or p.startswith(denied) or p.rsplit('/', 1)[-1] == 'schema.prisma' or
-                 '/prisma/migrations/' in p) and not (reviewed is not None and p in REVIEW_PATHS) for p in paths), 'backend-sensitive-files')
+                 '/prisma/migrations/' in p) and not (reviewed is not None and p in review_paths) for p in paths), 'backend-sensitive-files')
     return {'policy': 'backend-cohort-ci-v1', 'deltas': deltas,
             'run_attempt': evidence['run_attempt'], 'jobs_sha256': digest(evidence['job_observations'])}
 
