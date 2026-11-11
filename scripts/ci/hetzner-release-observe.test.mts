@@ -687,6 +687,27 @@ test('frontend delivery sends exact CI ZIP and checks host proof against both ar
     await assert.rejects(O.activateCohort(frontend, backendManifest, proof, get, unstarted, async () => {}),
       (error: unknown) => error instanceof A.AuthorityError && error.code === 'cohort-unstarted');
     assert.equal(unstartedRollbacks, 1);
+    for (const [denial, expected] of [
+      ['busy', { step: 'cohort-rollback', diagnostic: 'cohort-unstarted', activation_denial: 'busy' }],
+      ['synthetic-unlisted-private-value', { step: 'cohort-rollback', diagnostic: 'cohort-unstarted' }],
+    ] as const) {
+      const denied: Transport = async wire => {
+        if (wire.startsWith('cohort-admit ')) return response(admission);
+        if (wire.startsWith('cohort-activate ')) return response({ denied: denial }, 1);
+        assert.equal(wire, `cohort-rollback ${sha} ${run}`);
+        return response({ denied: 'cohort-rollback-unstarted' }, 1);
+      };
+      await assert.rejects(O.activateCohort(frontend, backendManifest, proof, get, denied, async () => {}),
+        (error: unknown) => {
+          assert.ok(error instanceof A.AuthorityError && error.code === 'cohort-unstarted');
+          assert.deepEqual(O.safeReleaseFailure('cohort-rollback', error), expected);
+          assert.ok(!JSON.stringify(O.safeReleaseFailure('cohort-rollback', error)).includes('synthetic-unlisted-private-value'));
+          Reflect.set(error, 'activationDenial', 'synthetic-unlisted-private-value');
+          assert.deepEqual(O.safeReleaseFailure('cohort-rollback', error),
+            { step: 'cohort-rollback', diagnostic: 'cohort-unstarted' });
+          return true;
+        });
+    }
     for (const mode of ['uncertain', 'progress', 'malformed', 'extra', 'ssh', 'recovery-failed']) {
       let activations = 0, recoveries = 0;
       const cannotProveUnstarted: Transport = async wire => {

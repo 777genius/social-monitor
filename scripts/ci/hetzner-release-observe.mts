@@ -359,6 +359,13 @@ const HOST_DENIALS = new Set(['busy', 'latched', 'grammar', 'machine-id', 'inval
   'untrusted-installation', 'unfinished-release', 'unfinished-backend-release', 'unfinished-cohort-release',
   'github-auth-mode', 'github-auth-count', 'github-auth-token', 'github-auth-file', 'github-auth-expired',
   'operator-input-deadline', 'operator-input-size', 'backend-sensitive-files']);
+class CohortUnstartedError extends A.AuthorityError {
+  readonly activationDenial: string | undefined;
+  constructor(denial: string | undefined) {
+    super('cohort-unstarted');
+    this.activationDenial = denial !== undefined && HOST_DENIALS.has(denial) ? denial : undefined;
+  }
+}
 const SSH_DIAGNOSTICS = new Set(['host-key', 'publickey', 'private-key', 'timeout', 'network', 'unknown']);
 const RELEASE_STEPS = new Set(['authority', 'frontend-authority', 'backend-candidate', 'frontend-candidate',
   'authority-recheck', 'ssh-setup', 'preflight', 'github-auth', 'backend-receive', 'frontend-receive',
@@ -370,10 +377,12 @@ const RELEASE_DIAGNOSTICS = new Set(['json-size', 'github-observation-timeout', 
   'cohort-unstarted', 'cohort-rolled-back', 'cohort-recovery-required',
   ...[...HOST_DENIALS].map(code => `host-${code}`), ...[...SSH_DIAGNOSTICS].map(code => `ssh-${code}`)]);
 /** Public receipt fields are finite constants; never copy error messages, causes or transport bodies. */
-export function safeReleaseFailure(step: string, error: unknown): { step: string; diagnostic: string } {
+export function safeReleaseFailure(step: string, error: unknown): { step: string; diagnostic: string; activation_denial?: string } {
   const code = error instanceof A.AuthorityError || error instanceof ClientError ? error.code : undefined;
   return { step: RELEASE_STEPS.has(step) ? step : 'unknown',
-    diagnostic: typeof code === 'string' && RELEASE_DIAGNOSTICS.has(code) ? code : 'unknown' };
+    diagnostic: typeof code === 'string' && RELEASE_DIAGNOSTICS.has(code) ? code : 'unknown',
+    ...(error instanceof CohortUnstartedError && error.activationDenial && HOST_DENIALS.has(error.activationDenial)
+      ? { activation_denial: error.activationDenial } : {}) };
 }
 function requireHostResponse(response: TransportResult, fallback: string): void {
   if (response.code === 0 && Buffer.isBuffer(response.stdout)) return;
@@ -648,7 +657,7 @@ export async function activateCohort(frontend: FrontendAuthority, backend: Manif
     && artifact.artifact_id === expectedArtifact.id && artifact.artifact_name === expectedArtifact.name
     && artifact.artifact_sha256 === expectedArtifact.digest && artifact.artifact_bytes === expectedArtifact.bytes,
     'cohort-frontend-authority-binding');
-  let activationCalls = 0, firstActivationDenied = false;
+  let activationCalls = 0, firstActivationDenial: string | undefined;
   const marked: Transport = async (wire, source) => {
     if (wire.startsWith('cohort-activate ')) activationCalls++;
     return transport(wire, source);
@@ -658,7 +667,7 @@ export async function activateCohort(frontend: FrontendAuthority, backend: Manif
     onStep(verb);
     const response = await guarded(command(verb, args));
     if (verb === 'cohort-activate')
-      firstActivationDenied = activationCalls === 1 && cohortHostDenial(response) !== undefined;
+      firstActivationDenial = activationCalls === 1 ? cohortHostDenial(response) : undefined;
     requireHostResponse(response, 'cohort-host-denied');
     return A.object(A.parseJson(response.stdout, COHORT_RESPONSE_BYTES));
   }
@@ -702,8 +711,8 @@ export async function activateCohort(frontend: FrontendAuthority, backend: Manif
     if (!activationCalls) throw error;
     try { onStep('cohort-rollback'); await recoverCohort(transport, sha, run, pause); }
     catch (recoveryError) {
-      if (firstActivationDenied && recoveryError instanceof A.AuthorityError &&
-          recoveryError.code === 'cohort-rollback-unstarted') throw new A.AuthorityError('cohort-unstarted');
+      if (firstActivationDenial !== undefined && recoveryError instanceof A.AuthorityError &&
+          recoveryError.code === 'cohort-rollback-unstarted') throw new CohortUnstartedError(firstActivationDenial);
       throw new A.AuthorityError('cohort-recovery-required');
     }
     throw new A.AuthorityError('cohort-rolled-back');
