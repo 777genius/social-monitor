@@ -191,7 +191,7 @@
     "check:rabbitmq-queue-publisher": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-rabbitmq-queue-publisher-smoke.ts",
     "check:realtime-websocket": "node scripts/run-with-timeout.mjs --timeout-ms 60000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/check-realtime-websocket-smoke.ts",
     "check:release": "node scripts/check-release-evidence.mjs",
-    "check:release-artifact-evidence": "node scripts/check-release-artifact-evidence.mjs",
+    "check:release-artifact-evidence": "node --test scripts/lib/release-deploy-artifact-path-smokes.test.mjs && node scripts/check-release-artifact-evidence.mjs",
     "check:release-baseline": "node scripts/check-release-baseline.mjs",
     "check:retention": "node scripts/check-retention.mjs",
     "check:retention-plan": "ts-node -r tsconfig-paths/register scripts/check-retention-plan.ts",
