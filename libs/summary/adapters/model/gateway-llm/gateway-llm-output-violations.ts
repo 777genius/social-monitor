@@ -1,4 +1,9 @@
-import { isSchemaNode as isNode, schemaJsonType as jsonType, type SchemaNode } from "./gateway-llm-schema-primitives";
+import { isSchemaNode as isNode, type SchemaNode } from "./gateway-llm-schema-primitives";
+import {
+  explainOutputNodeConstraints,
+  outputSchemaAllowsValueType,
+  resolveOutputSchemaReference,
+} from "./gateway-llm-output-node-constraints";
 
 export const maxReportedOutputViolations = 12;
 const maxDepth = 64;
@@ -28,7 +33,7 @@ const visit = (ctx: Context, node: SchemaNode, value: unknown, path: string, dep
   };
   if (ctx.found.length >= ctx.limit || depth > maxDepth) return;
   if (typeof node.$ref === "string") {
-    const target = resolve(ctx.root, node.$ref);
+    const target = resolveOutputSchemaReference(ctx.root, node.$ref);
     if (target !== undefined) visit(ctx, target, value, path, depth + 1);
     return;
   }
@@ -37,28 +42,15 @@ const visit = (ctx: Context, node: SchemaNode, value: unknown, path: string, dep
     const schemas = branches.filter(isNode);
     if (schemas.some((branch) => accepts(ctx.root, branch, value, depth))) return;
     // Explain inside the one branch of the value's type, e.g. a too long nullable string.
-    const typed = schemas.filter((branch) => typeAllows(branch, value));
+    const typed = schemas.filter((branch) => outputSchemaAllowsValueType(branch, value));
     if (typed.length === 1) visit(ctx, typed[0]!, value, path, depth + 1);
     else report(`${path}:anyOf`);
     return;
   }
-  if (!typeAllows(node, value)) return report(`${path}:type`);
-  if (Array.isArray(node.enum) && !node.enum.some((entry) => canonical(entry) === canonical(value))) {
-    return report(`${path}:enum`);
-  }
-  if (Object.hasOwn(node, "const") && canonical(node.const) !== canonical(value)) return report(`${path}:const`);
-  if (typeof value === "string") {
-    const length = Array.from(value).length;
-    if (count(node.maxLength) && length > node.maxLength) report(`${path}:maxLength=${node.maxLength}`);
-    if (count(node.minLength) && length < node.minLength) report(`${path}:minLength=${node.minLength}`);
-  }
-  if (typeof value === "number") {
-    if (finite(node.maximum) && value > node.maximum) report(`${path}:maximum=${node.maximum}`);
-    if (finite(node.minimum) && value < node.minimum) report(`${path}:minimum=${node.minimum}`);
-  }
+  const check = explainOutputNodeConstraints(node, value, path);
+  for (const violation of check.violations) report(violation);
+  if (!check.canVisitChildren) return;
   if (Array.isArray(value)) {
-    if (count(node.maxItems) && value.length > node.maxItems) report(`${path}:maxItems=${node.maxItems}`);
-    if (count(node.minItems) && value.length < node.minItems) report(`${path}:minItems=${node.minItems}`);
     if (isNode(node.items)) {
       const items = node.items;
       value.forEach((item, index) => visit(ctx, items, item, `${path}[${index}]`, depth + 1));
@@ -86,28 +78,3 @@ const accepts = (root: SchemaNode, node: SchemaNode, value: unknown, depth: numb
   visit({ root, found, limit: 1 }, node, value, "$", depth + 1);
   return found.length === 0;
 };
-
-const resolve = (root: SchemaNode, ref: string): SchemaNode | undefined => {
-  const match = /^#\/(\$defs|definitions)\/(.+)$/u.exec(ref);
-  const defs = match === null ? undefined : root[match[1]!];
-  const target = isNode(defs) ? defs[match![2]!.replaceAll("~1", "/").replaceAll("~0", "~")] : undefined;
-  return isNode(target) ? target : undefined;
-};
-
-const typeAllows = (node: SchemaNode, value: unknown): boolean => {
-  const types = node.type === undefined ? [] : Array.isArray(node.type) ? node.type : [node.type];
-  const kind = jsonType(value);
-  return types.length === 0 || types.includes(kind) || (kind === "integer" && types.includes("number"));
-};
-
-const canonical = (value: unknown): string => {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (isNode(value)) {
-    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}`;
-  }
-  return JSON.stringify(value);
-};
-
-const count = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0;
-const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
-
