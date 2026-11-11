@@ -64,3 +64,17 @@ class CohortEvidenceTests(unittest.TestCase):
             result = backend_release(Config(), object(), binding)
             self.assertEqual([call.args for call in delta.call_args_list], [(BASE, SHA), ('e' * 40, SHA)])
             self.assertEqual(result['api_revision'], BASE)
+
+    def test_operator_observes_the_same_immutable_delta_once(self):
+        class Config:
+            recheck = lambda self: None
+        binding = {'sha': SHA, 'ci_run_id': '123', 'api_revision': BASE,
+                   'worker_revision': BASE, 'non_target_snapshot_sha256': SNAPSHOT}
+        with patch.object(GitHub, 'main', return_value=SHA), \
+             patch.object(GitHub, 'legacy', return_value='disabled_manually'), \
+             patch.object(GitHub, 'run', return_value={'run_attempt': 1}), \
+             patch.object(GitHub, 'jobs', return_value=[{'conclusion': 'success'}]), \
+             patch.object(GitHub, 'delta', return_value=(['apps/api/src/main.ts'], 'sha256:' + 'f' * 64)) as delta:
+            result = backend_release(Config(), object(), binding)
+            delta.assert_called_once_with(BASE, SHA)
+            self.assertEqual(result['deltas']['api'], result['deltas']['jev-intelligence-worker'])
