@@ -60,12 +60,15 @@ REQUESTS = {'preflight': {}, 'postgres-identity': {}, 'database': STANDARD,
 REQUESTS['frontend-authority'] = {'sha': SHA, 'ci_run_id': RUN}
 REQUESTS['backend-release-evidence'] = {**STANDARD, 'api_revision': SHA, 'worker_revision': SHA,
                                       'non_target_snapshot_sha256': DIGEST}
+REQUESTS['cohort-frontend-authority'] = REQUESTS['frontend-authority']
+REQUESTS['cohort-backend-release-evidence'] = REQUESTS['backend-release-evidence']
 REQUESTS['worker-capability'] = {'container_id': r'[0-9a-f]{64}', 'image_id': DIGEST}
 REQUESTS['worker-drain'] = {'container_id': r'[0-9a-f]{64}', 'image_id': DIGEST,
                             'signal_since_ms': r'[1-9][0-9]{12}', 'started_at_sha256': DIGEST,
                             'restart_count': r'[0-9]{1,10}'}
 REQUESTS['worker-probe'] = {**REQUESTS['probe'], 'runtime_sha256': DIGEST,
                             'restart_policy_sha256': DIGEST}
+REQUESTS['cohort-worker-probe-v1'] = REQUESTS['worker-probe']
 
 
 def request(verb, raw):
@@ -142,6 +145,11 @@ class Runner:
 
 
 def dispatch(verb, binding, config, runner):
+    authenticated = verb in ('cohort-frontend-authority', 'cohort-backend-release-evidence')
+    config.github_binding = ({key: binding[key] for key in ('sha', 'ci_run_id')}
+                            if authenticated else None)
+    if authenticated:
+        verb = verb[len('cohort-'):]
     now = int(time.time())
     if verb == 'postgres-identity':
         result = operator_database.identity(config, runner)
@@ -163,6 +171,8 @@ def dispatch(verb, binding, config, runner):
         result = operator_probe.worker_drain(config, runner, binding)
     elif verb == 'worker-probe':
         result = operator_probe.worker_probe(config, runner, binding)
+    elif verb == 'cohort-worker-probe-v1':
+        result = operator_probe.worker_probe(config, runner, binding, cohort=True)
     else:
         require(verb == 'preflight', 'operator-verb')
         legacy = operator_github.GitHub(config, runner).legacy()

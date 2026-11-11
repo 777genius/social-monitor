@@ -58,6 +58,14 @@ test('parsed policy mutations cannot smuggle environment, write permissions, sec
     ['extra step', value => { const sequence = job(value, 'candidate').steps; assert.ok(Array.isArray(sequence)); sequence.push({ run: 'echo untrusted' }); }],
     ['candidate secret', value => { map(steps(value, 'candidate')[5]!.env).PRIVATE = '${{ secrets.PRIVATE }}'; }],
     ['host secret expression', value => { map(steps(value, 'activate')[6]!.env).HETZNER_HOST = '${{ github.event.inputs.host }}'; }],
+    ['activation cleanup omitted', value => {
+      const step = steps(value, 'activate')[6]!;
+      step.run = String(step.run).replace('auth-clear', 'status');
+    }],
+    ['credential in cleanup argv', value => {
+      const step = steps(value, 'activate')[6]!;
+      step.run = String(step.run).replace('auth-clear', 'auth-clear "$GH_TOKEN"');
+    }],
   ];
   for (const [name, mutate] of mutations) assert.equal(accepted(changed(mutate)), false, name);
 });

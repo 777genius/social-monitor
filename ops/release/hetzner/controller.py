@@ -348,14 +348,25 @@ class Controller:
         verb, args = parse(command)
         self.fence()
         with Lock(self.state / 'controller.lock'):
-            if verb in ('cohort-receive-frontend', 'cohort-receive-backend'):
+            if verb in ('github-auth', 'github-auth-clear'):
+                if verb == 'github-auth':
+                    require(not (self.state / 'latch.json').exists(), 'latched')
+                    self.exclusive('cohort-' + '-'.join(args))
+                from operator_adapter import read_request
+                from operator_config import github_auth_update
+                return github_auth_update(*args, read_request(stream), clear=verb == 'github-auth-clear')
+            if verb in ('cohort-receive-frontend', 'cohort-receive-frontend-auth', 'cohort-receive-backend'):
                 require(not (self.state / 'latch.json').exists(), 'latched')
                 self.exclusive('cohort-' + '-'.join(args[:2]))
-                if verb == 'cohort-receive-frontend':
+                if verb in ('cohort-receive-frontend', 'cohort-receive-frontend-auth'):
                     from cohort_frontend_receive import receive_frontend
-                    return receive_frontend(self, args[0], args[1], stream)
+                    return receive_frontend(self, args[0], args[1], stream,
+                                            authenticated=verb == 'cohort-receive-frontend-auth')
                 from cohort_backend_receive import receive_backend
                 return receive_backend(self, args, stream)
+            if verb.startswith('cohort-'):
+                from cohort_wire import dispatch as dispatch_cohort
+                return dispatch_cohort(self, verb[len('cohort-'):], args)
             if verb.startswith('backend-'):
                 from backend_controller import BackendRelease
                 return BackendRelease(self).dispatch(verb[8:], args, stream)

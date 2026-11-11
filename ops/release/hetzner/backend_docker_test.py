@@ -62,7 +62,7 @@ class SyntheticHost(Host):
         return target['running'] and target['image'] == image
 
     def evidence(self, verb, binding):
-        if verb == 'backend-release-evidence':
+        if verb in ('backend-release-evidence', 'cohort-backend-release-evidence'):
             return {**binding, 'policy': 'backend-cohort-ci-v1', 'main_sha': SHA, 'head_sha': SHA,
                 'event': 'push', 'branch': 'main', 'legacy_workflow': 'disabled_manually',
                 'jobs': ['success'], 'job_observations': ['synthetic-not-github'], 'run_attempt': 1,

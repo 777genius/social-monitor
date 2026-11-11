@@ -31,6 +31,8 @@ FORCED = '/usr/bin/sudo -n /opt/social-monitor-release/root-executor'
 BASE_FILES = ('controller.py', 'contract.py', 'archive.py', 'bounds.py', 'evidence.py', 'prisma_history.py',
               'host.py', 'worker_host.py', 'backend_host.py', 'backend_controller.py', 'compose_contract.py',
               'cohort_frontend_receive.py', 'cohort_backend_receive.py', 'frontend_ingress.py', 'frontend_bundle.py', 'frontend_tree.py',
+              'cohort_controller.py', 'cohort_host.py', 'cohort_compose.py', 'cohort_wire.py', 'frontend_host.py',
+              'frontend_probe.py', 'frontend_probe_runtime.py', 'frontend_http.py', 'frontend_marker.py', 'frontend_verifier.py',
               'requirements.txt', 'release-gate.sh',
               'restricted-executor.c')
 # Only reviewed operator assets may be added to this finite installation list.

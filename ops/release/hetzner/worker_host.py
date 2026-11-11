@@ -21,6 +21,18 @@ class WorkerHost:
             host['OomKillDisable'] = False
         return digest({'config': settings, 'host': host, 'mounts': value['Mounts']})
 
+    @staticmethod
+    def cohort_policy_v1(value):
+        """Cohort-only Env ordering; legacy admissions keep their original raw hash."""
+        env = value['Config'].get('Env')
+        if env is None:
+            return WorkerHost.policy(value)
+        require(isinstance(env, list) and all(isinstance(v, str) and '=' in v and
+                v.split('=', 1)[0] for v in env), 'worker-env-invalid')
+        keys = [v.split('=', 1)[0] for v in env]
+        require(len(set(keys)) == len(keys), 'worker-env-duplicate')
+        return WorkerHost.policy({**value, 'Config': {**value['Config'], 'Env': sorted(env)}})
+
     def signal_ready(self, value):
         pid = value['State']['Pid']
         require(type(pid) is int and pid > 0, 'worker-process')

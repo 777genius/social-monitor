@@ -33,7 +33,7 @@ class Docker:
 
     def evidence(self, verb, binding):
         self.evidence_calls.append(verb)
-        if verb == 'backend-release-evidence':
+        if verb in ('backend-release-evidence', 'cohort-backend-release-evidence'):
             paths = ['apps/intelligence-worker/src/reader-value-runtime-options.ts', 'compose.frontend.yml']
             return {**binding, 'policy': 'backend-cohort-ci-v1', 'main_sha': OLD_SHA if self.stale_main else SHA, 'head_sha': SHA,
                 'event': 'push', 'branch': 'main', 'jobs': ['success'], 'job_observations': ['ci'],
@@ -174,6 +174,22 @@ class CohortTests(unittest.TestCase):
         self.assertEqual(receipt['active_image_ids'], {s: IMAGE for s in TARGETS})
         self.assertEqual(self.docker.effects, ['import', 'restart-no', 'term', 'up-api', 'up-' + SERVICE])
         self.assertEqual(self.release.activate(KEY), receipt)
+
+    def test_retained_legacy_admission_and_receipt_keep_pre_cohort_env_hashes(self):
+        for value in self.docker.values.values(): value['Config']['Env'].reverse()
+        # Frozen fingerprints from the pre-cohort policy with this raw Env order.
+        frozen = {'api': 'sha256:d699c402d192788c76381b3d01d7670d080b3f92920887cea6ebdf1fa9fd353b',
+                  SERVICE: 'sha256:48989ed953ae03a93c7e873478bc181ae2868ac13dafbae22802182946c3a2ea'}
+        self.admission['runtime_sha256'] = frozen
+        path = self.release.path('admissions', KEY); atomic(path, self.admission)
+        admission_bytes = path.read_bytes()
+        receipt = self.activate()
+        self.assertEqual(receipt['runtime_sha256'], frozen)
+        published = self.release.path('receipts', KEY); receipt_bytes = published.read_bytes()
+        restarted = BackendRelease(self.core); restarted.host = Cohort(self.docker)
+        self.assertEqual(restarted.activate(KEY), receipt)
+        self.assertEqual(path.read_bytes(), admission_bytes)
+        self.assertEqual(published.read_bytes(), receipt_bytes)
 
     def test_signal_intent_uncertainty_recovers_with_guarded_replay(self):
         original = self.release.host.term

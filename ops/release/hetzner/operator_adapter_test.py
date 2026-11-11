@@ -64,11 +64,11 @@ class WireAndBoundsTests(unittest.TestCase):
         from operator_adapter import REQUESTS
         for verb in REQUESTS:
             value = {} if verb in ('preflight', 'postgres-identity') else dict(BINDING)
-            if verb == 'frontend-authority':
+            if verb in ('frontend-authority', 'cohort-frontend-authority'):
                 value = {'sha': BINDING['sha'], 'ci_run_id': BINDING['ci_run_id']}
             if verb == 'release-evidence':
                 value['production_revision'] = BASE
-            if verb == 'backend-release-evidence':
+            if verb in ('backend-release-evidence', 'cohort-backend-release-evidence'):
                 value.update(api_revision=BASE, worker_revision=BASE,
                              non_target_snapshot_sha256='sha256:' + '0' * 64)
             if verb == 'worker-capability':
@@ -77,9 +77,9 @@ class WireAndBoundsTests(unittest.TestCase):
                 value = {'container_id': CONTAINER, 'image_id': BINDING['image_id'],
                          'signal_since_ms': '1794300000000', 'started_at_sha256': 'sha256:' + '0' * 64,
                          'restart_count': '0'}
-            if verb in ('probe', 'worker-probe'):
+            if verb in ('probe', 'worker-probe', 'cohort-worker-probe-v1'):
                 value = {'sha': BINDING['sha'], 'image_id': BINDING['image_id'], 'container_id': CONTAINER}
-                if verb == 'worker-probe':
+                if verb in ('worker-probe', 'cohort-worker-probe-v1'):
                     value.update(runtime_sha256='sha256:' + '1' * 64,
                                  restart_policy_sha256='sha256:' + '2' * 64)
             self.assertEqual(request(verb, canonical(value)), value)
@@ -223,7 +223,8 @@ class WireAndBoundsTests(unittest.TestCase):
             original = module.read_bytes()
             module.write_bytes(b'(\n')
             for verb in ('postgres-identity', 'frontend-authority', 'backend-release-evidence',
-                         'worker-capability', 'worker-drain', 'worker-probe'):
+                         'cohort-frontend-authority', 'cohort-backend-release-evidence',
+                         'worker-capability', 'worker-drain', 'worker-probe', 'cohort-worker-probe-v1'):
                 with self.subTest(verb=verb):
                     result = subprocess.run(['/usr/sbin/chroot', str(root),
                         '/etc/social-monitor/release/operator-adapter', verb],

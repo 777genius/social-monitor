@@ -30,11 +30,12 @@ def _sync_tree(root):
         sync_dir(current)
 
 
-def receive_frontend(core, sha, run, stream):
+def receive_frontend(core, sha, run, stream, authenticated=False):
     """Caller has fenced the machine and holds the shared release lock."""
     key = sha + '-' + run
     require(re.fullmatch(KEY, key), 'cohort-key')
-    observed = core.host.evidence('frontend-authority', {'sha': sha, 'ci_run_id': run})
+    observed = core.host.evidence('cohort-frontend-authority' if authenticated else 'frontend-authority',
+                                  {'sha': sha, 'ci_run_id': run})
     require(isinstance(observed, dict) and set(observed) == set(FIELDS) | {'version', 'observed_at'},
             'frontend-authority')
     authority = _authority({name: observed[name] for name in FIELDS})

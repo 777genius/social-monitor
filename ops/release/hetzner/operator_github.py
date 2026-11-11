@@ -2,7 +2,7 @@
 import hashlib
 from contract import digest, require
 import evidence as core_policies
-from operator_config import (EXECUTABLES, GH_DIR, REVIEW, TOKEN, decode, exact,
+from operator_config import (EXECUTABLES, GH_DIR, REVIEW, TOKEN, decode, exact, github_auth_header,
                              match, private_bytes, sha_bytes)
 
 REPO = '777genius/social-monitor'
@@ -27,11 +27,14 @@ class GitHub:
 
     def get(self, suffix):
         self.config.recheck()
+        header = github_auth_header(self.config)
         result = decode(self.runner.run([
             EXECUTABLES['curl'], '--disable', '--fail', '--silent', '--location', '--proto', '=https',
             '--max-redirs', '0', '--header', 'Accept: application/vnd.github+json',
             '--header', 'X-GitHub-Api-Version: 2022-11-28', '--user-agent', 'social-monitor-release',
-            'https://api.github.com/repos/' + REPO + (('/' + suffix) if suffix else '')], env={}, limit=16 * 1024**2))
+            *(['--header', '@-'] if header is not None else []),
+            'https://api.github.com/repos/' + REPO + (('/' + suffix) if suffix else '')],
+            data=header, env={}, limit=16 * 1024**2))
         self.config.recheck()
         return result
 
@@ -180,8 +183,11 @@ def backend_release(config, runner, binding):
     jobs = gh.jobs(run)
     revisions = {'api': binding['api_revision'], 'jev-intelligence-worker': binding['worker_revision']}
     deltas = {}
+    observed = {}
     for service, base in revisions.items():
-        paths, checksum = ([], digest([])) if base == sha else gh.delta(base, sha)
+        if base not in observed:
+            observed[base] = ([], digest([])) if base == sha else gh.delta(base, sha)
+        paths, checksum = observed[base]
         deltas[service] = {'base': base, 'head': sha, 'complete_delta': True,
                            'changed_paths': paths, 'delta_sha256': checksum}
     result = {**binding, 'policy': 'backend-cohort-ci-v1', 'main_sha': sha, 'head_sha': sha,
