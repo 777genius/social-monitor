@@ -1,4 +1,5 @@
-import { jsonResponse, githubTrendingPageHtmlFixture, readHeader } from "./lib/source-provider-runtime-http-fixtures";
+import { jsonResponse, readHeader } from "./lib/source-provider-runtime-http-fixtures";
+import { verifyGitHubTrendingPageRuntime } from "./lib/source-provider-github-trending-runtime-smoke";
 import { verifyGitHubRepoRadarRuntimeModes } from "./lib/source-provider-github-repo-radar-runtime-smoke";
 import { verifyGitHubIssuesRuntimeModes } from "./lib/source-provider-github-issues-runtime-smoke";
 
@@ -12,10 +13,7 @@ import { HackerNewsSourceProvider } from "../libs/ingestion/adapters/source/hack
 import {
   GITHUB_REPO_RADAR_PROVIDER_KEY,
   GITHUB_TRENDING_PAGE_PROVIDER_KEY,
-  parseGitHubTrendingPageRepositoryMetadata,
 } from "../libs/ingestion/domain";
-import { HttpGitHubTrendingPageClient } from "../libs/ingestion/adapters/source/github-trending-page/http-github-trending-page-client";
-import { GitHubTrendingPageSourceProvider } from "../libs/ingestion/adapters/source/github-trending-page/github-trending-page-source.provider";
 import { RedditSourceProvider } from "../libs/ingestion/adapters/source/reddit/reddit-source.provider";
 import { RedditRefreshTokenProvider } from "../libs/ingestion/adapters/source/reddit/refresh-token-reddit-token-provider";
 import type { RedditClientPort } from "../libs/ingestion/adapters/source/reddit/reddit-client.port";
@@ -156,7 +154,7 @@ async function main(): Promise<void> {
   await verifyRedditPermanentOAuthRuntime();
   await verifyGitHubIssuesRuntimeModes({ withMockedFetch, assertFailure, assert });
   await verifyGitHubRepoRadarRuntimeModes({ withMockedFetch, assertFailure, contextFor, assert });
-  await verifyGitHubTrendingPageRuntime();
+  await verifyGitHubTrendingPageRuntime({ withMockedFetch, assertFailure, contextFor, assert });
   await verifyRssRuntimeGuards();
   await verifyHackerNewsRuntime();
 
@@ -604,118 +602,6 @@ async function verifyRedditPermanentOAuthRuntime(): Promise<void> {
     true,
   );
   assertFailure(sourceProvider, "Reddit API returned 503", "unavailable", true);
-}
-
-async function verifyGitHubTrendingPageRuntime(): Promise<void> {
-  let observedTrendingPageFetch = false;
-  await withMockedFetch(
-    async (input, init) => {
-      observedTrendingPageFetch = true;
-      const url = new URL(String(input));
-      assert(
-        url.hostname === "github.com",
-        "GitHub Trending page runtime must use github.com",
-      );
-      assert(
-        url.pathname === "/trending/TypeScript",
-        "GitHub Trending page runtime must encode language in the path",
-      );
-      assert(
-        url.searchParams.get("since") === "daily",
-        "GitHub Trending page runtime must pass the since window",
-      );
-      assert(
-        url.searchParams.get("spoken_language_code") === "en",
-        "GitHub Trending page runtime must pass spoken language when configured",
-      );
-      assert(
-        readHeader(init?.headers, "accept") ===
-          "text/html,application/xhtml+xml",
-        "GitHub Trending page runtime must request HTML",
-      );
-      assert(
-        readHeader(init?.headers, "user-agent") ===
-          "social-monitor-runtime-contract",
-        "GitHub Trending page runtime must pass configured User-Agent",
-      );
-
-      return new Response(githubTrendingPageHtmlFixture(), {
-        status: 200,
-        headers: { "content-type": "text/html; charset=utf-8" },
-      });
-    },
-    async () => {
-      const provider = new GitHubTrendingPageSourceProvider(
-        new HttpGitHubTrendingPageClient(),
-        { now: () => new Date("2026-06-24T12:00:00.000Z") },
-      );
-      const context = contextFor(GITHUB_TRENDING_PAGE_PROVIDER_KEY, {
-        language: "TypeScript",
-        spokenLanguage: "en",
-        userAgent: "social-monitor-runtime-contract",
-        maxItems: 1,
-      });
-      const result = await provider.scan(
-        provider.planScan({ mode: "listing", query: "daily" }, context),
-        context,
-      );
-      const metadata = parseGitHubTrendingPageRepositoryMetadata(
-        result.items[0]?.metadata,
-      );
-      assert(
-        result.items.length === 1,
-        "GitHub Trending page runtime must emit one repository item",
-      );
-      assert(
-        metadata !== null,
-        "GitHub Trending page runtime must emit repository metadata",
-      );
-      assert(
-        metadata.repository.fullName === "openai/codex",
-        "GitHub Trending page metadata must keep repository full name",
-      );
-      assert(
-        metadata.repository.totalStars === 54000,
-        "GitHub Trending page metadata must keep total stars",
-      );
-      assert(
-        metadata.trending.starsGained === 210,
-        "GitHub Trending page metadata must keep stars gained for the selected window",
-      );
-      assert(
-        metadata.trending.source === "github_trending_html",
-        "GitHub Trending page metadata must identify live HTML runtime source",
-      );
-    },
-  );
-
-  assert(
-    observedTrendingPageFetch,
-    "GitHub Trending page runtime contract must observe live page fetch",
-  );
-
-  const sourceProvider = new GitHubTrendingPageSourceProvider(
-    new HttpGitHubTrendingPageClient(),
-    { now: () => new Date("2026-06-24T12:00:00.000Z") },
-  );
-  assertFailure(
-    sourceProvider,
-    "GitHub Trending page returned HTTP 403",
-    "rate_limited",
-    true,
-  );
-  assertFailure(
-    sourceProvider,
-    "GitHub Trending page returned HTTP 429",
-    "rate_limited",
-    true,
-  );
-  assertFailure(
-    sourceProvider,
-    "GitHub Trending page returned HTTP 503",
-    "unavailable",
-    true,
-  );
 }
 
 async function verifyRssRuntimeGuards(): Promise<void> {
