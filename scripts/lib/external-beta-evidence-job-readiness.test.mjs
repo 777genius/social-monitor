@@ -71,21 +71,46 @@ const oldNames = ["missingRequiredEnv","missingOptionalEnvNames","satisfiedRequi
 function validateTopLevelWiring(source) {
   const ast = ts.createSourceFile('runner.mjs', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
   assert.equal(ast.parseDiagnostics.length, 0);
-  let factories = 0;
+  const factories = [];
   for (const statement of ast.statements) {
     if (ts.isVariableStatement(statement)) {
       for (const d of statement.declarationList.declarations) {
         if (ts.isCallExpression(d.initializer) && ts.isIdentifier(d.initializer.expression) &&
-          d.initializer.expression.text === 'createExternalBetaJobReadiness') factories++;
+          d.initializer.expression.text === 'createExternalBetaJobReadiness') factories.push(d);
       }
     }
     if (ts.isFunctionDeclaration(statement) && oldNames.includes(statement.name?.text)) {
       assert.fail('retained original implementation ' + statement.name.text);
     }
   }
-  assert.equal(factories, 1, 'one active top-level factory binding');
+  assert.equal(factories.length, 1, 'one active top-level factory binding');
   assert.ok(source.includes("import { createExternalBetaJobReadiness } from './lib/external-beta-evidence-job-readiness.mjs';"));
+
+  const binding = factories[0].name;
+  assert.ok(ts.isObjectBindingPattern(binding), 'original caller must bind the exported readiness decisions');
+  const names = binding.elements.map(element => {
+    assert.ok(ts.isIdentifier(element.name) && element.propertyName === undefined);
+    return element.name.text;
+  });
+  const requiredNames = [
+    'missingRequiredEnv', 'missingOptionalEnvNames', 'requiredEnvAlternativeCoveredEnvNames',
+    'jobInputEnvNames', 'hasEnv', 'jobExecutionReadiness', 'formatMissingRequiredEnvViolation',
+  ];
+  assert.equal(new Set(names).size, names.length, 'no duplicate bound names');
+  assert.deepEqual([...names].sort(), [...requiredNames].sort(), 'all original consumer bindings remain active');
+
+  const argumentsList = factories[0].initializer.arguments;
+  assert.equal(argumentsList.length, 1, 'one dependency object');
+  const dependencies = argumentsList[0];
+  assert.ok(ts.isObjectLiteralExpression(dependencies), 'inject original runtime dependencies');
+  const injected = dependencies.properties.map(property => {
+    assert.ok(ts.isShorthandPropertyAssignment(property), 'original runtime dependencies must be passed directly');
+    return property.name.text;
+  });
+  assert.equal(new Set(injected).size, injected.length);
+  assert.deepEqual([...injected].sort(), ['process', 'localRuntimeEnvNames', 'isLocalRuntimeEnvValue'].sort());
 }
+
 test('original CLI has one direct active delegation and no stale implementation', () => {
   validateTopLevelWiring(runner);
 });
@@ -98,4 +123,17 @@ test('disabled, removed, duplicate and nested delegation fail original AST gate'
     runner.replace(call, 'true ? undefined : ' + call),
     runner.replace(call, call + ', ' + call),
   ]) assert.throws(() => validateTopLevelWiring(altered));
+});
+
+test('wrong readiness dependencies and missing exported decisions fail the AST gate', () => {
+  const call = 'createExternalBetaJobReadiness({ process, localRuntimeEnvNames, isLocalRuntimeEnvValue })';
+  assert.equal(runner.split(call).length, 2);
+  assert.throws(() => validateTopLevelWiring(runner.replace(call,
+    'createExternalBetaJobReadiness({ process, localRuntimeEnvNames })')));
+  assert.throws(() => validateTopLevelWiring(runner.replace(call,
+    'createExternalBetaJobReadiness({ process, localRuntimeEnvNames, isLocalRuntimeEnvValue: () => false })')));
+  const originalBinding = 'missingRequiredEnv, missingOptionalEnvNames, requiredEnvAlternativeCoveredEnvNames,';
+  assert.equal(runner.split(originalBinding).length, 2);
+  assert.throws(() => validateTopLevelWiring(runner.replace(originalBinding,
+    'missingRequiredEnv, requiredEnvAlternativeCoveredEnvNames,')));
 });
