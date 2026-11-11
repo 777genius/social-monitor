@@ -97,6 +97,11 @@ const mutations: [string, (w: Workflow) => void][] = [
   ['X collector test omitted', (w) => w.jobs.production_lifecycle.steps.splice(4, 1)],
   ['X collector test failure ignored', (w) => w.jobs.production_lifecycle.steps[4]!['continue-on-error'] = true],
   ['X collector test skipped', (w) => w.jobs.production_lifecycle.steps[4]!.if = false],
+  ['X Docker setup skipped', (w) => w.jobs.production_lifecycle.steps[5]!.if = false],
+  ['X Docker store changed', (w) => (w.jobs.production_lifecycle.steps[5]!.with as Step)['daemon-config'] = '{}'],
+  ['X image qualification skipped', (w) => w.jobs.production_lifecycle.steps[6]!.if = false],
+  ['X image qualification failure ignored', (w) => w.jobs.production_lifecycle.steps[6]!['continue-on-error'] = true],
+  ['X image artifact omitted', (w) => w.jobs.production_lifecycle.steps.splice(7, 1)],
   ['X collector live tests enabled', (w) => w.jobs.production_lifecycle.steps[4]!.run =
     String(w.jobs.production_lifecycle.steps[4]!.run).replace("-m 'not real_e2e'", '')],
   ...['check:container', 'check:runtime-compose', 'check:production-lifecycle-runner:containment', 'check:production-deploy-lifecycle'].map(

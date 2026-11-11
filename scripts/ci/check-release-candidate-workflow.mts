@@ -91,7 +91,7 @@ export function candidateWorkflowViolations(workflow: unknown, fragment: unknown
   const aggregateSteps = aggregate.steps as Mapping[];
   const checkoutOptions = { ref: '${{ github.sha }}', 'fetch-depth': 0, 'persist-credentials': false };
   if (job.name !== 'Production immutable candidate' || (job.steps as Mapping[]).length !== 7 ||
-      lifecycle.name !== 'Production deploy lifecycle fixtures' || lifecycleSteps.length !== 5 ||
+      lifecycle.name !== 'Production deploy lifecycle fixtures' || lifecycleSteps.length !== 8 ||
       !action(lifecycleSteps[0], CHECKOUT, checkoutOptions) ||
       !action(lifecycleSteps[1], NODE, { 'node-version': 22 }) ||
       !run(lifecycleSteps[2], ['set -euo pipefail', ...GATES].join('\n')) ||
@@ -99,6 +99,16 @@ export function candidateWorkflowViolations(workflow: unknown, fragment: unknown
       !run(lifecycleSteps[4], ['set -euo pipefail',
         "python -m pip install --disable-pip-version-check -e 'apps/x-collector[dev]'",
         "python -m pytest -m 'not real_e2e' apps/x-collector/tests"].join('\n')) ||
+      !action(lifecycleSteps[5], DOCKER, {
+        version: 'v29.8.2', 'set-host': true,
+        'daemon-config': '{"features":{"containerd-snapshotter":true}}',
+      }) ||
+      !run(lifecycleSteps[6], ['set -euo pipefail', 'python3 scripts/ci/x-collector-image.test.py',
+        'bash scripts/ci/x-collector-image.sh'].join('\n')) ||
+      !action(lifecycleSteps[7], UPLOAD, {
+        name: 'x-collector-image-${{ github.run_id }}-${{ github.run_attempt }}',
+        path: '${{ runner.temp }}/x-collector-candidate/', 'if-no-files-found': 'error', 'retention-days': 7,
+      }) ||
       aggregate.name !== 'Production container and deploy lifecycle' ||
       !isDeepStrictEqual(aggregate.needs, ['production_candidate', 'production_lifecycle']) ||
       aggregateSteps.length !== 1 ||

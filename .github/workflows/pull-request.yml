@@ -854,6 +854,25 @@ jobs:
           python -m pip install --disable-pip-version-check -e 'apps/x-collector[dev]'
           python -m pytest -m 'not real_e2e' apps/x-collector/tests
 
+      - name: Set up the qualified Docker engine for X
+        uses: docker/setup-docker-action@2bf61fb9464cc67f0cbdeabed6aa0380accd1c70
+        with:
+          version: v29.8.2
+          set-host: true
+          daemon-config: '{"features":{"containerd-snapshotter":true}}'
+      - name: Build and smoke-test exact X collector image offline
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/x-collector-image.test.py
+          bash scripts/ci/x-collector-image.sh
+      - name: Store verified X collector image
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: x-collector-image-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/x-collector-candidate/
+          if-no-files-found: error
+          retention-days: 7
+
   production_runtime:
     name: Production container and deploy lifecycle
     needs: [production_candidate, production_lifecycle]
