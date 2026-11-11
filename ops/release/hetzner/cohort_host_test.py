@@ -199,6 +199,39 @@ class CohortHostTests(unittest.TestCase):
         self.assertEqual(self.raw.calls, [])
 
     @unittest.skipUnless(shutil.which('docker'), 'Docker Compose CLI is unavailable')
+    def test_profiled_worker_dependency_renders_with_all_profiles_but_targets_only_worker(self):
+        self.raw.base['services'][SERVICE].update(profiles=['jev-v3'], depends_on={'jev-agent-runtime': {'condition': 'service_started'}})
+        self.raw.base['services']['jev-agent-runtime'] = {'image': 'TEST-only-runtime', 'profiles': ['jev-runtime']}
+        specification = self.root / 'profiled-compose.json'
+        specification.write_text(json.dumps(self.raw.base))
+        def compose(path=None):
+            args = ['docker', 'compose', '--project-name', 'test-cohort-profile', '-f', str(specification)]
+            return args + (['-f', str(path)] if path is not None else [])
+        def render(args):
+            return subprocess.run(args + ['config', '--no-interpolate', '--no-env-resolution', '--format', 'json'],
+                                  capture_output=True, timeout=10,
+                                  env={**os.environ, 'COMPOSE_PROFILES': ''})
+        # Explicit targeting enables the worker profile, which does not enable the dependency's profile.
+        excluded = render(compose() + ['--profile', 'jev-v3'])
+        if excluded.returncode != 0:
+            self.assertIn(b'depends on undefined service', excluded.stderr)
+        self.raw.compose = compose
+        self.raw.model = lambda path=None: json.loads(render(compose(path) + ['--profile', '*']).stdout)
+        def metadata_only_command(args):
+            self.raw.calls.append(args)
+            up = args.index('up')
+            self.assertEqual(args[up - 2:up], ['--profile', '*'])
+            # Never execute up: render its exact global options with the real daemon-free Compose CLI.
+            result = render(args[:up])
+            self.assertEqual(result.returncode, 0)
+            visible = json.loads(result.stdout)['services']
+            self.assertIn(SERVICE, visible); self.assertIn('jev-agent-runtime', visible)
+            self.assertEqual(args[up:], ['up', '-d', '--no-deps', '--no-build', '--pull', 'never', SERVICE])
+        self.raw.command = metadata_only_command
+        self.host.up(IMAGES, self.sources, self.path, self.raw.fingerprint, SERVICE)
+        self.assertEqual(len(self.raw.calls), 1)
+
+    @unittest.skipUnless(shutil.which('docker'), 'Docker Compose CLI is unavailable')
     def test_real_compose_config_keeps_three_independent_paths_and_saved_options(self):
         specification = self.root / 'compose.json'
         specification.write_text(json.dumps(self.raw.base))
