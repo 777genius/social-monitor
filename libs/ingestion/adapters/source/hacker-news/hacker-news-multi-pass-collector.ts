@@ -57,6 +57,8 @@ export async function collectHackerNewsScanPasses(client: HackerNewsClientPort, 
   const warnings: string[] = [];
   let failedPasses = 0;
   let targetPassTruncated = false;
+  let providerTruncated = false;
+  const onIncomplete = () => { providerTruncated = true; };
   let firstFailure: unknown;
   const scanTime = clock.now().getTime();
   const openWindow = params.targetWindow !== undefined &&
@@ -65,7 +67,7 @@ export async function collectHackerNewsScanPasses(client: HackerNewsClientPort, 
   const historicalWindow = params.targetWindow !== undefined && !openWindow;
   // A live day uses bounded normal search and listings. Complete historical
   // searches share one deadline for the entire scan.
-  const searchOptions = openWindow ? { ...params.searchOptions, requireComplete: false } :
+  const searchOptions = openWindow ? { ...params.searchOptions, requireComplete: false, onIncomplete } :
     !historicalWindow ? params.searchOptions : {
       ...params.searchOptions,
       deadline: params.searchOptions?.deadline ?? AbortSignal.timeout(historicalDurationBudgetMs),
@@ -89,7 +91,7 @@ export async function collectHackerNewsScanPasses(client: HackerNewsClientPort, 
           searchOptions,
         );
       } else if (pass.mode === "listing") {
-        stories = await client.listStories(pass.listing, limit);
+        stories = await client.listStories(pass.listing, limit, openWindow ? onIncomplete : undefined);
       } else if (pass.target === "comment") {
         stories = await client.searchComments(
           pass.query,
@@ -212,9 +214,13 @@ export async function collectHackerNewsScanPasses(client: HackerNewsClientPort, 
     warnings.push(`Hacker News ${historicalWindow ? "historical" : "target-window"} scan incomplete: maxItems exceeded`);
   }
 
+  if (providerTruncated) {
+    warnings.push("Hacker News target-window scan incomplete: provider results truncated");
+  }
+
   return {
     items: filteredItems.slice(0, params.plan.maxItems),
-    ...(targetOverflow || failedPasses > 0 ? { collection: { complete: false, backfillPending: true } } : {}),
+    ...(targetOverflow || providerTruncated || failedPasses > 0 ? { collection: { complete: false, backfillPending: true } } : {}),
     conversationUnits: [...conversationUnitsByProviderUnitId.values()].filter(
       (unit) => returnedRootExternalIds.has(unit.rootExternalId),
     ),
