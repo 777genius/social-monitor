@@ -14,3 +14,6 @@ The CLI remains owner of contract loading, environment selection, job orchestrat
 
 ## Acceptance
 New Draft CI (Static/Security/Flutter), nonpublishing image, independent code/review inspection, exact-head Ready native 20/20, expected-SHA squash merge, main postmerge 20/20. Counts provisional until final acceptance.
+
+## Real source-marker gate adaptation
+The original checker had a legacy string-marker security gate pointing at the CLI implementation. That source was moved, so the marker validator now checks the extracted consistency/freshness module directly (with the real checker loading its exact tracked source), while retaining call/delegation markers at the original runner. New fail-closed tests remove every representative relocated marker and reject a missing checker wiring. No guard is disabled; the old checker stays within its original 1068 LOC legacy cap by eliminating one redundant blank line.
