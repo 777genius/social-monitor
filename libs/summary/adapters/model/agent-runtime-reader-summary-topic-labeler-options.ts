@@ -7,7 +7,7 @@ import {
 } from "./active-reader-summary-generation-profile";
 import type {
   AgentRuntimeReaderSummaryTopicLabelerOptions,
-} from "./agent-runtime-reader-summary-topic-labeler.adapter";
+} from "./agent-runtime-reader-summary-topic-labeler-runtime-settings";
 
 /** Composition-only env translation. The verifier adapter owns task execution. */
 export const resolveAgentRuntimeReaderSummaryTopicLabelerOptions = (

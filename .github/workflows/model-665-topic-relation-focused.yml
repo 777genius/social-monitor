@@ -1,5 +1,5 @@
 # Temporary Draft #665 focused source verification. Remove only after completed SUCCESS.
-name: Model 665 topic relation runtime settings focused check
+name: Model 665 topic labeler dispatch settings focused check
 
 on:
   push:
@@ -40,9 +40,11 @@ jobs:
           npm run check:code-quality
           npm run check:source-line-cap
           npm run check:runtime-profile-guards
-      - name: Verify relation runtime identity, attestation and output behavior
+      - name: Verify topic labeler settings, identity and fail-closed behavior
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-relation-options.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-relation-verifier.adapter.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-topic-labeler-runtime-settings.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-topic-labeler.adapter.spec.ts
