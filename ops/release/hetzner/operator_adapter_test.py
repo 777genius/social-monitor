@@ -77,9 +77,9 @@ class WireAndBoundsTests(unittest.TestCase):
                 value = {'container_id': CONTAINER, 'image_id': BINDING['image_id'],
                          'signal_since_ms': '1794300000000', 'started_at_sha256': 'sha256:' + '0' * 64,
                          'restart_count': '0'}
-            if verb in ('probe', 'worker-probe'):
+            if verb in ('probe', 'worker-probe', 'cohort-worker-probe-v1'):
                 value = {'sha': BINDING['sha'], 'image_id': BINDING['image_id'], 'container_id': CONTAINER}
-                if verb == 'worker-probe':
+                if verb in ('worker-probe', 'cohort-worker-probe-v1'):
                     value.update(runtime_sha256='sha256:' + '1' * 64,
                                  restart_policy_sha256='sha256:' + '2' * 64)
             self.assertEqual(request(verb, canonical(value)), value)
@@ -224,7 +224,7 @@ class WireAndBoundsTests(unittest.TestCase):
             module.write_bytes(b'(\n')
             for verb in ('postgres-identity', 'frontend-authority', 'backend-release-evidence',
                          'cohort-frontend-authority', 'cohort-backend-release-evidence',
-                         'worker-capability', 'worker-drain', 'worker-probe'):
+                         'worker-capability', 'worker-drain', 'worker-probe', 'cohort-worker-probe-v1'):
                 with self.subTest(verb=verb):
                     result = subprocess.run(['/usr/sbin/chroot', str(root),
                         '/etc/social-monitor/release/operator-adapter', verb],

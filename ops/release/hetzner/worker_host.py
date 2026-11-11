@@ -14,19 +14,24 @@ class WorkerHost:
         config = value['Config']
         # Image/labels are release identity. All runtime controls remain byte-bound.
         settings = {k: v for k, v in config.items() if k not in ('Image', 'Labels', 'Hostname')}
-        env = settings.get('Env')
-        if env is not None:
-            require(isinstance(env, list) and all(isinstance(v, str) and '=' in v and
-                    v.split('=', 1)[0] for v in env), 'worker-env-invalid')
-            keys = [v.split('=', 1)[0] for v in env]
-            require(len(set(keys)) == len(keys), 'worker-env-duplicate')
-            settings['Env'] = sorted(env)
         host = {k: v for k, v in value['HostConfig'].items() if k != 'RestartPolicy'}
         # Docker29 reports the enabled OOM killer as null after start, false just
         # after create. Only these equivalent defaults normalize; disabling stays bound.
         if host.get('OomKillDisable') is None:
             host['OomKillDisable'] = False
         return digest({'config': settings, 'host': host, 'mounts': value['Mounts']})
+
+    @staticmethod
+    def cohort_policy_v1(value):
+        """Cohort-only Env ordering; legacy admissions keep their original raw hash."""
+        env = value['Config'].get('Env')
+        if env is None:
+            return WorkerHost.policy(value)
+        require(isinstance(env, list) and all(isinstance(v, str) and '=' in v and
+                v.split('=', 1)[0] for v in env), 'worker-env-invalid')
+        keys = [v.split('=', 1)[0] for v in env]
+        require(len(set(keys)) == len(keys), 'worker-env-duplicate')
+        return WorkerHost.policy({**value, 'Config': {**value['Config'], 'Env': sorted(env)}})
 
     def signal_ready(self, value):
         pid = value['State']['Pid']

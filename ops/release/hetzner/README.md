@@ -1,4 +1,10 @@
-# Hetzner API release controller (bounded PR3 remediation)
+# Hetzner release controller
+
+The original API-only controller below remains available. The coordinated cohort
+lane adds API, Jev worker and public/admin frontend activation with a shared
+journal and rollback. It does not update the X collector or posts-only collector.
+Automatic activation requires a separately reconciled and qualified host baseline;
+merging the lane does not enable it.
 
 This scope implements host admission and API-only state transitions with Python, pinned PyYAML
 structural admission and synthetic subprocess proofs. It is **not production qualification**.
@@ -8,8 +14,8 @@ production operation, candidate program or migration was executed here.
 
 Main-branch CI also publishes a SHA/run/attempt-bound frontend artifact containing
 the public and admin bundles. `frontend_bundle.py` validates and stages that
-artifact without activating it. The current release controller remains API-only;
-the existence of this artifact does not enable automatic frontend deployment.
+artifact without activating it. The original controller is API-only; the
+artifact alone does not enable automatic frontend deployment.
 
 ## Trust and installation
 

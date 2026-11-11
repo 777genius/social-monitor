@@ -67,7 +67,7 @@ def probe(config, runner, binding):
             'service': 'api-gateway', 'postgres_pool_ok': True, 'ready': True}
 
 
-def worker_probe(config, runner, binding):
+def worker_probe(config, runner, binding, *, cohort=False):
     """Observe bootstrap completion, not a synthetic job or model request."""
     def observation():
         raw = runner.run([EXECUTABLES['docker'], 'inspect', binding['container_id']], limit=2 * 1024**2)
@@ -79,7 +79,7 @@ def worker_probe(config, runner, binding):
                 labels.get('com.docker.compose.project') == config.core['project'] and
                 labels.get('com.docker.compose.service') == SERVICE and
                 item['State']['Running'] and not item['State']['Restarting'] and
-                WorkerHost.policy(item) == binding['runtime_sha256'] and
+                (WorkerHost.cohort_policy_v1(item) if cohort else WorkerHost.policy(item)) == binding['runtime_sha256'] and
                 digest(item['HostConfig']['RestartPolicy']) == binding['restart_policy_sha256'],
                 'worker-probe-binding')
         return item

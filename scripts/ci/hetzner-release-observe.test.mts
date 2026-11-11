@@ -658,6 +658,36 @@ test('frontend delivery sends exact CI ZIP and checks host proof against both ar
       { ...proof, authority: { ...proof.authority, artifact_id: '52' } }, get,
       async () => { unexpectedCalls++; return response({}); }, async () => {}), /cohort-frontend-authority-binding/);
     assert.equal(unexpectedCalls, 0);
+    let unstartedRollbacks = 0;
+    const unstarted: Transport = async wire => {
+      if (wire.startsWith('cohort-admit ')) return response(admission);
+      if (wire.startsWith('cohort-activate ')) return response({ denied: 'cohort-target-drift' }, 1);
+      assert.equal(wire, `cohort-rollback ${sha} ${run}`); unstartedRollbacks++;
+      return response({ denied: 'cohort-rollback-unstarted' }, 1);
+    };
+    await assert.rejects(O.activateCohort(frontend, backendManifest, proof, get, unstarted, async () => {}),
+      (error: unknown) => error instanceof A.AuthorityError && error.code === 'cohort-unstarted');
+    assert.equal(unstartedRollbacks, 1);
+    for (const mode of ['uncertain', 'progress', 'malformed', 'extra', 'ssh', 'recovery-failed']) {
+      let activations = 0, recoveries = 0;
+      const cannotProveUnstarted: Transport = async wire => {
+        if (wire.startsWith('cohort-admit ')) return response(admission);
+        if (wire.startsWith('cohort-activate ')) {
+          if (mode === 'uncertain') throw new ClientError('transport-uncertain');
+          if (mode === 'progress' && activations++ === 0) return response({ sha, ci_run_id: run,
+            archive_sha256: backendManifest.archive_sha256, image_id: image, scope: targets, phase: 'draining' });
+          if (mode === 'malformed') return { code: 1, stdout: Buffer.from('not JSON') };
+          if (mode === 'extra') return response({ denied: 'cohort-target-drift', unexpected: true }, 1);
+          return response({ denied: 'cohort-target-drift' }, mode === 'ssh' ? 255 : 1);
+        }
+        assert.equal(wire, `cohort-rollback ${sha} ${run}`); recoveries++;
+        return response({ denied: mode === 'recovery-failed' ? 'cohort-runtime-changed'
+          : 'cohort-rollback-unstarted' }, 1);
+      };
+      await assert.rejects(O.activateCohort(frontend, backendManifest, proof, get, cannotProveUnstarted, async () => {}),
+        (error: unknown) => error instanceof A.AuthorityError && error.code === 'cohort-recovery-required', mode);
+      assert.equal(recoveries, 1, mode);
+    }
     let rollbacks = 0;
     const rolledBack = { ...receipt, active_image_ids: previous, active_sources: oldSources, outcome: 'rolled-back' };
     const interrupted: Transport = async wire => {
@@ -711,6 +741,15 @@ test('cohort recovery is bounded to one transaction and validates a complete rol
   };
   assert.deepEqual(await O.recoverCohort(transport, sha, run, async () => {}), receipt);
   assert.equal(calls, 2);
+  await assert.rejects(O.recoverCohort(async () => response({ denied: 'cohort-rollback-unstarted' }, 1),
+    sha, run, async () => {}),
+  (error: unknown) => error instanceof A.AuthorityError && error.code === 'cohort-rollback-unstarted');
+  for (const denied of [response({ denied: 'cohort-rollback-unstarted' }),
+    response({ denied: 'cohort-rollback-unstarted' }, 255),
+    response({ denied: 'cohort-rollback-unstarted', unexpected: true }, 1)]) {
+    await assert.rejects(O.recoverCohort(async () => denied, sha, run, async () => {}),
+      (error: unknown) => error instanceof A.AuthorityError && error.code !== 'cohort-rollback-unstarted');
+  }
   const scoped = O.cohortRecoveryTransport(sha, run, transport);
   await assert.rejects(scoped(`cohort-activate ${sha} ${run}`), /recovery-scope/);
   await assert.rejects(scoped(`cohort-rollback ${'f'.repeat(40)} ${run}`), /recovery-scope/);

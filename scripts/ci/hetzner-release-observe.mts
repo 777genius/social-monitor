@@ -580,11 +580,22 @@ export function cohortReceipt(input: unknown, sha: string, run: string, outcome:
   return value;
 }
 
+function cohortHostDenial(response: { code: number; stdout: Buffer }): string | undefined {
+  if (response.code !== 1 || !Buffer.isBuffer(response.stdout)) return undefined;
+  try {
+    const value = A.exact(A.parseJson(response.stdout, 4096), ['denied']);
+    return typeof value.denied === 'string' && /^[a-z][a-z0-9-]{0,127}$/u.test(value.denied)
+      ? value.denied : undefined;
+  } catch { return undefined; }
+}
+/** Resume a previously begun rollback; an absent transaction is never a rollback receipt. */
 export async function recoverCohort(transport: Transport, sha: string, run: string,
   pause: () => Promise<void> = () => new Promise(resolve => setTimeout(resolve, 1000))) {
   const scoped = cohortRecoveryTransport(sha, run, transport);
   for (let attempt = 0; attempt < 120; attempt++) {
     const response = await scoped(command('cohort-rollback', [sha, run]));
+    if (cohortHostDenial(response) === 'cohort-rollback-unstarted')
+      throw new A.AuthorityError('cohort-rollback-unstarted');
     A.requireValue(response.code === 0 && Buffer.isBuffer(response.stdout), 'cohort-recovery-host-denied');
     const value = A.object(A.parseJson(response.stdout, 65536));
     A.requireValue(value.sha === sha && value.ci_run_id === run
@@ -605,14 +616,16 @@ export async function activateCohort(frontend: FrontendAuthority, backend: Manif
     && artifact.artifact_id === expectedArtifact.id && artifact.artifact_name === expectedArtifact.name
     && artifact.artifact_sha256 === expectedArtifact.digest && artifact.artifact_bytes === expectedArtifact.bytes,
     'cohort-frontend-authority-binding');
-  let attempted = false;
+  let activationCalls = 0, firstActivationDenied = false;
   const marked: Transport = async (wire, source) => {
-    if (wire.startsWith('cohort-activate ')) attempted = true;
+    if (wire.startsWith('cohort-activate ')) activationCalls++;
     return transport(wire, source);
   };
   const guarded = guardedTransport(get, frontend.base, marked, frontend);
   async function call(verb: string, args: string[]) {
     const response = await guarded(command(verb, args));
+    if (verb === 'cohort-activate')
+      firstActivationDenied = activationCalls === 1 && cohortHostDenial(response) !== undefined;
     A.requireValue(response.code === 0 && Buffer.isBuffer(response.stdout), 'cohort-host-denied');
     return A.object(A.parseJson(response.stdout, 65536));
   }
@@ -653,9 +666,13 @@ export async function activateCohort(frontend: FrontendAuthority, backend: Manif
     }
     throw new A.AuthorityError('cohort-activation-timeout');
   } catch (error) {
-    if (!attempted) throw error;
+    if (!activationCalls) throw error;
     try { await recoverCohort(transport, sha, run, pause); }
-    catch { throw new A.AuthorityError('cohort-recovery-required'); }
+    catch (recoveryError) {
+      if (firstActivationDenied && recoveryError instanceof A.AuthorityError &&
+          recoveryError.code === 'cohort-rollback-unstarted') throw new A.AuthorityError('cohort-unstarted');
+      throw new A.AuthorityError('cohort-recovery-required');
+    }
     throw new A.AuthorityError('cohort-rolled-back');
   }
 }
@@ -829,11 +846,12 @@ export async function main(args: readonly string[], env: NodeJS.ProcessEnv): Pro
   } catch (error) {
     if (publicDirectory) {
       const diagnostic = safePreflightDiagnostic(action, error);
-      const recovery = error instanceof A.AuthorityError && ['cohort-rolled-back', 'cohort-recovery-required'].includes(error.message)
+      const recovery = error instanceof A.AuthorityError && ['cohort-unstarted', 'cohort-rolled-back', 'cohort-recovery-required'].includes(error.message)
         ? error.message : undefined;
       await append(join(publicDirectory, 'receipt.jsonl'), { phase: 'failed', lane: action,
         ...(diagnostic ? { diagnostic } : {}), ...(recovery ? { recovery } : {}) });
-      await summary('failed; operator reconciliation required', action ?? 'unknown');
+      await summary(recovery === 'cohort-unstarted' ? 'activation denied; cohort unstarted'
+        : 'failed; operator reconciliation required', action ?? 'unknown');
     }
     throw new A.AuthorityError('release-phase-failed');
   } finally {

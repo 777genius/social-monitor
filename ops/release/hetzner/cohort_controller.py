@@ -11,7 +11,6 @@ import time
 
 from archive import inspect_archive
 from backend_controller import BackendRelease
-from backend_host import BackendHost
 from cohort_host import CohortHost, TARGETS
 import cohort_compose
 from contract import DIGEST, KEY, Denied, atomic, canonical, digest, private_file_digest, read_json, require, trusted
@@ -81,7 +80,9 @@ class CohortRelease:
     @staticmethod
     def policy(value, service):
         if service != FRONTEND:
-            return BackendHost.policy(value, service)
+            runtime = WorkerHost.cohort_policy_v1(value)
+            return (digest({'runtime': runtime, 'restart_policy': value['HostConfig']['RestartPolicy']})
+                    if service == 'api' else runtime)
         value = copy.deepcopy(value)
         # Only sources of the three managed RO binds may vary. Options and every
         # other runtime field stay bound; actual sources/inodes are checked separately.
@@ -114,7 +115,7 @@ class CohortRelease:
         binds = value['HostConfig'].get('Binds') or []
         positions = [i for i, entry in enumerate(binds) if entry.startswith('<managed-source>:')]
         for index, entry in zip(positions, sorted(binds[i] for i in positions)): binds[index] = entry
-        return BackendHost.policy(value, 'api')  # Frontend restart policy also remains bound.
+        return CohortRelease.policy(value, 'api')  # Frontend restart policy also remains bound.
 
     def roots(self, value, admission=None, unavailable_current=False):
         roots = self.core.host.c['compose_files']
@@ -242,7 +243,7 @@ class CohortRelease:
             return False
         if not self.core.host.probe(images['api'], revisions['api']):
             return False
-        worker = self.core.host.evidence('worker-probe', {'container_id': targets[SERVICE]['id'],
+        worker = self.core.host.evidence('cohort-worker-probe-v1', {'container_id': targets[SERVICE]['id'],
             'image_id': images[SERVICE], 'sha': revisions[SERVICE],
             'runtime_sha256': admission['runtime_sha256'][SERVICE],
             'restart_policy_sha256': digest(admission['restart_policy'])})

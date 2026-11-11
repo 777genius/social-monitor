@@ -43,11 +43,11 @@ class DockerHost(SyntheticHost):
         return super().command(argv, data)
 
     def evidence(self, verb, binding):
-        if verb == 'worker-probe':
+        if verb == 'cohort-worker-probe-v1':
             class Config:
                 core = self.c
                 recheck = lambda config: None
-            result = worker_probe(Config(), Runner(), binding)
+            result = worker_probe(Config(), Runner(), binding, cohort=True)
         else:
             result = super().evidence(verb, binding)
         # Match operator_adapter.dispatch's actual envelope; worker_drain's inner

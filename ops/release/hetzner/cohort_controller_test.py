@@ -90,7 +90,7 @@ class Runtime(Docker):
         return self.healthy and self.values['api']['State']['Running'] and self.values['api']['Image'] == image
 
     def evidence(self, verb, binding):
-        if verb == 'worker-probe':
+        if verb == 'cohort-worker-probe-v1':
             value = self.values[SERVICE]
             return {'ready': self.healthy and value['State']['Running'] and value['Image'] == binding['image_id'] and
                         digest(value['HostConfig']['RestartPolicy']) == binding['restart_policy_sha256'],
@@ -238,26 +238,28 @@ class EngineTests(unittest.TestCase):
                 self.admit()
         self.assertEqual(self.runtime.effects, [])
 
-    def test_worker_policy_accepts_env_reordering_but_rejects_duplicates(self):
+    def test_cohort_policy_accepts_env_reordering_but_legacy_keeps_raw_order(self):
         value = copy.deepcopy(self.runtime.values[SERVICE])
-        original = WorkerHost.policy(value)
+        legacy = WorkerHost.policy(value)
+        original = WorkerHost.cohort_policy_v1(value)
         value['Config']['Env'].reverse()
-        self.assertEqual(WorkerHost.policy(value), original)
+        self.assertEqual(WorkerHost.cohort_policy_v1(value), original)
+        self.assertNotEqual(WorkerHost.policy(value), legacy)
         value['Config']['Env'].append('NEW_CONTROL=value')
-        self.assertNotEqual(WorkerHost.policy(value), original)
+        self.assertNotEqual(WorkerHost.cohort_policy_v1(value), original)
         value['Config']['Env'].pop()
         value['Config']['Env'][0] += '=changed'
-        self.assertNotEqual(WorkerHost.policy(value), original)
+        self.assertNotEqual(WorkerHost.cohort_policy_v1(value), original)
         value['Config']['Env'][0] = value['Config']['Env'][0][:-8]
         value['Config']['Env'].append(value['Config']['Env'][0])
         with self.assertRaisesRegex(Denied, 'worker-env-duplicate'):
-            WorkerHost.policy(value)
+            WorkerHost.cohort_policy_v1(value)
         value['Config']['Env'][-1] = value['Config']['Env'][0].split('=', 1)[0] + '=different'
         with self.assertRaisesRegex(Denied, 'worker-env-duplicate'):
-            WorkerHost.policy(value)
+            WorkerHost.cohort_policy_v1(value)
         value['Config']['Env'][-1] = 'malformed'
         with self.assertRaisesRegex(Denied, 'worker-env-invalid'):
-            WorkerHost.policy(value)
+            WorkerHost.cohort_policy_v1(value)
 
     def test_sha_run_attempt_provenance_and_verifier_mismatch_refused(self):
         for field, value in (('sha', 'e' * 40), ('ci_run_id', '124'), ('ci_run_attempt', '2')):

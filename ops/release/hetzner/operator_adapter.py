@@ -68,6 +68,7 @@ REQUESTS['worker-drain'] = {'container_id': r'[0-9a-f]{64}', 'image_id': DIGEST,
                             'restart_count': r'[0-9]{1,10}'}
 REQUESTS['worker-probe'] = {**REQUESTS['probe'], 'runtime_sha256': DIGEST,
                             'restart_policy_sha256': DIGEST}
+REQUESTS['cohort-worker-probe-v1'] = REQUESTS['worker-probe']
 
 
 def request(verb, raw):
@@ -170,6 +171,8 @@ def dispatch(verb, binding, config, runner):
         result = operator_probe.worker_drain(config, runner, binding)
     elif verb == 'worker-probe':
         result = operator_probe.worker_probe(config, runner, binding)
+    elif verb == 'cohort-worker-probe-v1':
+        result = operator_probe.worker_probe(config, runner, binding, cohort=True)
     else:
         require(verb == 'preflight', 'operator-verb')
         legacy = operator_github.GitHub(config, runner).legacy()
