@@ -1,9 +1,11 @@
 export const redactionPolicyPath = 'scripts/lib/external-beta-evidence-artifact-redaction.mjs';
 export const handoffPolicyPath = 'scripts/lib/external-beta-evidence-handoff.mjs';
+export const displayPolicyPath = 'scripts/lib/external-beta-evidence-display-formatters.mjs';
 
 export function validateRunnerImplementationMarkers({
   runnerSource,
   handoffSource,
+  displaySource,
   checkSource,
   selectionHelperSource,
   redactionPolicySource,
@@ -25,14 +27,8 @@ export function validateRunnerImplementationMarkers({
     'printSummary',
     'printHandoff',
     'printJsonHandoff',
-    'runnerDescription',
-    'operatorAction',
-    'inputMetadataByEnv',
     'external-beta-evidence-input-matrix.json',
     'External Beta Evidence Handoff',
-    'handoffAction',
-    'formatHandoffArtifacts',
-    'artifactExamplePathByFormat',
     'Artifact paths are printed by env name only',
     'dockerBundleImportCommand',
     'Import Docker bundle env',
@@ -229,6 +225,17 @@ export function validateRunnerImplementationMarkers({
   ]) {
     if (!handoffSource.includes(marker)) {
       violations.push(`${handoffPolicyPath}: extracted JSON handoff must preserve "${marker}"`);
+    }
+  }
+
+  // Display and handoff projection moved; enforce their markers at the actual owner.
+  for (const marker of [
+    'formatOutputArtifacts', 'formatRequiredEnvAlternatives', 'formatHandoffArtifacts',
+    'handoffAction', 'handoffRunner', 'artifactExamplePathByFormat', 'inputMetadataByEnv',
+    'runnerDescription', 'operatorAction',
+  ]) {
+    if (!displaySource.includes(marker)) {
+      violations.push(`${displayPolicyPath}: extracted display formatters must preserve "${marker}"`);
     }
   }
 
