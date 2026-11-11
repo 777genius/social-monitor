@@ -145,8 +145,10 @@ class CohortEvidenceTests(unittest.TestCase):
         from operator_github_test import Fixture, BASE as OLD, HEAD as NEW
         allowed = ('scripts/check-source-provider-runtime-contract.ts',
                    'scripts/lib/source-provider-github-issues-runtime-smoke.ts',
-                   'scripts/lib/source-provider-github-trending-runtime-smoke.ts')
-        for paths in ((allowed[0],), (allowed[1],), (allowed[2],), allowed):
+                   'scripts/lib/source-provider-github-trending-runtime-smoke.ts',
+                   'scripts/capture-durable-backend-e2e-loop.ts',
+                   'scripts/lib/durable-backend-e2e-scan-targets.ts')
+        for paths in tuple((path,) for path in allowed) + (allowed,):
             def add_sources(endpoint, value):
                 if endpoint.startswith('git/trees/'):
                     for path in paths:
