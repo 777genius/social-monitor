@@ -1,4 +1,5 @@
 import { SystemClock, tenantId, workspaceId } from "@social-monitor/shared-kernel";
+import type { SourceProviderScanContext } from "../../../ports";
 
 import { certifySourceProvider } from "../testing/source-provider-certification";
 import { FixtureHackerNewsClient } from "./fixture-hacker-news-client";
@@ -395,7 +396,7 @@ describe("HackerNewsSourceProvider", () => {
     ]);
     jest.spyOn(client, "searchStories").mockRejectedValue(new Error("search lane failed"));
     const provider = new HackerNewsSourceProvider(client, { now: () => new Date("2026-07-07T12:00:00Z") });
-    const context = {
+    const context: SourceProviderScanContext = {
       tenantId: tenantId("tenant-1"), workspaceId: workspaceId("workspace-1"),
       sourceBindingId: "hn-binding-1", scanJobId: "scan-job-1", correlationId: "correlation-1",
       config: {
