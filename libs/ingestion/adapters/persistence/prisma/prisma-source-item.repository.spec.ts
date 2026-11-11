@@ -416,6 +416,58 @@ describe("PrismaSourceItemRepository", () => {
       new Date("2026-07-10T12:00:00.000Z"),
     );
   });
+  it.each([false, true])("reuses the existing GitHub identity across casing (legacy first: %s)", async (legacyFirst) => {
+    const client = new ParityPrismaSourceItemClient();
+    const repositories = [new PrismaSourceItemRepository(client as unknown as PrismaIngestionClient), new InMemorySourceItemRepository()];
+    const at = new Date("2026-07-11T08:00:00.000Z");
+    const checkedAt = new Date("2026-07-10T12:00:00.000Z");
+    const first = githubSnapshotSourceItem({ id: "first", ingestedAt: at, checkedAt, repository: "Example/MixedCase", canonicalId: !legacyFirst });
+    const retry = githubSnapshotSourceItem({ id: "retry", ingestedAt: at, checkedAt, repository: "Example/MixedCase", canonicalId: legacyFirst });
+    const command = (item: SourceItem) => ({ tenantId: tenantId("00000000-0000-7000-8000-000000000001"), workspaceId: workspaceId("00000000-0000-7000-8000-000000000002"), providerKey: "github-trending-page", items: [item] });
+    for (const repo of repositories) {
+      await repo.saveBatch(command(first));
+      const result = await repo.saveBatch(command(retry));
+      expect(result.inserted).toBe(0);
+      expect(result.skippedDuplicates).toBe(1);
+      expect(result.items[0]!.persistedItem.toSnapshot().externalId).toBe(first.toSnapshot().externalId);
+      expect(result.items[0]!.sourceItemId).toBe("first");
+      const third = githubSnapshotSourceItem({ id: "third", ingestedAt: at, checkedAt, repository: "eXample/mIxEdCase" });
+      const thirdResult = await repo.saveBatch(command(third));
+      expect(thirdResult.inserted).toBe(0);
+      expect(thirdResult.items[0]!.sourceItemId).toBe("first");
+      expect(thirdResult.items[0]!.persistedItem.toSnapshot().externalId).toBe(first.toSnapshot().externalId);
+      const changed = SourceItem.rehydrate({ ...retry.toSnapshot(), ingestedAt: new Date(at.getTime() + 1_000) });
+      await expect(repo.saveBatch(command(changed))).rejects.toThrow("GitHub Trending snapshot conflicts");
+    }
+  });
+
+  it("rejects an already ambiguous GitHub identity without choosing a row", async () => {
+    const client = new ParityPrismaSourceItemClient();
+    const repo = new PrismaSourceItemRepository(client as unknown as PrismaIngestionClient);
+    const at = new Date("2026-07-11T08:00:00.000Z");
+    const first = githubSnapshotSourceItem({ id: "first", ingestedAt: at, checkedAt: new Date("2026-07-10T12:00:00.000Z"), repository: "Example/MixedCase" });
+    const command = { tenantId: tenantId("00000000-0000-7000-8000-000000000001"), workspaceId: workspaceId("00000000-0000-7000-8000-000000000002"), providerKey: "github-trending-page", items: [first] };
+    await repo.saveBatch(command);
+    const original = await client.sourceItem.findFirst({ where: { providerItemId: first.toSnapshot().externalId } });
+    expect(original).not.toBeNull();
+    const canonicalId = first.toSnapshot().externalId.replace("Example/MixedCase", "example/mixedcase");
+    client["records"].set(canonicalId, { ...original!, id: "second", providerItemId: canonicalId });
+    await expect(repo.saveBatch(command)).rejects.toThrow("Ambiguous GitHub Trending source identity");
+    expect(client["records"].size).toBe(2);
+  });
+
+  it("keeps differently cased scan identities distinct", async () => {
+    const client = new ParityPrismaSourceItemClient();
+    const repositories = [new PrismaSourceItemRepository(client as unknown as PrismaIngestionClient), new InMemorySourceItemRepository()];
+    const at = new Date("2026-07-11T08:00:00.000Z");
+    const make = (scanId: string) => githubSnapshotSourceItem({ id: scanId, ingestedAt: at, checkedAt: new Date("2026-07-10T12:00:00.000Z"), repository: "Example/MixedCase", scanId });
+    const command = (item: SourceItem) => ({ tenantId: tenantId("00000000-0000-7000-8000-000000000001"), workspaceId: workspaceId("00000000-0000-7000-8000-000000000002"), providerKey: "github-trending-page", items: [item] });
+    for (const repo of repositories) {
+      expect((await repo.saveBatch(command(make("scan-id")))).inserted).toBe(1);
+      expect((await repo.saveBatch(command(make("SCAN-id")))).inserted).toBe(1);
+    }
+  });
+
 });
 
 class ParityPrismaSourceItemClient {
@@ -424,11 +476,13 @@ class ParityPrismaSourceItemClient {
   readonly sourceItem = {
     findMany: async (args: {
       readonly where: {
-        readonly providerItemId: { readonly in: readonly string[] };
+        readonly providerItemId: { readonly in: readonly string[]; readonly mode?: 'insensitive' };
       };
     }) =>
       [...this.records.values()].filter((entry) =>
-        args.where.providerItemId.in.includes(entry.providerItemId),
+        args.where.providerItemId.in.some((id) => args.where.providerItemId.mode === 'insensitive'
+          ? id.toLocaleLowerCase('en-US') === entry.providerItemId.toLocaleLowerCase('en-US')
+          : id === entry.providerItemId),
       ),
     findFirst: async (args: {
       readonly where: { readonly providerItemId: string };
@@ -563,10 +617,14 @@ const githubSnapshotSourceItem = (params: {
   readonly ingestedAt: Date;
   readonly checkedAt: Date;
   readonly rank?: number;
+  readonly repository?: string;
+  readonly canonicalId?: boolean;
+  readonly scanId?: string;
 }): SourceItem => {
   const rank = params.rank ?? 1;
-  const repository =
-    rank === 1 ? "owner/repository" : `owner/repository-${rank}`;
+  const scanId = params.scanId ?? "scan-github-parity";
+  const repository = params.repository ??
+    (rank === 1 ? "owner/repository" : `owner/repository-${rank}`);
   const fetchStartedAt = new Date(params.checkedAt.getTime() - 60_000);
   return SourceItem.ingest({
     id: params.id,
@@ -574,7 +632,7 @@ const githubSnapshotSourceItem = (params: {
     workspaceId: workspaceId("00000000-0000-7000-8000-000000000002"),
     sourceBindingId: "00000000-0000-7000-8000-000000000004",
     externalId:
-      `github-trending-page:daily:scan-github-parity:${repository}`,
+      `github-trending-page:daily:${scanId}:${params.canonicalId ? repository.toLocaleLowerCase("en-US") : repository}`,
     canonicalUrl: `https://github.com/${repository}`,
     title: `${repository} is #${rank} on GitHub Trending`,
     body: "Repository snapshot",
@@ -591,7 +649,7 @@ const githubSnapshotSourceItem = (params: {
         rank,
         starsGained: 1_500,
         window: "daily",
-        scanJobId: "scan-github-parity",
+        scanJobId: scanId,
         fetchStartedAt,
         checkedAt: params.checkedAt,
         snapshotContentHash: "b".repeat(64),

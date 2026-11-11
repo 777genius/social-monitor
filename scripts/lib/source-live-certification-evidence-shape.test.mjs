@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+// Keep the evidence-boundary regression suite in the existing npm test gate.
+import './source-live-provider-evidence-validation.test.mjs';
 import {
   getPath,
   matchesEvidenceType,
