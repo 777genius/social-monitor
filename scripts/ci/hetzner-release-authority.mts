@@ -269,18 +269,19 @@ export function githubEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     GH_CONFIG_DIR: env.GH_CONFIG_DIR, GH_PROMPT_DISABLED: '1',
     GH_NO_UPDATE_NOTIFIER: '1', GH_NO_EXTENSION_UPDATE_NOTIFIER: '1', GH_PAGER: 'cat' };
 }
-export function githubGet(env: NodeJS.ProcessEnv): Get {
+export function githubGet(env: NodeJS.ProcessEnv, spawnProcess: typeof spawn = spawn): Get {
   const cleared = githubEnvironment(env);
   return async suffix => {
     requireValue(suffix === '' || /^[a-zA-Z0-9_/?=&.-]{1,256}$/u.test(suffix), 'github-endpoint');
     requireValue(!suffix.startsWith('/') && !suffix.split(/[/?]/u)
       .some(segment => segment === '.' || segment === '..'), 'github-endpoint');
     const endpoint = `repos/${REPOSITORY}${suffix ? '/' + suffix : ''}`;
-    const child = spawn('/usr/bin/gh', ['api', '--hostname', 'github.com', '--method', 'GET',
+    const child = spawnProcess('/usr/bin/gh', ['api', '--hostname', 'github.com', '--method', 'GET',
       '-H', 'Accept: application/vnd.github+json', '-H', 'X-GitHub-Api-Version: 2022-11-28', endpoint],
     { shell: false, env: cleared, stdio: ['ignore', 'pipe', 'ignore'] });
     const chunks: Buffer[] = []; let size = 0;
-    const timer = setTimeout(() => child.kill('SIGKILL'), 60000);
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, 60000);
     const closed = new Promise<void>((accept, reject) => {
       child.once('error', () => reject(new AuthorityError('github-unavailable')));
       child.once('close', code => code === 0 ? accept() : reject(new AuthorityError('github-unavailable')));
@@ -294,7 +295,7 @@ export function githubGet(env: NodeJS.ProcessEnv): Get {
       await closed; return parseJson(Buffer.concat(chunks));
     } catch {
       child.kill('SIGKILL'); await closed.catch(() => {});
-      throw new AuthorityError('github-observation-failed');
+      throw new AuthorityError(timedOut ? 'github-observation-timeout' : 'github-observation-failed');
     } finally { clearTimeout(timer); }
   };
 }
