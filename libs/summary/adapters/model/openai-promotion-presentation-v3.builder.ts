@@ -7,9 +7,10 @@ import {
 } from "../../domain/services/reader-post-presentation-v3";
 import type { OpenAiResponsesReaderSummaryModelAdapterOptions } from "./openai-responses-reader-summary-model.adapter";
 import { bindHeadline } from "./openai-promotion-presentation-v3-headline";
-import { presentationInstructions, presentationSchema } from "./openai-promotion-presentation-v3-schema";
-import { validatedPresentationRoot } from "./openai-promotion-presentation-v3-response-contract";
-import { boundedResponseText, outputText } from "./openai-promotion-presentation-v3-response-codec";
+import {
+  buildOpenAiPresentationV3RequestBody,
+  fetchOpenAiPresentationV3Proposals,
+} from "./openai-promotion-presentation-v3-transport";
 
 type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
@@ -34,14 +35,7 @@ implements PromotionPresentationBuilder {
     if (inputs.length < 1 || inputs.length > 4 || !this.apiKey.trim()) {
       throw new Error("V3 presentation requires a configured batch of 1..4");
     }
-    const wire = inputs.map((input) => ({ candidateId: input.candidateId,
-      title: input.title, sourceText: input.body }));
-    const requestBody = JSON.stringify({ model: this.model, store: false,
-      max_output_tokens: 2_400,
-      instructions: presentationInstructions,
-      input: JSON.stringify({ candidates: wire }),
-      text: { format: { type: "json_schema", name: "reader_post_presentation_v3",
-        strict: true, schema: presentationSchema } } });
+    const requestBody = buildOpenAiPresentationV3RequestBody(inputs, this.model);
     if (Buffer.byteLength(requestBody, "utf8") >
         READER_POST_PRESENTATION_V3_MAX_REQUEST_BYTES) {
       if (inputs.length === 1) {
@@ -53,18 +47,13 @@ implements PromotionPresentationBuilder {
         ...await this.build(inputs.slice(split)),
       ];
     }
-    const response = await this.fetchFn(this.endpoint, {
-      method: "POST",
-      headers: { authorization: `Bearer ${this.apiKey.trim()}`,
-        "content-type": "application/json" },
-      signal: AbortSignal.timeout(45_000),
-      body: requestBody,
+    const proposals = await fetchOpenAiPresentationV3Proposals({
+      inputs,
+      requestBody,
+      apiKey: this.apiKey,
+      endpoint: this.endpoint,
+      fetchFn: this.fetchFn,
     });
-    if (!response.ok) throw new Error(`V3 presentation failed with HTTP ${response.status}`);
-    const payload = JSON.parse(await boundedResponseText(response)) as Record<string, unknown>;
-    const text = outputText(payload);
-    const parsed: unknown = JSON.parse(text);
-    const proposals = validatedPresentationRoot(parsed, inputs);
     return inputs.map((input) => {
       const proposal = proposals.get(input.candidateId)!;
       if (proposal.status === "unavailable") {
