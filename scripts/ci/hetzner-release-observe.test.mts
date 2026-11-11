@@ -831,3 +831,31 @@ test('main persists the safe GitHub timeout diagnostic in its existing failed re
     await rm(root, { recursive: true, force: true });
   }
 });
+
+
+test('auth accepts bounded printable ASCII tokens including punctuation and maximum JSON escapes', async () => {
+  const lease = 'c'.repeat(32);
+  for (const token of ['TEST_ONLY_NOT_A_CREDENTIAL_0000', 'TEST_ONLY.synthetic-token-0000',
+    'x'.repeat(20), 'x'.repeat(2048), Array.from({ length: 94 }, (_, i) => String.fromCharCode(i + 33)).join(''), '"\\'.repeat(1024)]) {
+    await O.githubAuth(async (wire, source) => {
+      assert.equal(wire.includes(token), false); assert.ok(source);
+      const chunks: Buffer[] = [];
+      for await (const chunk of source()) chunks.push(Buffer.from(chunk));
+      const bytes = Buffer.concat(chunks);
+      assert.ok(bytes.length <= 8192);
+      if (token === '"\\'.repeat(1024)) assert.ok(bytes.length > 4096);
+      assert.deepEqual(A.parseJson(bytes, 8192), { lease, token });
+      return response({ sha, ci_run_id: run, configured: true });
+    }, sha, run, lease, token);
+  }
+});
+
+test('auth rejects trailing CR/LF, whitespace, controls, non-ASCII and invalid lengths before transport', async () => {
+  const token = 'TEST_ONLY_NOT_A_CREDENTIAL_0000'; let calls = 0;
+  for (const invalid of [token + ' ', token + '\n', token + '\r', token + '\r\n', token + '\t',
+    token + '\x00', token + '\x1f', token + '\x7f', token + 'é', 'x'.repeat(19), 'x'.repeat(2049)]) {
+    await assert.rejects(O.githubAuth(async () => { calls++; return response({}); }, sha, run, 'c'.repeat(32), invalid),
+      (error: unknown) => error instanceof A.AuthorityError && error.code === 'github-auth-token');
+  }
+  assert.equal(calls, 0);
+});

@@ -28,8 +28,8 @@ class AuthTests(unittest.TestCase):
         ):
             mock = patch.object(config, name, replacement); mock.start(); self.addCleanup(mock.stop)
 
-    def install(self, lease=LEASE):
-        return config.github_auth_update(SHA, RUN, canonical({'lease': lease, 'token': TOKEN}))
+    def install(self, lease=LEASE, token=TOKEN):
+        return config.github_auth_update(SHA, RUN, canonical({'lease': lease, 'token': token}))
 
     def observer(self):
         class Config:
@@ -59,6 +59,40 @@ class AuthTests(unittest.TestCase):
         self.assertTrue(config.github_auth_update(SHA, RUN, canonical({'lease': 'c' * 32}), clear=True)['cleared'])
         self.assertFalse(path.exists())
 
+    def test_printable_tokens_round_trip_with_bounded_maximum_json_escaping(self):
+        for token in (TOKEN, 'TEST_ONLY.synthetic-token-0000', 'x' * 20, 'x' * 2048,
+                      ''.join(chr(n) for n in range(33, 127)), '"\\' * 1024):
+            with self.subTest(length=len(token)):
+                self.assertTrue(self.install(token=token)['configured'])
+                path = config.auth_path(SHA, RUN)
+                self.assertLessEqual(path.stat().st_size, 8192)
+                if token == '"\\' * 1024: self.assertGreater(path.stat().st_size, 4096)
+                observed = {}
+                class Runner:
+                    def run(self, argv, **kwargs):
+                        observed.update(argv=argv, data=kwargs['data'])
+                        return b'{}'
+                GitHub(self.observer(), Runner()).get('')
+                self.assertNotIn(token, repr(observed['argv']))
+                self.assertLessEqual(len(observed['data']), 4096)
+                self.assertEqual(observed['data'], ('Authorization: Bearer ' + token + '\n').encode('ascii'))
+                self.assertEqual(config.github_auth_header(self.observer()),
+                                 ('Authorization: Bearer ' + token + '\n').encode('ascii'))
+                self.assertEqual(config.auth_record(path)[0]['token'], token)
+                self.assertTrue(config.github_auth_update(SHA, RUN, canonical({'lease': LEASE}), clear=True)['cleared'])
+
+    def test_token_whitespace_controls_non_ascii_and_bounds_fail_closed(self):
+        self.install()
+        path = config.auth_path(SHA, RUN)
+        good = json.loads(path.read_bytes())
+        for token in (TOKEN + ' ', TOKEN + '\n', TOKEN + '\r', TOKEN + '\r\n', TOKEN + '\t',
+                      TOKEN + '\x00', TOKEN + '\x1f', TOKEN + '\x7f', TOKEN + 'é', 'x' * 19, 'x' * 2049):
+            with self.subTest(length=len(token)):
+                with self.assertRaises(Denied): self.install(token=token)
+                path.write_bytes(canonical({**good, 'token': token}))
+                with self.assertRaises(Denied): config.github_auth_header(self.observer())
+                path.write_bytes(canonical(good))
+
     def test_missing_expired_foreign_or_public_credential_never_calls_curl(self):
         class Runner:
             def run(self, *args, **kwargs): raise AssertionError('unexpected GitHub request')
@@ -76,7 +110,7 @@ class AuthTests(unittest.TestCase):
         for payload in ({'lease': LEASE, 'token': TOKEN + '\n'}, {'lease': LEASE, 'token': 'x' * 2049},
                         {'lease': '../path', 'token': TOKEN}, {'lease': LEASE, 'token': TOKEN, 'extra': True}):
             with self.assertRaises(Denied): config.github_auth_update(SHA, RUN, canonical(payload))
-        with self.assertRaises(Denied): config.github_auth_update(SHA, RUN, b'x' * 4097)
+        with self.assertRaises(Denied): config.github_auth_update(SHA, RUN, b'x' * 8193)
         self.install()
         path = config.auth_path(SHA, RUN); path.unlink(); path.symlink_to(self.root / 'missing')
         with self.assertRaises(Denied): config.github_auth_update(SHA, RUN, canonical({'lease': LEASE}), clear=True)
@@ -138,7 +172,7 @@ class AuthTests(unittest.TestCase):
         for index, (name, path) in enumerate(paths.items(), 1):
             config.atomic(path, {**expired, 'ci_run_id': str(index)})
         paths['invalid'].write_bytes(b'{}'); paths['public'].chmod(0o644)
-        paths['oversized'].write_bytes(b'x' * 4097)
+        paths['oversized'].write_bytes(b'x' * 8193)
         paths['symlink'].unlink(); paths['symlink'].symlink_to(active)
         unrelated = config.AUTH_ROOT / 'unrelated'; unrelated.write_text('preserve')
         original = config.private_file_digest
