@@ -709,6 +709,21 @@ test('frontend delivery sends exact CI ZIP and checks host proof against both ar
     }
     let rollbacks = 0;
     const rolledBack = { ...receipt, active_image_ids: previous, active_sources: oldSources, outcome: 'rolled-back' };
+    let notReadyPolls = 0, timeoutRollbacks = 0;
+    const neverReady: Transport = async wire => {
+      if (wire.startsWith('cohort-admit ')) return response(admission);
+      if (wire.startsWith('cohort-activate ')) {
+        notReadyPolls++;
+        return response({ sha, ci_run_id: run, archive_sha256: backendManifest.archive_sha256,
+          image_id: image, scope: targets, phase: 'starting' });
+      }
+      assert.equal(wire, `cohort-rollback ${sha} ${run}`); timeoutRollbacks++;
+      return response(rolledBack);
+    };
+    await assert.rejects(O.activateCohort(frontend, backendManifest, proof, get, neverReady, async () => {}),
+      (error: unknown) => error instanceof A.AuthorityError && error.code === 'cohort-rolled-back');
+    assert.equal(notReadyPolls, 120); assert.equal(timeoutRollbacks, 1);
+
     const interrupted: Transport = async wire => {
       if (wire.startsWith('cohort-admit ')) return response(admission);
       if (wire.startsWith('cohort-activate ')) {

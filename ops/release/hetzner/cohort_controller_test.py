@@ -290,6 +290,47 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(self.runtime.effects, [])
         self.assertEqual(self.activate()['outcome'], 'activated')
 
+    def test_worker_probe_bootstrap_refusal_waits_without_recreating_services(self):
+        original = self.runtime.evidence
+        remaining = [1]
+        def bootstrap(verb, binding):
+            if verb == 'cohort-worker-probe-v1' and remaining[0]:
+                remaining[0] -= 1; raise Denied('host-command-failed')
+            return original(verb, binding)
+        self.runtime.evidence = bootstrap
+        self.assertEqual(self.activate()['phase'], 'starting')
+        self.assertFalse(self.engine.path('receipts', KEY).exists())
+        effects = list(self.runtime.effects)
+        self.assertEqual(self.fresh().activate(KEY)['outcome'], 'activated')
+        self.assertEqual(self.runtime.effects, effects)
+
+    def test_unready_existing_worker_cannot_be_admitted(self):
+        original = self.runtime.evidence
+        def unavailable(verb, binding):
+            if verb == 'cohort-worker-probe-v1': raise Denied('host-command-failed')
+            return original(verb, binding)
+        self.runtime.evidence = unavailable
+        with self.assertRaisesRegex(Denied, 'cohort-previous-unready'): self.admit()
+        self.assertEqual(self.runtime.effects, [])
+
+    def test_worker_probe_refusal_also_waits_during_rollback(self):
+        self.activate()
+        self.assertEqual(self.fresh().rollback(KEY)['phase'], 'draining')
+        self.drained()
+        original = self.runtime.evidence
+        def bootstrap(verb, binding):
+            if verb == 'cohort-worker-probe-v1': raise Denied('host-command-failed')
+            return original(verb, binding)
+        self.runtime.evidence = bootstrap
+        self.assertEqual(self.fresh().rollback(KEY)['phase'], 'starting')
+        self.assertFalse(self.engine.path('receipts', KEY + '-rollback').exists())
+        effects = list(self.runtime.effects)
+        for _ in range(3): self.assertEqual(self.fresh().rollback(KEY)['phase'], 'starting')
+        self.assertEqual(self.runtime.effects, effects)
+        self.runtime.evidence = original
+        self.assertEqual(self.fresh().rollback(KEY)['outcome'], 'rolled-back')
+        self.assertEqual(self.runtime.effects, effects)
+
     def test_frontend_failure_never_publishes_backend_only_success(self):
         self.runtime.front_ready = False
         self.assertEqual(self.activate()['phase'], 'starting')

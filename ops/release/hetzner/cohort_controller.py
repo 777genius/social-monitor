@@ -275,10 +275,14 @@ class CohortRelease:
             return False
         if not self.core.host.probe(images['api'], revisions['api']):
             return False
-        worker = self.core.host.evidence('cohort-worker-probe-v1', {'container_id': targets[SERVICE]['id'],
-            'image_id': images[SERVICE], 'sha': revisions[SERVICE],
-            'runtime_sha256': admission['runtime_sha256'][SERVICE],
-            'restart_policy_sha256': digest(admission['restart_policy'])})
+        try:
+            worker = self.core.host.evidence('cohort-worker-probe-v1', {'container_id': targets[SERVICE]['id'],
+                'image_id': images[SERVICE], 'sha': revisions[SERVICE],
+                'runtime_sha256': admission['runtime_sha256'][SERVICE],
+                'restart_policy_sha256': digest(admission['restart_policy'])})
+        except Denied:
+            # Startup may precede the SIGTERM handler; the caller's bounded poll must still prove readiness.
+            return False
         if worker.get('ready') is not True or worker.get('service') != SERVICE:
             return False
         actual = self.frontend_sources(targets[FRONTEND], values[FRONTEND])
