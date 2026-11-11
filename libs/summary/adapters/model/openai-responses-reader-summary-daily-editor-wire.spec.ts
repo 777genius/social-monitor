@@ -41,7 +41,7 @@ it("rejects an absent provider output before validating and attesting the frozen
   )).toThrow("Daily editorial plan response is empty");
 });
 
-it("preserves exact response receipts, strict legacy rejection and paid-failure usage", async () => {
+it("preserves exact response receipts, strict unknown-version rejection and paid-failure usage", async () => {
   const { input, evidence } = await dailyDigestFixture();
   const plan = { version: "reader_summary.daily_editorial.v2",
     topics: [{ title: "Specific daily development", why: "One grounded source-backed event",
@@ -69,7 +69,7 @@ it("preserves exact response receipts, strict legacy rejection and paid-failure 
   expect(success.editorOutputSha256).toMatch(/^[a-f0-9]{64}$/);
   const failure = await runOpenAiDailyEditor({
     ...params, createResponse: async () => ({
-      output_text: JSON.stringify({ ...plan, version: "reader_summary.daily_editorial.v1" }),
+      output_text: JSON.stringify({ ...plan, version: "reader_summary.daily_editorial.v0" }),
       usage: { input_tokens: 13, output_tokens: 14 },
     }),
   }).then(() => undefined, (error: unknown) => error);

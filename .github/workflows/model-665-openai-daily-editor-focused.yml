@@ -1,5 +1,5 @@
 # Temporary single-branch exact-code verification for existing Draft PR #665.
-# Remove after success; not a substitute for full Ready 20/20.
+# Remove only after terminal success; not a substitute for full Ready 20/20.
 name: Model 665 OpenAI daily editor focused check
 on:
   push:
