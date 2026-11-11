@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 import { createStagingReliabilityCapturePathSmokes } from './staging-reliability-capture-path-smokes.mjs';
 
 const sources = {
@@ -90,10 +91,22 @@ function assertDelegation(source) {
   assert.match(code, /import\s*\{\s*createStagingReliabilityCapturePathSmokes\s*\}\s*from\s*["']\.\/lib\/staging-reliability-capture-path-smokes\.mjs["']/);
   assert.match(code, /const\s*\{\s*validateCaptureOutputPathGuards\s*\}\s*=\s*createStagingReliabilityCapturePathSmokes\s*\(/);
   assert.doesNotMatch(code, /function\s+validateCaptureOutputPathGuards\s*\(/);
-  assert.match(code, /^validateCaptureOutputPathGuards\(\);\s*$/m);
-  assert.match(code, /^validateDirectArtifactPathGuards\(\);\s*$/m);
-  assert.ok(code.indexOf('\nvalidateCaptureOutputPathGuards();') <
-    code.indexOf('\nvalidateDirectArtifactPathGuards();'), 'capture smoke must run before original direct guards');
+  const ast = ts.createSourceFile('staging-checker.mjs', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  assert.equal(ast.parseDiagnostics.length, 0, 'staging checker must parse');
+  const topLevelCalls = ast.statements
+    .filter(ts.isExpressionStatement)
+    .map((statement) => statement.expression)
+    .filter(ts.isCallExpression)
+    .map((expression) => expression.expression)
+    .filter(ts.isIdentifier)
+    .map((identifier) => identifier.text);
+  assert.equal(topLevelCalls.filter((name) => name === 'validateCaptureOutputPathGuards').length, 1,
+    'capture guard must execute exactly once at module top level');
+  assert.equal(topLevelCalls.filter((name) => name === 'validateDirectArtifactPathGuards').length, 1,
+    'direct guard must execute exactly once at module top level');
+  assert.ok(topLevelCalls.indexOf('validateCaptureOutputPathGuards') <
+    topLevelCalls.indexOf('validateDirectArtifactPathGuards'),
+    'capture smoke must run before original direct guards');
 }
 
 test('original staging checker delegates once and retains mandatory direct artifact guards', () => {
@@ -108,6 +121,8 @@ test('commented, dormant or removed delegations cannot satisfy the architecture 
     '// validateCaptureOutputPathGuards();',
     'if (false) { validateCaptureOutputPathGuards(); }',
     'function dormant() { validateCaptureOutputPathGuards(); }',
+    'if (false) {\nvalidateCaptureOutputPathGuards();\n}',
+    'function dormantMultiline() {\nvalidateCaptureOutputPathGuards();\n}',
   ]) {
     assert.throws(() => assertDelegation(caller.replace('validateCaptureOutputPathGuards();\nvalidateDirectArtifactPathGuards();',
       replacement + '\nvalidateDirectArtifactPathGuards();')));
