@@ -82,3 +82,16 @@ export const numberOrFallback = (value: unknown, fallback: number): number =>
   typeof value === "number" && Number.isFinite(value) && value >= 0
     ? value
     : fallback;
+
+/** Tolerantly decode optional provider arrays without trusting their elements. */
+export const normalizeRecordArray = (
+  value: unknown,
+): readonly Record<string, unknown>[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map(asRecord)
+    .filter((record): record is Record<string, unknown> => record !== null);
+};

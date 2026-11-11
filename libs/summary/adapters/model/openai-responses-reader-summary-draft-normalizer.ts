@@ -1,6 +1,5 @@
 import type {
   GeneratedReaderSummaryDraft,
-  ReaderSummaryQualityFlag,
 } from "../../domain";
 import { readerSummaryHeadline } from "../../domain";
 import { assembleOpenAiReaderSummaryDraft } from "./openai-responses-reader-summary-draft-assembly";
@@ -9,24 +8,16 @@ import type {
   ReaderSummaryModelInput,
   ReaderSummaryModelRoute,
 } from "../../ports";
-import { asRecord, optionalString, requiredString } from "./openai-responses-reader-summary-raw-values";
-import { uniqueNonEmptyStrings } from "./openai-responses-reader-summary-text-values";
+import { normalizeRecordArray, optionalString, requiredString } from "./openai-responses-reader-summary-raw-values";
 import { normalizeTopStories } from "./openai-responses-reader-summary-story-normalizer";
-import {
-  normalizeRisks,
-  normalizeConfidence,
-  normalizeQualityFlags,
-} from "./openai-responses-reader-summary-quality";
-import {
-  normalizeInterestHighlights,
-  normalizeRepeatedSignals,
-} from "./openai-responses-reader-summary-evidence-relations";
 import {
   normalizeOpenAiReaderSummaryNarrative,
   readerSummaryNarrativeMarkdown,
 } from "./openai-responses-reader-summary-narrative";
 import { buildReaderSummaryEvidenceCitationMap,
   readerSummaryCitableEvidence } from "./reader-summary-evidence-citation-map";
+import { buildReaderSummaryStoryNarrativeIndex } from "./openai-responses-reader-summary-story-narrative-index";
+import { normalizeOpenAiReaderSummaryOptionalContent } from "./openai-responses-reader-summary-draft-policy-projection";
 
 export const normalizeOpenAiReaderSummaryDraft = (
   raw: Record<string, unknown>,
@@ -55,27 +46,15 @@ export const normalizeOpenAiReaderSummaryDraft = (
     input,
     citationMap,
   );
+  const storyIndex = buildReaderSummaryStoryNarrativeIndex(normalizedTopStories);
   const narrativeSections = normalizeOpenAiReaderSummaryNarrative({
     rawSections: raw.narrativeSections,
     legacyExecutiveSummary,
     input,
     citationMap,
-    storyTitlesByClusterId: new Map(
-      normalizedTopStories.map((story) => [story.storyClusterId, story.title]),
-    ),
-    storySummariesByClusterId: new Map(
-      normalizedTopStories.map((story) => [
-        story.storyClusterId,
-        story.summary,
-      ]),
-    ),
-    storySummariesByCitationId: new Map(
-      normalizedTopStories.flatMap((story) =>
-        story.citationIds.map(
-          (citationId) => [citationId, story.summary] as const,
-        ),
-      ),
-    ),
+    storyTitlesByClusterId: storyIndex.storyTitlesByClusterId,
+    storySummariesByClusterId: storyIndex.storySummariesByClusterId,
+    storySummariesByCitationId: storyIndex.storySummariesByCitationId,
   });
   const noSignalReason =
     normalizedTopStories.length === 0
@@ -89,39 +68,18 @@ export const normalizeOpenAiReaderSummaryDraft = (
         noSignalReason ??
         "")
       : readerSummaryNarrativeMarkdown(narrativeSections);
-  const interestHighlights = input.policy.includeInterestHighlights
-    ? normalizeInterestHighlights(
-        normalizeRecordArray(raw.interestHighlights),
-        input,
-        citationMap,
-      )
-    : [];
-  const repeatedSignals = input.policy.includeRepeatedSignals
-    ? normalizeRepeatedSignals(
-        normalizeRecordArray(raw.repeatedSignals),
-        input,
-        citationMap,
-      )
-    : [];
-  const risksAndUnknowns = input.policy.includeRisks
-    ? normalizeRisks(
-        normalizeRecordArray(raw.risksAndUnknowns ?? raw.risks),
-        citationMap,
-      )
-    : [];
-  const rawQualityFlags = normalizeQualityFlags(raw.qualityFlags);
-  const normalizedQualityFlags =
-    normalizedTopStories.length === 0
-      ? (uniqueNonEmptyStrings([
-          ...rawQualityFlags,
-          "no_signal",
-          "limited_sources",
-        ]) as readonly ReaderSummaryQualityFlag[])
-      : rawQualityFlags.filter((flag) => flag !== "no_signal");
-  const confidence = normalizeConfidence(
-    asRecord(raw.confidence) ?? {},
-    normalizedTopStories.length,
-  );
+  const {
+    interestHighlights,
+    repeatedSignals,
+    risksAndUnknowns,
+    normalizedQualityFlags,
+    confidence,
+  } = normalizeOpenAiReaderSummaryOptionalContent({
+    raw,
+    input,
+    citationMap,
+    topStoryCount: normalizedTopStories.length,
+  });
   return assembleOpenAiReaderSummaryDraft({
     input,
     headline,
@@ -153,18 +111,3 @@ export const buildOpenAiReaderSummaryLineage = (
   evalDatasetVersion,
   rankingPolicyVersion: input.evidence.rankingPolicyVersion,
 });
-
-
-
-const normalizeRecordArray = (
-  value: unknown,
-): readonly Record<string, unknown>[] => {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value
-    .map(asRecord)
-    .filter((record): record is Record<string, unknown> => record !== null);
-};
-
