@@ -97,4 +97,4 @@ class CohortHost:
         cohort_compose.check_scope(before, after, images, sources)
         require(self.host.compose_fingerprint() == expected_fingerprint, 'trusted-compose-changed')
         self.host.command(self.host.compose(path) +
-            ['up', '-d', '--no-deps', '--no-build', '--pull', 'never', service])
+            ['--profile', '*', 'up', '-d', '--no-deps', '--no-build', '--pull', 'never', service])
