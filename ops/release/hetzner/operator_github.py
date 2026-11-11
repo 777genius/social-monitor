@@ -126,10 +126,10 @@ class GitHub:
         self._trees[commit_sha] = result
         return result
 
-    def delta(self, base, head):
+    def delta(self, base, head, *, allow_empty=False):
         old, new = self.tree(base), self.tree(head)
         paths = sorted(path for path in old.keys() | new.keys() if old.get(path) != new.get(path))
-        require(paths and len(paths) <= 10000, 'operator-delta-count')
+        require((paths or allow_empty) and len(paths) <= 10000, 'operator-delta-count')
         if core_policies.WORKER_README in paths:
             for tree in (old, new):
                 entry = tree.get(core_policies.WORKER_README)
@@ -246,7 +246,7 @@ def backend_release(config, runner, binding):
             reviewed = None
             if base == core_policies.REVIEW_BASE and core_policies.REVIEW_PATHS.issubset(paths):
                 reviewed_paths, reviewed_digest = gh.delta(base, core_policies.REVIEW_HEAD)
-                continuation, _ = ([], digest([])) if sha == core_policies.REVIEW_HEAD else gh.delta(core_policies.REVIEW_HEAD, sha)
+                continuation, _ = ([], digest([])) if sha == core_policies.REVIEW_HEAD else gh.delta(core_policies.REVIEW_HEAD, sha, allow_empty=True)
                 require(set(reviewed_paths) == core_policies.REVIEW_PATHS and
                         reviewed_digest == core_policies.REVIEW_DIGEST and
                         all(core_policies.package_ci_path(p) for p in continuation), 'operator-reviewed-delta')
