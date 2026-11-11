@@ -36,6 +36,7 @@ function assertActiveDelegation(checkerSource, helperSource = extracted) {
     'childProcessErrorOutput', 'smokeOutputSnippet',
   ]);
   assert.match(checker, /^validateRunnerPreflightNegativeSmokes\(\);$/m);
+  assert.match(checker, /^validateRunnerPreflightPositiveSmoke\(\);$/m);
   assert.match(helper, /return \{\s*validateRunnerPreflightNegativeSmokes,\s*validateRunnerPreflightPositiveSmoke,\s*\};/);
 
   const marker = '  function validateRunnerPreflightNegativeSmokes() {\n';
@@ -71,6 +72,10 @@ test('unreachable, nested or replaced preflight declarations cannot satisfy the 
 test('missing or commented-out checker wiring cannot bypass the extracted preflight loop', () => {
   assert.throws(() => assertActiveDelegation(original.replace(invocation, '')), { code: 'ERR_ASSERTION' });
   assert.throws(() => assertActiveDelegation(original.replace(invocation, '// ' + invocation)), { code: 'ERR_ASSERTION' });
+  const positiveInvocation = 'validateRunnerPreflightPositiveSmoke();';
+  assert.ok(original.includes(positiveInvocation), 'positive invocation must exist for mutation checks');
+  assert.throws(() => assertActiveDelegation(original.replace(positiveInvocation, '')), { code: 'ERR_ASSERTION' });
+  assert.throws(() => assertActiveDelegation(original.replace(positiveInvocation, '// ' + positiveInvocation)), { code: 'ERR_ASSERTION' });
   assert.throws(() => assertActiveDelegation(original.replace('preflightNegativeSmokeScenarios, mkdtempSync', 'mkdtempSync')), { code: 'ERR_ASSERTION' });
 });
 
