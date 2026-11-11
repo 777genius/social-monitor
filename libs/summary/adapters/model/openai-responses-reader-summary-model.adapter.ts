@@ -6,6 +6,7 @@ import {
 export { resolveOpenAiResponsesReaderSummaryModelOptions } from "./openai-responses-reader-summary-options";
 import { runOpenAiDailyEditor } from "./openai-responses-reader-summary-daily-editor";
 import { readerSummaryDailyInputReceipt } from "./reader-summary-daily-input-receipt";
+import { buildOpenAiReaderSummaryResponseRequest } from "./openai-responses-reader-summary-response-request";
 import type {
   ReaderSummaryModelBudget,
   ReaderSummaryModelEstimate,
@@ -120,21 +121,15 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
 
     const prompt = buildOpenAiReaderSummaryPromptPayload(input);
     const dailyGenerationReceipt = readerSummaryDailyInputReceipt(prompt, input.evidence.dailyGenerationInput, input.dailyEditorialPlan);
-    const responseJson = await this.createResponse({
-      model: selectedRoute.model,
-      store: false,
-      max_output_tokens: this.settings.maxOutputTokens,
-      instructions: buildOpenAiReaderSummaryInstructions(input),
-      input: prompt,
-      text: {
-        format: {
-          type: "json_schema",
-          name: "social_monitor_reader_summary_artifact",
-          strict: true,
-          schema: readerSummaryWriterSchema(input),
-        },
-      },
-    });
+    const responseJson = await this.createResponse(
+      buildOpenAiReaderSummaryResponseRequest({
+        model: selectedRoute.model,
+        maxOutputTokens: this.settings.maxOutputTokens,
+        instructions: buildOpenAiReaderSummaryInstructions(input),
+        prompt,
+        schema: readerSummaryWriterSchema(input),
+      }),
+    );
     return completeOpenAiReaderSummaryAttempt({
       responseJson,
       input,
