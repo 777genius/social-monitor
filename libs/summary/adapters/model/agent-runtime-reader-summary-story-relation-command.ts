@@ -8,7 +8,9 @@ import { buildAgentRuntimeRequestId } from "./agent-runtime-model-support";
 import {
   agentRuntimeReaderSummaryStoryRelationVerifierInstructions,
   agentRuntimeReaderSummaryIndependentNewsVerifierInstructions,
-  agentRuntimeReaderSummaryStoryRelationVerifierJsonSchema,
+} from "./agent-runtime-reader-summary-story-relation-instructions";
+import { agentRuntimeReaderSummaryStoryRelationVerifierJsonSchema } from "./agent-runtime-reader-summary-story-relation-schema";
+import {
   agentRuntimeReaderSummaryRelatedTopicVerifierInstructions,
   agentRuntimeReaderSummaryRelatedTopicVerifierJsonSchema,
   buildAgentRuntimeReaderSummaryStoryRelationVerifierPrompt,
