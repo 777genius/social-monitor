@@ -60,6 +60,11 @@ class FrontendReceiveTests(unittest.TestCase):
              patch('cohort_frontend_receive.trusted', side_effect=lambda path, directory=False: Path(path)):
             proof = core.dispatch('cohort-receive-frontend ' + SHA + ' 123', source)
         self.assertEqual(proof['authority'], self.authority)
+        with self.archive.open('rb') as source, \
+             patch('cohort_frontend_receive.trusted', side_effect=lambda path, directory=False: Path(path)), \
+             patch.object(self.host, 'evidence', wraps=self.host.evidence) as evidence:
+            self.assertEqual(core.dispatch('cohort-receive-frontend-auth ' + SHA + ' 123', source), proof)
+            self.assertEqual(evidence.call_args.args[0], 'cohort-frontend-authority')
         with self.assertRaises(Denied): core.dispatch('cohort-receive-frontend ' + SHA + ' 123 extra')
         (self.state / 'latch.json').write_text('{}')
         with self.archive.open('rb') as source, self.assertRaisesRegex(Denied, 'latched'):

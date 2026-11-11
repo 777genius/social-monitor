@@ -64,11 +64,11 @@ class WireAndBoundsTests(unittest.TestCase):
         from operator_adapter import REQUESTS
         for verb in REQUESTS:
             value = {} if verb in ('preflight', 'postgres-identity') else dict(BINDING)
-            if verb == 'frontend-authority':
+            if verb in ('frontend-authority', 'cohort-frontend-authority'):
                 value = {'sha': BINDING['sha'], 'ci_run_id': BINDING['ci_run_id']}
             if verb == 'release-evidence':
                 value['production_revision'] = BASE
-            if verb == 'backend-release-evidence':
+            if verb in ('backend-release-evidence', 'cohort-backend-release-evidence'):
                 value.update(api_revision=BASE, worker_revision=BASE,
                              non_target_snapshot_sha256='sha256:' + '0' * 64)
             if verb == 'worker-capability':
@@ -223,6 +223,7 @@ class WireAndBoundsTests(unittest.TestCase):
             original = module.read_bytes()
             module.write_bytes(b'(\n')
             for verb in ('postgres-identity', 'frontend-authority', 'backend-release-evidence',
+                         'cohort-frontend-authority', 'cohort-backend-release-evidence',
                          'worker-capability', 'worker-drain', 'worker-probe'):
                 with self.subTest(verb=verb):
                     result = subprocess.run(['/usr/sbin/chroot', str(root),

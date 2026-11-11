@@ -319,6 +319,46 @@ test('preflight receipts accept only fixed diagnostic codes', () => {
   assert.equal(O.safePreflightDiagnostic('preflight', new Error('ssh-publickey')), undefined);
 });
 
+test('GitHub credentials and lease stay on stdin; exact cleanup needs no token', async () => {
+  const token = 'TEST_ONLY_NOT_A_CREDENTIAL_0000', lease = 'b'.repeat(32);
+  const calls: string[] = [];
+  const transport: Transport = async (wire, source) => {
+    calls.push(wire);
+    assert.equal(wire.includes(token), false); assert.equal(wire.includes(lease), false);
+    assert.ok(source);
+    const chunks: Buffer[] = [];
+    for await (const chunk of source()) chunks.push(Buffer.from(chunk));
+    const body = A.parseJson(Buffer.concat(chunks));
+    const clear = wire.startsWith('github-auth-clear ');
+    assert.deepEqual(body, clear ? { lease } : { lease, token });
+    return response({ sha, ci_run_id: run, ...(clear ? { cleared: false } : { configured: true }) });
+  };
+  await O.githubAuth(transport, sha, run, lease, token);
+  await O.githubAuth(transport, sha, run, lease);
+  assert.deepEqual(calls, [`github-auth ${sha} ${run}`, `github-auth-clear ${sha} ${run}`]);
+  await assert.rejects(O.githubAuth(transport, sha, run, lease, token + '\nInjected: header'));
+  assert.equal(calls.length, 2);
+  await assert.rejects(O.githubAuth(async () => response({ sha: 'e'.repeat(40), ci_run_id: run, configured: true }),
+    sha, run, lease, token), /github-auth-binding/u);
+  let denied = 0;
+  await assert.rejects(O.githubAuth(async () => { denied++; return response({}, 1); }, sha, run, lease, token));
+  assert.equal(denied, 1);
+  await assert.rejects(O.cohortRecoveryTransport(sha, run, transport)(`github-auth ${sha} ${run}`, async function* () {}));
+});
+
+test('cleanup CLI without a retained lease needs no GitHub token, event or SSH secrets', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'TEST-sm-auth-cleanup-'));
+  const directory = join(root, 'hetzner-private-test');
+  try {
+    await mkdir(directory, { mode: 0o700 });
+    const env = { PATH: '/usr/bin:/bin', GITHUB_JOB: 'activate', RUNNER_TEMP: root,
+      HETZNER_PRIVATE_DIRECTORY: directory, EXPECTED_SHA: sha, EXPECTED_RUN: run };
+    await O.main(['auth-clear'], env);
+    assert.deepEqual(await readdir(directory), []);
+    await assert.rejects(O.main(['auth-clear'], { ...env, GITHUB_JOB: 'preflight' }), /github-auth-job/u);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('native disabled CLI exits before event, GitHub, private directory or credential reads', () => {
   for (const mode of ['', 'unknown']) {
     const result = spawnSync(process.execPath, ['--experimental-strip-types',
@@ -558,6 +598,13 @@ test('frontend delivery sends exact CI ZIP and checks host proof against both ar
       return response(proof);
     };
     assert.deepEqual(await O.sendFrontendCandidate(frontend, candidate, get, transport), proof);
+    assert.deepEqual(await O.sendFrontendCandidate(frontend, candidate, get, async (wire, source) => {
+      assert.equal(wire, `cohort-receive-frontend-auth ${sha} ${run}`); assert.ok(source);
+      const chunks: Buffer[] = [];
+      for await (const chunk of source()) chunks.push(Buffer.from(chunk));
+      assert.deepEqual(Buffer.concat(chunks), zipBytes);
+      return response(proof);
+    }, true), proof);
     const backendManifest = { sha, ci_run_id: run, archive_sha256: digest(zipBytes), image_id: image,
       archive_bytes: zipBytes.length, migrations: ['synthetic'], image_graph: {} };
     const backendBytes = Buffer.from(JSON.stringify(backendManifest));

@@ -168,7 +168,7 @@ class CohortRelease:
     def evidence(self, item, revisions, snapshot):
         binding = {**self.core.binding(item), 'api_revision': revisions['api'],
                    'worker_revision': revisions[SERVICE], 'non_target_snapshot_sha256': snapshot}
-        return policies.backend_compatibility(self.core.host.evidence('backend-release-evidence', binding),
+        return policies.backend_compatibility(self.core.host.evidence('cohort-backend-release-evidence', binding),
                                                revisions, item['sha'], snapshot)
 
     def frontend_sources(self, target, value):

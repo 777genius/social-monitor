@@ -45,7 +45,9 @@ function common(): Mapping[] {
 function host(lane: 'preflight' | 'activate'): Mapping {
   const run = ['set -euo pipefail', 'umask 077',
     'private="$(mktemp -d "$RUNNER_TEMP/hetzner-private-XXXXXXXX")"',
-    "trap 'rm -rf -- \"$private\"' EXIT", 'export HETZNER_PRIVATE_DIRECTORY="$private"', SCRIPT + lane].join('\n');
+    lane === 'activate'
+      ? "trap 'timeout -k 2s 20s node --experimental-strip-types scripts/ci/hetzner-release-observe.mts auth-clear >/dev/null 2>&1 || true; rm -rf -- \"$private\"' EXIT"
+      : "trap 'rm -rf -- \"$private\"' EXIT", 'export HETZNER_PRIVATE_DIRECTORY="$private"', SCRIPT + lane].join('\n');
   return { needs: 'candidate',
     if: `needs.candidate.outputs.phase == 'ready' && needs.candidate.outputs.lane == '${lane}'`,
     concurrency: { group: 'social-monitor-hetzner-production', 'cancel-in-progress': false },

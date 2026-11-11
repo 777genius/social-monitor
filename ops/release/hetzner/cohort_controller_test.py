@@ -282,10 +282,11 @@ class EngineTests(unittest.TestCase):
 
     def test_pending_startup_reuses_ci_proof_and_survives_fresh_engine(self):
         self.engine.activate(KEY); self.drained(); self.runtime.healthy = False
-        calls = self.runtime.evidence_calls.count('backend-release-evidence')
+        calls = self.runtime.evidence_calls.count('cohort-backend-release-evidence')
+        self.assertEqual(calls, 2)
         self.assertEqual(self.fresh().activate(KEY)['phase'], 'starting')
         self.assertEqual(self.fresh().activate(KEY)['phase'], 'starting')
-        self.assertEqual(self.runtime.evidence_calls.count('backend-release-evidence'), calls)
+        self.assertEqual(self.runtime.evidence_calls.count('cohort-backend-release-evidence'), calls)
         self.runtime.healthy = True
         self.assertEqual(self.fresh().activate(KEY)['outcome'], 'activated')
 

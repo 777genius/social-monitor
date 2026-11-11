@@ -24,9 +24,11 @@ GRAMMAR = {
 GRAMMAR.update({'backend-' + verb: patterns for verb, patterns in GRAMMAR.copy().items()
                 if verb != 'status'})
 GRAMMAR['cohort-receive-frontend'] = [SHA, RUN]
+GRAMMAR['cohort-receive-frontend-auth'] = [SHA, RUN]
 GRAMMAR['cohort-receive-backend'] = [SHA, RUN, DIGEST, DIGEST, r'[1-9][0-9]{0,11}']
 GRAMMAR.update({'cohort-' + verb: [SHA, RUN] for verb in ('admit', 'activate', 'rollback', 'verify')})
 GRAMMAR['cohort-receipt'] = [KEY + r'(?:-rollback)?']
+GRAMMAR.update({verb: [SHA, RUN] for verb in ('github-auth', 'github-auth-clear')})
 
 
 class Denied(Exception):

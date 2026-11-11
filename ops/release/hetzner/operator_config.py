@@ -6,13 +6,16 @@ import os
 from pathlib import Path
 import re
 import stat
-from contract import DIGEST, Denied, canonical, private_file_digest, require, trusted
+import time
+from itertools import islice
+from contract import DIGEST, SHA, RUN, Denied, atomic, canonical, private_file_digest, require, sync_dir, trusted
 
 CONFIG = '/etc/social-monitor/release/operator.conf'
 REVIEW = '/etc/social-monitor/release/compatibility-review.json'
 SERVICE = '/etc/social-monitor/release/observer.pg_service.conf'
 PASS = '/etc/social-monitor/release/observer.pgpass'
-TOKEN = '/etc/social-monitor/release/github-readonly.token'
+TOKEN = '/etc/social-monitor/release/github-readonly.token'  # Legacy, never read by this observer.
+AUTH_ROOT = Path('/run/social-monitor-release-github')
 GH_DIR = '/etc/social-monitor/release/github-empty'
 INCLUDE_DIR = '/etc/social-monitor/release/pgbackrest-empty'
 SYSTEM_ID = '7688442011877063482'
@@ -86,6 +89,84 @@ def private_bytes(path, limit=65536, secret=False):
     require(0 < len(data) <= limit and sha_bytes(data) == before
             and private_file_digest(path) == before, 'operator-private-race')
     return data
+
+
+def auth_path(sha, run):
+    require(match(SHA, sha) and match(RUN, run), 'github-auth-binding')
+    return AUTH_ROOT / (sha + '-' + run + '.json')
+
+
+def auth_record(path):
+    info = path.lstat()
+    require(stat.S_ISREG(info.st_mode) and 0 < info.st_size <= 4096
+            and not info.st_mode & 0o077, 'github-auth-file')
+    raw = private_bytes(path, 4096, secret=True)
+    saved = decode(raw, 4096)
+    exact(saved, ('sha', 'ci_run_id', 'lease', 'token', 'expires_at'))
+    require(auth_path(saved['sha'], saved['ci_run_id']) == path and
+            type(saved['expires_at']) is int and saved['expires_at'] > 0 and
+            match(r'[0-9a-f]{32}', saved['lease']) and
+            match(r'[A-Za-z0-9_]{20,2048}', saved['token']), 'github-auth-invalid')
+    return saved, raw
+
+
+def prune_expired_auth():
+    changed = False
+    for path in list(islice(AUTH_ROOT.iterdir(), 33)):
+        if not match(SHA + '-' + RUN + r'\.json', path.name):
+            continue
+        try:
+            saved, _ = auth_record(path)
+        except (Denied, OSError):
+            continue  # Unknown, foreign, non-private or invalid state is never deleted.
+        if saved['expires_at'] <= time.time():
+            path.unlink(); changed = True
+    if changed:
+        sync_dir(AUTH_ROOT)
+
+
+def github_auth_update(sha, run, raw, clear=False):
+    """Root controller owns the machine fence and shared lock; no token in responses."""
+    payload = decode(raw, 4096)
+    exact(payload, ('lease',) if clear else ('lease', 'token'))
+    require(match(r'[0-9a-f]{32}', payload['lease']), 'github-auth-lease')
+    path = auth_path(sha, run)
+    response = {'sha': sha, 'ci_run_id': run}
+    if clear:
+        if not AUTH_ROOT.exists():
+            require(not AUTH_ROOT.is_symlink(), 'github-auth-path')
+            return {**response, 'cleared': True}
+        trusted(AUTH_ROOT, directory=True)
+        if not path.exists():
+            require(not path.is_symlink(), 'github-auth-path')
+            return {**response, 'cleared': True}
+        saved, _ = auth_record(path)
+        if saved.get('lease') != payload['lease']:
+            return {**response, 'cleared': False}
+        path.unlink(); sync_dir(AUTH_ROOT)
+        return {**response, 'cleared': True}
+    require(match(r'[A-Za-z0-9_]{20,2048}', payload['token']), 'github-auth-token')
+    AUTH_ROOT.mkdir(mode=0o700, exist_ok=True)
+    trusted(AUTH_ROOT, directory=True)
+    require(not AUTH_ROOT.stat().st_mode & 0o077, 'github-auth-mode')
+    prune_expired_auth()
+    require(path.exists() or len(list(islice(AUTH_ROOT.iterdir(), 33))) < 32, 'github-auth-count')
+    if path.exists():
+        auth_record(path)
+    atomic(path, {**response, **payload, 'expires_at': int(time.time()) + 3600})
+    return {**response, 'configured': True}
+
+
+def github_auth_header(config):
+    """Only cohort GitHub observations opt in; legacy read-only preflight stays unchanged."""
+    binding = getattr(config, 'github_binding', None)
+    if binding is None:
+        return None
+    path = auth_path(binding['sha'], binding['ci_run_id'])
+    saved, raw = auth_record(path)
+    require(time.time() < saved['expires_at'] <= time.time() + 3600, 'github-auth-expired')
+    config.pin(str(path), sha_bytes(raw))
+    return ('Authorization: Bearer ' + saved['token'] + '\n').encode('ascii')
 
 
 def empty_directory(path):

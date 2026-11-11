@@ -1,6 +1,6 @@
 import { constants as F } from 'node:fs';
 import { chmod, lstat, mkdir, mkdtemp, open, readdir, rm, writeFile } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
@@ -286,7 +286,8 @@ export async function sendBackendCandidate(authority: Authority, candidate: Cand
 }
 /** Deliver original CI ZIP; the host repeats independent authority and archive checks. */
 export async function sendFrontendCandidate(frontend: FrontendAuthority,
-  candidate: { manifest: string; manifestHash: string; transport: string }, get: Get, transport: Transport) {
+  candidate: { manifest: string; manifestHash: string; transport: string }, get: Get, transport: Transport,
+  authenticated = false) {
   const artifact = frontend.artifact, base = frontend.base;
   const manifestBytes = await boundedBytes(candidate.manifest, 65536);
   A.requireValue('sha256:' + createHash('sha256').update(manifestBytes).digest('hex') === candidate.manifestHash,
@@ -307,7 +308,7 @@ export async function sendFrontendCandidate(frontend: FrontendAuthority,
       && identity(before) === identity(await handle.stat()) && identity(before) === identity(await lstat(candidate.transport)),
       'frontend-transport-changed');
     const guarded = guardedTransport(get, base, transport, frontend);
-    const response = await guarded(command('cohort-receive-frontend', [base.sha, base.run]),
+    const response = await guarded(command(authenticated ? 'cohort-receive-frontend-auth' : 'cohort-receive-frontend', [base.sha, base.run]),
       () => handle.createReadStream({ autoClose: false, start: 0, end: before.size - 1 }));
     A.requireValue(response.code === 0 && Buffer.isBuffer(response.stdout), 'frontend-host-denied');
     A.requireValue(identity(before) === identity(await handle.stat()) && identity(before) === identity(await lstat(candidate.transport)),
@@ -370,6 +371,9 @@ export function guardedTransport(get: Get, authority: Authority, transport: Tran
     const [verb, ...args] = wire.split(' '); A.requireValue(typeof verb === 'string', 'wire');
     command(verb, args);
     A.requireValue(verb !== 'rollback', 'rollback-unsupported');
+    if (verb === 'github-auth' || verb === 'github-auth-clear') {
+      A.requireValue(args[0] === authority.sha && args[1] === authority.run && !!source, 'github-auth-binding');
+    }
     if (verb === 'backend-rollback') {
       // Recovery may proceed after main changes, but only for this attempted transaction.
       A.requireValue(backendActivationAttempted && args[0] === authority.sha && args[1] === authority.run,
@@ -379,15 +383,15 @@ export function guardedTransport(get: Get, authority: Authority, transport: Tran
       A.requireValue(cohortActivationAttempted && args[0] === authority.sha && args[1] === authority.run,
         'rollback-unsupported');
     }
-    if (['cohort-receive-frontend', 'cohort-admit', 'cohort-activate'].includes(verb)) {
+    if (['cohort-receive-frontend', 'cohort-receive-frontend-auth', 'cohort-admit', 'cohort-activate'].includes(verb)) {
       A.requireValue(frontend && args[0] === authority.sha && args[1] === authority.run
-        && (verb === 'cohort-receive-frontend' ? !!source : !source), 'frontend-authority-required');
+        && (verb.startsWith('cohort-receive-frontend') ? !!source : !source), 'frontend-authority-required');
       A.sameAuthority(authority, frontend.base);
       A.sameFrontendAuthority(frontend, await A.observeFrontendAuthority(get, authority));
       if (verb === 'cohort-activate') cohortActivationAttempted = true;
     }
     if (['receive', 'admit', 'activate', 'backend-receive', 'backend-admit', 'backend-activate',
-      'cohort-receive-backend'].includes(verb)) {
+      'cohort-receive-backend', 'github-auth'].includes(verb)) {
       A.requireValue(args[0] === authority.sha && args[1] === authority.run, 'candidate-disagreement');
       const decision = await A.observeAuthority(get, authority.run);
       if (decision.phase === 'stale-main-skipped') throw new ClientError('stale-main-skip');
@@ -397,6 +401,34 @@ export function guardedTransport(get: Get, authority: Authority, transport: Tran
     }
     return transport(wire, source);
   };
+}
+/** Credentials are stdin-only and never part of artifacts or receipts. */
+export async function githubAuth(transport: Transport, sha: string, run: string, lease: string, token?: string) {
+  A.text(lease, /^[0-9a-f]{32}$/u, 'github-auth-lease');
+  if (token !== undefined) A.text(token, /^[A-Za-z0-9_]{20,2048}$/u, 'github-auth-token');
+  const bytes = Buffer.from(JSON.stringify({ lease, ...(token === undefined ? {} : { token }) }));
+  try {
+    const response = await transport(command(token === undefined ? 'github-auth-clear' : 'github-auth', [sha, run]), async function* () { yield bytes; });
+    A.requireValue(response.code === 0 && Buffer.isBuffer(response.stdout), 'github-auth-denied');
+    const value = A.exact(A.parseJson(response.stdout, 4096), ['sha', 'ci_run_id', token === undefined ? 'cleared' : 'configured']);
+    A.requireValue(value.sha === sha && value.ci_run_id === run &&
+      (token === undefined ? typeof value.cleared === 'boolean' : value.configured === true), 'github-auth-binding');
+  } finally { bytes.fill(0); }
+}
+async function runAuthClear(env: NodeJS.ProcessEnv): Promise<void> {
+  A.requireValue(env.GITHUB_JOB === 'activate', 'github-auth-job');
+  const root = A.text(env.RUNNER_TEMP, /^\/[a-zA-Z0-9_./-]+$/u, 'runner-temp');
+  const directory = A.text(env.HETZNER_PRIVATE_DIRECTORY, /^\/[a-zA-Z0-9_./-]+$/u, 'private-directory');
+  A.requireValue(dirname(directory) === root && /^hetzner-private-[a-zA-Z0-9]+$/u.test(directory.slice(root.length + 1)), 'private-directory');
+  const path = join(directory, 'github-auth.json');
+  try { await lstat(path); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw error; }
+  const saved = A.exact(A.parseJson(await boundedBytes(path, 4096), 4096), ['sha', 'run', 'lease']);
+  const sha = A.text(saved.sha, A.SHA, 'github-auth-sha'), run = A.text(saved.run, A.RUN, 'github-auth-run');
+  A.requireValue(sha === env.EXPECTED_SHA && run === env.EXPECTED_RUN, 'github-auth-binding');
+  const scratch = await mkdtemp(join(root, 'hetzner-auth-cleanup-'));
+  try { await githubAuth(sshTransport(await provisionRunner(scratch, env), undefined, 15_000), sha, run,
+    A.text(saved.lease, /^[0-9a-f]{32}$/u, 'github-auth-lease')); }
+  finally { await rm(scratch, { recursive: true, force: true }); }
 }
 /** Recovery is operator-triggered and cannot authorize a new deployment. */
 export function recoveryTrigger(mode: string | undefined, event: unknown, name: string,
@@ -707,7 +739,8 @@ async function runRecovery(env: NodeJS.ProcessEnv): Promise<void> {
   } finally { await rm(scratch, { recursive: true, force: true }); }
 }
 export async function main(args: readonly string[], env: NodeJS.ProcessEnv): Promise<void> {
-  A.requireValue(args.length === 1 && ['candidate', 'gate', 'preflight', 'activate', 'recover'].includes(args[0] ?? ''), 'arguments');
+  A.requireValue(args.length === 1 && ['candidate', 'gate', 'preflight', 'activate', 'recover', 'auth-clear'].includes(args[0] ?? ''), 'arguments');
+  if (args[0] === 'auth-clear') { await runAuthClear(env); return; }
   if (args[0] === 'recover') { await runRecovery(env); return; }
   const action = args[0];
   if (!['preflight', 'manual', 'auto'].includes(env.HETZNER_RELEASE_MODE ?? '')) {
@@ -725,6 +758,7 @@ export async function main(args: readonly string[], env: NodeJS.ProcessEnv): Pro
   A.requireValue(typeof ghDirectory === 'string', 'github-private-config');
   await mkdir(ghDirectory, { mode: 0o700 }); await canonical(ghDirectory);
   let scratch: string | undefined, publicDirectory: string | undefined;
+  let auth: { transport: Transport; sha: string; run: string; lease: string } | undefined;
   try {
     if (trigger.lane === 'skip') {
       await outputs({ phase: 'ineligible-skipped', lane: 'skip' });
@@ -780,8 +814,13 @@ export async function main(args: readonly string[], env: NodeJS.ProcessEnv): Pro
     }
     await append(join(publicDirectory, 'receipt.jsonl'), { phase: 'candidate-bound', lane: action, ...binding,
       frontend_artifact_id: frontend.artifact.id, frontend_manifest_sha256: frontendData.manifestHash });
+    const lease = randomBytes(16).toString('hex');
+    await append(join(scratch, 'github-auth.json'), { sha: authority.sha, run: authority.run, lease });
+    auth = { transport: sshTransport(config, undefined, 15_000), sha: authority.sha, run: authority.run, lease };
+    await githubAuth(guardedTransport(get, authority, transport), authority.sha, authority.run, lease,
+      A.text(env.GH_TOKEN, /^[A-Za-z0-9_]{20,2048}$/u, 'github-auth-token'));
     await sendBackendCandidate(authority, data, get, transport);
-    const frontendProof = await sendFrontendCandidate(frontend, frontendData, get, transport);
+    const frontendProof = await sendFrontendCandidate(frontend, frontendData, get, transport, true);
     const receipt = await activateCohort(frontend, data.value, frontendProof, get, transport);
     await append(join(publicDirectory, 'receipt.jsonl'), { phase: 'verified-receipt', receipt });
     await append(join(publicDirectory, 'receipt.jsonl'), { phase: 'completed', lane: action, ...binding,
@@ -798,6 +837,7 @@ export async function main(args: readonly string[], env: NodeJS.ProcessEnv): Pro
     }
     throw new A.AuthorityError('release-phase-failed');
   } finally {
+    if (auth) await githubAuth(auth.transport, auth.sha, auth.run, auth.lease).catch(() => {});
     if (scratch) await rm(scratch, { recursive: true, force: true });
     await rm(ghDirectory, { recursive: true, force: true });
   }

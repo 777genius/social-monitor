@@ -142,6 +142,19 @@ test('SSH failure diagnostics expose only a fixed category, never stderr', async
   }
 });
 
+test('credential cleanup transport has a finite shorter process deadline', async () => {
+  for (const timeout of [0, 999, 600001, NaN]) assert.throws(() => sshTransport(config, undefined, timeout));
+  let killed;
+  const spawnSeam = () => {
+    const child = new EventEmitter();
+    child.stdin = new PassThrough(); child.stdout = new PassThrough(); child.stderr = new PassThrough();
+    child.kill = signal => { killed = signal; child.emit('close', 255); };
+    return child;
+  };
+  const result = await sshTransport(config, spawnSeam, 1000)('status');
+  assert.equal(killed, 'SIGKILL'); assert.equal(result.code, 255);
+});
+
 test('hash before any SSH, exact archive bytes and durable observed phases', async () => fixture(async options => {
   const h = host();
   assert.deepEqual(await deliver(options, h.transport), { phase: 'completed' });

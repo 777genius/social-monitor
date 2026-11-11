@@ -97,9 +97,11 @@ export async function runnerConfig(path) {
 export function command(verb, args = []) {
   const patterns = {
     status: [], preflight: [], receive: [SHA, RUN, DIGEST, DIGEST, /^[1-9][0-9]{0,11}$/u],
+    'github-auth': [SHA, RUN], 'github-auth-clear': [SHA, RUN],
     admit: [SHA, RUN], activate: [SHA, RUN], verify: [SHA, RUN], rollback: [SHA, RUN],
     receipt: [/^[0-9a-f]{40}-[1-9][0-9]{0,14}(?:-rollback)?$/u],
     'cohort-receive-frontend': [SHA, RUN],
+    'cohort-receive-frontend-auth': [SHA, RUN],
     'cohort-admit': [SHA, RUN], 'cohort-activate': [SHA, RUN],
     'cohort-rollback': [SHA, RUN], 'cohort-verify': [SHA, RUN],
     'cohort-receipt': [/^[0-9a-f]{40}-[1-9][0-9]{0,14}(?:-rollback)?$/u],
@@ -124,13 +126,14 @@ export function sshArgs(config, wire) {
     '-o', 'ClearAllForwardings=yes', '-o', 'RequestTTY=no', '-o', 'IdentityAgent=none',
     '-p', String(config.port), '-l', config.user, '-i', config.private_key, '--', config.host, wire];
 }
-export function sshTransport(config, spawnProcess = spawn) {
+export function sshTransport(config, spawnProcess = spawn, timeoutMs = 600_000) {
+  requireThat(Number.isSafeInteger(timeoutMs) && timeoutMs >= 1000 && timeoutMs <= 600_000, 'transport-timeout');
   return async (wire, source) => {
     const child = spawnProcess('/usr/bin/ssh', sshArgs(config, wire),
       { shell: false, env: ENV, stdio: ['pipe', 'pipe', 'pipe'] });
     let size = 0;
     const chunks = [];
-    const timer = setTimeout(() => child.kill('SIGKILL'), 600_000);
+    const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs);
     const closed = new Promise((accept, reject) => {
       child.once('error', () => reject(new ClientError('transport-uncertain')));
       child.once('close', (code) => accept(code));

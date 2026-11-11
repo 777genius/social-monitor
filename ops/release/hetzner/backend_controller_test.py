@@ -33,7 +33,7 @@ class Docker:
 
     def evidence(self, verb, binding):
         self.evidence_calls.append(verb)
-        if verb == 'backend-release-evidence':
+        if verb in ('backend-release-evidence', 'cohort-backend-release-evidence'):
             paths = ['apps/intelligence-worker/src/reader-value-runtime-options.ts', 'compose.frontend.yml']
             return {**binding, 'policy': 'backend-cohort-ci-v1', 'main_sha': OLD_SHA if self.stale_main else SHA, 'head_sha': SHA,
                 'event': 'push', 'branch': 'main', 'jobs': ['success'], 'job_observations': ['ci'],
