@@ -18,6 +18,8 @@ const R: typeof import('./candidate-runtime-contract.mts') =
 const MACHINE = 'b28fc7b17042414386eb9b114046e50c';
 const FILES = ['candidate.tar', 'candidate.tar.sha256', 'manifest.json', 'phases.json', 'image-id.txt', 'source-sha.txt'];
 const LIMIT = 10_000_000_000;
+// Schema-history evidence already exceeds 64KiB; keep cohort JSON bounded below the 8MiB SSH cap.
+const COHORT_RESPONSE_BYTES = 2 * 1024 * 1024;
 const GITHUB_TOKEN = /^[!-~]{20,2048}$(?![\s\S])/u;
 export async function canonical(path: string): Promise<void> {
   A.requireValue(isAbsolute(path) && resolve(path) === path
@@ -361,7 +363,7 @@ const SSH_DIAGNOSTICS = new Set(['host-key', 'publickey', 'private-key', 'timeou
 const RELEASE_STEPS = new Set(['authority', 'frontend-authority', 'backend-candidate', 'frontend-candidate',
   'authority-recheck', 'ssh-setup', 'preflight', 'github-auth', 'backend-receive', 'frontend-receive',
   'cohort-admit', 'cohort-activate', 'cohort-verify', 'cohort-receipt', 'cohort-rollback', 'receipt-save']);
-const RELEASE_DIAGNOSTICS = new Set(['github-observation-timeout', 'github-observation-failed',
+const RELEASE_DIAGNOSTICS = new Set(['json-size', 'github-observation-timeout', 'github-observation-failed',
   'github-auth-token', 'github-auth-binding', 'github-auth-denied', 'backend-host-denied', 'frontend-host-denied',
   'cohort-host-denied', 'transport-uncertain', 'stale-main-skip', 'frontend-stale-main', 'main-race',
   'run-race', 'workflow-race', 'legacy-race', 'page-race', 'authority-changed', 'frontend-authority-changed',
@@ -625,7 +627,7 @@ export async function recoverCohort(transport: Transport, sha: string, run: stri
     if (cohortHostDenial(response) === 'cohort-rollback-unstarted')
       throw new A.AuthorityError('cohort-rollback-unstarted');
     A.requireValue(response.code === 0 && Buffer.isBuffer(response.stdout), 'cohort-recovery-host-denied');
-    const value = A.object(A.parseJson(response.stdout, 65536));
+    const value = A.object(A.parseJson(response.stdout, COHORT_RESPONSE_BYTES));
     A.requireValue(value.sha === sha && value.ci_run_id === run
       && isDeepStrictEqual(value.scope, ['api', 'jev-intelligence-worker', 'frontend']), 'cohort-recovery-binding');
     if (value.schema === 'social-monitor-cohort-release-receipt-v1') return cohortReceipt(value, sha, run, 'rolled-back');
@@ -658,7 +660,7 @@ export async function activateCohort(frontend: FrontendAuthority, backend: Manif
     if (verb === 'cohort-activate')
       firstActivationDenied = activationCalls === 1 && cohortHostDenial(response) !== undefined;
     requireHostResponse(response, 'cohort-host-denied');
-    return A.object(A.parseJson(response.stdout, 65536));
+    return A.object(A.parseJson(response.stdout, COHORT_RESPONSE_BYTES));
   }
   const pair = [sha, run];
   const admission = await call('cohort-admit', pair);
