@@ -23,3 +23,11 @@ CLI physical lines 1420 -> 1310; preserve and tighten only its legacy cap.
 Draft 3/3 Static/Security/Flutter + nonpublishing image, independent review and fixes,
 Ready original exact-head 20/20, SHA-guarded squash merge and native postmerge main 20/20.
 Until then all source LOC are provisional; do not deploy production or override SSH.
+
+## Real first-Draft CI finding and minimal follow-up
+Original Static #43050109529 failed 6 of 973 tests: the existing independent
+`validateRunnerImplementationMarkers` still expected nine environment/readiness
+markers in the old CLI after they moved to the new helper. This update re-homes
+all nine marker checks to the actual helper source, without removing any marker;
+checker reads the real file and added negative mutation tests prove every guard
+stays fail-closed. The 13 original function bodies and their LOC ledger remain unchanged.
