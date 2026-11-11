@@ -1,12 +1,11 @@
-import { 
-  OpenAiReaderSummaryWeeklyModelError,
+import {
   extractSingleOutputText,
-  isTimeoutError,
   modelError,
   readCompletedResponse,
-  timeoutFailure,
   type OpenAiReaderSummaryWeeklyModelFailure,
 } from "./openai-responses-reader-summary-weekly-response-contract";
+import { classifyOpenAiReaderSummaryWeeklyError } from "./openai-responses-reader-summary-weekly-failure-policy";
+import { buildOpenAiReaderSummaryWeeklyRequest } from "./openai-responses-reader-summary-weekly-request";
 
 export {
   OpenAiReaderSummaryWeeklyModelError,
@@ -25,15 +24,7 @@ import { postOpenAiReaderSummaryWeeklyResponse } from "./openai-responses-reader
 import { normalizeOpenAiReaderSummaryWeeklyOptions, type OpenAiReaderSummaryWeeklyFetchLike, type OpenAiResponsesReaderSummaryWeeklyModelAdapterOptions } from "./openai-responses-reader-summary-weekly-options";
 export { resolveOpenAiResponsesReaderSummaryWeeklyModelOptions } from "./openai-responses-reader-summary-weekly-options";
 export type { OpenAiResponsesReaderSummaryWeeklyModelAdapterOptions } from "./openai-responses-reader-summary-weekly-options";
-import {
-  buildOpenAiReaderSummaryWeeklyInstructions,
-  buildOpenAiReaderSummaryWeeklyPromptPayload,
-} from "./openai-responses-reader-summary-weekly-prompt";
-import {
-  OpenAiReaderSummaryWeeklyOutputParseError,
-  parseOpenAiReaderSummaryWeeklyResponse,
-} from "./openai-responses-reader-summary-weekly-response-parser";
-import { buildOpenAiReaderSummaryWeeklyResponseFormat } from "./openai-responses-reader-summary-weekly-schema";
+import { parseOpenAiReaderSummaryWeeklyResponse } from "./openai-responses-reader-summary-weekly-response-parser";
 
 export class OpenAiResponsesReaderSummaryWeeklyModelAdapter
 implements ReaderSummaryWeeklyModelPort {
@@ -73,16 +64,10 @@ implements ReaderSummaryWeeklyModelPort {
       endpointUrl: this.endpointUrl,
       timeoutMs: this.timeoutMs,
       fetchFn: this.fetchFn,
-      request: {
-      model: this.model,
-      store: false,
-      max_output_tokens: this.maxOutputTokens,
-      instructions: buildOpenAiReaderSummaryWeeklyInstructions(),
-      input: buildOpenAiReaderSummaryWeeklyPromptPayload(input),
-      text: {
-        format: buildOpenAiReaderSummaryWeeklyResponseFormat(input),
-      },
-      },
+      request: buildOpenAiReaderSummaryWeeklyRequest(input, {
+        model: this.model,
+        maxOutputTokens: this.maxOutputTokens,
+      }),
     });
     const responseJson = await readCompletedResponse(response);
     const outputText = extractSingleOutputText(responseJson);
@@ -101,27 +86,7 @@ implements ReaderSummaryWeeklyModelPort {
   }
 
   classifyError(error: unknown): OpenAiReaderSummaryWeeklyModelFailure {
-    if (error instanceof OpenAiReaderSummaryWeeklyModelError) {
-      return error.failure;
-    }
-    if (error instanceof OpenAiReaderSummaryWeeklyOutputParseError) {
-      return {
-        kind: "output_validation",
-        retryable: false,
-        message: error.message,
-      };
-    }
-    if (isTimeoutError(error)) {
-      return timeoutFailure();
-    }
-    return {
-      kind: "unknown",
-      retryable: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Unknown OpenAI reader summary weekly model failure",
-    };
+    return classifyOpenAiReaderSummaryWeeklyError(error);
   }
 
 
