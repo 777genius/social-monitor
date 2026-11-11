@@ -133,6 +133,10 @@ class RateLimitedCollector:
 class FakeContext:
     trailing_metadata: tuple[tuple[str, str], ...] = ()
 
+    # The direct unit call has no live gRPC transport.
+    def add_callback(self, _callback: object) -> bool:
+        return False
+
     def invocation_metadata(self) -> tuple[object, ...]:
         return ()
 
