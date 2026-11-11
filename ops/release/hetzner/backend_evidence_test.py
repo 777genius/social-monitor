@@ -144,8 +144,9 @@ class CohortEvidenceTests(unittest.TestCase):
     def test_exact_ci_only_ts_paths_pass_the_independent_adapter_and_full_delta_gate(self):
         from operator_github_test import Fixture, BASE as OLD, HEAD as NEW
         allowed = ('scripts/check-source-provider-runtime-contract.ts',
-                   'scripts/lib/source-provider-github-issues-runtime-smoke.ts')
-        for paths in ((allowed[0],), (allowed[1],), allowed):
+                   'scripts/lib/source-provider-github-issues-runtime-smoke.ts',
+                   'scripts/lib/source-provider-github-trending-runtime-smoke.ts')
+        for paths in ((allowed[0],), (allowed[1],), (allowed[2],), allowed):
             def add_sources(endpoint, value):
                 if endpoint.startswith('git/trees/'):
                     for path in paths:
