@@ -1,12 +1,15 @@
-import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
-import { validateDailyEditorialPlan } from "../../domain";
-import type { ReaderSummaryDailyEditorialAttempt, ReaderSummaryModelEstimate,
-  ReaderSummaryModelInput, ReaderSummaryModelRoute } from "../../ports";
+import type {
+  ReaderSummaryDailyEditorialAttempt,
+  ReaderSummaryModelInput,
+  ReaderSummaryModelRoute,
+} from "../../ports";
 import { attachFailedDailyEditorUsage } from "./reader-summary-failed-daily-editor-usage";
-import { buildDailyEditorialPrompt, dailyEditorialInstructions, dailyEditorialOutputSchema,
-  dailyEditorialSha256 } from "./reader-summary-daily-editorial-model";
-import { extractOpenAiOutputText, parseOpenAiReaderSummaryJsonObject,
-  resolveOpenAiReaderSummaryUsage } from "./openai-responses-reader-summary-model-support";
+import { buildDailyEditorialPrompt } from "./reader-summary-daily-editorial-model";
+import {
+  buildOpenAiDailyEditorialRequest,
+  resolveOpenAiDailyEditorialUsage,
+} from "./openai-responses-reader-summary-daily-editor-wire";
+import { readOpenAiDailyEditorialResponse } from "./openai-responses-reader-summary-daily-editor-response";
 
 /** Daily-only editor protocol; the owning adapter provides transport and credentials. */
 export const runOpenAiDailyEditor = async (params: {
@@ -23,41 +26,18 @@ export const runOpenAiDailyEditor = async (params: {
     throw new Error("Daily editorial planning requires a frozen input");
   }
   const prompt = buildDailyEditorialPrompt(params.input);
-  const response = await params.createResponse({
-    model: params.route.model,
-    store: false,
-    max_output_tokens: Math.min(params.maxOutputTokens, 3_000),
-    instructions: dailyEditorialInstructions,
-    input: prompt,
-    text: { format: {
-      type: "json_schema", name: "social_monitor_daily_editorial_plan",
-      strict: true, schema: dailyEditorialOutputSchema,
-    } },
+  const response = await params.createResponse(
+    buildOpenAiDailyEditorialRequest(params.route.model, params.maxOutputTokens, prompt),
+  );
+  const usage = resolveOpenAiDailyEditorialUsage({
+    response,
+    prompt,
+    inputTokenDivisor: params.inputTokenDivisor,
+    estimatedInputCostUsdPerMillionTokens: params.estimatedInputCostUsdPerMillionTokens,
+    estimatedOutputCostUsdPerMillionTokens: params.estimatedOutputCostUsdPerMillionTokens,
   });
-  const inputTokens = Math.ceil(prompt.length / params.inputTokenDivisor);
-  const estimate: ReaderSummaryModelEstimate = {
-    inputTokens,
-    outputTokens: 3_000,
-    estimatedCostUsd: (inputTokens * params.estimatedInputCostUsdPerMillionTokens +
-      3_000 * params.estimatedOutputCostUsdPerMillionTokens) / 1_000_000,
-  };
-  const actual = resolveOpenAiReaderSummaryUsage(response, estimate);
-  const usage: ReaderSummaryModelEstimate = {
-    inputTokens: actual.inputTokens ?? estimate.inputTokens,
-    outputTokens: actual.outputTokens ?? estimate.outputTokens,
-    estimatedCostUsd: actual.estimatedCostUsd,
-  };
   try {
-    const output = extractOpenAiOutputText(response);
-    if (output === undefined) {
-      throw new Error("Daily editorial plan response is empty");
-    }
-    const plan = validateDailyEditorialPlan(parseOpenAiReaderSummaryJsonObject(output), frozen);
-    return {
-      plan, usage,
-      editorRequestSha256: dailyEditorialSha256(prompt),
-      editorOutputSha256: canonicalJsonSha256(plan),
-    };
+    return readOpenAiDailyEditorialResponse(response, frozen, prompt, usage);
   } catch (error) {
     attachFailedDailyEditorUsage(error, usage);
     throw error;
