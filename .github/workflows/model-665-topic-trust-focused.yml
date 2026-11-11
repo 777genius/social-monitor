@@ -1,12 +1,16 @@
-# Temporary exact-source Draft #665 topic-label trust-boundary check; no paid model calls.
+# Temporary exact-source Draft #665 topic and daily editorial trust checks; no paid model calls.
 # Remove only after terminal exact-code success. This does not replace Ready 20/20.
-name: Model 665 topic input trust focused
+name: Model 665 topic and daily editorial trust focused
 on:
   push:
     branches:
       - refactor/summary-model-adapters-10k-20261108
     paths:
       - .github/workflows/model-665-topic-trust-focused.yml
+      - libs/summary/adapters/model/reader-summary-daily-editorial-model.ts
+      - libs/summary/adapters/model/reader-summary-daily-editorial-policy.ts
+      - libs/summary/adapters/model/reader-summary-daily-editorial-prompt.ts
+      - libs/summary/adapters/model/reader-summary-daily-editorial-policy.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-label-plan-normalizer.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-untrusted-response.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-untrusted-response.spec.ts
@@ -41,7 +45,7 @@ jobs:
           npm run check:code-quality
           npm run check:source-line-cap
           npm run check:runtime-profile-guards
-      - name: Verify topic raw admission and existing normalization invariants
+      - name: Verify topic raw admission and frozen daily editor contracts
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-untrusted-response.spec.ts
