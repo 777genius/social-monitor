@@ -17,7 +17,7 @@ const pathNames = [
   "liveEvidenceArtifactHelperPath"
 ];
 
-function harness({ excludedMarkers = {}, redditOutput = '', readFailure = null } = {}) {
+function harness({ excludedMarkers = {}, redditOutput = '', readFailure = null, forbiddenPersistence = false } = {}) {
   const reads = [];
   const violations = [];
   const paths = Object.fromEntries(pathNames.map((name) => [name, name]));
@@ -36,6 +36,8 @@ function harness({ excludedMarkers = {}, redditOutput = '', readFailure = null }
       if (readFailure === path) throw new Error('synthetic read failure');
       return {
         includes(marker) {
+          // The real checked script does not contain this forbidden token persistence.
+          if (marker === "['REDDIT_ACCESS_TOKEN', credential") return forbiddenPersistence;
           return !(excludedMarkers[path] ?? []).includes(marker);
         },
         toString() {
@@ -98,4 +100,12 @@ test('rejects missing shared writer call even when other markers exist', () => {
   const subject = harness({ excludedMarkers: { githubTrendingPageLiveScriptPath: ['writeLiveEvidenceArtifactAtomically'] } });
   subject.validateLiveSmokeScriptContracts();
   assert.ok(subject.violations.some((v) => v.includes('githubTrendingPageLiveScriptPath') && v.includes('shared private evidence artifact writer')));
+});
+
+test('rejects callback persisting a short-lived Reddit token', () => {
+  const subject = harness({ forbiddenPersistence: true });
+  subject.validateLiveSmokeScriptContracts();
+  assert.ok(subject.violations.some((value) =>
+    value.includes('redditOAuthLocalCallbackScriptPath') &&
+    value.includes('must not persist short-lived REDDIT_ACCESS_TOKEN')));
 });
