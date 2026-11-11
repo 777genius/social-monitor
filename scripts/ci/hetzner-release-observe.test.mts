@@ -286,6 +286,13 @@ const observation = { environment: 'production-hetzner',
   machine_id: 'b28fc7b17042414386eb9b114046e50c', latch: false,
   snapshot: image, api_image: image, compose: image };
 const response = (value: unknown, code = 0) => ({ code, stdout: Buffer.from(JSON.stringify(value)) });
+function schemaHistoryEvidence() {
+  return { history: { rows: Array.from({ length: 300 }, (_, i) => ({ id: `TEST-migration-${i}`,
+    migration_name: `TEST-synthetic-migration-${i}`, checksum: 'd'.repeat(64),
+    started_at: '2026-01-01T00:00:00.000Z', finished_at: '2026-01-01T00:00:01.000Z',
+    rolled_back_at: null, applied_steps_count: 1, logs: null })) } };
+}
+
 test('native finite status/preflight schemas are accepted; hostile machine/environment/latch deny', async () => {
   const calls: string[] = [];
   const transport: Transport = async wire => {
@@ -636,14 +643,15 @@ test('frontend delivery sends exact CI ZIP and checks host proof against both ar
     const revisions = { api: sha, 'jev-intelligence-worker': sha };
     const admission = { ...backendManifest, frontend: proof, previous_image_ids: previous, previous_revisions: revisions,
       previous_sources: oldSources, desired_sources: desired, desired_verifier_sha256: image,
-      runtime_sha256: runtime, snapshot_sha256: image, compose_hash: image, compatibility: { ok: true } };
+      runtime_sha256: runtime, snapshot_sha256: image, compose_hash: image, compatibility: { ok: true }, database: schemaHistoryEvidence() };
     const receipt = { schema: 'social-monitor-cohort-release-receipt-v1', sha, ci_run_id: run,
       archive_sha256: backendManifest.archive_sha256, image_id: image, scope: targets, frontend: proof,
       active_image_ids: active, previous_image_ids: previous, previous_revisions: revisions, target_container_ids: ids,
       active_sources: desired, previous_sources: oldSources, active_releases: { public: sha, admin: sha },
       active_frontend_tree_sha256: image, verifier_sha256: image, runtime_sha256: runtime,
-      snapshot_sha256: image, compose_hash: image, compatibility: { ok: true }, database: { ok: true }, backup: { ok: true },
+      snapshot_sha256: image, compose_hash: image, compatibility: { ok: true }, database: schemaHistoryEvidence(), backup: { ok: true },
       outcome: 'activated', timings: { started_at_ns: 100, finished_at_ns: 101 } };
+    assert.ok(response(admission).stdout.length > 65536 && response(receipt).stdout.length > 65536);
     let polls = 0;
     const cohortTransport: Transport = async wire => {
       if (wire.startsWith('cohort-admit ')) return response(admission);
@@ -659,6 +667,11 @@ test('frontend delivery sends exact CI ZIP and checks host proof against both ar
       async () => {}, step => { steps.push(step); }), receipt);
     assert.deepEqual(steps, ['cohort-admit', 'cohort-activate', 'cohort-activate', 'cohort-verify', 'cohort-receipt']);
     assert.equal(polls, 2);
+    const oversizedCalls: string[] = [];
+    await assert.rejects(O.activateCohort(frontend, backendManifest, proof, get, async wire => {
+      oversizedCalls.push(wire); return { code: 0, stdout: Buffer.alloc(2 * 1024 * 1024 + 1, ' ') };
+    }, async () => {}), /json-size/);
+    assert.deepEqual(oversizedCalls, [`cohort-admit ${sha} ${run}`]);
     let unexpectedCalls = 0;
     await assert.rejects(O.activateCohort(frontend, backendManifest,
       { ...proof, authority: { ...proof.authority, artifact_id: '52' } }, get,
@@ -738,7 +751,7 @@ test('cohort recovery is bounded to one transaction and validates a complete rol
     target_container_ids: ids, active_sources: sources, previous_sources: sources,
     active_releases: { public: sha, admin: sha }, active_frontend_tree_sha256: image, verifier_sha256: image,
     runtime_sha256: runtime, snapshot_sha256: image, compose_hash: image,
-    compatibility: { ok: true }, database: { ok: true }, backup: { ok: true }, outcome: 'rolled-back',
+    compatibility: { ok: true }, database: schemaHistoryEvidence(), backup: { ok: true }, outcome: 'rolled-back',
     timings: { started_at_ns: 100, finished_at_ns: 101 } };
   let calls = 0;
   const transport: Transport = async wire => {
@@ -747,6 +760,12 @@ test('cohort recovery is bounded to one transaction and validates a complete rol
   };
   assert.deepEqual(await O.recoverCohort(transport, sha, run, async () => {}), receipt);
   assert.equal(calls, 2);
+  const recoveryBytes = response(receipt).stdout;
+  assert.ok(recoveryBytes.length > 65536 && recoveryBytes.length < 2 * 1024 * 1024);
+  const atLimit = Buffer.concat([recoveryBytes, Buffer.alloc(2 * 1024 * 1024 - recoveryBytes.length, ' ')]);
+  assert.deepEqual(await O.recoverCohort(async () => ({ code: 0, stdout: atLimit }), sha, run), receipt);
+  await assert.rejects(O.recoverCohort(async () => ({ code: 0, stdout: Buffer.concat([atLimit, Buffer.from(' ')]) }),
+    sha, run), /json-size/);
   await assert.rejects(O.recoverCohort(async () => response({ denied: 'cohort-rollback-unstarted' }, 1),
     sha, run, async () => {}),
   (error: unknown) => error instanceof A.AuthorityError && error.code === 'cohort-rollback-unstarted');
@@ -775,6 +794,8 @@ test('failed receipts expose only fixed steps and typed whitelisted diagnostic c
     { step: 'github-auth', diagnostic: 'github-observation-timeout' });
   assert.deepEqual(O.safeReleaseFailure('cohort-admit', new ClientError('ssh-publickey')),
     { step: 'cohort-admit', diagnostic: 'ssh-publickey' });
+  assert.deepEqual(O.safeReleaseFailure('cohort-admit', new A.AuthorityError('json-size')),
+    { step: 'cohort-admit', diagnostic: 'json-size' });
   for (const error of [new Error('github-observation-timeout'),
     new A.AuthorityError('TEST_ONLY_NOT_A_CREDENTIAL_0000'),
     new ClientError('lease=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
