@@ -302,6 +302,12 @@ const assertGitHubTrendingSnapshotIntegrity = (
     metadata.trending.scanJobId,
     metadata.repository.fullName,
   ].join(':');
+  const canonicalExternalId = [
+    GITHUB_TRENDING_PAGE_PROVIDER_KEY,
+    metadata.trending.window,
+    metadata.trending.scanJobId,
+    metadata.repository.fullName.toLocaleLowerCase('en-US'),
+  ].join(':');
   const canonicalRepositoryUrl =
     `https://github.com/${metadata.repository.fullName}`.toLocaleLowerCase(
       'en-US',
@@ -310,7 +316,7 @@ const assertGitHubTrendingSnapshotIntegrity = (
     !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(
       metadata.repository.fullName,
     ) ||
-    item.externalId !== expectedExternalId ||
+    (item.externalId !== expectedExternalId && item.externalId !== canonicalExternalId) ||
     item.canonicalUrl !== metadata.repository.url ||
     metadata.repository.url.toLocaleLowerCase('en-US') !==
       canonicalRepositoryUrl
