@@ -15,7 +15,7 @@ const requiredEnvArtifacts = new Map([
 ]);
 
 function validateSchema(change = () => {}) {
-  const evidence = structuredClone(originalEvidence);
+  const evidence = JSON.parse(JSON.stringify(originalEvidence));
   change(evidence);
   const violations = [];
   const { validatePassedArtifactContentSchema } = createStagingReliabilitySchemaValidation({
