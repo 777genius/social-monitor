@@ -88,7 +88,7 @@
     "capture:durable-backend-e2e-loop": "node scripts/run-with-timeout.mjs --timeout-ms 900000 --node-options --max-old-space-size=1024 -- ts-node -r tsconfig-paths/register scripts/capture-durable-backend-e2e-loop.ts",
     "capture:docker-durable-backend-e2e-loop": "node scripts/capture-docker-durable-backend-e2e-loop.mjs",
     "capture:docker-backend-staging-evidence-bundle": "node scripts/capture-docker-backend-staging-evidence-bundle.mjs",
-    "check:docker-backend-staging-evidence-bundle": "node scripts/check-docker-backend-staging-evidence-bundle.mjs",
+    "check:docker-backend-staging-evidence-bundle": "node --test scripts/lib/docker-staging-artifact-policy.test.mjs && node scripts/check-docker-backend-staging-evidence-bundle.mjs",
     "check:docker-evidence-storage": "node scripts/check-docker-evidence-storage.mjs",
     "check:docker-evidence-storage:report": "node scripts/check-docker-evidence-storage.mjs --report-only",
     "check:docker-evidence-storage:dangling": "node scripts/check-docker-evidence-storage.mjs --report-only --inspect-dangling",
