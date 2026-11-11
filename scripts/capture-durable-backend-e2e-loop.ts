@@ -11,6 +11,7 @@ import { Pool, type PoolClient } from "pg";
 
 import { createDurableBackendHttpClient } from "./lib/durable-backend-e2e-http-client";
 import { emptyToUndefined, loadConfig, type RunnerConfig } from "./lib/durable-backend-e2e-config";
+import { createDurableScanTargets, type DurableScanProviderKey, type DurableScanTarget } from "./lib/durable-backend-e2e-scan-targets";
 
 import {
   isRecord,
@@ -43,18 +44,6 @@ type SignalResult = {
   readonly status: "passed";
   readonly observedAt: string;
   readonly evidence: JsonRecord;
-};
-
-type DurableScanProviderKey =
-  | "hacker-news"
-  | "github-issues"
-  | "github-trending-page"
-  | "reddit"
-  | "rss";
-
-type DurableScanTarget = {
-  readonly providerKey: DurableScanProviderKey;
-  readonly config: JsonRecord;
 };
 
 type SourceBindingEvidence = {
@@ -126,6 +115,7 @@ type SummaryMemoryEvidence = {
 };
 
 const config = loadConfig(defaultMemoStackTimeoutMs);
+const { durableScanTargets, scheduledScanTarget } = createDurableScanTargets({ process, emptyToUndefined });
 const { pollJson, requestStatus, requestJsonWithContext, requestJson } =
   createDurableBackendHttpClient(config, { isRecord, delay });
 const ids: RuntimeIds = {
@@ -1803,90 +1793,8 @@ function durableDeliveryDigestScheduleWindow(params: {
   };
 }
 
-function durableScanTargets(): readonly DurableScanTarget[] {
-  const githubAccessToken = emptyToUndefined(process.env.GITHUB_ACCESS_TOKEN);
-  if (!hasRedditAppOnlyCredentials()) {
-    throw new Error(
-      "REDDIT_APP_CLIENT_ID and REDDIT_APP_CLIENT_SECRET are required because durable backend E2E must scan Reddit, GitHub Issues, GitHub Trending Page, Hacker News and RSS in one loop",
-    );
-  }
-
-  return [
-    {
-      providerKey: "hacker-news",
-      config: {
-        mode: "search",
-        query: "monitoring",
-        maxItems: 2,
-      },
-    },
-    {
-      providerKey: "github-issues",
-      config: {
-        query: "repo:microsoft/TypeScript is:issue",
-        maxItems: 2,
-        userAgent:
-          emptyToUndefined(process.env.GITHUB_USER_AGENT) ??
-          "social-monitor-mvp/0.1 github-live-smoke",
-        ...(githubAccessToken === undefined
-          ? {}
-          : { accessToken: githubAccessToken }),
-      },
-    },
-    {
-      providerKey: "github-trending-page",
-      config: {
-        window: "daily",
-        language: "python",
-        maxItems: 3,
-        userAgent:
-          emptyToUndefined(process.env.GITHUB_TRENDING_PAGE_USER_AGENT) ??
-          emptyToUndefined(process.env.GITHUB_USER_AGENT) ??
-          "social-monitor-mvp/0.1 github-trending-page",
-      },
-    },
-    {
-      providerKey: "reddit",
-      config: {
-        mode: "listing",
-        subreddit: "programming",
-        listing: "hot",
-        maxItems: 2,
-        userAgent:
-          process.env.REDDIT_APP_USER_AGENT ??
-          process.env.REDDIT_USER_AGENT ??
-          "social-monitor-mvp/0.1 reddit-app-only",
-      },
-    },
-    {
-      providerKey: "rss",
-      config: {
-        feedUrl: "https://hnrss.org/frontpage",
-        maxItems: 2,
-      },
-    },
-  ];
-}
-
-function scheduledScanTarget(): DurableScanTarget {
-  return {
-    providerKey: "rss",
-    config: {
-      feedUrl: "https://hnrss.org/newest",
-      maxItems: 2,
-    },
-  };
-}
-
 function scheduledInterestIdempotencyKey(runId: string): string {
   return `scheduled-topic-${runId}`;
-}
-
-function hasRedditAppOnlyCredentials(): boolean {
-  return (
-    emptyToUndefined(process.env.REDDIT_APP_CLIENT_ID) !== undefined &&
-    emptyToUndefined(process.env.REDDIT_APP_CLIENT_SECRET) !== undefined
-  );
 }
 
 function bindingIdempotencyKey(
