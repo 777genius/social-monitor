@@ -53,6 +53,9 @@ export async function collectRedditScanPasses(client: RedditClientPort, params: 
   });
   const paginationPolicy = pagination.enabled ? pagination.policy : undefined;
   const targetPublishedWindow = readTargetPublishedWindow(params.config);
+  const observedAt = targetPublishedWindow?.observedAt;
+  const openWindow = targetPublishedWindow !== undefined && observedAt !== undefined &&
+    targetPublishedWindow.startInclusive <= observedAt && observedAt < targetPublishedWindow.endExclusive;
   const candidatesByExternalId = new Map<string, RedditScanCandidate>();
   const warnings: string[] = [];
   let failedPasses = 0;
@@ -217,7 +220,7 @@ export async function collectRedditScanPasses(client: RedditClientPort, params: 
 
   // Retry incomplete historical windows; expose partial live scans as incomplete.
   if (firstFailure !== undefined &&
-      (targetPublishedWindow !== undefined || failedPasses === params.passes.length)) {
+      ((targetPublishedWindow !== undefined && !openWindow) || failedPasses === params.passes.length)) {
     throw firstFailure;
   }
 

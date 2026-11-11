@@ -187,12 +187,21 @@ export class HttpHackerNewsClient implements HackerNewsClientPort {
     }
 
     const response = await this.fetchJson<AlgoliaSearchResponse>(url.toString());
-    const hits = filterAlgoliaHits(response.hits ?? [], kind, normalizedQuery).slice(0, normalizedLimit);
-
-    return hits.flatMap((hit) => normalizeAlgoliaHit(hit, kind));
+    const rawHits = response.hits ?? [];
+    const filteredHits = filterAlgoliaHits(rawHits, kind, normalizedQuery);
+    const items = filteredHits.slice(0, normalizedLimit).flatMap((hit) => normalizeAlgoliaHit(hit, kind));
+    if (response.hits === undefined || response.exhaustiveNbHits === false ||
+        response.exhaustive?.nbHits === false ||
+        (response.nbHits !== undefined && response.nbHits > rawHits.length) ||
+        (response.nbPages !== undefined && response.nbPages > 1) ||
+        (response.nbHits === undefined && rawHits.length >= algoliaFetchLimit(normalizedLimit)) ||
+        filteredHits.length > normalizedLimit || items.length < Math.min(filteredHits.length, normalizedLimit)) {
+      options?.onIncomplete?.();
+    }
+    return items;
   }
 
-  async listStories(listing: HackerNewsListing, limit: number): Promise<readonly HackerNewsStory[]> {
+  async listStories(listing: HackerNewsListing, limit: number, onIncomplete?: () => void): Promise<readonly HackerNewsStory[]> {
     const endpoint = listingEndpoints[listing];
     const storyIds = await this.fetchJson<unknown>(`${firebaseBaseUrl}/${endpoint}.json`);
 
@@ -200,12 +209,12 @@ export class HttpHackerNewsClient implements HackerNewsClientPort {
       throw new Error('Hacker News listing response was not an array');
     }
 
-    const ids = storyIds
-      .filter((id): id is number => Number.isInteger(id))
-      .slice(0, normalizeLimit(limit));
-
-    return Promise.all(ids.map((id) => this.getStory(id)))
-      .then((stories) => stories.filter((story): story is HackerNewsStory => story !== null));
+    const validIds = storyIds.filter((id): id is number => Number.isInteger(id));
+    const ids = validIds.slice(0, normalizeLimit(limit));
+    if (validIds.length > ids.length || validIds.length < storyIds.length) onIncomplete?.();
+    const stories = await Promise.all(ids.map((id) => this.getStory(id)));
+    if (stories.some((story) => story === null)) onIncomplete?.();
+    return stories.filter((story): story is HackerNewsStory => story !== null);
   }
 
   private async fetchStory(id: number): Promise<HackerNewsStory | null> {
