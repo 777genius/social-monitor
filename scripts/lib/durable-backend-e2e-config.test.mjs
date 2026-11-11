@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { emptyToUndefined, loadConfig } from "./durable-backend-e2e-config.ts";
+import "./durable-backend-e2e-scan-targets.test.mjs";
 
 const fixtureValue = new Array(3).fill("fixture").join("-");
 const required = {
