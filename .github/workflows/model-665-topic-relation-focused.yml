@@ -1,5 +1,5 @@
 # Temporary Draft #665 focused source verification. Remove only after completed SUCCESS.
-name: Model 665 topic labeler dispatch settings focused check
+name: Model 665 reader JSON boundaries focused check
 
 on:
   push:
@@ -40,7 +40,7 @@ jobs:
           npm run check:code-quality
           npm run check:source-line-cap
           npm run check:runtime-profile-guards
-      - name: Verify topic labeler settings, identity and fail-closed behavior
+      - name: Verify reader JSON boundaries and topic labeler
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-relation-options.spec.ts
@@ -48,3 +48,7 @@ jobs:
           libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-labeler-runtime-settings.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-labeler.adapter.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-value-boundaries.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-json-list.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-draft-normalizer.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-story-normalizer.spec.ts
