@@ -56,13 +56,20 @@ export async function collectHackerNewsScanPasses(client: HackerNewsClientPort, 
   const rootStoriesById = new Map<number, HackerNewsStory | null>();
   const warnings: string[] = [];
   let failedPasses = 0;
-  let historicalPassTruncated = false;
+  let targetPassTruncated = false;
   let firstFailure: unknown;
-  // One deadline for all historical search passes, not a new budget per pass.
-  const searchOptions = params.targetWindow === undefined ? params.searchOptions : {
-    ...params.searchOptions,
-    deadline: params.searchOptions?.deadline ?? AbortSignal.timeout(historicalDurationBudgetMs),
-  };
+  const scanTime = clock.now().getTime();
+  const openWindow = params.targetWindow !== undefined &&
+    params.targetWindow.startInclusive.getTime() <= scanTime &&
+    scanTime < params.targetWindow.endExclusive.getTime();
+  const historicalWindow = params.targetWindow !== undefined && !openWindow;
+  // A live day uses bounded normal search and listings. Complete historical
+  // searches share one deadline for the entire scan.
+  const searchOptions = openWindow ? { ...params.searchOptions, requireComplete: false } :
+    !historicalWindow ? params.searchOptions : {
+      ...params.searchOptions,
+      deadline: params.searchOptions?.deadline ?? AbortSignal.timeout(historicalDurationBudgetMs),
+    };
 
   for (const pass of params.passes) {
     if (searchOptions?.deadline?.aborted) {
@@ -74,7 +81,7 @@ export async function collectHackerNewsScanPasses(client: HackerNewsClientPort, 
     try {
       if (
         pass.mode === "listing" &&
-        isTargetPublishedSearchOptions(searchOptions)
+        historicalWindow && isTargetPublishedSearchOptions(searchOptions)
       ) {
         stories = await client.searchStories(
           historicalListingSearchQuery(pass, params.plan.query.query),
@@ -108,8 +115,8 @@ export async function collectHackerNewsScanPasses(client: HackerNewsClientPort, 
       pass.requiredStoryKeywords,
     );
     if (params.targetWindow !== undefined && filteredStories.length > limit) {
-      historicalPassTruncated = true;
-      warnings.push(`Hacker News historical pass incomplete: maxItems exceeded (${sourceKeyForPass(pass)})`);
+      targetPassTruncated = true;
+      warnings.push(`Hacker News ${historicalWindow ? "historical" : "target-window"} pass incomplete: maxItems exceeded (${sourceKeyForPass(pass)})`);
     }
     const sourceKey = sourceKeyForPass(pass);
     const searchQuery = pass.mode === "search" ? pass.query : undefined;
@@ -182,7 +189,7 @@ export async function collectHackerNewsScanPasses(client: HackerNewsClientPort, 
 
   // A missing historical lane must not be recorded as a complete backfill.
   if (firstFailure !== undefined &&
-      (params.targetWindow !== undefined || failedPasses === params.passes.length)) {
+      (historicalWindow || failedPasses === params.passes.length)) {
     throw firstFailure;
   }
 
@@ -199,15 +206,15 @@ export async function collectHackerNewsScanPasses(client: HackerNewsClientPort, 
       .slice(0, params.plan.maxItems)
       .map((item) => item.externalId),
   );
-  const historicalOverflow = params.targetWindow !== undefined &&
-    (historicalPassTruncated || filteredItems.length > params.plan.maxItems);
-  if (historicalOverflow) {
-    warnings.push("Hacker News historical scan incomplete: maxItems exceeded");
+  const targetOverflow = params.targetWindow !== undefined &&
+    (targetPassTruncated || filteredItems.length > params.plan.maxItems);
+  if (targetOverflow) {
+    warnings.push(`Hacker News ${historicalWindow ? "historical" : "target-window"} scan incomplete: maxItems exceeded`);
   }
 
   return {
     items: filteredItems.slice(0, params.plan.maxItems),
-    ...(historicalOverflow ? { collection: { complete: false, backfillPending: true } } : {}),
+    ...(targetOverflow || failedPasses > 0 ? { collection: { complete: false, backfillPending: true } } : {}),
     conversationUnits: [...conversationUnitsByProviderUnitId.values()].filter(
       (unit) => returnedRootExternalIds.has(unit.rootExternalId),
     ),
