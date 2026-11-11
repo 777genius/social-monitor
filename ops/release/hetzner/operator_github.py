@@ -243,12 +243,23 @@ def backend_release(config, runner, binding):
         if base not in observed:
             paths, checksum = ([], digest([])) if base == sha else gh.delta(base, sha)
             package = gh.package_scripts(base, sha, checksum) if 'package.json' in paths else None
-            observed[base] = (paths, checksum, package)
-        paths, checksum, package = observed[base]
+            reviewed = None
+            if base == core_policies.REVIEW_BASE and core_policies.REVIEW_PATHS.issubset(paths):
+                reviewed_paths, reviewed_digest = gh.delta(base, core_policies.REVIEW_HEAD)
+                continuation, _ = ([], digest([])) if sha == core_policies.REVIEW_HEAD else gh.delta(core_policies.REVIEW_HEAD, sha)
+                require(set(reviewed_paths) == core_policies.REVIEW_PATHS and
+                        reviewed_digest == core_policies.REVIEW_DIGEST and
+                        all(core_policies.package_ci_path(p) for p in continuation), 'operator-reviewed-delta')
+                reviewed = {'base': base, 'head': sha, 'delta_sha256': checksum,
+                            'review_delta_sha256': reviewed_digest, 'continuation': continuation}
+            observed[base] = (paths, checksum, package, reviewed)
+        paths, checksum, package, reviewed = observed[base]
         deltas[service] = {'base': base, 'head': sha, 'complete_delta': True,
                            'changed_paths': paths, 'delta_sha256': checksum}
         if package is not None:
             deltas[service]['package_scripts'] = package
+        if reviewed is not None:
+            deltas[service]['reviewed_231421'] = reviewed
     result = {**binding, 'policy': 'backend-cohort-ci-v1', 'main_sha': sha, 'head_sha': sha,
               'event': 'push', 'branch': 'main', 'legacy_workflow': legacy,
               'jobs': [job['conclusion'] for job in jobs], 'job_observations': jobs,

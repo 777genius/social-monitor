@@ -6,6 +6,31 @@ from contract import DIGEST, digest, fresh, require
 
 WORKER_README = 'apps/agent-runtime/README.md'
 PACKAGE_CHECK = 'check:source-live-certification-evidence'
+
+REVIEW_BASE = '81eca6a156ca890545a3c7219a7d9e6788476731'
+REVIEW_HEAD = '231421b6b2ffe06a5cce9fa4af079e33ad8a7cdf'
+REVIEW_DIGEST = 'sha256:4328f7712a0303c69f937e7f29a82949a7535be92c9b3d2ff1b56f7d69203be3'
+REVIEW_PATHS = frozenset((
+    'apps/x-collector/src/x_collector/grpc_service.py',
+    'apps/x-collector/src/x_collector/rpc_drain.py',
+    'apps/x-collector/src/x_collector/server.py',
+    'apps/x-collector/tests/test_grpc_failure_diagnostic.py',
+    'apps/x-collector/tests/test_health_monitor.py',
+    'apps/x-collector/tests/test_rpc_drain_grpc.py',
+    'apps/x-collector/tests/test_rpc_drain_shutdown.py',
+    'apps/x-collector/tests/test_rpc_drain_synthetic.py',
+    'libs/ingestion/adapters/source/hacker-news/hacker-news-client.port.ts',
+    'libs/ingestion/adapters/source/hacker-news/hacker-news-multi-pass-collector.ts',
+    'libs/ingestion/adapters/source/hacker-news/hacker-news-open-window-completeness.spec.ts',
+    'libs/ingestion/adapters/source/hacker-news/hacker-news-source.provider.spec.ts',
+    'libs/ingestion/adapters/source/hacker-news/http-hacker-news-client.ts',
+    'libs/ingestion/adapters/source/reddit/reddit-historical-partial-scan.spec.ts',
+    'libs/ingestion/adapters/source/reddit/reddit-multi-pass-collector.ts',
+    'scripts/lib/clean-real-day-provider-acquisition.ts',
+    'scripts/lib/clean-real-day-source-config-reader.spec.ts',
+    'scripts/lib/clean-real-day-source-config-reader.ts',
+))
+
 # These are the only .mjs sources copied by the pinned Dockerfile below.
 PACKAGE_COPIED_MJS = {'scripts/rewrite-build-aliases.mjs', 'scripts/run-with-timeout.mjs'}
 # These exact CI sources are absent from the pinned Dockerfile's COPY closure.
@@ -73,8 +98,21 @@ def backend_compatibility(evidence, revisions, candidate, snapshot):
         paths = delta.get('changed_paths')
         require(isinstance(paths, list) and all(isinstance(p, str) and p and '..' not in p.split('/')
                 and not p.startswith('/') for p in paths) and (paths or base == candidate), 'backend-delta-paths')
+        reviewed = delta.get('reviewed_231421')
+        if reviewed is not None:
+            require(base == REVIEW_BASE and isinstance(reviewed, dict) and
+                    set(reviewed) == {'base', 'head', 'delta_sha256', 'review_delta_sha256', 'continuation'} and
+                    reviewed['base'] == base and reviewed['head'] == candidate and
+                    reviewed['delta_sha256'] == delta['delta_sha256'] and
+                    reviewed['review_delta_sha256'] == REVIEW_DIGEST and
+                    isinstance(reviewed['continuation'], list) and
+                    all(isinstance(p, str) and package_ci_path(p) and p not in REVIEW_PATHS
+                        for p in reviewed['continuation']) and
+                    paths == sorted(REVIEW_PATHS | set(reviewed['continuation'])),
+                    'backend-sensitive-files')
+        allowed = lambda p: package_ci_path(p) or reviewed is not None and p in REVIEW_PATHS
         if 'package.json' in paths:
-            require(all(package_ci_path(p) for p in paths),
+            require(all(allowed(p) for p in paths),
                     'backend-sensitive-files')
             package_script_proof(delta.get('package_scripts'), base, candidate, delta['delta_sha256'])
         # Shared libs also run in retained consumers (including summary via delivery
@@ -95,7 +133,7 @@ def backend_compatibility(evidence, revisions, candidate, snapshot):
             'apps/intelligence-worker/src/worker-shutdown-signal.fixture.cts'}
         require(not any(not p.startswith('docs/') and p != WORKER_README and
                 ((p in lifecycle and p != 'package.json') or p.startswith(denied) or p.rsplit('/', 1)[-1] == 'schema.prisma' or
-                 '/prisma/migrations/' in p) for p in paths), 'backend-sensitive-files')
+                 '/prisma/migrations/' in p) and not (reviewed is not None and p in REVIEW_PATHS) for p in paths), 'backend-sensitive-files')
     return {'policy': 'backend-cohort-ci-v1', 'deltas': deltas,
             'run_attempt': evidence['run_attempt'], 'jobs_sha256': digest(evidence['job_observations'])}
 
