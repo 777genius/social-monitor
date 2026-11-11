@@ -27,6 +27,8 @@ export type HackerNewsSearchOptions = {
   readonly requireComplete?: boolean;
   /** Optional scan-wide deadline shared across historical search passes. */
   readonly deadline?: AbortSignal;
+  /** Called when a bounded live search may have omitted results. */
+  readonly onIncomplete?: () => void;
 };
 
 export type HackerNewsListStoryCommentsRequest = {
@@ -43,5 +45,5 @@ export interface HackerNewsClientPort {
   searchComments(query: string, limit: number, options?: HackerNewsSearchOptions): Promise<readonly HackerNewsStory[]>;
   getStory(id: number): Promise<HackerNewsStory | null>;
   listStoryComments(request: HackerNewsListStoryCommentsRequest): Promise<readonly HackerNewsStory[]>;
-  listStories(listing: HackerNewsListing, limit: number): Promise<readonly HackerNewsStory[]>;
+  listStories(listing: HackerNewsListing, limit: number, onIncomplete?: () => void): Promise<readonly HackerNewsStory[]>;
 }
