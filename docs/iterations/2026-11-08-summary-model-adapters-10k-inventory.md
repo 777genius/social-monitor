@@ -902,3 +902,12 @@ Code+tests `36f20c62ffb8fb15a0cca0a57a2d40c24f8fba2c`; exact original SHA `3fa1b
 
 
 **Exact-code focused verification 2026-11-11:** [Actions #42947789158](https://github.com/777genius/social-monitor/actions/runs/42947789158) **COMPLETED SUCCESS** on source/spec + temporary workflow SHA `f909f349a2fa3d129bae243df1f8fe5707c09882`, attempt 1. Locked npm, Prisma client, strict `tsc --noEmit`, architecture **28/28**, code-quality/lifecycle/runtime guards, strict **1000 LOC across 5,864 source/test files**, and **3/3 Jest suites, 23/23 tests** (schema, isolated own-key policy, verifier adapter) passed. Temporary focused workflow deleted **only after terminal success** in subsequent docs/cleanup commit, leaving code/test bytes unchanged. This validates the focused slice, **not** a final exact-HEAD full Ready 20/20, PostgreSQL 18 shards, security/image/E2E or independent approvals. Running **5,461 provisional candidates**, not accepted ≥10k.
+
+
+### 2026-11-11 — Topic relation runtime configuration boundary (single Draft #665)
+
+| Immutable original and attribution | Responsibility after change | First-use original implementation positions | Provisional LOC |
+|---|---|---|---:|
+| `agent-runtime-reader-summary-topic-relation-verifier.adapter.ts` at pinned `3fa1b9e9`, blob `b15f316bc7dd14a243a4ab775efd057553060a0d`; earlier **177–205** env-policy attribution excluded | Existing `agent-runtime-reader-summary-topic-relation-options.ts` now owns provider/model/backend identity verification, reasoning effort, prompt and dispatch bounds; verifier owns command, strict response trust and attestation | **76, 78–94**, excluding declarations, comments, constructor glue, prior env resolver, tests and unchanged code | **+18 upper-bound** |
+
+Code and new three-case config regression tests: [`a6905f58`](https://github.com/777genius/social-monitor/commit/a6905f58ab57297c59fb5034843839d10696c0f8). No double-count with prior source attribution. Previous **5,461** + **18** = **5,479/10,000 provisional unique original implementation source positions**, **63 distinct baseline originals**, ≥**4,521** missing before independent qualitative deductions. Source provenance and architectural interpretation require independent audit; moving code alone is insufficient. Focused exact-source Jest/TS/architecture/1000LOC workflow added for qualification; result not yet observed. Full Ready CI 20/20 with six native PG18 shards, security/image/E2E and external reviews not done. Draft conflicted, no merge, production deploy or other PR changes.

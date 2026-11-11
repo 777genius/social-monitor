@@ -1,0 +1,48 @@
+# Temporary Draft #665 focused source verification. Remove only after completed SUCCESS.
+name: Model 665 topic relation runtime settings focused check
+
+on:
+  push:
+    branches:
+      - refactor/summary-model-adapters-10k-20261108
+    paths:
+      - .github/workflows/model-665-topic-relation-focused.yml
+
+permissions:
+  contents: read
+
+jobs:
+  focused:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: postgresql://social_monitor_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_ci
+    steps:
+      - name: Checkout exact tested commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Setup Node 22
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Generate Prisma client
+        run: npm run prisma:generate
+      - name: Verify TypeScript and source rules
+        run: |
+          set -euo pipefail
+          npx tsc --noEmit
+          npm run check:architecture
+          npm run check:code-quality
+          npm run check:source-line-cap
+          npm run check:runtime-profile-guards
+      - name: Verify relation runtime identity, attestation and output behavior
+        run: >-
+          npx jest --config jest.config.ts --runInBand --runTestsByPath
+          libs/summary/adapters/model/agent-runtime-reader-summary-topic-relation-options.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-topic-relation-verifier.adapter.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter.spec.ts
