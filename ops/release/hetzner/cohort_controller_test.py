@@ -36,7 +36,8 @@ class Runtime(Docker):
         self.values['frontend'].update(Id='3' * 64, Image=FRONT_IMAGE)
         self.values['frontend']['HostConfig']['ReadonlyRootfs'] = True
         self.next_id = 4
-        for service, value in self.values.items():
+        for index, (service, value) in enumerate(self.values.items(), 1):
+            value['State']['Pid'] = 100 + index
             value['Config']['Labels'] = {'com.docker.compose.project': self.c['project'],
                 'com.docker.compose.service': service, 'com.docker.compose.project.config_files': '/trusted/base.json',
                 'com.docker.compose.config-hash': '0' * 64}
@@ -211,6 +212,83 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(receipt['active_image_ids']['frontend'], FRONT_IMAGE)
         self.assertEqual(self.fresh().activate(KEY), receipt)
         self.assertEqual(self.runtime.effects, ['import', 'restart-no', 'term', 'up-api', 'up-' + SERVICE, 'up-frontend'])
+
+    def test_missing_journal_with_either_retained_receipt_is_never_unstarted(self):
+        self.activate()
+        self.engine.path('transactions', KEY).unlink()
+        before = list(self.runtime.effects)
+        for suffix in ('', '-rollback'):
+            if suffix:
+                self.engine.path('receipts', KEY).rename(self.engine.path('receipts', KEY + suffix))
+            for verb in ('activate', 'rollback'):
+                with self.assertRaisesRegex(Denied, '^cohort-journal-missing$'):
+                    getattr(self.fresh(), verb)(KEY)
+                self.assertEqual(self.runtime.effects, before)
+
+    def test_dangling_transaction_symlink_never_certifies_unstarted(self):
+        path = self.engine.path('transactions', KEY)
+        path.symlink_to(self.root / 'missing-journal-target')
+        for verb in ('activate', 'rollback'):
+            with self.assertRaisesRegex(Denied, '^cohort-journal-missing$'):
+                getattr(self.fresh(), verb)(KEY)
+            self.assertEqual(self.runtime.effects, [])
+        self.assertTrue(path.is_symlink())
+
+    def test_missing_journal_after_partial_drain_is_not_unstarted(self):
+        self.engine.activate(KEY); self.drained()
+        self.engine.path('transactions', KEY).unlink()
+        before = list(self.runtime.effects)
+        with self.assertRaisesRegex(Denied, '^cohort-journal-missing$'): self.fresh().rollback(KEY)
+        self.assertEqual(self.runtime.effects, before)
+
+    def test_same_id_restart_without_journal_or_receipt_is_not_unstarted(self):
+        self.runtime.values[SERVICE]['State']['StartedAt'] = 'different-process'
+        self.runtime.values[SERVICE]['RestartCount'] += 1
+        with self.assertRaisesRegex(Denied, '^cohort-journal-missing$'): self.fresh().rollback(KEY)
+        self.assertEqual(self.runtime.effects, [])
+
+    def test_invalid_matching_process_pins_never_certify_unstarted(self):
+        original = copy.deepcopy(self.runtime.values[SERVICE])
+        for field, key, wrong in (
+            ('Pid', 'pid', None), ('Pid', 'pid', 0), ('Pid', 'pid', True), ('Pid', 'pid', '101'),
+            ('StartedAt', 'started_at', ''), ('StartedAt', 'started_at', None),
+            ('StartedAt', 'started_at', '0001-01-01T00:00:00Z'),
+            ('RestartCount', 'restarts', -1), ('RestartCount', 'restarts', False),
+            ('RestartCount', 'restarts', '0'),
+        ):
+            value = self.runtime.values[SERVICE]; value.clear(); value.update(copy.deepcopy(original))
+            if field == 'RestartCount': value[field] = wrong
+            else: value['State'][field] = wrong
+            admission = copy.deepcopy(self.admission)
+            admission['previous_processes'][SERVICE][key] = wrong
+            atomic(self.engine.path('admissions', KEY), admission)
+            with self.subTest(field=field, wrong=wrong), self.assertRaisesRegex(Denied, '^cohort-journal-missing$'):
+                self.fresh().rollback(KEY)
+            self.assertEqual(self.runtime.effects, [])
+
+    def test_only_unchanged_captured_preimage_is_certified_unstarted(self):
+        with self.assertRaisesRegex(Denied, '^cohort-rollback-unstarted$'): self.fresh().rollback(KEY)
+        self.assertEqual(self.runtime.effects, [])
+        self.assertFalse(self.engine.path('transactions', KEY).exists())
+        # A readiness-time restart must fail the final independent observation.
+        original = self.runtime.frontend_probe
+        def probe(binding):
+            result = original(binding)
+            self.runtime.values[SERVICE]['RestartCount'] += 1
+            return result
+        with patch.object(self.runtime, 'frontend_probe', side_effect=probe):
+            with self.assertRaisesRegex(Denied, '^cohort-journal-missing$'): self.fresh().rollback(KEY)
+        self.assertEqual(self.runtime.effects, [])
+
+    def test_legacy_admission_without_process_pins_is_preserved_and_not_certified_unstarted(self):
+        path = self.engine.path('admissions', KEY)
+        legacy = copy.deepcopy(self.admission); legacy.pop('previous_processes')
+        atomic(path, legacy); before = path.read_bytes()
+        self.assertEqual(self.admit(), legacy)
+        with self.assertRaisesRegex(Denied, '^cohort-journal-missing$'): self.fresh().rollback(KEY)
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(self.runtime.effects, [])
+        self.assertEqual(self.activate()['outcome'], 'activated')
 
     def test_frontend_failure_never_publishes_backend_only_success(self):
         self.runtime.front_ready = False

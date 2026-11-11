@@ -176,6 +176,38 @@ class CohortRelease:
         return self.host.current_sources(target, self.roots(value))
 
     @staticmethod
+    def processes(values):
+        result = {}
+        for service, value in values.items():
+            pid, started, restarts = value['State'].get('Pid'), value['State'].get('StartedAt'), value.get('RestartCount')
+            require(type(pid) is int and pid > 0 and isinstance(started, str) and started.strip() and
+                    not started.startswith('0001-01-01T00:00:00') and
+                    type(restarts) is int and restarts >= 0, 'cohort-process-identity')
+            result[service] = {'pid': pid, 'started_at': started, 'restarts': restarts}
+        return result
+
+    def prove_unstarted(self, admission):
+        """Missing journal is not evidence: independently recheck the captured preimage."""
+        def previous():
+            _, targets, values = self.observe(admission, complete=True)
+            require(canonical(self.processes(values)) == canonical(admission.get('previous_processes')) and
+                    all(t['id'] == admission['previous_container_ids'][s] and
+                        t['image'] == admission['previous_image_ids'][s] and t['running']
+                        for s, t in targets.items()) and
+                    values[SERVICE]['HostConfig']['RestartPolicy'] == admission['restart_policy'],
+                    'cohort-journal-missing')
+            return targets, values
+        try:
+            targets, values = previous()
+            self.seal(admission, rollback=True)
+            require(self.ready(targets, values, admission, rollback=True), 'cohort-journal-missing')
+            previous()
+        except Exception:
+            # Every read-only proof failure remains ambiguous; never certify unstarted.
+            raise Denied('cohort-journal-missing') from None
+        raise Denied('cohort-rollback-unstarted')
+
+    @staticmethod
     def releases(sources):
         result = {}
         for lane in ('public', 'admin'):
@@ -301,6 +333,7 @@ class CohortRelease:
             'frontend_image_id': targets[FRONTEND]['image'],
             'previous_image_ids': {s: t['image'] for s, t in targets.items()}, 'previous_revisions': revisions,
             'previous_container_ids': {s: t['id'] for s, t in targets.items()},
+            'previous_processes': self.processes(values),
             'runtime_sha256': {s: self.policy(v, s) for s, v in values.items()},
             'restart_policy': values[SERVICE]['HostConfig']['RestartPolicy'],
             'snapshot_sha256': digest(snapshot), 'compose_hash': self.core.host.compose_fingerprint(),
@@ -316,7 +349,8 @@ class CohortRelease:
         if path.exists():
             existing = read_json(path)
             require(all(existing.get(k) == v for k, v in admission.items()
-                        if k not in ('database', 'database_hash', 'backup')), 'cohort-admission-conflict')
+                        if k not in ('database', 'database_hash', 'backup') and
+                        (k != 'previous_processes' or k in existing)), 'cohort-admission-conflict')
             self.core.retained_database(existing, existing['database'])
             return existing
         atomic(path, admission, immutable=True)
@@ -474,6 +508,7 @@ class CohortRelease:
         admission = read_json(self.path('admissions', key))
         require(admission['sha'] + '-' + admission['ci_run_id'] == key, 'cohort-binding')
         path = self.path('transactions', key)
+        require(not path.is_symlink(), 'cohort-journal-missing')
         tx = read_json(path) if path.exists() else None
         require(tx is None or isinstance(tx, dict) and tx.get('admission') == admission, 'cohort-transaction-binding')
         if tx is not None:
@@ -484,7 +519,12 @@ class CohortRelease:
                 require(isinstance(tx.get('drain_proof'), dict) and
                         tx['drain_proof'].get('drained') is True and
                         tx['drain_proof'].get('service') == SERVICE, 'cohort-drain-proof-missing')
-        require(not rollback or tx is not None, 'cohort-rollback-unstarted')
+        if tx is None:
+            require(not any(p.exists() or p.is_symlink() for p in
+                    (self.path('receipts', key), self.path('receipts', key + '-rollback'))),
+                    'cohort-journal-missing')
+            if rollback:
+                self.prove_unstarted(admission)
         _, targets, values = self.observe(admission, complete=tx is None, check_runtime=not rollback)
         previous_tx = tx
         direction = 'rollback' if rollback else 'activate'
