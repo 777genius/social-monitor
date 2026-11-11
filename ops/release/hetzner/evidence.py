@@ -5,6 +5,38 @@ from prisma_history import summarize, timestamp
 from contract import DIGEST, digest, fresh, require
 
 WORKER_README = 'apps/agent-runtime/README.md'
+PACKAGE_CHECK = 'check:source-live-certification-evidence'
+PACKAGE_CI_PATHS = {'package.json', 'ops/ci/static-quality-runner.test.mts',
+    'scripts/check-source-line-cap.mjs', 'scripts/check-source-live-certification-evidence.mjs',
+    'scripts/ci/hetzner-release-authority.mts', 'scripts/ci/hetzner-release-authority.test.mts',
+    'scripts/ci/hetzner-release-observe.mts', 'scripts/ci/hetzner-release-observe.test.mts',
+    'scripts/ci/source-live-artifact-path-guard-smokes-gate.test.mjs',
+    'scripts/lib/source-live-smoke-script-contracts.mjs', 'scripts/lib/source-live-smoke-script-contracts.test.mjs'}
+# Reviewed direct build closure: npm ci; npm run prisma:generate; npm run build;
+# runtime CMD executes node directly. A new build contract needs a separate review.
+PACKAGE_BUILD = {
+    'files': {'Dockerfile': 'ec1487f1442ddd7a965f924bc3a3f889eb857239',
+        'scripts/rewrite-build-aliases.mjs': '1155417025d95054290792f498b168051ff08d3e',
+        'prisma.config.ts': '188ca3530882cbfaf2c6447ca9db04b1433e68c2',
+        'tsconfig.build.json': '9ef33781c0953cd4485e380de32dec7e47dae5c8',
+        'tsconfig.json': 'de2385308366a040932befc7bc30a37876609212'},
+    'scripts': {'build': 'tsc -p tsconfig.build.json && node scripts/rewrite-build-aliases.mjs -p tsconfig.build.json',
+                'prisma:generate': 'prisma generate --schema prisma/schema.prisma'},
+    'absent_hooks': ['preinstall', 'install', 'postinstall', 'prepublish', 'preprepare', 'prepare', 'postprepare',
+                     'dependencies', 'prebuild', 'postbuild', 'preprisma:generate', 'postprisma:generate'],
+}
+
+
+def package_script_proof(proof, base, head, delta):
+    require(isinstance(proof, dict) and set(proof) == {'base', 'head', 'delta_sha256', 'changed_scripts',
+            'before_blob', 'after_blob', 'before_sha256', 'after_sha256', 'build_contract_sha256'}
+            and proof['base'] == base and proof['head'] == head and proof['delta_sha256'] == delta
+            and proof['changed_scripts'] == [PACKAGE_CHECK]
+            and proof['build_contract_sha256'] == digest(PACKAGE_BUILD), 'backend-sensitive-files')
+    require(all(isinstance(proof[k], str) and re.fullmatch(r'[0-9a-f]{40}', proof[k])
+                for k in ('before_blob', 'after_blob')) and
+            all(isinstance(proof[k], str) and re.fullmatch(DIGEST, proof[k])
+                for k in ('before_sha256', 'after_sha256')), 'backend-sensitive-files')
 
 
 def backend_compatibility(evidence, revisions, candidate, snapshot):
@@ -28,6 +60,10 @@ def backend_compatibility(evidence, revisions, candidate, snapshot):
         paths = delta.get('changed_paths')
         require(isinstance(paths, list) and all(isinstance(p, str) and p and '..' not in p.split('/')
                 and not p.startswith('/') for p in paths) and (paths or base == candidate), 'backend-delta-paths')
+        if 'package.json' in paths:
+            require(all(p in PACKAGE_CI_PATHS or p.startswith(('docs/', 'ops/release/')) for p in paths),
+                    'backend-sensitive-files')
+            package_script_proof(delta.get('package_scripts'), base, candidate, delta['delta_sha256'])
         # Shared libs also run in retained consumers (including summary via delivery
         # composition). Current-version CI does not prove mixed-version compatibility.
         # This limited lane refuses all shared-library changes; it is not an all-backend
@@ -45,7 +81,7 @@ def backend_compatibility(evidence, revisions, candidate, snapshot):
             'apps/intelligence-worker/src/worker-shutdown-signal.fixture.mts',
             'apps/intelligence-worker/src/worker-shutdown-signal.fixture.cts'}
         require(not any(not p.startswith('docs/') and p != WORKER_README and
-                (p in lifecycle or p.startswith(denied) or p.rsplit('/', 1)[-1] == 'schema.prisma' or
+                ((p in lifecycle and p != 'package.json') or p.startswith(denied) or p.rsplit('/', 1)[-1] == 'schema.prisma' or
                  '/prisma/migrations/' in p) for p in paths), 'backend-sensitive-files')
     return {'policy': 'backend-cohort-ci-v1', 'deltas': deltas,
             'run_attempt': evidence['run_attempt'], 'jobs_sha256': digest(evidence['job_observations'])}

@@ -3,7 +3,7 @@ import copy
 import unittest
 from unittest.mock import patch
 from contract import Denied, digest
-from evidence import backend_compatibility
+from evidence import PACKAGE_BUILD, PACKAGE_CHECK, backend_compatibility
 from operator_github import backend_release, GitHub
 from backend_host import TARGETS
 
@@ -78,3 +78,37 @@ class CohortEvidenceTests(unittest.TestCase):
             result = backend_release(Config(), object(), binding)
             delta.assert_called_once_with(BASE, SHA)
             self.assertEqual(result['deltas']['api'], result['deltas']['jev-intelligence-worker'])
+
+
+    def test_exact_host_package_proof_is_required_and_cannot_open_other_build_inputs(self):
+        value = evidence(['package.json', 'scripts/lib/source-live-smoke-script-contracts.mjs'])
+        package = {'base': BASE, 'head': SHA, 'delta_sha256': 'sha256:' + 'd' * 64,
+                   'changed_scripts': [PACKAGE_CHECK], 'before_blob': '1' * 40, 'after_blob': '2' * 40,
+                   'before_sha256': 'sha256:' + '3' * 64, 'after_sha256': 'sha256:' + '4' * 64,
+                   'build_contract_sha256': digest(PACKAGE_BUILD)}
+        for delta in value['deltas'].values(): delta['package_scripts'] = copy.deepcopy(package)
+        proof = backend_compatibility(value, REVISIONS, SHA, SNAPSHOT)
+        self.assertEqual(proof['deltas'], value['deltas'])
+        for service in TARGETS:
+            for change in ({'base': SHA}, {'head': BASE}, {'delta_sha256': SNAPSHOT},
+                           {'changed_scripts': ['check:other']}, {'changed_scripts': [PACKAGE_CHECK, 'build']},
+                           {'build_contract_sha256': SNAPSHOT}, {'before_blob': 'not-a-hash'},
+                           {'before_sha256': 'not-a-hash'}, {'extra': True}):
+                candidate = copy.deepcopy(value); candidate['deltas'][service]['package_scripts'].update(change)
+                with self.subTest(service=service, change=change), self.assertRaises(Denied):
+                    backend_compatibility(candidate, REVISIONS, SHA, SNAPSHOT)
+            candidate = copy.deepcopy(value); candidate['deltas'][service].pop('package_scripts')
+            candidate['package_scripts'] = package  # A top-level assertion is not per-base host proof.
+            with self.assertRaises(Denied): backend_compatibility(candidate, REVISIONS, SHA, SNAPSHOT)
+            for path in ('vendor/x/file.js', '.npmrc', '.dockerignore', 'binding.gyp', 'tsconfig.json',
+                         'prisma.config.ts', 'scripts/unknown-build-input.mjs', 'package-lock.json',
+                         'libs/summary/index.ts', 'apps/api-gateway/src/main.ts', 'prisma/schema.prisma'):
+                candidate = copy.deepcopy(value); candidate['deltas'][service]['changed_paths'].append(path)
+                with self.subTest(service=service, path=path), self.assertRaises(Denied):
+                    backend_compatibility(candidate, REVISIONS, SHA, SNAPSHOT)
+
+    def test_legacy_no_package_compatibility_bytes_are_unchanged(self):
+        value = evidence(['apps/api-gateway/src/main.ts'])
+        expected = {'policy': 'backend-cohort-ci-v1', 'deltas': value['deltas'],
+                    'run_attempt': 1, 'jobs_sha256': digest(['qualified'])}
+        self.assertEqual(backend_compatibility(value, REVISIONS, SHA, SNAPSHOT), expected)
