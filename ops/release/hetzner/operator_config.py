@@ -16,6 +16,8 @@ SERVICE = '/etc/social-monitor/release/observer.pg_service.conf'
 PASS = '/etc/social-monitor/release/observer.pgpass'
 TOKEN = '/etc/social-monitor/release/github-readonly.token'  # Legacy, never read by this observer.
 AUTH_ROOT = Path('/run/social-monitor-release-github')
+AUTH_LIMIT = 8192  # Includes JSON escaping of a maximum-length printable token.
+AUTH_TOKEN = r'[!-~]{20,2048}'
 GH_DIR = '/etc/social-monitor/release/github-empty'
 INCLUDE_DIR = '/etc/social-monitor/release/pgbackrest-empty'
 SYSTEM_ID = '7688442011877063482'
@@ -98,15 +100,15 @@ def auth_path(sha, run):
 
 def auth_record(path):
     info = path.lstat()
-    require(stat.S_ISREG(info.st_mode) and 0 < info.st_size <= 4096
+    require(stat.S_ISREG(info.st_mode) and 0 < info.st_size <= AUTH_LIMIT
             and not info.st_mode & 0o077, 'github-auth-file')
-    raw = private_bytes(path, 4096, secret=True)
-    saved = decode(raw, 4096)
+    raw = private_bytes(path, AUTH_LIMIT, secret=True)
+    saved = decode(raw, AUTH_LIMIT)
     exact(saved, ('sha', 'ci_run_id', 'lease', 'token', 'expires_at'))
     require(auth_path(saved['sha'], saved['ci_run_id']) == path and
             type(saved['expires_at']) is int and saved['expires_at'] > 0 and
             match(r'[0-9a-f]{32}', saved['lease']) and
-            match(r'[A-Za-z0-9_]{20,2048}', saved['token']), 'github-auth-invalid')
+            match(AUTH_TOKEN, saved['token']), 'github-auth-invalid')
     return saved, raw
 
 
@@ -127,7 +129,7 @@ def prune_expired_auth():
 
 def github_auth_update(sha, run, raw, clear=False):
     """Root controller owns the machine fence and shared lock; no token in responses."""
-    payload = decode(raw, 4096)
+    payload = decode(raw, AUTH_LIMIT)
     exact(payload, ('lease',) if clear else ('lease', 'token'))
     require(match(r'[0-9a-f]{32}', payload['lease']), 'github-auth-lease')
     path = auth_path(sha, run)
@@ -145,7 +147,7 @@ def github_auth_update(sha, run, raw, clear=False):
             return {**response, 'cleared': False}
         path.unlink(); sync_dir(AUTH_ROOT)
         return {**response, 'cleared': True}
-    require(match(r'[A-Za-z0-9_]{20,2048}', payload['token']), 'github-auth-token')
+    require(match(AUTH_TOKEN, payload['token']), 'github-auth-token')
     AUTH_ROOT.mkdir(mode=0o700, exist_ok=True)
     trusted(AUTH_ROOT, directory=True)
     require(not AUTH_ROOT.stat().st_mode & 0o077, 'github-auth-mode')

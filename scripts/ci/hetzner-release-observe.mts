@@ -18,6 +18,7 @@ const R: typeof import('./candidate-runtime-contract.mts') =
 const MACHINE = 'b28fc7b17042414386eb9b114046e50c';
 const FILES = ['candidate.tar', 'candidate.tar.sha256', 'manifest.json', 'phases.json', 'image-id.txt', 'source-sha.txt'];
 const LIMIT = 10_000_000_000;
+const GITHUB_TOKEN = /^[!-~]{20,2048}$(?![\s\S])/u;
 export async function canonical(path: string): Promise<void> {
   A.requireValue(isAbsolute(path) && resolve(path) === path
     && /^\/[a-zA-Z0-9_./-]+$/u.test(path), 'private-path');
@@ -432,7 +433,7 @@ export function guardedTransport(get: Get, authority: Authority, transport: Tran
 /** Credentials are stdin-only and never part of artifacts or receipts. */
 export async function githubAuth(transport: Transport, sha: string, run: string, lease: string, token?: string) {
   A.text(lease, /^[0-9a-f]{32}$/u, 'github-auth-lease');
-  if (token !== undefined) A.text(token, /^[A-Za-z0-9_]{20,2048}$/u, 'github-auth-token');
+  if (token !== undefined) A.text(token, GITHUB_TOKEN, 'github-auth-token');
   const bytes = Buffer.from(JSON.stringify({ lease, ...(token === undefined ? {} : { token }) }));
   try {
     const response = await transport(command(token === undefined ? 'github-auth-clear' : 'github-auth', [sha, run]), async function* () { yield bytes; });
@@ -873,7 +874,7 @@ export async function main(args: readonly string[], env: NodeJS.ProcessEnv): Pro
     await append(join(scratch, 'github-auth.json'), { sha: authority.sha, run: authority.run, lease });
     auth = { transport: sshTransport(config, undefined, 15_000), sha: authority.sha, run: authority.run, lease };
     await githubAuth(guardedTransport(get, authority, transport), authority.sha, authority.run, lease,
-      A.text(env.GH_TOKEN, /^[A-Za-z0-9_]{20,2048}$/u, 'github-auth-token'));
+      A.text(env.GH_TOKEN, GITHUB_TOKEN, 'github-auth-token'));
     step = 'backend-receive';
     await sendBackendCandidate(authority, data, get, transport);
     step = 'frontend-receive';
