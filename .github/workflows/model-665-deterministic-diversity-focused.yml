@@ -1,5 +1,5 @@
 # Temporary exact-code focused verification for Draft #665; remove after qualified result.
-name: Model 665 deterministic provider diversity focused check
+name: Model 665 V3 transport and deterministic focused check
 
 on:
   push:
@@ -40,9 +40,11 @@ jobs:
           npm run check:code-quality
           npm run check:source-line-cap
           npm run check:runtime-profile-guards
-      - name: Verify deterministic provider policy and adapter compatibility
+      - name: Verify OpenAI V3 transport and deterministic model adapter compatibility
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
           libs/summary/adapters/model/deterministic-reader-summary-provider-diversity.spec.ts
           libs/summary/adapters/model/deterministic-reader-summary-evidence-selection.spec.ts
           libs/summary/adapters/model/deterministic-reader-summary-model.adapter.spec.ts
+          libs/summary/adapters/model/openai-promotion-presentation-v3.builder.spec.ts
+          libs/summary/adapters/model/openai-promotion-presentation-v3-response-contract.spec.ts
