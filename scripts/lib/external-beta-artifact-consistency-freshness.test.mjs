@@ -14,7 +14,7 @@ const freshness = {
 };
 
 function fixture({ env = {}, policy = freshness, time = baselineTime } = {}) {
-  const clock = { now: () => time };
+  const clock = { now: () => time, parse: Date.parse };
   const process = { env };
   const contract = { artifactFreshness: policy };
   return { ...createExternalBetaArtifactConsistencyFreshness({ contract, process, Date: clock }), env, clock, contract };
