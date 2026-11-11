@@ -91,7 +91,8 @@ class CohortEvidenceTests(unittest.TestCase):
         self.assertEqual(proof['deltas'], value['deltas'])
         for service in TARGETS:
             for change in ({'base': SHA}, {'head': BASE}, {'delta_sha256': SNAPSHOT},
-                           {'changed_scripts': ['check:other']}, {'changed_scripts': [PACKAGE_CHECK, 'build']},
+                           {'changed_scripts': []}, {'changed_scripts': [PACKAGE_CHECK, 'build']},
+                           {'changed_scripts': [PACKAGE_CHECK, PACKAGE_CHECK]}, {'changed_scripts': ['check:']},
                            {'build_contract_sha256': SNAPSHOT}, {'before_blob': 'not-a-hash'},
                            {'before_sha256': 'not-a-hash'}, {'extra': True}):
                 candidate = copy.deepcopy(value); candidate['deltas'][service]['package_scripts'].update(change)
@@ -101,7 +102,8 @@ class CohortEvidenceTests(unittest.TestCase):
             candidate['package_scripts'] = package  # A top-level assertion is not per-base host proof.
             with self.assertRaises(Denied): backend_compatibility(candidate, REVISIONS, SHA, SNAPSHOT)
             for path in ('vendor/x/file.js', '.npmrc', '.dockerignore', 'binding.gyp', 'tsconfig.json',
-                         'prisma.config.ts', 'scripts/unknown-build-input.mjs', 'package-lock.json',
+                         'prisma.config.ts', 'scripts/unknown-build-input.ts', 'scripts/run-with-timeout.mjs',
+                         'scripts/rewrite-build-aliases.mjs', 'package-lock.json',
                          'libs/summary/index.ts', 'apps/api-gateway/src/main.ts', 'prisma/schema.prisma'):
                 candidate = copy.deepcopy(value); candidate['deltas'][service]['changed_paths'].append(path)
                 with self.subTest(service=service, path=path), self.assertRaises(Denied):
@@ -112,3 +114,28 @@ class CohortEvidenceTests(unittest.TestCase):
         expected = {'policy': 'backend-cohort-ci-v1', 'deltas': value['deltas'],
                     'run_attempt': 1, 'jobs_sha256': digest(['qualified'])}
         self.assertEqual(backend_compatibility(value, REVISIONS, SHA, SNAPSHOT), expected)
+
+
+    def test_multiple_check_scripts_allow_only_regular_non_image_ci_path_families(self):
+        from operator_github_test import Fixture, package, BASE as OLD, HEAD as NEW
+        from contract import canonical
+        old = package(); new = copy.deepcopy(old)
+        new['scripts'][PACKAGE_CHECK] = 'node TEST-new.mjs'
+        new['scripts']['check:release-artifact-evidence'] = 'node TEST-release.mjs'
+        fixture = Fixture(canonical(old), canonical(new)); package_proof = fixture.proof()
+        value = evidence(['package.json', 'scripts/check-release-artifact-evidence.mjs',
+            'scripts/lib/release-deploy-artifact-path-smokes.mjs',
+            'scripts/lib/release-deploy-artifact-path-smokes.test.mjs',
+            'scripts/ci/new-proof.test.mts', 'ops/ci/new-proof.test.mts', 'docs/new.md', 'ops/release/hetzner/new.py'])
+        value.update(main_sha=NEW, head_sha=NEW, api_revision=OLD, worker_revision=OLD)
+        for delta in value['deltas'].values():
+            delta.update(base=OLD, head=NEW, delta_sha256=package_proof['delta_sha256'], package_scripts=package_proof)
+        revisions = {service: OLD for service in TARGETS}
+        self.assertEqual(backend_compatibility(value, revisions, NEW, SNAPSHOT)['deltas'], value['deltas'])
+        for path in ('vendor/new.mjs', 'libs/new.mjs', 'apps/api-gateway/new.mjs', 'ops/deploy/new.mjs',
+                     'scripts/quickstart/new.ts', 'scripts/run-with-timeout.mjs', 'scripts/rewrite-build-aliases.mjs',
+                     'scripts/lib/.env', '.dockerignore', '.npmrc', 'tsconfig.json'):
+            candidate = copy.deepcopy(value)
+            candidate['deltas']['api']['changed_paths'].append(path)
+            with self.subTest(path=path), self.assertRaises(Denied):
+                backend_compatibility(candidate, revisions, NEW, SNAPSHOT)

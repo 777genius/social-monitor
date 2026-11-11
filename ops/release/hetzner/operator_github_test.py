@@ -86,13 +86,27 @@ class PackageScriptTests(unittest.TestCase):
         self.assertLess(len(fixture.old), 128 * 1024)
         self.assertEqual(fixture.proof()['changed_scripts'], [CHECK])
 
-    def test_only_the_fixed_check_value_may_change(self):
+    def test_multiple_check_values_and_new_or_removed_check_keys_are_ci_only(self):
+        old = package()
+        new = copy.deepcopy(old)
+        new['scripts'][CHECK] = 'node TEST-new-check.mjs'
+        new['scripts']['check:other'] = 'node TEST-new-other.mjs'
+        self.assertEqual(Fixture(canonical(old), canonical(new)).proof()['changed_scripts'], ['check:other', CHECK])
+        new['scripts']['check:new'] = 'node TEST-new.mjs'
+        new['scripts'].pop('check:other')
+        self.assertEqual(Fixture(canonical(old), canonical(new)).proof()['changed_scripts'],
+                         ['check:new', 'check:other', CHECK])
+        for unsafe in ('precheck:new', 'check:', 'check:new injected', 'check:new\n', 'Check:new'):
+            candidate = copy.deepcopy(new); candidate['scripts'][unsafe] = 'node TEST-only.mjs'
+            with self.subTest(key=unsafe), self.assertRaises(Denied):
+                Fixture(canonical(old), canonical(candidate)).proof()
+
+    def test_non_check_fields_scripts_and_lifecycle_may_not_change(self):
         changes = [lambda p: p.update(private=1), lambda p: p.update(name='changed'),
                    lambda p: p['dependencies'].update({'test-fixture': '2.0.0'}),
                    lambda p: p['scripts'].update(build='npm run ' + CHECK),
-                   lambda p: p['scripts'].update({'check:other': 'changed'}),
-                   lambda p: p['scripts'].update({'check:new': 'new'}),
-                   lambda p: p['scripts'].pop(CHECK), lambda p: p.update(scripts=[])]
+                   lambda p: p['scripts'].update({'run:other': 'changed'}),
+                   lambda p: p['scripts'].update({'precheck:new': 'new'}), lambda p: p.update(scripts=[])]
         for hook in ('preinstall', 'install', 'postinstall', 'prepublish', 'prepare', 'preprepare', 'postprepare',
                      'dependencies', 'prebuild', 'postbuild', 'preprisma:generate', 'postprisma:generate'):
             changes.append(lambda p, hook=hook: p['scripts'].update({hook: 'npm run ' + CHECK}))
@@ -138,6 +152,14 @@ class PackageScriptTests(unittest.TestCase):
             if endpoint.startswith('git/trees/'):
                 value['tree'].append({'path': 'binding.gyp', 'mode': '100644', 'type': 'blob', 'sha': 'e' * 40})
         with self.assertRaises(Denied): Fixture(mutate=binding_gyp).proof()
+
+    def test_existing_or_added_symlinks_and_gitlinks_cannot_make_ci_paths_copied_inputs(self):
+        for mode, kind in (('120000', 'blob'), ('160000', 'commit')):
+            def modify(endpoint, value):
+                if endpoint.startswith('git/trees/'):
+                    value['tree'].append({'path': 'scripts/runtime-input.ts', 'mode': mode,
+                                          'type': kind, 'sha': 'e' * 40})
+            with self.subTest(mode=mode), self.assertRaises(Denied): Fixture(mutate=modify).proof()
 
     def test_backend_adapter_binds_proof_once_for_equal_live_bases(self):
         fixture = Fixture(); binding = {'sha': HEAD, 'ci_run_id': '123', 'api_revision': BASE,
