@@ -139,3 +139,64 @@ class CohortEvidenceTests(unittest.TestCase):
             candidate['deltas']['api']['changed_paths'].append(path)
             with self.subTest(path=path), self.assertRaises(Denied):
                 backend_compatibility(candidate, revisions, NEW, SNAPSHOT)
+
+
+    def test_exact_ci_only_ts_paths_pass_the_independent_adapter_and_full_delta_gate(self):
+        from operator_github_test import Fixture, BASE as OLD, HEAD as NEW
+        allowed = ('scripts/check-source-provider-runtime-contract.ts',
+                   'scripts/lib/source-provider-github-issues-runtime-smoke.ts')
+        for paths in ((allowed[0],), (allowed[1],), allowed):
+            def add_sources(endpoint, value):
+                if endpoint.startswith('git/trees/'):
+                    for path in paths:
+                        value['tree'].append({'path': path, 'mode': '100644', 'type': 'blob',
+                            'sha': ('1' if 'c' * 40 in endpoint else '2') * 40})
+            fixture = Fixture(mutate=add_sources)
+            binding = {'sha': NEW, 'ci_run_id': '123', 'api_revision': OLD,
+                       'worker_revision': OLD, 'non_target_snapshot_sha256': SNAPSHOT}
+            with self.subTest(paths=paths), patch('operator_github.GitHub', return_value=fixture.gh), \
+                 patch.object(fixture.gh, 'main', return_value=NEW), \
+                 patch.object(fixture.gh, 'legacy', return_value='disabled_manually'), \
+                 patch.object(fixture.gh, 'run', return_value={'run_attempt': 1}), \
+                 patch.object(fixture.gh, 'jobs', return_value=[{'conclusion': 'success'}]):
+                proof = backend_release(fixture.config, None, binding)
+                for delta in proof['deltas'].values():
+                    self.assertEqual(delta['changed_paths'], sorted(['package.json', *paths]))
+                    self.assertEqual(delta['package_scripts']['delta_sha256'], delta['delta_sha256'])
+                self.assertEqual(len(fixture.calls), 6)
+
+    def test_ci_ts_exception_does_not_admit_similar_paths_or_copied_runtime_ts(self):
+        from operator_github_test import Fixture, BASE as OLD, HEAD as NEW
+        unsafe = ('scripts/check-source-provider-runtime-contract.test.ts',
+                  'scripts/lib/source-provider-github-issues-runtime-smoke.ts/child.ts',
+                  'scripts/lib/other-runtime-smoke.ts', 'scripts/ci/new-smoke.ts',
+                  'scripts/quickstart/bootstrap.ts', 'scripts/run-reader-summary-clean-real-day-collection.ts',
+                  'scripts/lib/clean-real-day-source-providers.ts',
+                  'scripts/lib/reader-summary-publication-bootstrap-sql.ts')
+        for path in unsafe:
+            def add_source(endpoint, value):
+                if endpoint.startswith('git/trees/') and 'd' * 40 in endpoint:
+                    value['tree'].append({'path': path, 'mode': '100644', 'type': 'blob', 'sha': 'e' * 40})
+            fixture = Fixture(mutate=add_source)
+            binding = {'sha': NEW, 'ci_run_id': '123', 'api_revision': OLD,
+                       'worker_revision': OLD, 'non_target_snapshot_sha256': SNAPSHOT}
+            with self.subTest(path=path), patch('operator_github.GitHub', return_value=fixture.gh), \
+                 patch.object(fixture.gh, 'main', return_value=NEW), \
+                 patch.object(fixture.gh, 'legacy', return_value='disabled_manually'), \
+                 patch.object(fixture.gh, 'run', return_value={'run_attempt': 1}), \
+                 patch.object(fixture.gh, 'jobs', return_value=[{'conclusion': 'success'}]), \
+                 self.assertRaisesRegex(Denied, 'backend-sensitive-files'):
+                backend_release(fixture.config, None, binding)
+
+    def test_exact_ci_ts_paths_still_require_both_trees_without_links(self):
+        from operator_github_test import Fixture
+        for path in ('scripts/check-source-provider-runtime-contract.ts',
+                     'scripts/lib/source-provider-github-issues-runtime-smoke.ts'):
+            for tree in ('c' * 40, 'd' * 40):
+                for mode, kind in (('120000', 'blob'), ('160000', 'commit')):
+                    def add_link(endpoint, value):
+                        if endpoint.startswith('git/trees/') and tree in endpoint:
+                            value['tree'].append({'path': path, 'mode': mode, 'type': kind, 'sha': 'e' * 40})
+                    with self.subTest(path=path, tree=tree, mode=mode), \
+                         self.assertRaisesRegex(Denied, 'operator-package-build-contract'):
+                        Fixture(mutate=add_link).proof()
