@@ -1,5 +1,5 @@
 # Temporary Draft PR #665 exact-head verification; remove only after PASS.
-name: Model 665 reader runtime settings focused check
+name: Model 665 OpenAI Summary response boundary focused check
 
 on:
   push:
@@ -40,9 +40,8 @@ jobs:
           npm run check:code-quality
           npm run check:source-line-cap
           npm run check:runtime-profile-guards
-      - name: Verify default route identity and recovery policy
+      - name: Verify OpenAI Summary request, trust policy and adapter compatibility
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
-          libs/summary/adapters/model/agent-runtime-reader-summary-runtime-settings.spec.ts
-          libs/summary/adapters/model/agent-runtime-reader-summary-model.adapter.spec.ts
-          libs/summary/adapters/model/agent-runtime-reader-summary-options.spec.ts
+          libs/summary/adapters/model/openai-responses-summary-model.adapter.spec.ts
+          libs/summary/adapters/model/openai-responses-summary-runtime-settings.spec.ts
