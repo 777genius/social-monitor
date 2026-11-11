@@ -33,7 +33,7 @@ const legacyLineCapDebt = new Map([
   ["scripts/check-external-beta-evidence-runner.mjs", 1068],
   ["scripts/check-source-live-certification-evidence.mjs", 1078],
   ["scripts/check-source-provider-runtime-contract.ts", 1049],
-  ["scripts/external-beta-evidence-runner.mjs", 1420],
+  ["scripts/external-beta-evidence-runner.mjs", 1310],
 ]);
 
 function normalizePath(file) {
