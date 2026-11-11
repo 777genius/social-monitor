@@ -3,7 +3,7 @@ import {
   type ReaderSummaryCitation,
   type ReaderSummaryContent,
 } from "../../domain";
-import { requiredArray, requiredRecord, requiredString, requiredStringArray } from "./openai-responses-reader-summary-parsers";
+import { requiredArray, requiredRecord, requiredString, requiredStringArray } from "./openai-responses-reader-summary-required-values";
 import {
   normalizeReaderInterestSection,
   normalizeReaderItem,
