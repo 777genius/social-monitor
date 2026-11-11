@@ -119,7 +119,7 @@ test('missing import, forged dependencies and dormant delegation fail closed', (
   for (const mutant of [
     originalSource.replace(importStatement, ''),
     originalSource.replace('{ contract, inputMatrix });', '{ contract: {}, inputMatrix });'),
-    originalSource.replace(declaration, 'if (false) {\\n' + declaration + '\\n}'),
-    originalSource.replace(declaration, 'function dormantDisplaySetup() {\\n' + declaration + '\\n}'),
+    originalSource.replace(declaration, 'if (false) {\n' + declaration + '\n}'),
+    originalSource.replace(declaration, 'function dormantDisplaySetup() {\n' + declaration + '\n}'),
   ]) assert.throws(() => assertDirectDelegation(mutant));
 });
