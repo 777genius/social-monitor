@@ -13,12 +13,28 @@ function withoutComments(source) {
   return source.replace(/\r\n?/g, '\n').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
 }
 
+function assertShorthandProperties(block, expected) {
+  const names = block.split(',').map((name) => name.trim()).filter(Boolean);
+  assert.equal(names.length, expected.length, 'initializer must provide exactly the expected shorthand properties');
+  assert.deepEqual(new Set(names), new Set(expected));
+}
+
 function assertActiveDelegation(checkerSource, helperSource = extracted) {
   const checker = withoutComments(checkerSource);
   const helper = withoutComments(helperSource);
   assert.match(checker, /^import \{ preflightNegativeSmokeScenarios \} from '\.\/lib\/external-beta-preflight-negative-smoke-scenarios\.mjs';$/m);
   assert.match(checker, /^import \{ createExternalBetaPreflightCommandSmokes \} from '\.\/lib\/external-beta-preflight-command-smokes\.mjs';$/m);
-  assert.match(checker, /const \{\s*validateRunnerPreflightNegativeSmokes,\s*validateRunnerPreflightPositiveSmoke,\s*\} = createExternalBetaPreflightCommandSmokes\(\{\s*contract, violations, execFileSync, runnerSmokeTimeoutMs,\s*preflightNegativeSmokeScenarios,/);
+  const wiring = checker.match(/const\s*\{([^{}]+)\}\s*=\s*createExternalBetaPreflightCommandSmokes\(\s*\{([^{}]+)\}\s*\);/);
+  assert.ok(wiring, 'checker must initialize the extracted preflight validator');
+  assertShorthandProperties(wiring[1], [
+    'validateRunnerPreflightNegativeSmokes', 'validateRunnerPreflightPositiveSmoke',
+  ]);
+  assertShorthandProperties(wiring[2], [
+    'contract', 'violations', 'execFileSync', 'runnerSmokeTimeoutMs',
+    'preflightNegativeSmokeScenarios', 'mkdtempSync', 'tmpdir', 'join', 'rmSync',
+    'completeExternalEvidencePreflightEnv', 'redditOAuthPreflightEnv',
+    'childProcessErrorOutput', 'smokeOutputSnippet',
+  ]);
   assert.match(checker, /^validateRunnerPreflightNegativeSmokes\(\);$/m);
   assert.match(helper, /return \{\s*validateRunnerPreflightNegativeSmokes,\s*validateRunnerPreflightPositiveSmoke,\s*\};/);
 
@@ -56,6 +72,29 @@ test('missing or commented-out checker wiring cannot bypass the extracted prefli
   assert.throws(() => assertActiveDelegation(original.replace(invocation, '')), { code: 'ERR_ASSERTION' });
   assert.throws(() => assertActiveDelegation(original.replace(invocation, '// ' + invocation)), { code: 'ERR_ASSERTION' });
   assert.throws(() => assertActiveDelegation(original.replace('preflightNegativeSmokeScenarios, mkdtempSync', 'mkdtempSync')), { code: 'ERR_ASSERTION' });
+});
+
+test('reordering equivalent checker wiring does not invalidate architecture checks', () => {
+  const dependenciesReordered = original.replace(
+    'contract, violations, execFileSync, runnerSmokeTimeoutMs,\n  preflightNegativeSmokeScenarios,',
+    'preflightNegativeSmokeScenarios, contract, violations, execFileSync,\n  runnerSmokeTimeoutMs,',
+  );
+  assert.notEqual(dependenciesReordered, original, 'test must actually reorder injected dependencies');
+  const bindingsReordered = dependenciesReordered.replace(
+    'validateRunnerPreflightNegativeSmokes,\n  validateRunnerPreflightPositiveSmoke,',
+    'validateRunnerPreflightPositiveSmoke,\n  validateRunnerPreflightNegativeSmokes,',
+  );
+  assert.notEqual(bindingsReordered, dependenciesReordered, 'test must reorder returned bindings');
+  assertActiveDelegation(bindingsReordered);
+});
+
+test('a missing injected helper dependency fails the architecture guard', () => {
+  const missingDependency = original.replace(
+    'childProcessErrorOutput, smokeOutputSnippet,\n});\nconst { validateRunnerOutputRedactionSmoke',
+    'childProcessErrorOutput,\n});\nconst { validateRunnerOutputRedactionSmoke',
+  );
+  assert.notEqual(missingDependency, original, 'test must actually remove a dependency');
+  assert.throws(() => assertActiveDelegation(missingDependency), { code: 'ERR_ASSERTION' });
 });
 
 test('CRLF checkouts preserve active delegation and still reject disabled invocations', () => {
