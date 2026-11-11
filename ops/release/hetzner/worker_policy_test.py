@@ -1,5 +1,6 @@
 """Synthetic retained fingerprint and fixed probe-version compatibility."""
 import copy
+import itertools
 import json
 import time
 import unittest
@@ -69,6 +70,73 @@ class WorkerPolicyTests(unittest.TestCase):
         for env in (None, []):
             value = copy.deepcopy(self.value); value['Config']['Env'] = env
             self.assertEqual(WorkerHost.cohort_policy_v1(value), WorkerHost.policy(value))
+
+    def mounted_value(self):
+        value = copy.deepcopy(self.value)
+        value['HostConfig']['Binds'] = ['/fixtures/a:/run/a:ro', '/fixtures/b:/run/b:ro']
+        value['HostConfig']['Mounts'] = [{'Type': 'bind', 'Source': '/fixtures/' + name,
+            'Target': '/run/' + name, 'ReadOnly': True, 'BindOptions': {'Propagation': 'rprivate'}}
+            for name in ('c', 'd')]
+        value['Mounts'] = [{'Type': 'bind', 'Source': '/fixtures/' + name,
+            'Destination': '/run/' + name, 'RW': False, 'Mode': 'ro', 'Propagation': 'rprivate'}
+            for name in ('a', 'b', 'c', 'd')]
+        return value
+
+    def test_cohort_disjoint_mount_orders_equal_without_mutation_or_legacy_change(self):
+        value = self.mounted_value(); before = copy.deepcopy(value)
+        expected = WorkerHost.cohort_policy_v1(value)
+        for binds, mounts, live in itertools.product(
+                itertools.permutations(value['HostConfig']['Binds']),
+                itertools.permutations(value['HostConfig']['Mounts']),
+                itertools.permutations(value['Mounts'])):
+            reordered = copy.deepcopy(value)
+            reordered['HostConfig']['Binds'] = list(binds)
+            reordered['HostConfig']['Mounts'] = list(mounts)
+            reordered['Mounts'] = list(live)
+            self.assertEqual(WorkerHost.cohort_policy_v1(reordered), expected)
+        self.assertEqual(value, before)
+        reordered = copy.deepcopy(value); reordered['Mounts'].reverse()
+        self.assertNotEqual(WorkerHost.policy(reordered), WorkerHost.policy(value))
+        binding = {**self.binding, 'runtime_sha256': expected}
+        self.assertTrue(self.call('cohort-worker-probe-v1', binding, reordered)['ready'])
+        value['Config']['Env'] = None; reordered['Config']['Env'] = None
+        self.assertEqual(WorkerHost.cohort_policy_v1(value), WorkerHost.cohort_policy_v1(reordered))
+
+    def test_cohort_mount_sources_permissions_and_options_remain_bound(self):
+        value = self.mounted_value(); expected = WorkerHost.cohort_policy_v1(value)
+        for section, field, replacement in (
+                ('live', 'Source', '/fixtures/changed'), ('live', 'RW', True),
+                ('live', 'Mode', 'rw'), ('live', 'Propagation', 'shared'),
+                ('declared', 'Source', '/fixtures/changed'), ('declared', 'ReadOnly', False),
+                ('declared', 'BindOptions', {'Propagation': 'shared'})):
+            changed = copy.deepcopy(value)
+            entries = changed['Mounts'] if section == 'live' else changed['HostConfig']['Mounts']
+            entries[0][field] = replacement
+            with self.subTest(section=section, field=field):
+                self.assertNotEqual(WorkerHost.cohort_policy_v1(changed), expected)
+        for bind in ('/fixtures/changed:/run/a:ro', '/fixtures/a:/run/a:rw',
+                     '/fixtures/a:/run/a:ro,z'):
+            changed = copy.deepcopy(value); changed['HostConfig']['Binds'][0] = bind
+            self.assertNotEqual(WorkerHost.cohort_policy_v1(changed), expected)
+
+    def test_cohort_mount_duplicates_overlaps_and_noncanonical_targets_refused(self):
+        for kind in ('live-duplicate', 'live-overlap', 'bind-duplicate', 'bind-overlap',
+                     'declared-duplicate', 'declared-overlap', 'cross-declaration', 'relative',
+                     'dot', 'trailing-slash', 'double-leading-slash'):
+            value = self.mounted_value()
+            if kind == 'live-duplicate': value['Mounts'].append(copy.deepcopy(value['Mounts'][0]))
+            elif kind == 'live-overlap': value['Mounts'][1]['Destination'] = '/run/a/child'
+            elif kind == 'bind-duplicate': value['HostConfig']['Binds'][1] = '/fixtures/b:/run/a:ro'
+            elif kind == 'bind-overlap': value['HostConfig']['Binds'][1] = '/fixtures/b:/run/a/child:ro'
+            elif kind == 'declared-duplicate': value['HostConfig']['Mounts'][1]['Target'] = '/run/c'
+            elif kind == 'declared-overlap': value['HostConfig']['Mounts'][1]['Target'] = '/run/c/child'
+            elif kind == 'cross-declaration': value['HostConfig']['Mounts'][0]['Target'] = '/run/a'
+            elif kind == 'relative': value['Mounts'][0]['Destination'] = 'run/a'
+            elif kind == 'dot': value['Mounts'][0]['Destination'] = '/run/../a'
+            elif kind == 'trailing-slash': value['Mounts'][0]['Destination'] = '/run/a/'
+            else: value['Mounts'][0]['Destination'] = '//run/a'
+            with self.subTest(kind=kind), self.assertRaisesRegex(Denied, 'worker-mount'):
+                WorkerHost.cohort_policy_v1(value)
 
 
 if __name__ == '__main__': unittest.main()

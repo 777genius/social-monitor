@@ -1,8 +1,45 @@
 """One fixed intelligence-worker target; API and every other service stay protected."""
-from pathlib import Path
+import copy
+from pathlib import Path, PurePosixPath
 from contract import digest, require
 
 SERVICE = 'jev-intelligence-worker'
+
+
+def _disjoint_targets(paths):
+    require(all(isinstance(p, str) and p.startswith('/') and not p.startswith('//') and '\0' not in p and
+                '..' not in p.split('/') and str(PurePosixPath(p)) == p for p in paths),
+            'worker-mount-target')
+    for index, path in enumerate(paths):
+        require(all(path != other and not path.startswith(other.rstrip('/') + '/') and
+                    not other.startswith(path.rstrip('/') + '/') for other in paths[:index]),
+                'worker-mount-overlap')
+
+
+def _ordered_mounts(value):
+    """Order is irrelevant only for mounts with unique, disjoint destinations."""
+    declared = []
+    for parent, field, target in ((value, 'Mounts', 'Destination'),
+                                  (value['HostConfig'], 'Mounts', 'Target')):
+        entries = parent.get(field)
+        if entries is None:
+            continue
+        require(isinstance(entries, list) and all(isinstance(e, dict) for e in entries),
+                'worker-mount-invalid')
+        paths = [entry.get(target) for entry in entries]
+        _disjoint_targets(paths)
+        parent[field] = sorted(entries, key=lambda entry: entry[target])
+        if target == 'Target': declared.extend(paths)
+    binds = value['HostConfig'].get('Binds')
+    if binds is not None:
+        require(isinstance(binds, list) and all(isinstance(b, str) for b in binds),
+                'worker-mount-bind')
+        for bind in binds:
+            parts = bind.split(':')
+            require(len(parts) in (2, 3) and bool(parts[0]), 'worker-mount-bind')
+            declared.append(parts[1])
+        value['HostConfig']['Binds'] = sorted(binds)
+    _disjoint_targets(declared)
 
 
 class WorkerHost:
@@ -23,15 +60,17 @@ class WorkerHost:
 
     @staticmethod
     def cohort_policy_v1(value):
-        """Cohort-only Env ordering; legacy admissions keep their original raw hash."""
+        """Cohort-only ordering; legacy admissions keep their original raw hash."""
         env = value['Config'].get('Env')
-        if env is None:
-            return WorkerHost.policy(value)
-        require(isinstance(env, list) and all(isinstance(v, str) and '=' in v and
-                v.split('=', 1)[0] for v in env), 'worker-env-invalid')
-        keys = [v.split('=', 1)[0] for v in env]
-        require(len(set(keys)) == len(keys), 'worker-env-duplicate')
-        return WorkerHost.policy({**value, 'Config': {**value['Config'], 'Env': sorted(env)}})
+        value = copy.deepcopy(value)
+        if env is not None:
+            require(isinstance(env, list) and all(isinstance(v, str) and '=' in v and
+                    v.split('=', 1)[0] for v in env), 'worker-env-invalid')
+            keys = [v.split('=', 1)[0] for v in env]
+            require(len(set(keys)) == len(keys), 'worker-env-duplicate')
+            value['Config']['Env'] = sorted(env)
+        _ordered_mounts(value)
+        return WorkerHost.policy(value)
 
     def signal_ready(self, value):
         pid = value['State']['Pid']
