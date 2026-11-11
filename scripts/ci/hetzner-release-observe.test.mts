@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createRequire } from 'node:module';
+import { createRequire, syncBuiltinESMExports } from 'node:module';
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
+import type { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
@@ -651,7 +654,10 @@ test('frontend delivery sends exact CI ZIP and checks host proof against both ar
       if (wire.startsWith('cohort-receipt ')) return response(receipt);
       throw new Error('unexpected cohort request');
     };
-    assert.deepEqual(await O.activateCohort(frontend, backendManifest, proof, get, cohortTransport, async () => {}), receipt);
+    const steps: string[] = [];
+    assert.deepEqual(await O.activateCohort(frontend, backendManifest, proof, get, cohortTransport,
+      async () => {}, step => { steps.push(step); }), receipt);
+    assert.deepEqual(steps, ['cohort-admit', 'cohort-activate', 'cohort-activate', 'cohort-verify', 'cohort-receipt']);
     assert.equal(polls, 2);
     let unexpectedCalls = 0;
     await assert.rejects(O.activateCohort(frontend, backendManifest,
@@ -761,4 +767,67 @@ test('cohort recovery is bounded to one transaction and validates a complete rol
   ]) assert.throws(() => O.cohortReceipt(changed, sha, run, 'rolled-back'));
   await assert.rejects(O.recoverCohort(async () => response({ sha, ci_run_id: run, scope: targets, phase: 'starting' }),
     sha, run, async () => {}), /cohort-recovery-timeout/);
+});
+
+
+test('failed receipts expose only fixed steps and typed whitelisted diagnostic codes', () => {
+  assert.deepEqual(O.safeReleaseFailure('github-auth', new A.AuthorityError('github-observation-timeout')),
+    { step: 'github-auth', diagnostic: 'github-observation-timeout' });
+  assert.deepEqual(O.safeReleaseFailure('cohort-admit', new ClientError('ssh-publickey')),
+    { step: 'cohort-admit', diagnostic: 'ssh-publickey' });
+  for (const error of [new Error('github-observation-timeout'),
+    new A.AuthorityError('TEST_ONLY_NOT_A_CREDENTIAL_0000'),
+    new ClientError('lease=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
+    { code: 'ssh-publickey', stderr: 'TEST_ONLY_PRIVATE_PAYLOAD' }]) {
+    assert.deepEqual(O.safeReleaseFailure('frontend-receive', error),
+      { step: 'frontend-receive', diagnostic: 'unknown' });
+  }
+  assert.deepEqual(O.safeReleaseFailure('TEST_ONLY_PRIVATE_PAYLOAD', new Error('TEST_ONLY_PRIVATE_PAYLOAD')),
+    { step: 'unknown', diagnostic: 'unknown' });
+});
+
+test('auth diagnostics retain only fixed host/SSH denials and never raw payloads', async () => {
+  const lease = 'b'.repeat(32), token = 'TEST_ONLY_NOT_A_CREDENTIAL_0000';
+  const cases = [
+    [response({ denied: 'busy' }, 1), 'host-busy'],
+    [{ ...response({}, 255), diagnostic: 'publickey' as const }, 'ssh-publickey'],
+    [response({ denied: token }, 1), 'github-auth-denied'],
+    [response({ denied: 'busy', payload: token }, 1), 'github-auth-denied'],
+    [{ code: 1, stdout: Buffer.from(token) }, 'github-auth-denied'],
+  ] as const;
+  for (const [result, expected] of cases)
+    await assert.rejects(O.githubAuth(async () => result, sha, run, lease, token),
+      (error: unknown) => error instanceof Error && error.message === expected);
+});
+
+
+test('main persists the safe GitHub timeout diagnostic in its existing failed receipt', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'TEST-sm-release-diagnostic-'));
+  const eventPath = join(root, 'event.json'), token = 'TEST_ONLY_NOT_A_CREDENTIAL_0000';
+  const childProcess = require('node:child_process') as typeof import('node:child_process');
+  let started: () => void = () => {};
+  const spawned = new Promise<void>(resolve => { started = resolve; });
+  const child = new EventEmitter() as ReturnType<typeof spawn>, output = new PassThrough();
+  Object.assign(child, { stdout: output, kill: () => { output.end(); child.emit('close', null); return true; } });
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  t.mock.method(childProcess, 'spawn', () => { started(); return child; });
+  syncBuiltinESMExports();
+  try {
+    await writeFile(eventPath, JSON.stringify({ repository: { full_name: A.REPOSITORY },
+      inputs: { action: 'activate', ci_run_id: run } }));
+    const pending = assert.rejects(O.main(['activate'], { HETZNER_RELEASE_MODE: 'manual',
+      GITHUB_JOB: 'activate', RUNNER_TEMP: root, GH_CONFIG_DIR: join(root, 'hetzner-gh-activate'),
+      GITHUB_EVENT_PATH: eventPath, GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_ACTOR: '777genius',
+      GITHUB_REPOSITORY: A.REPOSITORY, GITHUB_REF: 'refs/heads/main', GH_TOKEN: token }), /release-phase-failed/);
+    await spawned; t.mock.timers.tick(60000); await pending;
+    const bytes = await readFile(join(root, 'hetzner-receipts-activate', 'receipt.jsonl'), 'utf8');
+    assert.deepEqual(bytes.trim().split('\n').map(line => JSON.parse(line)), [
+      { phase: 'started', lane: 'activate' },
+      { phase: 'failed', lane: 'activate', step: 'authority', diagnostic: 'github-observation-timeout' },
+    ]);
+    assert.equal(bytes.includes(token), false);
+  } finally {
+    t.mock.restoreAll(); syncBuiltinESMExports();
+    await rm(root, { recursive: true, force: true });
+  }
 });

@@ -6,7 +6,7 @@ import { createRequire } from 'node:module';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { ClientError, command, runnerConfig, sshTransport, validateManifest } from './hetzner-release-client.mjs';
-import type { Manifest, Transport } from './hetzner-release-client.mjs';
+import type { Manifest, Transport, TransportResult } from './hetzner-release-client.mjs';
 import type { Authority, FrontendAuthority, Get, Trigger } from './hetzner-release-authority.mjs';
 
 // Typed synchronous .mts loading avoids top-level await and permits the unchanged
@@ -275,7 +275,7 @@ export async function sendBackendCandidate(authority: Authority, candidate: Cand
     const response = await guarded(command('cohort-receive-backend', [authority.sha, authority.run,
       manifest.archive_sha256, manifest.image_id, String(manifest.archive_bytes)]),
       () => handle.createReadStream({ autoClose: false, start: 0, end: before.size - 1 }));
-    A.requireValue(response.code === 0 && Buffer.isBuffer(response.stdout), 'backend-host-denied');
+    requireHostResponse(response, 'backend-host-denied');
     A.requireValue(identity(before) === identity(await handle.stat()) && identity(before) === identity(await lstat(candidate.archive)),
       'backend-transport-changed');
     const item = A.exact(A.parseJson(response.stdout, 65536),
@@ -310,7 +310,7 @@ export async function sendFrontendCandidate(frontend: FrontendAuthority,
     const guarded = guardedTransport(get, base, transport, frontend);
     const response = await guarded(command(authenticated ? 'cohort-receive-frontend-auth' : 'cohort-receive-frontend', [base.sha, base.run]),
       () => handle.createReadStream({ autoClose: false, start: 0, end: before.size - 1 }));
-    A.requireValue(response.code === 0 && Buffer.isBuffer(response.stdout), 'frontend-host-denied');
+    requireHostResponse(response, 'frontend-host-denied');
     A.requireValue(identity(before) === identity(await handle.stat()) && identity(before) === identity(await lstat(candidate.transport)),
       'frontend-transport-changed');
     const proof = A.exact(A.parseJson(response.stdout, 65536),
@@ -351,6 +351,33 @@ async function readonlyCall(transport: Transport, verb: 'status' | 'preflight'):
 export function safePreflightDiagnostic(action: string | undefined, error: unknown): string | undefined {
   const allowed = new Set(['ssh-host-key', 'ssh-publickey', 'ssh-private-key', 'ssh-timeout', 'ssh-network', 'ssh-unknown']);
   return action === 'preflight' && error instanceof ClientError && allowed.has(error.code) ? error.code : undefined;
+}
+const HOST_DENIALS = new Set(['busy', 'latched', 'grammar', 'machine-id', 'invalid-host-state',
+  'untrusted-installation', 'unfinished-release', 'unfinished-backend-release', 'unfinished-cohort-release',
+  'github-auth-mode', 'github-auth-count', 'github-auth-token', 'github-auth-file', 'github-auth-expired',
+  'operator-input-deadline', 'operator-input-size', 'backend-sensitive-files']);
+const SSH_DIAGNOSTICS = new Set(['host-key', 'publickey', 'private-key', 'timeout', 'network', 'unknown']);
+const RELEASE_STEPS = new Set(['authority', 'frontend-authority', 'backend-candidate', 'frontend-candidate',
+  'authority-recheck', 'ssh-setup', 'preflight', 'github-auth', 'backend-receive', 'frontend-receive',
+  'cohort-admit', 'cohort-activate', 'cohort-verify', 'cohort-receipt', 'cohort-rollback', 'receipt-save']);
+const RELEASE_DIAGNOSTICS = new Set(['github-observation-timeout', 'github-observation-failed',
+  'github-auth-token', 'github-auth-binding', 'github-auth-denied', 'backend-host-denied', 'frontend-host-denied',
+  'cohort-host-denied', 'transport-uncertain', 'stale-main-skip', 'frontend-stale-main', 'main-race',
+  'run-race', 'workflow-race', 'legacy-race', 'page-race', 'authority-changed', 'frontend-authority-changed',
+  'cohort-unstarted', 'cohort-rolled-back', 'cohort-recovery-required',
+  ...[...HOST_DENIALS].map(code => `host-${code}`), ...[...SSH_DIAGNOSTICS].map(code => `ssh-${code}`)]);
+/** Public receipt fields are finite constants; never copy error messages, causes or transport bodies. */
+export function safeReleaseFailure(step: string, error: unknown): { step: string; diagnostic: string } {
+  const code = error instanceof A.AuthorityError || error instanceof ClientError ? error.code : undefined;
+  return { step: RELEASE_STEPS.has(step) ? step : 'unknown',
+    diagnostic: typeof code === 'string' && RELEASE_DIAGNOSTICS.has(code) ? code : 'unknown' };
+}
+function requireHostResponse(response: TransportResult, fallback: string): void {
+  if (response.code === 0 && Buffer.isBuffer(response.stdout)) return;
+  if (response.code === 255 && response.diagnostic && SSH_DIAGNOSTICS.has(response.diagnostic))
+    throw new ClientError(`ssh-${response.diagnostic}`);
+  const denial = cohortHostDenial(response);
+  throw new A.AuthorityError(denial && HOST_DENIALS.has(denial) ? `host-${denial}` : fallback);
 }
 export async function observeReadonly(transport: Transport): Promise<Observation> {
   const status = A.exact(await readonlyCall(transport, 'status'), ['latch', 'environment']);
@@ -409,7 +436,7 @@ export async function githubAuth(transport: Transport, sha: string, run: string,
   const bytes = Buffer.from(JSON.stringify({ lease, ...(token === undefined ? {} : { token }) }));
   try {
     const response = await transport(command(token === undefined ? 'github-auth-clear' : 'github-auth', [sha, run]), async function* () { yield bytes; });
-    A.requireValue(response.code === 0 && Buffer.isBuffer(response.stdout), 'github-auth-denied');
+    requireHostResponse(response, 'github-auth-denied');
     const value = A.exact(A.parseJson(response.stdout, 4096), ['sha', 'ci_run_id', token === undefined ? 'cleared' : 'configured']);
     A.requireValue(value.sha === sha && value.ci_run_id === run &&
       (token === undefined ? typeof value.cleared === 'boolean' : value.configured === true), 'github-auth-binding');
@@ -606,9 +633,11 @@ export async function recoverCohort(transport: Transport, sha: string, run: stri
   }
   throw new A.AuthorityError('cohort-recovery-timeout');
 }
+type CohortStep = 'cohort-admit' | 'cohort-activate' | 'cohort-verify' | 'cohort-receipt' | 'cohort-rollback';
 /** Admit and activate one fully staged cohort, rolling back after an uncertain effect. */
 export async function activateCohort(frontend: FrontendAuthority, backend: Manifest, frontendProof: unknown,
-  get: Get, transport: Transport, pause: () => Promise<void> = () => new Promise(resolve => setTimeout(resolve, 1000))) {
+  get: Get, transport: Transport, pause: () => Promise<void> = () => new Promise(resolve => setTimeout(resolve, 1000)),
+  onStep: (step: CohortStep) => void = () => {}) {
   const { sha, run } = frontend.base;
   A.requireValue(backend.sha === sha && backend.ci_run_id === run, 'cohort-candidate-binding');
   const staged = A.object(frontendProof), artifact = A.object(staged.authority), expectedArtifact = frontend.artifact;
@@ -622,11 +651,12 @@ export async function activateCohort(frontend: FrontendAuthority, backend: Manif
     return transport(wire, source);
   };
   const guarded = guardedTransport(get, frontend.base, marked, frontend);
-  async function call(verb: string, args: string[]) {
+  async function call(verb: CohortStep, args: string[]) {
+    onStep(verb);
     const response = await guarded(command(verb, args));
     if (verb === 'cohort-activate')
       firstActivationDenied = activationCalls === 1 && cohortHostDenial(response) !== undefined;
-    A.requireValue(response.code === 0 && Buffer.isBuffer(response.stdout), 'cohort-host-denied');
+    requireHostResponse(response, 'cohort-host-denied');
     return A.object(A.parseJson(response.stdout, 65536));
   }
   const pair = [sha, run];
@@ -667,7 +697,7 @@ export async function activateCohort(frontend: FrontendAuthority, backend: Manif
     throw new A.AuthorityError('cohort-activation-timeout');
   } catch (error) {
     if (!activationCalls) throw error;
-    try { await recoverCohort(transport, sha, run, pause); }
+    try { onStep('cohort-rollback'); await recoverCohort(transport, sha, run, pause); }
     catch (recoveryError) {
       if (firstActivationDenied && recoveryError instanceof A.AuthorityError &&
           recoveryError.code === 'cohort-rollback-unstarted') throw new A.AuthorityError('cohort-unstarted');
@@ -775,6 +805,7 @@ export async function main(args: readonly string[], env: NodeJS.ProcessEnv): Pro
   A.requireValue(typeof ghDirectory === 'string', 'github-private-config');
   await mkdir(ghDirectory, { mode: 0o700 }); await canonical(ghDirectory);
   let scratch: string | undefined, publicDirectory: string | undefined;
+  let step = 'authority';
   let auth: { transport: Transport; sha: string; run: string; lease: string } | undefined;
   try {
     if (trigger.lane === 'skip') {
@@ -796,18 +827,22 @@ export async function main(args: readonly string[], env: NodeJS.ProcessEnv): Pro
     const authority = decision.authority;
     A.requireValue(A.text(env.TRUSTED_MAIN, A.SHA, 'trusted-main') === authority.sha, 'checkout-main-disagreement');
     const expectedHash = action === 'candidate' ? undefined : expected(authority, trigger, env);
+    step = 'frontend-authority';
     const frontend = await A.observeFrontendAuthority(get, authority);
     const expectedFrontendHash = action === 'candidate' ? undefined : expectedFrontend(frontend, env);
     if (action === 'gate') { await outputs({ phase: 'ready', lane: trigger.lane }); return; }
     scratch = action === 'candidate' ? await mkdtemp(join(root, 'hetzner-candidate-'))
       : await privateScratch(root, env.HETZNER_PRIVATE_DIRECTORY);
+    step = 'backend-candidate';
     const data = await candidate(authority, scratch, env);
     A.requireValue(expectedHash === undefined || expectedHash === data.manifestHash, 'manifest-disagreement');
     const frontendScratch = join(scratch, 'frontend-work');
     await mkdir(frontendScratch, { mode: 0o700 });
+    step = 'frontend-candidate';
     const frontendData = await prepareFrontendCandidate(frontend, frontendScratch, env);
     A.requireValue(expectedFrontendHash === undefined || expectedFrontendHash === frontendData.manifestHash,
       'frontend-manifest-disagreement');
+    step = 'authority-recheck';
     const repeated = await A.observeAuthority(get, authority.run);
     if (repeated.phase === 'stale-main-skipped') {
       if (publicDirectory) await append(join(publicDirectory, 'receipt.jsonl'), repeated);
@@ -821,35 +856,41 @@ export async function main(args: readonly string[], env: NodeJS.ProcessEnv): Pro
         frontend_artifact: frontend.artifact.id, frontend_manifest_hash: frontendData.manifestHash }); return;
     }
     A.requireValue(publicDirectory, 'receipt-directory');
+    step = 'ssh-setup';
     const config = await provisionRunner(scratch, env), transport = sshTransport(config);
     const binding = { sha: authority.sha, ci_run_id: authority.run, artifact_id: authority.artifact,
       manifest_sha256: data.manifestHash, archive_sha256: data.value.archive_sha256, image_id: data.value.image_id };
     if (action === 'preflight') {
+      step = 'preflight';
       const observation = await observeReadonly(transport);
       await append(join(publicDirectory, 'receipt.jsonl'), { phase: 'preflight-observed', lane: action, ...binding, ...observation });
       await summary('preflight-observed', action); await outputs({ phase: 'preflight-observed', lane: action }); return;
     }
     await append(join(publicDirectory, 'receipt.jsonl'), { phase: 'candidate-bound', lane: action, ...binding,
       frontend_artifact_id: frontend.artifact.id, frontend_manifest_sha256: frontendData.manifestHash });
+    step = 'github-auth';
     const lease = randomBytes(16).toString('hex');
     await append(join(scratch, 'github-auth.json'), { sha: authority.sha, run: authority.run, lease });
     auth = { transport: sshTransport(config, undefined, 15_000), sha: authority.sha, run: authority.run, lease };
     await githubAuth(guardedTransport(get, authority, transport), authority.sha, authority.run, lease,
       A.text(env.GH_TOKEN, /^[A-Za-z0-9_]{20,2048}$/u, 'github-auth-token'));
+    step = 'backend-receive';
     await sendBackendCandidate(authority, data, get, transport);
+    step = 'frontend-receive';
     const frontendProof = await sendFrontendCandidate(frontend, frontendData, get, transport, true);
-    const receipt = await activateCohort(frontend, data.value, frontendProof, get, transport);
+    step = 'cohort-admit';
+    const receipt = await activateCohort(frontend, data.value, frontendProof, get, transport, undefined, value => { step = value; });
+    step = 'receipt-save';
     await append(join(publicDirectory, 'receipt.jsonl'), { phase: 'verified-receipt', receipt });
     await append(join(publicDirectory, 'receipt.jsonl'), { phase: 'completed', lane: action, ...binding,
       frontend_artifact_id: frontend.artifact.id, frontend_manifest_sha256: frontendData.manifestHash });
     await summary('completed', 'activate'); await outputs({ phase: 'completed', lane: 'activate' });
   } catch (error) {
     if (publicDirectory) {
-      const diagnostic = safePreflightDiagnostic(action, error);
       const recovery = error instanceof A.AuthorityError && ['cohort-unstarted', 'cohort-rolled-back', 'cohort-recovery-required'].includes(error.message)
         ? error.message : undefined;
-      await append(join(publicDirectory, 'receipt.jsonl'), { phase: 'failed', lane: action,
-        ...(diagnostic ? { diagnostic } : {}), ...(recovery ? { recovery } : {}) });
+      await append(join(publicDirectory, 'receipt.jsonl'), { phase: 'failed', lane: action, ...safeReleaseFailure(step, error),
+        ...(recovery ? { recovery } : {}) });
       await summary(recovery === 'cohort-unstarted' ? 'activation denied; cohort unstarted'
         : 'failed; operator reconciliation required', action ?? 'unknown');
     }
