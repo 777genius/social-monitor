@@ -15,6 +15,7 @@ import type { GatewayLlmSdkIdentity } from "./gateway-llm-sdk-identity";
 import { prepareGatewayLlmTask, type GatewayLlmPrepared } from "./gateway-llm-task-preparation";
 import { completeGatewayLlmTask } from "./gateway-llm-task-completion";
 import { gatewayLlmUsage } from "./gateway-llm-usage";
+import { gatewayLlmDispatchFreeRetry } from "./gateway-llm-dispatch-retry-policy";
 
 /**
  * The one gateway profile and model a client serves. Tasks must name exactly
@@ -79,14 +80,16 @@ export class GatewayLlmClient implements AgentRuntimeClientPort {
         this.observe(result.receipt.accountRef, "completed", 0, now);
         return completeGatewayLlmTask(command, prepared, identity, result, now.getTime() - startedAt, this.options.sdk);
       }
-      const retry = result.retry;
-      const afterMs = retry.kind === "never" ? 0 : retry.afterMs;
-      this.observe(result.execution?.accountRef ?? null, observation(result), afterMs, now);
-      const remainingMs = prepared.task.deadline.getTime() - now.getTime();
-      const replay = retry.kind === "same_attempt" ||
-        (retry.kind === "new_attempt" && !retry.mayDuplicateCost);
-      if (!replay || retries >= this.maxRetries || options?.signal?.aborted === true ||
-          remainingMs <= afterMs) {
+      const retryDecision = gatewayLlmDispatchFreeRetry({
+        retry: result.retry,
+        retries,
+        maxRetries: this.maxRetries,
+        deadlineMs: prepared.task.deadline.getTime(),
+        nowMs: now.getTime(),
+        signal: options?.signal,
+      });
+      this.observe(result.execution?.accountRef ?? null, observation(result), retryDecision.afterMs, now);
+      if (retryDecision.replay === null) {
         const elapsedMs = now.getTime() - startedAt;
         const failure = gatewayLlmFailure(result, identity, prepared.outputViolations());
         return { ...failed({ ...failure, details: { ...failure.details,
@@ -95,8 +98,8 @@ export class GatewayLlmClient implements AgentRuntimeClientPort {
           gatewayHardTimeoutMs: String(prepared.task.deadline.getTime() - startedAt),
         } }, elapsedMs), ...gatewayLlmUsage(result.usage) };
       }
-      await this.options.sleep(afterMs, options?.signal);
-      if (retry.kind === "new_attempt") {
+      await this.options.sleep(retryDecision.afterMs, options?.signal);
+      if (retryDecision.replay === "new_attempt") {
         identity = this.options.attempts.next(command.requestId);
         task = this.withAttempt(prepared, identity);
       }
