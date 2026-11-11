@@ -109,7 +109,7 @@ function validateStaticWiring() {
   const baselineScripts = new Set(baseline.requiredGreenScripts ?? []);
   const releaseGateCommands = new Set((releaseContract.requiredGates ?? []).map((gate) => gate.command));
 
-  if (packageScripts[checkScriptName] !== 'node scripts/check-docker-backend-staging-evidence-bundle.mjs') {
+  if (packageScripts[checkScriptName] !== 'node --test scripts/lib/docker-staging-artifact-policy.test.mjs && node scripts/check-docker-backend-staging-evidence-bundle.mjs') {
     violations.push(`${packagePath}: ${checkScriptName} must run scripts/check-docker-backend-staging-evidence-bundle.mjs`);
   }
   if (packageScripts['capture:docker-backend-staging-evidence-bundle'] !== 'node scripts/capture-docker-backend-staging-evidence-bundle.mjs') {

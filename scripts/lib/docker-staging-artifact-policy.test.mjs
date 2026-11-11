@@ -78,3 +78,12 @@ test('the original checker retains the sole direct delegation', () => {
     assert.doesNotMatch(checker, new RegExp('^function ' + name + '\\(', 'm'));
   }
 });
+
+test('npm bundle gate runs policy tests before the original checker and self-check matches', () => {
+  const packageJson = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
+  const expected = 'node --test scripts/lib/docker-staging-artifact-policy.test.mjs && node scripts/check-docker-backend-staging-evidence-bundle.mjs';
+  assert.equal(packageJson.scripts['check:docker-backend-staging-evidence-bundle'], expected);
+  const checker = readFileSync(new URL('../check-docker-backend-staging-evidence-bundle.mjs', import.meta.url), 'utf8');
+  assert.ok(checker.includes(`packageScripts[checkScriptName] !== '${expected}'`),
+    'the original fail-closed npm wiring check must require the exact combined command');
+});
