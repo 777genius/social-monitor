@@ -2,12 +2,14 @@ export const redactionPolicyPath = 'scripts/lib/external-beta-evidence-artifact-
 export const handoffPolicyPath = 'scripts/lib/external-beta-evidence-handoff.mjs';
 export const displayPolicyPath = 'scripts/lib/external-beta-evidence-display-formatters.mjs';
 export const consistencyPolicyPath = 'scripts/lib/external-beta-artifact-consistency-freshness.mjs';
+export const readinessPolicyPath = 'scripts/lib/external-beta-evidence-job-readiness.mjs';
 
 export function validateRunnerImplementationMarkers({
   runnerSource,
   handoffSource,
   displaySource,
   consistencyPolicySource,
+  readinessPolicySource,
   checkSource,
   selectionHelperSource,
   redactionPolicySource,
@@ -57,19 +59,10 @@ export function validateRunnerImplementationMarkers({
     'missingOptionalEnvCount',
     'uniqueMissingOptionalEnv',
     'requiredEnvAlternatives',
-    'satisfiedRequiredEnvAlternatives',
     'requiredEnvAlternativeCoveredEnvNames',
     'jobInputEnvNames',
-    'coversEnv',
     'allowCapturedArtifactAlternatives',
-    'hasSatisfiedCapturedArtifactAlternative',
-    'captured_artifact',
     'jobExecutionReadiness',
-    'blocked_missing_required_env',
-    'blocked_invalid_env',
-    'blocked_local_runtime_env',
-    'live_artifact_ready_for_validation',
-    'hasOnlyLocalRuntimeEnvViolations',
     'localRuntimeEnvNames',
     'isLocalRuntimeEnvValue',
     'manualArtifactJobCount',
@@ -196,6 +189,24 @@ export function validateRunnerImplementationMarkers({
   ]) {
     if (!runnerSource.includes(marker)) {
       violations.push(`${runnerFile}: runner must fail fast before executing unsafe job selections`);
+    }
+  }
+
+  // Existing fail-closed environment safety markers relocated to their actual implementation owner.
+  // Keep the original runner guards on the CLI, and independently enforce all moved invariants.
+  for (const marker of [
+    'satisfiedRequiredEnvAlternatives',
+    'coversEnv',
+    'hasSatisfiedCapturedArtifactAlternative',
+    'captured_artifact',
+    'blocked_missing_required_env',
+    'blocked_invalid_env',
+    'blocked_local_runtime_env',
+    'live_artifact_ready_for_validation',
+    'hasOnlyLocalRuntimeEnvViolations',
+  ]) {
+    if (!readinessPolicySource.includes(marker)) {
+      violations.push(`${readinessPolicyPath}: extracted env readiness must preserve "${marker}"`);
     }
   }
 

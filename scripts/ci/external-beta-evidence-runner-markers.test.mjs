@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { validateRunnerImplementationMarkers, redactionPolicyPath, handoffPolicyPath, displayPolicyPath, consistencyPolicyPath } from '../lib/external-beta-evidence-runner-markers.mjs';
+import { validateRunnerImplementationMarkers, redactionPolicyPath, handoffPolicyPath, displayPolicyPath, consistencyPolicyPath, readinessPolicyPath } from '../lib/external-beta-evidence-runner-markers.mjs';
 
 const runnerFile = 'scripts/external-beta-evidence-runner.mjs';
 const checkFile = 'scripts/check-external-beta-evidence-runner.mjs';
@@ -12,6 +12,7 @@ const sources = {
   handoffSource: readFileSync(handoffPolicyPath, 'utf8'),
   displaySource: readFileSync(displayPolicyPath, 'utf8'),
   consistencyPolicySource: readFileSync(consistencyPolicyPath, 'utf8'),
+  readinessPolicySource: readFileSync(readinessPolicyPath, 'utf8'),
   checkSource: readFileSync(checkFile, 'utf8'),
   selectionHelperSource: readFileSync(selectionHelperPath, 'utf8'),
   redactionPolicySource: readFileSync(redactionPolicyPath, 'utf8'),
@@ -128,4 +129,27 @@ test('relocated artifact consistency and freshness markers are fail-closed at th
 test('real checker reads consistency and freshness policy from its authoritative module', () => {
   const checkerSource = readFileSync(checkFile, 'utf8');
   assert.match(checkerSource, /consistencyPolicySource:\s*readFileSync\(consistencyPolicyPath,\s*'utf8'\)/);
+});
+
+test('extracted env readiness policy preserves every relocated fail-closed marker', () => {
+  for (const marker of ["satisfiedRequiredEnvAlternatives","coversEnv","hasSatisfiedCapturedArtifactAlternative","captured_artifact","blocked_missing_required_env","blocked_invalid_env","blocked_local_runtime_env","live_artifact_ready_for_validation","hasOnlyLocalRuntimeEnvViolations"]) {
+    const violations = validateRunnerImplementationMarkers({
+      ...sources,
+      readinessPolicySource: sources.readinessPolicySource.replaceAll(marker, 'removed-env-readiness-marker'),
+    });
+    assert.deepEqual(violations, [
+      `${readinessPolicyPath}: extracted env readiness must preserve "${marker}"`,
+    ], `missing readiness marker must fail closed without unrelated violations: ${marker}`);
+  }
+});
+
+test('checker reads readiness markers from their authoritative module', () => {
+  const checkSource = readFileSync(checkFile, 'utf8');
+  assert.match(checkSource, /readinessPolicySource:\s*readFileSync\(readinessPolicyPath,\s*'utf8'\)/);
+  const violations = validateRunnerImplementationMarkers({
+    ...sources,
+    readinessPolicySource: '',
+  });
+  assert.equal(violations.length, 9);
+  assert.ok(violations.every(value => value.startsWith(readinessPolicyPath)));
 });
