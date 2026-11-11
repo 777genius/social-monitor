@@ -35,7 +35,8 @@ REVIEW_PATHS = frozenset((
 PACKAGE_COPIED_MJS = {'scripts/rewrite-build-aliases.mjs', 'scripts/run-with-timeout.mjs'}
 # These exact CI sources are absent from the pinned Dockerfile's COPY closure.
 PACKAGE_CI_TS = {'scripts/check-source-provider-runtime-contract.ts',
-                 'scripts/lib/source-provider-github-issues-runtime-smoke.ts'}
+                 'scripts/lib/source-provider-github-issues-runtime-smoke.ts',
+                 'scripts/lib/source-provider-github-trending-runtime-smoke.ts'}
 
 
 def package_check_key(key):
