@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
+import type { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 const A: typeof import('./hetzner-release-authority.mjs') =
@@ -321,4 +324,26 @@ test('JSON duplicate keys, excessive depth, invalid UTF-8, overflow and size can
     assert.throws(() => A.githubEnvironment({ ...env, ...change }));
   for (const suffix of ['../other', '/actions/runs/123', 'actions/./runs', 'x'.repeat(257)])
     await assert.rejects(A.githubGet(env)(suffix), code('github-endpoint'));
+});
+
+
+test('GitHub subprocess timeout and error have distinct fixed codes without exposing credentials', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const env = { GH_TOKEN: 'TEST_ONLY_NOT_A_CREDENTIAL_0000', GH_CONFIG_DIR: '/tmp/TEST-sm-gh' };
+  for (const timeout of [true, false]) {
+    const child = new EventEmitter() as ReturnType<typeof spawn>;
+    const output = new PassThrough();
+    Object.assign(child, { stdout: output, kill: () => { output.end(); child.emit('close', null); return true; } });
+    const fakeSpawn = ((file: string, args: string[], options: { stdio: string[] }) => {
+      assert.equal(file, '/usr/bin/gh'); assert.equal(args.includes(env.GH_TOKEN), false);
+      assert.deepEqual(options.stdio, ['ignore', 'pipe', 'ignore']);
+      if (!timeout) queueMicrotask(() => { output.end(); child.emit('close', 1); });
+      return child;
+    }) as unknown as typeof spawn;
+    const get = A.githubGet(env, fakeSpawn);
+    const pending = assert.rejects(get('git/ref/heads/main'),
+      code(timeout ? 'github-observation-timeout' : 'github-observation-failed'));
+    if (timeout) t.mock.timers.tick(60000);
+    await pending;
+  }
 });
