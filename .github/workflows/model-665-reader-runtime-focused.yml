@@ -1,5 +1,5 @@
-# Temporary Draft PR #665 exact-head verification; remove only after PASS.
-name: Model 665 OpenAI Summary response boundary focused check
+# Temporary Draft #665 focused source verification. Remove only after completed SUCCESS.
+name: Model 665 story relation own-key boundary focused check
 
 on:
   push:
@@ -40,8 +40,9 @@ jobs:
           npm run check:code-quality
           npm run check:source-line-cap
           npm run check:runtime-profile-guards
-      - name: Verify OpenAI Summary request, trust policy and adapter compatibility
+      - name: Verify story-relation raw own-key and verifier behavior
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
-          libs/summary/adapters/model/openai-responses-summary-model.adapter.spec.ts
-          libs/summary/adapters/model/openai-responses-summary-runtime-settings.spec.ts
+          libs/summary/adapters/model/story-relation-response-schema.spec.ts
+          libs/summary/adapters/model/story-relation-response-own-keys.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter.spec.ts

@@ -890,3 +890,12 @@ This retroactive attribution is not new production implementation and **must be 
 | **Unique first-use original candidate lines** | Excludes old resolver/settings positions, original braces/blank/only-wrapper lines, newly authored lines, imports, tests, unchanged functions | **44** |
 
 All three ranges originate exclusively from the same pinned original source and are non-overlapping with its earlier 16 and 34 credits. Historical 5,401 + **44** = **5,445 / 10,000 provisional** source provenance candidates across the **same 62** baseline originals; **≥4,555 missing** *before* independent semantic discounts. This is an optimistic upper bound, NOT accepted 10k Clean Architecture refactoring. Source+spec commit `9cfe806960846165fe84ae7f4eb0f041b9d17879`; exact-code focused-workflow SHA `7ec0b8c0f83505e2b0be7dbd70ff7c1a5ed1ede7`, [Actions #42939753741](https://github.com/777genius/social-monitor/actions/runs/42939753741) initially queued, not a verified pass. No preview or production deployment, no #620/#663/#664 edits, no feature flags/schema/dependencies. Full Ready 20/20 with six native PG18 shards, security, immutable image, E2E, independent reviews, main reconcile and merge remain open.
+
+
+### 2026-11-11 — Story-relation Zod own-key completeness
+
+| Frozen original | Positions credited once (strictly code-bearing) | New owner / benefit | Additional candidates |
+|---|---|---|---:|
+| `story-relation-response-schema.ts` (first attribution, pinned blob `6329595024d28c66b11b8887b467a9c68ddfb94b`) | **45–49, 51–59, 61, 65**; other original rows not credited | `story-relation-response-own-keys.ts`: security-sensitive **raw own-key** enforcement independent of Zod compiler/cache and error serializer | **16 provisional** |
+
+Code+tests `36f20c62ffb8fb15a0cca0a57a2d40c24f8fba2c`; exact original SHA `3fa1b9e9ee5bd1302840d1164a975cde3f0eeaba`. Previous **5,445/62** + **16/1** = **5,461/63** first-use original implementation candidates; **≥4,539** missing before external semantic review. Existing story-relation schema spec tests Zod/Ajv parity, fail-closed output and no credential/error disclosure; new isolated own-key policy spec covers top/nested literal `__proto__`, schema boundary switches, rejected output immutability. No CI PASS yet on new source. No production deploy, schema/migration, dependency, feature flag, or modifications to #620/#663/#664.
