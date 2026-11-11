@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import ts from "typescript";
 
 import { emptyToUndefined } from "./durable-backend-e2e-config.ts";
 import { createDurableScanTargets } from "./durable-backend-e2e-scan-targets.ts";
@@ -96,9 +97,62 @@ test("scheduled RSS scan target remains deterministic and independent of credent
   });
 });
 
-test("original runner retains exactly one active delegation without duplicate implementations", () => {
+function assertActiveDelegation(source) {
+  const ast = ts.createSourceFile("capture-durable-backend-e2e-loop.ts",
+    source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  assert.equal(ast.parseDiagnostics.length, 0, "runner must parse");
+  const factories = [];
+  for (const statement of ast.statements) {
+    if (ts.isFunctionDeclaration(statement) &&
+        ["durableScanTargets", "scheduledScanTarget", "hasRedditAppOnlyCredentials"].includes(statement.name?.text)) {
+      assert.fail("duplicate original scan-target implementation");
+    }
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (ts.isCallExpression(declaration.initializer) &&
+          ts.isIdentifier(declaration.initializer.expression) &&
+          declaration.initializer.expression.text === "createDurableScanTargets") {
+        factories.push(declaration);
+      }
+    }
+  }
+  assert.equal(factories.length, 1, "one active top-level scan-target factory call");
+  const declaration = factories[0];
+  assert.ok(ts.isObjectBindingPattern(declaration.name), "destructure original consumers");
+  const names = declaration.name.elements.map((element) => {
+    assert.ok(ts.isIdentifier(element.name) && element.propertyName === undefined);
+    return element.name.text;
+  });
+  assert.deepEqual([...names].sort(), ["durableScanTargets", "scheduledScanTarget"]);
+  const args = declaration.initializer.arguments;
+  assert.equal(args.length, 1, "one dependency object");
+  assert.ok(ts.isObjectLiteralExpression(args[0]));
+  const injected = args[0].properties.map((property) => {
+    assert.ok(ts.isShorthandPropertyAssignment(property), "inject original references, not copies or replacements");
+    return property.name.text;
+  });
+  assert.deepEqual(injected, ["process", "emptyToUndefined"]);
+  assert.match(source, /import \\{ createDurableScanTargets, type DurableScanProviderKey, type DurableScanTarget \\}/);
+}
+
+test("original runner has exactly one active direct factory with no duplicate implementation", () => {
   const source = readFileSync(new URL("../capture-durable-backend-e2e-loop.ts", import.meta.url), "utf8");
-  assert.match(source, /createDurableScanTargets\(\{ process, emptyToUndefined \}\)/);
-  assert.match(source, /import \{ createDurableScanTargets, type DurableScanProviderKey, type DurableScanTarget \}/);
-  assert.doesNotMatch(source, /function (durableScanTargets|scheduledScanTarget|hasRedditAppOnlyCredentials)\(/);
+  assertActiveDelegation(source);
+});
+
+test("disabled, nested, duplicate or missing scan-target dependencies fail the structural gate", () => {
+  const source = readFileSync(new URL("../capture-durable-backend-e2e-loop.ts", import.meta.url), "utf8");
+  const call = "createDurableScanTargets({ process, emptyToUndefined })";
+  const declaration = "const { durableScanTargets, scheduledScanTarget } = " + call + ";";
+  assert.equal(source.split(declaration).length, 2);
+  const mutations = [
+    source.replace(declaration, "// intentionally disabled " + declaration),
+    source.replace(call, "false ? " + call + " : undefined"),
+    source.replace(declaration, declaration + "\n" + declaration),
+    source.replace(call, "createDurableScanTargets({ process })"),
+    source.replace(call, "createDurableScanTargets({ process, emptyToUndefined: () => undefined })"),
+  ];
+  for (const mutation of mutations) {
+    assert.throws(() => assertActiveDelegation(mutation));
+  }
 });

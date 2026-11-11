@@ -96,6 +96,7 @@ export function createDurableScanTargets({
       },
     };
   }
+
   function hasRedditAppOnlyCredentials(): boolean {
     return (
       emptyToUndefined(process.env.REDDIT_APP_CLIENT_ID) !== undefined &&
