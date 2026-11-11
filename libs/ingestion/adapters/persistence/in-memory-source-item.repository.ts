@@ -1,3 +1,4 @@
+import { sourceItemIdentityCandidates } from './github-trending-source-identities';
 import { preserveVerifiedLegacyCapture } from '../../domain/value-objects/legacy-source-capture';
 import { mergeArticleCaptureCompletion } from '../../domain/value-objects/merge-article-capture-completion';
 import { isCurrentInMemoryScanLease } from '../lease/in-memory-scan-lease.adapter';
@@ -32,9 +33,13 @@ export class InMemorySourceItemRepository implements SourceItemRepositoryPort {
     if (observedAt !== undefined) {
       for (const item of command.items) {
         const snapshot = item.toSnapshot();
-        const existing = this.itemsByDeduplicationKey.get(
-          sourceItemDeduplicationKey(command, snapshot.externalId),
-        );
+        const matches = sourceItemIdentityCandidates(command.providerKey, snapshot)
+          .flatMap((id) => {
+            const item = this.itemsByDeduplicationKey.get(sourceItemDeduplicationKey(command, id));
+            return item === undefined ? [] : [item];
+          });
+        if (matches.length > 1) throw new Error('Ambiguous GitHub Trending source identity');
+        const existing = matches[0];
         if (existing !== undefined) {
           assertGitHubTrendingDurableObservationCoherence({
             providerKey: command.providerKey,
@@ -52,8 +57,9 @@ export class InMemorySourceItemRepository implements SourceItemRepositoryPort {
     for (const item of command.items) {
       const raw = item.toSnapshot();
       let snapshot = command.providerKey === GITHUB_TRENDING_PAGE_PROVIDER_KEY ? raw : captureNativeText(raw, command.providerKey, raw.ingestedAt);
-      const key = sourceItemDeduplicationKey(command, snapshot.externalId);
-
+      const candidates = sourceItemIdentityCandidates(command.providerKey, snapshot)
+        .map((id) => sourceItemDeduplicationKey(command, id));
+      const key = candidates.find((candidate) => this.itemsByDeduplicationKey.has(candidate)) ?? candidates[0]!;
       const existing = this.itemsByDeduplicationKey.get(key);
       if (existing !== undefined && existing.toSnapshot().sourceBindingId === snapshot.sourceBindingId) {
         snapshot = preserveSourceCapture(snapshot, existing.toSnapshot());

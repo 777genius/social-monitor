@@ -1,3 +1,4 @@
+import { sourceItemIdentityCandidates } from '../github-trending-source-identities';
 import { preserveVerifiedLegacyCapture } from '../../../domain/value-objects/legacy-source-capture';
 import { prepareArticleCaptureAttempt } from '../../../domain/value-objects/article-capture-attempt';
 import {
@@ -247,12 +248,28 @@ function bindingScopedStaleProjection(
   }, providerKey, saved.ingestedAt));
 }
 
+function matchExistingSourceItems(
+  command: SaveSourceItemsCommand,
+  records: readonly PrismaSourceItemRecord[],
+): Map<string, PrismaSourceItemRecord> {
+  const byId = new Map(records.map((record) => [record.providerItemId, record]));
+  const found = new Map(byId);
+  for (const item of command.items) {
+    const snapshot = item.toSnapshot();
+    const matches = sourceItemIdentityCandidates(command.providerKey, snapshot)
+      .flatMap((id) => byId.has(id) ? [byId.get(id)!] : []);
+    if (matches.length > 1) throw new Error('Ambiguous GitHub Trending source identity');
+    if (matches.length === 1) found.set(snapshot.externalId, matches[0]!);
+  }
+  return found;
+}
+
 async function findExistingSourceItems(
   transaction: PrismaIngestionClient,
   command: SaveSourceItemsCommand,
 ): Promise<Map<string, PrismaSourceItemRecord>> {
   const externalIds = [
-    ...new Set(command.items.map((item) => item.toSnapshot().externalId)),
+    ...new Set(command.items.flatMap((item) => sourceItemIdentityCandidates(command.providerKey, item.toSnapshot()))),
   ];
   if (externalIds.length === 0) {
     return new Map();
@@ -270,11 +287,7 @@ async function findExistingSourceItems(
         }),
       ),
     );
-    return new Map(
-      records.flatMap((record) =>
-        record === null ? [] : [[record.providerItemId, record] as const],
-      ),
-    );
+    return matchExistingSourceItems(command, records.filter((record): record is PrismaSourceItemRecord => record !== null));
   }
   const records = await transaction.sourceItem.findMany({
     where: {
@@ -284,7 +297,7 @@ async function findExistingSourceItems(
       providerItemId: { in: externalIds },
     },
   });
-  const found = new Map(records.map((record) => [record.providerItemId, record]));
+  const found = matchExistingSourceItems(command, records);
   // Older RSS versions used canonicalUrl#<feed-index> for GUID-less items.
   // Reuse only an unambiguous, tenant-scoped legacy row and migrate the
   // provider ID in the same Serializable transaction, retaining its DB ID.
