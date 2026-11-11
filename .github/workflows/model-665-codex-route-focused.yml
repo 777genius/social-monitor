@@ -1,6 +1,6 @@
 # Temporary focused source/test verification for the EXISTING Draft PR #665.
 # Remove only after a completed SUCCESS; this is not full Ready 20/20 CI.
-name: Model 665 Codex route focused check
+name: Model 665 reader value policy focused check
 
 on:
   push:
@@ -41,9 +41,10 @@ jobs:
           npm run check:code-quality
           npm run check:source-line-cap
           npm run check:runtime-profile-guards
-      - name: Verify Codex route policy and Agent Runtime consumers
+      - name: Verify reader parser strict and optional value policies and adapter consumers
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
-          libs/summary/adapters/model/codex-reader-summary-gateway-route-policy.spec.ts
-          libs/summary/adapters/model/agent-runtime-reader-summary-model.adapter.spec.ts
-          libs/summary/adapters/model/agent-runtime-reader-summary-topic-labeler.adapter.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-parser-policies.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-content-support.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-draft-normalizer.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-model.adapter.spec.ts
