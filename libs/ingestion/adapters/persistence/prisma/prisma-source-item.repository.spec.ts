@@ -431,6 +431,11 @@ describe("PrismaSourceItemRepository", () => {
       expect(result.skippedDuplicates).toBe(1);
       expect(result.items[0]!.persistedItem.toSnapshot().externalId).toBe(first.toSnapshot().externalId);
       expect(result.items[0]!.sourceItemId).toBe("first");
+      const third = githubSnapshotSourceItem({ id: "third", ingestedAt: at, checkedAt, repository: "eXample/mIxEdCase" });
+      const thirdResult = await repo.saveBatch(command(third));
+      expect(thirdResult.inserted).toBe(0);
+      expect(thirdResult.items[0]!.sourceItemId).toBe("first");
+      expect(thirdResult.items[0]!.persistedItem.toSnapshot().externalId).toBe(first.toSnapshot().externalId);
       const changed = SourceItem.rehydrate({ ...retry.toSnapshot(), ingestedAt: new Date(at.getTime() + 1_000) });
       await expect(repo.saveBatch(command(changed))).rejects.toThrow("GitHub Trending snapshot conflicts");
     }
@@ -451,6 +456,18 @@ describe("PrismaSourceItemRepository", () => {
     expect(client["records"].size).toBe(2);
   });
 
+  it("keeps differently cased scan identities distinct", async () => {
+    const client = new ParityPrismaSourceItemClient();
+    const repositories = [new PrismaSourceItemRepository(client as unknown as PrismaIngestionClient), new InMemorySourceItemRepository()];
+    const at = new Date("2026-07-11T08:00:00.000Z");
+    const make = (scanId: string) => githubSnapshotSourceItem({ id: scanId, ingestedAt: at, checkedAt: new Date("2026-07-10T12:00:00.000Z"), repository: "Example/MixedCase", scanId });
+    const command = (item: SourceItem) => ({ tenantId: tenantId("00000000-0000-7000-8000-000000000001"), workspaceId: workspaceId("00000000-0000-7000-8000-000000000002"), providerKey: "github-trending-page", items: [item] });
+    for (const repo of repositories) {
+      expect((await repo.saveBatch(command(make("scan-id")))).inserted).toBe(1);
+      expect((await repo.saveBatch(command(make("SCAN-id")))).inserted).toBe(1);
+    }
+  });
+
 });
 
 class ParityPrismaSourceItemClient {
@@ -459,11 +476,13 @@ class ParityPrismaSourceItemClient {
   readonly sourceItem = {
     findMany: async (args: {
       readonly where: {
-        readonly providerItemId: { readonly in: readonly string[] };
+        readonly providerItemId: { readonly in: readonly string[]; readonly mode?: 'insensitive' };
       };
     }) =>
       [...this.records.values()].filter((entry) =>
-        args.where.providerItemId.in.includes(entry.providerItemId),
+        args.where.providerItemId.in.some((id) => args.where.providerItemId.mode === 'insensitive'
+          ? id.toLocaleLowerCase('en-US') === entry.providerItemId.toLocaleLowerCase('en-US')
+          : id === entry.providerItemId),
       ),
     findFirst: async (args: {
       readonly where: { readonly providerItemId: string };
@@ -600,8 +619,10 @@ const githubSnapshotSourceItem = (params: {
   readonly rank?: number;
   readonly repository?: string;
   readonly canonicalId?: boolean;
+  readonly scanId?: string;
 }): SourceItem => {
   const rank = params.rank ?? 1;
+  const scanId = params.scanId ?? "scan-github-parity";
   const repository = params.repository ??
     (rank === 1 ? "owner/repository" : `owner/repository-${rank}`);
   const fetchStartedAt = new Date(params.checkedAt.getTime() - 60_000);
@@ -611,7 +632,7 @@ const githubSnapshotSourceItem = (params: {
     workspaceId: workspaceId("00000000-0000-7000-8000-000000000002"),
     sourceBindingId: "00000000-0000-7000-8000-000000000004",
     externalId:
-      `github-trending-page:daily:scan-github-parity:${params.canonicalId ? repository.toLocaleLowerCase("en-US") : repository}`,
+      `github-trending-page:daily:${scanId}:${params.canonicalId ? repository.toLocaleLowerCase("en-US") : repository}`,
     canonicalUrl: `https://github.com/${repository}`,
     title: `${repository} is #${rank} on GitHub Trending`,
     body: "Repository snapshot",
@@ -628,7 +649,7 @@ const githubSnapshotSourceItem = (params: {
         rank,
         starsGained: 1_500,
         window: "daily",
-        scanJobId: "scan-github-parity",
+        scanJobId: scanId,
         fetchStartedAt,
         checkedAt: params.checkedAt,
         snapshotContentHash: "b".repeat(64),

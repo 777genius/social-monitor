@@ -142,7 +142,7 @@ export type PrismaIngestionClient = {
         readonly tenantId: string;
         readonly workspaceId: string;
         readonly providerKey: string;
-        readonly providerItemId: { readonly in: readonly string[] };
+        readonly providerItemId: { readonly in: readonly string[]; readonly mode?: 'insensitive' };
       };
     }): Promise<readonly PrismaSourceItemRecord[]>;
     findFirst(args: {

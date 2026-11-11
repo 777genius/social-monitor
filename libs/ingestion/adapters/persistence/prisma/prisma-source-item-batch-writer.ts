@@ -1,4 +1,4 @@
-import { sourceItemIdentityCandidates } from '../github-trending-source-identities';
+import { sourceItemIdentityCandidates, sourceItemIdentityKey } from '../github-trending-source-identities';
 import { preserveVerifiedLegacyCapture } from '../../../domain/value-objects/legacy-source-capture';
 import { prepareArticleCaptureAttempt } from '../../../domain/value-objects/article-capture-attempt';
 import {
@@ -252,12 +252,13 @@ function matchExistingSourceItems(
   command: SaveSourceItemsCommand,
   records: readonly PrismaSourceItemRecord[],
 ): Map<string, PrismaSourceItemRecord> {
-  const byId = new Map(records.map((record) => [record.providerItemId, record]));
-  const found = new Map(byId);
+  const found = command.providerKey === GITHUB_TRENDING_PAGE_PROVIDER_KEY
+    ? new Map<string, PrismaSourceItemRecord>()
+    : new Map(records.map((record) => [record.providerItemId, record]));
   for (const item of command.items) {
     const snapshot = item.toSnapshot();
-    const matches = sourceItemIdentityCandidates(command.providerKey, snapshot)
-      .flatMap((id) => byId.has(id) ? [byId.get(id)!] : []);
+    const identity = sourceItemIdentityKey(command.providerKey, snapshot.externalId);
+    const matches = records.filter((record) => sourceItemIdentityKey(command.providerKey, record.providerItemId) === identity);
     if (matches.length > 1) throw new Error('Ambiguous GitHub Trending source identity');
     if (matches.length === 1) found.set(snapshot.externalId, matches[0]!);
   }
@@ -275,6 +276,9 @@ async function findExistingSourceItems(
     return new Map();
   }
   if (transaction.sourceItem.findMany === undefined) {
+    if (command.providerKey === GITHUB_TRENDING_PAGE_PROVIDER_KEY) {
+      throw new Error('GitHub Trending source identity requires scoped batch lookup');
+    }
     const records = await Promise.all(
       externalIds.map((providerItemId) =>
         transaction.sourceItem.findFirst({
@@ -294,7 +298,7 @@ async function findExistingSourceItems(
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
       providerKey: command.providerKey,
-      providerItemId: { in: externalIds },
+      providerItemId: { in: externalIds, ...(command.providerKey === GITHUB_TRENDING_PAGE_PROVIDER_KEY ? { mode: 'insensitive' as const } : {}) },
     },
   });
   const found = matchExistingSourceItems(command, records);
