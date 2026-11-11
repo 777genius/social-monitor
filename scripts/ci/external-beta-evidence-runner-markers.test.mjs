@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { validateRunnerImplementationMarkers, redactionPolicyPath, handoffPolicyPath } from '../lib/external-beta-evidence-runner-markers.mjs';
+import { validateRunnerImplementationMarkers, redactionPolicyPath, handoffPolicyPath, displayPolicyPath } from '../lib/external-beta-evidence-runner-markers.mjs';
 
 const runnerFile = 'scripts/external-beta-evidence-runner.mjs';
 const checkFile = 'scripts/check-external-beta-evidence-runner.mjs';
@@ -10,6 +10,7 @@ const selectionHelperPath = 'scripts/lib/external-beta-evidence-selections.mjs';
 const sources = {
   runnerSource: readFileSync(runnerFile, 'utf8'),
   handoffSource: readFileSync(handoffPolicyPath, 'utf8'),
+  displaySource: readFileSync(displayPolicyPath, 'utf8'),
   checkSource: readFileSync(checkFile, 'utf8'),
   selectionHelperSource: readFileSync(selectionHelperPath, 'utf8'),
   redactionPolicySource: readFileSync(redactionPolicyPath, 'utf8'),
@@ -74,6 +75,29 @@ test('relocated JSON handoff markers stay enforced at the actual module owner', 
     assert.ok(violations.every((violation) => violation.startsWith(handoffPolicyPath)),
       'runner and unrelated policy ownership must stay untouched');
   }
+});
+
+test('relocated display markers are still enforced at their real owner', () => {
+  for (const marker of [
+    'formatOutputArtifacts', 'formatRequiredEnvAlternatives', 'formatHandoffArtifacts',
+    'handoffAction', 'handoffRunner', 'artifactExamplePathByFormat', 'inputMetadataByEnv',
+    'runnerDescription', 'operatorAction',
+  ]) {
+    const violations = validateRunnerImplementationMarkers({
+      ...sources,
+      displaySource: sources.displaySource.replaceAll(marker, 'removed-display-marker'),
+    });
+    assert.ok(violations.includes(
+      `${displayPolicyPath}: extracted display formatters must preserve "${marker}"`,
+    ), `missing display module marker must reject: ${marker}`);
+    assert.ok(violations.every(v => v.startsWith(displayPolicyPath)),
+      'unrelated source ownership must not be weakened');
+  }
+});
+
+test('original checker reads display markers into its fail-closed source gate', () => {
+  const checkerSource = readFileSync(checkFile, 'utf8');
+  assert.match(checkerSource, /displaySource:\s*readFileSync\(displayPolicyPath,\s*'utf8'\)/);
 });
 
 test('original checker reads the extracted handoff module into its fail-closed marker gate', () => {
