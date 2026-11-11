@@ -87,3 +87,17 @@ test('npm bundle gate runs policy tests before the original checker and self-che
   assert.ok(checker.includes(`packageScripts[checkScriptName] !== '${expected}'`),
     'the original fail-closed npm wiring check must require the exact combined command');
 });
+test('host-bind static guard follows the real Compose renderer ownership', () => {
+  const checker = readFileSync(new URL('../check-docker-backend-staging-evidence-bundle.mjs', import.meta.url), 'utf8');
+  const harness = readFileSync(new URL('./docker-backend-evidence-harness.mjs', import.meta.url), 'utf8');
+  const config = readFileSync(new URL('./docker-backend-evidence-compose-config.mjs', import.meta.url), 'utf8');
+  const renderer = readFileSync(new URL('./docker-backend-evidence-compose-render.mjs', import.meta.url), 'utf8');
+  assert.ok(harness.includes('buildComposeOverride({') && harness.includes('hostStorageRoot,'));
+  assert.ok(config.includes('hostBindStorageServiceSections(values.hostStorageRoot)'));
+  for (const service of ['postgres', 'redis', 'rabbitmq']) {
+    assert.ok(renderer.includes('serviceVolumes("' + service + '"'));
+  }
+  assert.ok(checker.includes("dockerComposeRenderSource.includes('serviceVolumes("));
+  assert.ok(checker.includes("dockerComposeConfigSource.includes('hostBindStorageServiceSections(values.hostStorageRoot)')"));
+  assert.ok(!checker.includes("    'probeDockerHostBindPostgresInitdbWritable',\n    'serviceVolumes',"));
+});

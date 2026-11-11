@@ -14,6 +14,8 @@ const releaseContractPath = 'ops/release/mvp-release-evidence-contract.json';
 const captureScriptPath = 'scripts/capture-docker-backend-staging-evidence-bundle.mjs';
 const importScriptPath = 'scripts/import-docker-backend-staging-evidence-bundle.mjs';
 const dockerHarnessPath = 'scripts/lib/docker-backend-evidence-harness.mjs';
+const dockerComposeConfigPath = 'scripts/lib/docker-backend-evidence-compose-config.mjs';
+const dockerComposeRenderPath = 'scripts/lib/docker-backend-evidence-compose-render.mjs';
 const checkScriptName = 'check:docker-backend-staging-evidence-bundle';
 const checkCommand = `npm run ${checkScriptName}`;
 const expectedBundleFormat = 'docker-backend-staging-evidence-bundle-v1';
@@ -104,6 +106,8 @@ function validateStaticWiring() {
   const captureSource = readFileSync(captureScriptPath, 'utf8');
   const importSource = readFileSync(importScriptPath, 'utf8');
   const dockerHarnessSource = readFileSync(dockerHarnessPath, 'utf8');
+  const dockerComposeConfigSource = readFileSync(dockerComposeConfigPath, 'utf8');
+  const dockerComposeRenderSource = readFileSync(dockerComposeRenderPath, 'utf8');
   const packageScripts = packageJson.scripts ?? {};
   const backendScripts = new Set(backendSafe.backendScripts ?? []);
   const baselineScripts = new Set(baseline.requiredGreenScripts ?? []);
@@ -208,11 +212,24 @@ function validateStaticWiring() {
     'DOCKER_BACKEND_EVIDENCE_HOST_STORAGE_DIR',
     'host-bind',
     'probeDockerHostBindPostgresInitdbWritable',
-    'serviceVolumes',
   ]) {
     if (!dockerHarnessSource.includes(marker)) {
       violations.push(`${dockerHarnessPath}: Docker evidence host-bind storage fallback must include ${marker}`);
     }
+  }
+  if (!dockerHarnessSource.includes('buildComposeOverride({') ||
+      !dockerHarnessSource.includes('hostStorageRoot,')) {
+    violations.push(`${dockerHarnessPath}: host-bind storage must pass hostStorageRoot to buildComposeOverride`);
+  }
+  if (!dockerComposeConfigSource.includes('from "./docker-backend-evidence-compose-render.mjs"') ||
+      !dockerComposeConfigSource.includes('hostBindStorageServiceSections(values.hostStorageRoot)')) {
+    violations.push(`${dockerComposeConfigPath}: host-bind storage must delegate to hostBindStorageServiceSections`);
+  }
+  if (!dockerComposeRenderSource.includes('function serviceVolumes(') ||
+      !dockerComposeRenderSource.includes('serviceVolumes("postgres"') ||
+      !dockerComposeRenderSource.includes('serviceVolumes("redis"') ||
+      !dockerComposeRenderSource.includes('serviceVolumes("rabbitmq"')) {
+    violations.push(`${dockerComposeRenderPath}: Docker evidence host-bind storage fallback must render serviceVolumes for postgres, redis and rabbitmq`);
   }
 }
 
