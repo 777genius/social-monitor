@@ -8,7 +8,7 @@ scripts/lib/source-live-provider-evidence-validation.mjs:
 validateLiveProviderEvidence, validateProviderEvidenceFields, validateProviderSignals.
 98 unique original nonblank implementation LOC (111 physical lines including separator), not net-deleted LOC.
 Original bodies copied verbatim after reversing two spaces of factory indentation.
-Checker 1079 physical lines becomes 980; remove only this checker's obsolete 1078-line legacy exemption.
+Checker 1078 physical lines becomes 979; remove only this checker's obsolete 1078-line legacy exemption.
 No change to source-live certification or staging evidence inputs, runtime IO, auth, production deploy, SSH,
 fail-closed rules, source models, or CLI order. No overlap with independent model #665 or Trending #740 implementation.
 
