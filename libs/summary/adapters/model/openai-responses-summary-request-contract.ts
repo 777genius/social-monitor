@@ -1,5 +1,6 @@
 import type { SummaryModelInput } from "../../ports";
-import { buildInstructions, buildPromptPayload } from "./openai-responses-summary-prompt";
+import { buildInstructions } from "./openai-responses-summary-prompt";
+import { buildPromptPayload } from "./openai-responses-summary-evidence-payload";
 import { openAiSummaryJsonSchema } from "./openai-responses-summary-schema";
 
 /** Construct only the provider wire contract; no dispatch, credentials or response acceptance. */
