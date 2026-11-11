@@ -1,0 +1,46 @@
+# Temporary focused verification for the exact source and regression slice in Draft #665.
+# Not a substitute for the final Ready 20/20, native PG18, security, image or E2E gates.
+name: Model 665 Agent Runtime output/request focused
+on:
+  push:
+    branches:
+      - refactor/summary-model-adapters-10k-20261108
+    paths:
+      - .github/workflows/model-665-agent-output-request-focused.yml
+permissions:
+  contents: read
+jobs:
+  focused:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: postgresql://social_monitor_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_ci
+    steps:
+      - name: Checkout exact SHA
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Setup Node 22
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Generate Prisma client
+        run: npm run prisma:generate
+      - name: Verify TypeScript, architecture, quality, runtime and hard LOC cap
+        run: |
+          set -euo pipefail
+          npx tsc --noEmit
+          npm run check:architecture
+          npm run check:code-quality
+          npm run check:source-line-cap
+          npm run check:runtime-profile-guards
+      - name: Verify output trust and request identity in model adapter
+        run: >-
+          npx jest --config jest.config.ts --runInBand --runTestsByPath
+          libs/summary/adapters/model/agent-runtime-model-boundaries.spec.ts
+          libs/summary/adapters/model/agent-runtime-summary-model.adapter.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-model.adapter.spec.ts
