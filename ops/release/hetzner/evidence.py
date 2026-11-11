@@ -6,12 +6,20 @@ from contract import DIGEST, digest, fresh, require
 
 WORKER_README = 'apps/agent-runtime/README.md'
 PACKAGE_CHECK = 'check:source-live-certification-evidence'
-PACKAGE_CI_PATHS = {'package.json', 'ops/ci/static-quality-runner.test.mts',
-    'scripts/check-source-line-cap.mjs', 'scripts/check-source-live-certification-evidence.mjs',
-    'scripts/ci/hetzner-release-authority.mts', 'scripts/ci/hetzner-release-authority.test.mts',
-    'scripts/ci/hetzner-release-observe.mts', 'scripts/ci/hetzner-release-observe.test.mts',
-    'scripts/ci/source-live-artifact-path-guard-smokes-gate.test.mjs',
-    'scripts/lib/source-live-smoke-script-contracts.mjs', 'scripts/lib/source-live-smoke-script-contracts.test.mjs'}
+# These are the only .mjs sources copied by the pinned Dockerfile below.
+PACKAGE_COPIED_MJS = {'scripts/rewrite-build-aliases.mjs', 'scripts/run-with-timeout.mjs'}
+
+
+def package_check_key(key):
+    return isinstance(key, str) and re.fullmatch(r'check:[a-zA-Z0-9][a-zA-Z0-9:._-]{0,127}', key) is not None
+
+
+def package_ci_path(path):
+    return (path == 'package.json' or path.startswith(('docs/', 'ops/release/')) or
+            path.startswith('scripts/') and path.endswith('.mjs') and path not in PACKAGE_COPIED_MJS or
+            path.startswith(('scripts/ci/', 'ops/ci/')) and path.endswith('.mts'))
+
+
 # Reviewed direct build closure: npm ci; npm run prisma:generate; npm run build;
 # runtime CMD executes node directly. A new build contract needs a separate review.
 PACKAGE_BUILD = {
@@ -31,7 +39,9 @@ def package_script_proof(proof, base, head, delta):
     require(isinstance(proof, dict) and set(proof) == {'base', 'head', 'delta_sha256', 'changed_scripts',
             'before_blob', 'after_blob', 'before_sha256', 'after_sha256', 'build_contract_sha256'}
             and proof['base'] == base and proof['head'] == head and proof['delta_sha256'] == delta
-            and proof['changed_scripts'] == [PACKAGE_CHECK]
+            and isinstance(proof['changed_scripts'], list) and proof['changed_scripts']
+            and all(package_check_key(key) for key in proof['changed_scripts'])
+            and proof['changed_scripts'] == sorted(set(proof['changed_scripts']))
             and proof['build_contract_sha256'] == digest(PACKAGE_BUILD), 'backend-sensitive-files')
     require(all(isinstance(proof[k], str) and re.fullmatch(r'[0-9a-f]{40}', proof[k])
                 for k in ('before_blob', 'after_blob')) and
@@ -61,7 +71,7 @@ def backend_compatibility(evidence, revisions, candidate, snapshot):
         require(isinstance(paths, list) and all(isinstance(p, str) and p and '..' not in p.split('/')
                 and not p.startswith('/') for p in paths) and (paths or base == candidate), 'backend-delta-paths')
         if 'package.json' in paths:
-            require(all(p in PACKAGE_CI_PATHS or p.startswith(('docs/', 'ops/release/')) for p in paths),
+            require(all(package_ci_path(p) for p in paths),
                     'backend-sensitive-files')
             package_script_proof(delta.get('package_scripts'), base, candidate, delta['delta_sha256'])
         # Shared libs also run in retained consumers (including summary via delivery

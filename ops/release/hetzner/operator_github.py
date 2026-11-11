@@ -140,11 +140,14 @@ class GitHub:
 
 
     def package_scripts(self, base, head, delta):
-        """Only one CI check value may change, independently read from exact Git blobs."""
+        """Only CI check scripts may change; the pinned build never invokes them."""
         paths, observed_delta = self.delta(base, head)
         require('package.json' in paths and observed_delta == delta, 'operator-package-delta')
         records, documents = [], []
         for tree in (self.tree(base), self.tree(head)):
+            # No copied source may redirect through a link to an otherwise un-copied CI file.
+            require(all(entry['type'] == 'blob' and entry['mode'] in ('100644', '100755')
+                        for entry in tree.values()), 'operator-package-build-contract')
             require('binding.gyp' not in tree, 'operator-package-build-contract')
             for path, sha in core_policies.PACKAGE_BUILD['files'].items():
                 require(tree.get(path) == {'mode': '100644', 'type': 'blob', 'sha': sha},
@@ -171,11 +174,12 @@ class GitHub:
             documents.append(document)
             records.append({'blob': entry['sha'], 'sha256': sha_bytes(raw)})
         old, new = documents
-        require(set(old['scripts']) == set(new['scripts']), 'operator-package-scripts')
-        changed = sorted(k for k in old['scripts'] if old['scripts'][k] != new['scripts'][k])
-        require(changed == [core_policies.PACKAGE_CHECK], 'operator-package-scripts')
-        normalized = {**new, 'scripts': {**new['scripts'], core_policies.PACKAGE_CHECK: old['scripts'][core_policies.PACKAGE_CHECK]}}
-        require(canonical(old) == canonical(normalized), 'operator-package-fields')
+        changed = sorted(k for k in old['scripts'].keys() | new['scripts'].keys()
+                         if old['scripts'].get(k) != new['scripts'].get(k))
+        require(changed and all(core_policies.package_check_key(k) for k in changed), 'operator-package-scripts')
+        stable = [{**doc, 'scripts': {k: v for k, v in doc['scripts'].items()
+                   if not core_policies.package_check_key(k)}} for doc in documents]
+        require(canonical(stable[0]) == canonical(stable[1]), 'operator-package-fields')
         return {'base': base, 'head': head, 'delta_sha256': delta, 'changed_scripts': changed,
                 'before_blob': records[0]['blob'], 'after_blob': records[1]['blob'],
                 'before_sha256': records[0]['sha256'], 'after_sha256': records[1]['sha256'],
