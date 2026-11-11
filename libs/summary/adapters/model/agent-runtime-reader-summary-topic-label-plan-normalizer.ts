@@ -1,18 +1,11 @@
+import { retainedSemanticGroupIds } from "./agent-runtime-reader-summary-topic-group-policy";
 import {
-  normalizeSemanticGroupId,
-  retainedSemanticGroupIds,
-} from "./agent-runtime-reader-summary-topic-group-policy";
-import {
-  readRecordArray,
-  readStringArray,
-  stringValue,
-  optionalString,
-  semanticLabelFromRaw,
-} from "./agent-runtime-reader-summary-topic-raw-decoder";
+  readCompleteTopicNodeLabels,
+  readUniqueTopicGroupRecords,
+} from "./agent-runtime-reader-summary-topic-untrusted-response";
 import {
   READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID,
   READER_SUMMARY_TOPIC_SEMANTIC_CONFIDENCE_MIN,
-  renderReaderSummaryTopicSemanticLabel,
   type ReaderSummaryTopicLabelPlan,
 } from "../../domain";
 import type { ReaderSummaryTopicLabelerInput } from "../../ports";
@@ -26,41 +19,7 @@ export const normalizeAgentRuntimeReaderSummaryTopicLabelPlan = (
   raw: Record<string, unknown>,
   candidates: readonly ReaderSummaryTopicLabelerInput["candidates"][number][],
 ): ReaderSummaryTopicLabelPlan => {
-  const knownNodeIds = new Set(candidates.map((candidate) => candidate.nodeId));
-  const candidateByNodeId = new Map(
-    candidates.map((candidate) => [candidate.nodeId, candidate] as const),
-  );
-  const parsedNodeLabels = readRecordArray(raw.nodeLabels)
-    .map((label) => {
-      const nodeId = stringValue(label.nodeId);
-      const semantic = semanticLabelFromRaw(
-        label,
-        candidateByNodeId.get(nodeId)?.fallbackLabel,
-      );
-
-      return {
-        nodeId,
-        topicId: optionalString(label.topicId),
-        label: renderReaderSummaryTopicSemanticLabel(semantic),
-        semantic,
-        rawGroupId: optionalString(label.groupId),
-        groupId: normalizeSemanticGroupId(optionalString(label.groupId)),
-        keywords: readStringArray(label.keywords).slice(0, 8),
-        rationale: optionalString(label.rationale),
-      };
-    })
-    .filter((label) => knownNodeIds.has(label.nodeId));
-  const returnedNodeIds = new Set(
-    parsedNodeLabels.map((label) => label.nodeId),
-  );
-  if (
-    returnedNodeIds.size !== parsedNodeLabels.length ||
-    [...knownNodeIds].some((nodeId) => !returnedNodeIds.has(nodeId))
-  ) {
-    throw new Error(
-      "Reader summary topic map response must label every requested node exactly once",
-    );
-  }
+  const parsedNodeLabels = readCompleteTopicNodeLabels(raw.nodeLabels, candidates);
   const retainedGroupIds = retainedSemanticGroupIds(
     parsedNodeLabels,
     candidates,
@@ -80,13 +39,7 @@ export const normalizeAgentRuntimeReaderSummaryTopicLabelPlan = (
     keywords: label.keywords,
     rationale: label.rationale,
   }));
-  const groupRecords = new Map<string, Record<string, unknown>>();
-  for (const group of readRecordArray(raw.groups)) {
-    const id = normalizeSemanticGroupId(optionalString(group.id));
-    if (id !== READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID && !groupRecords.has(id)) {
-      groupRecords.set(id, group);
-    }
-  }
+  const groupRecords = readUniqueTopicGroupRecords(raw.groups);
   const recovery = completeRequiredGroundedTopicCohorts(
     initialNodeLabels,
     candidates,
@@ -103,15 +56,4 @@ export const normalizeAgentRuntimeReaderSummaryTopicLabelPlan = (
   };
 };
 
-export const parseAgentRuntimeReaderSummaryTopicLabelerJsonObject = (
-  value: string,
-): Record<string, unknown> => {
-  const parsed = JSON.parse(value);
-
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("Reader summary topic map response must be a JSON object");
-  }
-
-  return parsed as Record<string, unknown>;
-};
-
+export { parseAgentRuntimeReaderSummaryTopicLabelerJsonObject } from "./agent-runtime-reader-summary-topic-untrusted-response";
