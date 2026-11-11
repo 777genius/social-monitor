@@ -1064,6 +1064,5 @@ function validationCommandSource(command) {
 }
 
 function scriptNameFromCommand(command) {
-  const match = /^npm run (?:--silent )?([^ ]+)/.exec(String(command ?? ''));
-  return match?.[1] ?? null;
+  return /^npm run (?:--silent )?([^ ]+)/.exec(String(command ?? ''))?.[1] ?? null;
 }
