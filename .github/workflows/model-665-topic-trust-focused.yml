@@ -48,6 +48,8 @@ jobs:
       - name: Verify topic raw admission and frozen daily editor contracts
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
+          libs/summary/adapters/model/reader-summary-daily-editorial-policy.spec.ts
+          libs/summary/adapters/model/reader-summary-daily-editorial-evidence-binding.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-untrusted-response.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-integrity.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-identity-integrity.spec.ts
