@@ -221,14 +221,14 @@ for (const jobId of ['static_quality', 'backend_unit_shards']) {
       return result.status;
     };
     assert.equal(invoke('ubuntu-24.04', 'github-hosted', 'github-hosted'), 0);
-    assert.equal(invoke('ubicloud-standard-4', 'self-hosted', 'self-hosted'), 0);
+    assert.notEqual(invoke('ubicloud-standard-4', 'self-hosted', 'self-hosted'), 0);
     assert.notEqual(invoke('self-hosted', 'self-hosted', 'self-hosted'), 0);
     assert.notEqual(invoke('ubicloud-standard-8', 'self-hosted', 'self-hosted'), 0);
     assert.notEqual(invoke('ubuntu-24.04', 'self-hosted', 'self-hosted'), 0);
     assert.notEqual(invoke('ubicloud-standard-4', 'self-hosted', 'github-hosted'), 0);
     assert.notEqual(invoke('ubicloud-standard-4', 'github-hosted', 'self-hosted'), 0);
     assert.notEqual(invoke('', 'self-hosted', 'self-hosted'), 0);
-    assert.notEqual(invoke('ubicloud-standard-4', 'self-hosted', 'self-hosted', 'false'), 0);
-    if (root) assert.notEqual(invoke('ubicloud-standard-4', 'self-hosted', 'self-hosted', 'true', true), 0);
+    assert.notEqual(invoke('ubuntu-24.04', 'github-hosted', 'github-hosted', 'false'), 0);
+    if (root) assert.notEqual(invoke('ubuntu-24.04', 'github-hosted', 'github-hosted', 'true', true), 0);
   });
 }

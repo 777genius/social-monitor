@@ -4,7 +4,7 @@ import { projectScopedBackendWorkflow } from './ci-impact-contract.mjs';
 // js-yaml is already reproducibly locked at the root by ESLint's dependency graph.
 // Parse the full document with duplicate-key rejection. Commands below use a
 // deliberately small shell language: fixed argv, or fail-fast sequential lines.
-export const ciVmRunner = "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}";
+export const ciVmRunner = "ubuntu-24.04";
 export const nativeRunnerEnvironment = Object.freeze({
   CI_NATIVE_RUNNER: ciVmRunner, CI_NATIVE_ENVIRONMENT: '${{ runner.environment }}',
 });
@@ -76,7 +76,7 @@ const nativePg18 = [
   "test \"${GITHUB_ACTIONS:-}\" = true",
   "test \"${RUNNER_ENVIRONMENT:-}\" = \"$CI_NATIVE_ENVIRONMENT\"",
   "case \"$CI_NATIVE_RUNNER:$CI_NATIVE_ENVIRONMENT\" in",
-  "  ubuntu-24.04:github-hosted|ubicloud-standard-4:self-hosted) ;;",
+  "  ubuntu-24.04:github-hosted) ;;",
   "  *) printf 'Unsupported native CI runner\\n' >&2; exit 1 ;;",
   "esac",
   "test \"${RUNNER_OS:-}\" = Linux",

@@ -10,7 +10,7 @@ const { CORE_SCHEMA, load } = require('js-yaml') as {
   readonly CORE_SCHEMA: object;
   load(source: string, options: { schema: object; json: false }): unknown;
 };
-const CI_VM_RUNNER = "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}";
+const CI_VM_RUNNER = "ubuntu-24.04";
 const READY_GATE = "github.event_name != 'pull_request' || github.event.pull_request.draft == false";
 const WORKFLOW = '.github/workflows/pull-request.yml';
 const FRAGMENT = 'ops/ci/release-candidate-job.yml';
