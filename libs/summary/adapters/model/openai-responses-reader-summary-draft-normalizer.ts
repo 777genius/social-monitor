@@ -9,12 +9,8 @@ import type {
   ReaderSummaryModelInput,
   ReaderSummaryModelRoute,
 } from "../../ports";
-import {
-  asRecord,
-  optionalString,
-  requiredString,
-  uniqueNonEmptyStrings,
-} from "./openai-responses-reader-summary-json";
+import { asRecord, optionalString, requiredString } from "./openai-responses-reader-summary-raw-values";
+import { uniqueNonEmptyStrings } from "./openai-responses-reader-summary-text-values";
 import { normalizeTopStories } from "./openai-responses-reader-summary-story-normalizer";
 import {
   normalizeRisks,
