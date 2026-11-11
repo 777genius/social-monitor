@@ -278,6 +278,14 @@ class CohortRelease:
         require(backend_item['sha'] + '-' + backend_item['ci_run_id'] == key, 'cohort-binding')
         snapshot, targets, values = self.observe(complete=True)
         for value in values.values(): self.roots(value)
+        env = values[SERVICE].get('Config', {}).get('Env')
+        require(isinstance(env, list) and all(isinstance(entry, str) for entry in env), 'cohort-worker-pause')
+        for name, value in (('INTELLIGENCE_SUMMARY_EXECUTION_PAUSED', 'true'),
+                            ('INTELLIGENCE_PERIODIC_READER_SUMMARY_SCHEDULER', 'disabled'),
+                            ('INTELLIGENCE_AUTO_SUMMARY_SCHEDULER', 'disabled'),
+                            ('READER_VALUE_MODE', 'jev_primary_v3')):
+            require([entry for entry in env if entry.startswith(name + '=')] == [name + '=' + value],
+                    'cohort-worker-pause')
         previous = self.frontend_sources(targets[FRONTEND], values[FRONTEND])
         revisions = {s: self.core.previous_revision(targets[s]['image']) for s in cohort_compose.BACKEND}
         compatibility = self.evidence(backend_item, revisions, digest(snapshot))
@@ -497,8 +505,14 @@ class CohortRelease:
             recovered = False
             if rollback and previous_tx.get('drain_proof') is not None:
                 worker = values.get(SERVICE)
-                if worker is None or (not worker['State']['Running'] and
-                        targets[SERVICE]['id'] == previous_tx['drain']['container_id']):
+                if worker is None:
+                    recovered = True
+                elif not worker['State']['Running'] and targets[SERVICE]['id'] == previous_tx['drain']['container_id']:
+                    proof = previous_tx['drain_proof']
+                    require(proof.get('container_id') == targets[SERVICE]['id'] and
+                            proof.get('image_id') == targets[SERVICE]['image'] and
+                            digest(worker['State']['StartedAt']) == proof.get('started_at_sha256') and
+                            str(worker['RestartCount']) == proof.get('restart_count'), 'cohort-drain-process-changed')
                     recovered = True
                 elif (worker['State'].get('Status') == 'created' and not worker['State']['Running'] and
                         worker['State']['StartedAt'].startswith('0001-01-01T00:00:00') and worker['RestartCount'] == 0):

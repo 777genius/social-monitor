@@ -122,6 +122,12 @@ class ThreeTargetDockerTests(unittest.TestCase):
         services = {s: {'image': self.images['old'], 'container_name': self.project + '-' + s,
             'network_mode': 'none', 'read_only': True, 'cap_drop': ['ALL'], 'restart': 'unless-stopped'}
             for s in (*TARGETS, 'sentinel')}
+        services[SERVICE]['environment'] = {
+            'INTELLIGENCE_SUMMARY_EXECUTION_PAUSED': 'true',
+            'INTELLIGENCE_PERIODIC_READER_SUMMARY_SCHEDULER': 'disabled',
+            'INTELLIGENCE_AUTO_SUMMARY_SCHEDULER': 'disabled',
+            'READER_VALUE_MODE': 'jev_primary_v3',
+        }
         services['frontend']['image'] = self.images['frontend']
         services['frontend']['volumes'] = [{'type': 'bind', 'source': source, 'target': target,
             'read_only': True, 'bind': {'create_host_path': False}} for target, source in self.previous.items()]

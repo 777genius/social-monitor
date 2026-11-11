@@ -30,6 +30,9 @@ class Runtime(Docker):
         super().__init__()
         self.c = {'project': 'test-cohort-controller', 'compose_files': ['/trusted/base.json']}
         self.values['frontend'] = copy.deepcopy(self.values['api'])
+        self.values[SERVICE]['Config']['Env'] += [
+            'INTELLIGENCE_PERIODIC_READER_SUMMARY_SCHEDULER=disabled',
+            'INTELLIGENCE_AUTO_SUMMARY_SCHEDULER=disabled', 'READER_VALUE_MODE=jev_primary_v3']
         self.values['frontend'].update(Id='3' * 64, Image=FRONT_IMAGE)
         self.values['frontend']['HostConfig']['ReadonlyRootfs'] = True
         self.next_id = 4
@@ -132,6 +135,9 @@ class LiveHost(CohortHost):
         if service == 'frontend': runtime.mount(value, sources)
         if value['Image'] == OLD_IMAGE:
             value['Config']['Env'] = ['INTELLIGENCE_SUMMARY_EXECUTION_PAUSED=true', 'JEV=unchanged']
+            if service == SERVICE:
+                value['Config']['Env'] += ['INTELLIGENCE_PERIODIC_READER_SUMMARY_SCHEDULER=disabled',
+                    'INTELLIGENCE_AUTO_SUMMARY_SCHEDULER=disabled', 'READER_VALUE_MODE=jev_primary_v3']
         if runtime.fail_service == service:
             runtime.fail_service = None
             if runtime.fail_when == 'created':
@@ -213,6 +219,23 @@ class EngineTests(unittest.TestCase):
 
     def test_absent_probe_refuses_before_drain(self):
         with self.assertRaisesRegex(Denied, 'cohort-frontend-probe-missing'): self.fresh(probe=False).activate(KEY)
+        self.assertEqual(self.runtime.effects, [])
+
+    def test_admission_requires_summary_pause_and_disabled_schedulers(self):
+        valid = self.runtime.values[SERVICE]['Config']['Env']
+        cases = [valid + ['INTELLIGENCE_SUMMARY_EXECUTION_PAUSED=false']]
+        for expected, wrong in (
+            ('INTELLIGENCE_SUMMARY_EXECUTION_PAUSED=true', 'INTELLIGENCE_SUMMARY_EXECUTION_PAUSED=false'),
+            ('INTELLIGENCE_PERIODIC_READER_SUMMARY_SCHEDULER=disabled', 'INTELLIGENCE_PERIODIC_READER_SUMMARY_SCHEDULER=enabled'),
+            ('INTELLIGENCE_AUTO_SUMMARY_SCHEDULER=disabled', 'INTELLIGENCE_AUTO_SUMMARY_SCHEDULER=enabled'),
+            ('READER_VALUE_MODE=jev_primary_v3', 'READER_VALUE_MODE=other'),
+        ):
+            cases.extend([[entry for entry in valid if entry != expected],
+                          [wrong if entry == expected else entry for entry in valid]])
+        for env in cases:
+            self.runtime.values[SERVICE]['Config']['Env'] = env
+            with self.assertRaisesRegex(Denied, 'cohort-worker-pause'):
+                self.admit()
         self.assertEqual(self.runtime.effects, [])
 
     def test_sha_run_attempt_provenance_and_verifier_mismatch_refused(self):
@@ -448,6 +471,19 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(rolled['outcome'], 'rolled-back')
         self.assertEqual(rolled['target_container_ids'][SERVICE], previous)
         self.assertEqual(self.runtime.values[SERVICE]['HostConfig']['RestartPolicy'], RESTART)
+
+    def test_rollback_rejects_a_different_drained_process_before_effects(self):
+        self.prepare_rollback_before_worker_recreation()
+        worker = self.runtime.values[SERVICE]
+        original = copy.deepcopy(worker)
+        for mutate in (lambda v: v['State'].update(StartedAt='different'),
+                       lambda v: v.update(RestartCount=1),
+                       lambda v: v.update(Image=IMAGE)):
+            worker.clear(); worker.update(copy.deepcopy(original)); mutate(worker)
+            worker['HostConfig']['RestartPolicy'] = RESTART.copy()
+            before = list(self.runtime.effects)
+            with self.assertRaises(Denied): self.fresh().rollback(KEY)
+            self.assertEqual(self.runtime.effects, before)
 
     def test_restore_policy_effect_crash_is_idempotent_on_replay(self):
         previous = self.prepare_rollback_before_worker_recreation()
