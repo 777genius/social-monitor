@@ -14,22 +14,22 @@ const git = (...args) => execFileSync("git", args, {
 });
 const source = (path) => path.startsWith(directory) &&
   path.endsWith(".ts") &&
-  !/(?:\\.spec|\\.test|\\.spec-support|\\.fixture|-test-fixture)\\.ts$/u.test(path);
+  !/(?:\.spec|\.test|\.spec-support|\.fixture|-test-fixture)\.ts$/u.test(path);
 const physicalLines = (text) => {
   if (text.length === 0) return 0;
-  const normalized = text.replace(/\\r\\n/gu, "\\n");
-  return normalized.split("\\n").length - Number(normalized.endsWith("\\n"));
+  const normalized = text.replace(/\r\n/gu, "\n");
+  return normalized.split("\n").length - Number(normalized.endsWith("\n"));
 };
 const fail = (message) => {
   throw new Error(`Summary model baseline audit: ${message}`);
 };
 
 const originalPaths = git("ls-tree", "-r", "--name-only", baseline, "--", directory)
-  .trimEnd().split("\\n").filter(source).sort();
+  .trimEnd().split("\n").filter(source).sort();
 const inventory = readFileSync(manifest, "utf8");
-const table = inventory.split("## File-level baseline\\n")[1]?.split("\\n## ")[0];
+const table = inventory.split("## File-level baseline\n")[1]?.split("\n## ")[0];
 if (table === undefined) fail("the pinned inventory table is missing");
-const claimed = [...table.matchAll(/^\\| \`([^\`]+\\.ts)\` \\| (\\d+) \\|$/gmu)]
+const claimed = [...table.matchAll(/^\| \`([^\`]+\.ts)\` \| (\d+) \|$/gmu)]
   .map((match) => ({ path: directory + match[1], lines: Number(match[2]) }))
   .sort((a, b) => a.path.localeCompare(b.path));
 if (claimed.length !== 84 || originalPaths.length !== 84) {
