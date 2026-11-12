@@ -8,6 +8,9 @@ on:
 permissions:
   contents: read
 
+env:
+  DATABASE_URL: postgresql://social_monitor_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_ci
+
 jobs:
   model_topic_priority:
     name: Topic priority and pinned original audit
