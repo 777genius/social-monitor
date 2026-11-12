@@ -1406,6 +1406,25 @@
         265
       ],
       "responsibility": "Original untrusted story field normalization and model provenance interpretation separated from grounded citation verification"
+    },
+    {
+      "original": "gateway-llm/gateway-llm-client.ts",
+      "owner": "gateway-llm/gateway-llm-structured-output.ts",
+      "originalPositions": [
+        165,
+        172,
+        173,
+        174,
+        175,
+        177,
+        180,
+        181,
+        182,
+        186,
+        187,
+        188
+      ],
+      "responsibility": "Provider strict JSON schema adaptation, fail-closed output decode and safe violation diagnostics moved behind independent trust boundary, separate from route, task budget, account selection and transport; coordinates are provenance candidates pending independent semantic review"
     }
   ]
 }

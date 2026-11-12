@@ -1,12 +1,10 @@
-import { LlmSchemaError, prepareStrictJsonSchema } from "@agent-teams/account-gateway/llm";
 import type { LlmTask } from "@agent-teams/account-gateway/llm";
 
 import type { AgentRuntimeFailure, AgentRuntimeTaskCommand } from "../../../ports";
 import { codexReaderSummaryBackend, gatewayDefaultReasoningEffort } from "../active-reader-summary-generation-profile";
 import type { GatewayLlmClientOptions, GatewayLlmRoute } from "./gateway-llm-client";
 import { gatewayLlmLocalFailure, type GatewayLlmOutputViolations } from "./gateway-llm-failure";
-import { toGatewayOutputSchema } from "./gateway-llm-output-schema";
-import { collectOutputViolations } from "./gateway-llm-output-violations";
+import { prepareGatewayLlmOutput } from "./gateway-llm-structured-output";
 import { gatewayLlmDeadline } from "./gateway-llm-deadline";
 import { gatewayLlmOutputBytes } from "./gateway-llm-output-budget";
 
@@ -44,40 +42,13 @@ export const prepareGatewayLlmTask = (
     return { failure: gatewayLlmLocalFailure("invalid_request",
       "Gateway task requires instructions and a positive timeout") };
   }
-  const structured = Object.keys(command.outputSchema).length > 0;
-  let output: PreparedTask["output"] = { mode: "text" };
-  let decode: PreparedTask["decode"];
-  let violations: GatewayLlmOutputViolations | undefined;
-  if (structured) {
-    // Strict providers need every property required and objects closed;
-    // decode strips the added nulls and validates the original schema, so
-    // a provider that ignores the schema still cannot pass invalid output.
-    try {
-      const gatewaySchema = toGatewayOutputSchema(command.outputSchema);
-      const strict = prepareStrictJsonSchema(gatewaySchema);
-      output = { mode: "json_schema", schema: strict.schema, strict: true };
-      decode = (value) => {
-        violations = undefined;
-        try {
-          return objectOutput(strict.decode(value));
-        } catch (error) {
-          // The decode names the first violation; a repair needs all of them.
-          violations = { first: error instanceof LlmSchemaError ? error.detail : "not_an_object",
-            all: collectOutputViolations(gatewaySchema, value) };
-          throw error;
-        }
-      };
-    } catch (error) {
-      if (!(error instanceof LlmSchemaError)) throw error;
-      return { failure: gatewayLlmLocalFailure("invalid_schema",
-        "Gateway task output schema is not supported") };
-    }
-  }
+  const preparedOutput = prepareGatewayLlmOutput(command.outputSchema);
+  if ("failure" in preparedOutput) return preparedOutput;
   const requested = controls.maxOutputTokens;
   return {
     route,
-    structured,
-    outputViolations: () => violations,
+    structured: preparedOutput.structured,
+    outputViolations: preparedOutput.outputViolations,
     reasoningEffort: route.reasoningEffort ?? gatewayDefaultReasoningEffort,
     task: {
       profileId: route.profileId,
@@ -85,20 +56,13 @@ export const prepareGatewayLlmTask = (
       policy: options.policy,
       instructions: command.systemPrompt,
       input: command.prompt,
-      output,
+      output: preparedOutput.output,
       ...(route.reasoningEffort === undefined ? {} : { effort: route.reasoningEffort }),
       maxOutputTokens: Math.max(route.minOutputTokens,
         Number.isSafeInteger(requested) && (requested as number) > 0 ? requested as number : 0),
       limits: { outputBytes: gatewayLlmOutputBytes(command.purpose) },
       deadline: gatewayLlmDeadline(startedAt, command.timeoutMs),
-      ...(decode === undefined ? {} : { decode }),
+      ...(preparedOutput.decode === undefined ? {} : { decode: preparedOutput.decode }),
     },
   };
-};
-
-const objectOutput = (value: unknown): Record<string, unknown> => {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("Gateway structured output is not an object");
-  }
-  return value as Record<string, unknown>;
 };
