@@ -11,6 +11,12 @@ import type {
   AgentRuntimeTaskResult,
 } from "../../ports";
 import {
+  readerSummaryAttestedPurposeMatches,
+  type ReaderSummaryAttestedTaskRole,
+} from "./reader-summary-attested-purpose-policy";
+export type { ReaderSummaryAttestedTaskRole } from "./reader-summary-attested-purpose-policy";
+
+import {
   activeReaderSummaryModel,
   activeReaderSummaryProvider,
   activeReaderSummaryPurposes,
@@ -26,15 +32,6 @@ import {
 
 // Owns the fail-closed identity policy. The execution sink belongs to the
 // adapter-facing attestation recorder, not to this pure validation boundary.
-export type ReaderSummaryAttestedTaskRole =
-  | "summary"
-  | "daily_editor"
-  | "topic_label"
-  | "topic_relation"
-  | "story_relation"
-  | "related_topic_relation"
-  | "weekly_review"
-  | "weekly_generate";
 
 export const validateReaderSummaryExecutionAttestation = (params: {
   readonly command: AgentRuntimeTaskCommand;
@@ -79,7 +76,7 @@ export const validateReaderSummaryExecutionAttestation = (params: {
     (gatewayRoute && (params.legacyRecoveryContract !== undefined ||
       !isGatewayReaderSummaryExecution(attestation))) ||
     attestation.reasoningEffort !== expectedEffort ||
-    !activeReaderSummaryPurposeMatches(
+    !readerSummaryAttestedPurposeMatches(
       params.taskRole,
       params.attempt,
       attestation.purpose,
@@ -99,32 +96,6 @@ export const validateReaderSummaryExecutionAttestation = (params: {
 
   return attestation;
 };
-
-const activeReaderSummaryPurposeMatches = (
-  role: ReaderSummaryAttestedTaskRole,
-  attempt: string,
-  purpose: string,
-  legacyRecoveryContract?: FrozenLegacyReaderSummaryRecoveryContract,
-): boolean => ({
-  summary: legacyRecoveryContract === frozenLegacyReaderSummaryRecoveryContract
-    ? attempt === "primary"
-      ? [frozenLegacyReaderSummaryRecoveryContract.purposes.generate]
-      : attempt === "repair"
-        ? [frozenLegacyReaderSummaryRecoveryContract.purposes.repair]
-        : []
-    : attempt === "primary"
-      ? [activeReaderSummaryPurposes.generate]
-      : attempt === "repair"
-        ? [activeReaderSummaryPurposes.repair]
-        : [],
-  daily_editor: attempt === "primary" ? [activeReaderSummaryPurposes.dailyEditorial] : [],
-  topic_label: [activeReaderSummaryPurposes.topicLabel],
-  topic_relation: [activeReaderSummaryPurposes.topicRelations],
-  story_relation: [activeReaderSummaryPurposes.storyRelations],
-  related_topic_relation: [activeReaderSummaryPurposes.relatedTopicRelations],
-  weekly_review: [activeReaderSummaryPurposes.weeklyReview],
-  weekly_generate: [activeReaderSummaryPurposes.weeklyGenerate],
-} as const)[role].some((candidate: string) => candidate === purpose);
 
 const expectedReasoningEffort = (
   legacyRecoveryContract?: FrozenLegacyReaderSummaryRecoveryContract,

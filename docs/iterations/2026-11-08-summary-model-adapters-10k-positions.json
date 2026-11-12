@@ -125,6 +125,16 @@
         108,
         109,
         111,
+        151,
+        152,
+        153
+      ],
+      "responsibility": "Fail-closed runtime transport/model identity, MiMo gateway and legacy effort, independent of role-purpose authorization and attestation sink"
+    },
+    {
+      "original": "reader-summary-execution-attestation.ts",
+      "owner": "reader-summary-attested-purpose-policy.ts",
+      "originalPositions": [
         128,
         129,
         130,
@@ -143,12 +153,9 @@
         143,
         144,
         145,
-        146,
-        151,
-        152,
-        153
+        146
       ],
-      "responsibility": "Fail-closed runtime identity, task-role/purpose, MiMo and legacy-recovery verification independent of the effectful attestation audit sink"
+      "responsibility": "Allowlisted task-role/purpose and legacy recovery attempt policy independent of attestation wire validation and effectful sink (existing coordinates reassigned; zero new original LOC)"
     },
     {
       "original": "agent-runtime-reader-summary-topic-candidate-selection.ts",
