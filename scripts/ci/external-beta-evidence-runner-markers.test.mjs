@@ -188,5 +188,5 @@ test('runner still invokes both extracted validators, not merely imports them', 
 
 test('real checker reads the artifact shape policy for implementation marker enforcement', () => {
   const checkerSource = readFileSync(checkFile, 'utf8');
-  assert.match(checkerSource, /artifactShapePolicySource:\\s*readFileSync\\(artifactShapePolicyPath,\\s*'utf8'\\)/);
+  assert.match(checkerSource, /artifactShapePolicySource:\s*readFileSync\(artifactShapePolicyPath,\s*'utf8'\)/);
 });
