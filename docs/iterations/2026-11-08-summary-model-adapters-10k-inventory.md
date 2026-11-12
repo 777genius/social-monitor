@@ -1285,3 +1285,20 @@ Machine ledger now covers **345 disjoint original positions, 12 slices across se
 | **Ledger total** | **15 slices, 9 distinct pinned originals** | **597 disjoint original positions, +0 newly credited** | Focused [#43223769905](https://github.com/777genius/social-monitor/actions/runs/43223769905) queued at initial observation |
 
 The old 150-position source slice was split into two source-to-owner records *without adding or double-counting original implementation positions*. Exact trimmed original statement occurrences were pre-validated against each new owner. Two fail-closed dispatcher regression cases were added; existing weekly parser tests selected. Physical code moved is not accepted meaningful original LOC by itself. Reviewers must assess genuine separated envelope policies. Historical 6,257/79-file figure remains withdrawn, and 84/15,318 original PHYSICAL LOC is only a baseline, not refactored credit. Final Ready 20/20 PG18 six shards, independent reviewers, main reconciliation and merge remain outstanding; production/#620/#663/#664 unchanged.
+
+### 2026-11-12 — Reader narrative: retrospective frozen-source trace (not new refactoring)
+
+**Existing pinned original** `openai-responses-reader-summary-narrative.ts` at `3fa1b9e9`, blob `9522a33ca3f80b1057eea5069015672c3dfffd8c`, 499 inventory PHYSICAL LOC; current original remains a small orchestration facade. This is provenance reconstruction of an earlier SRP decomposition, not new production implementation.
+
+| New independent responsibility owner | Unique original implementation-coordinate candidates |
+|---|---:|
+| `openai-responses-reader-summary-narrative-evidence.ts` — watch eligibility, source-grounded citation selection and fallback | 84 |
+| `openai-responses-reader-summary-narrative-markdown.ts` — deterministic, bounded editorial rendering | 19 |
+| `openai-responses-reader-summary-narrative-validation.ts` — cited lead, stable ordering, secondary coverage fail-closed validation | 79 |
+| `openai-responses-reader-summary-narrative-section-projection.ts` — provider-untrusted kind/text/citation projection to grounded section | 36 |
+| **Previously unrecorded first-use positions (not new implementation)** | **218** |
+| **Total executable origin subset** | **815 unique coordinates / 19 slices / 10 distinct pinned originals** |
+
+The source-coordinate arrays are committed only once in `docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json`, SHA [`71d28b63`](https://github.com/777genius/social-monitor/commit/71d28b63bda863d8b7a17aa9c89d98aeee27ba07). Occurrence bounded match excludes retained facade lines, import/type/syntax/comment/test/new code; this proves provenance, **not independent semantic quality acceptance**. Earlier counted 597 are not counted again. Historical 6,257 provisional sum remains withdrawn, baseline 15,318 PHYSICAL is not accepted credit, and ≥10k remains unmet.
+
+**Exact source gates SUCCESS:** [weekly+narrative #43225485591](https://github.com/777genius/social-monitor/actions/runs/43225485591): Jest 49/49 over 5 suites; [original-first-splits #43225485147](https://github.com/777genius/social-monitor/actions/runs/43225485147): Jest 42/42 over 3 suites. Both verify original subset 815/815, architecture 28/28, strict TS, code quality, runtime gates, cap 1000LOC 5,947 scanned. Temporary focused workflow removed only after terminal success. All independent/final 20/20 PG18×6/review/main reconciliation/merge/post-merge gates remain open; #620/#663/#664 and production unchanged.
