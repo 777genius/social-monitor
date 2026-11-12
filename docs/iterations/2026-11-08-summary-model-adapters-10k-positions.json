@@ -950,6 +950,23 @@
         295
       ],
       "responsibility": "Untrusted narrative kind/text/citation/story-cluster projection into grounded sections, without taking authority over evidence IDs. Retrospectively traced original positions, provenance only; not independently approved meaningful LOC or new implementation"
+    },
+    {
+      "original": "agent-runtime-reader-summary-story-relation-verifier.adapter.ts",
+      "owner": "agent-runtime-reader-summary-story-relation-execution.ts",
+      "originalPositions": [
+        210,
+        213,
+        218,
+        219,
+        220,
+        222,
+        223,
+        226,
+        227,
+        228
+      ],
+      "responsibility": "Provider-specific story/related-topic wire decoding and strict response-schema validation must precede MiMo/CLI execution attestation and optional sink recording; verifier adapter owns immutable runtime settings and command creation. Exact legacy error and shadow no-record semantics preserved. First-use coordinates are provenance-only, not independently accepted 10k LOC."
     }
   ]
 }
