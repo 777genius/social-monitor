@@ -1,5 +1,5 @@
 # Temporary Draft #665 exact-source focused job; remove after terminal PASS.
-name: Model 665 weekly normalization focused
+name: Model 665 weekly and narrative trace focused
 on:
   push:
     branches:
@@ -9,6 +9,11 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-legacy-normalization.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-expanded-normalization.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-legacy-normalization.spec.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-narrative.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-narrative-evidence.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-narrative-markdown.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-narrative-validation.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-narrative-section-projection.ts
       - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
 permissions:
   contents: read
@@ -43,8 +48,11 @@ jobs:
           npm run check:source-line-cap
           npm run check:runtime-profile-guards
           node scripts/audit-summary-model-original-files.mjs
-      - name: Run strict weekly normalization and parser Jest regression tests
+      - name: Run strict weekly normalization, parser and narrative Jest regressions
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
           libs/summary/adapters/model/openai-responses-reader-summary-weekly-legacy-normalization.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-parser.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-narrative.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-narrative-evidence.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-narrative-validation.spec.ts
