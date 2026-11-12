@@ -1,6 +1,6 @@
 # Temporary exact-code test on existing Draft #665; not a deployment or Ready CI substitute.
-# Requalify hardened runtime role allowlist, 1201 provenance positions and four forged-key regressions.
-name: Model 665 attested purpose focused
+# Requalify 1329 frozen original positions plus gateway/model/legacy recovery and attestation checks.
+name: Model 665 gateway and attested purpose focused
 on:
   push:
     branches:
@@ -40,9 +40,11 @@ jobs:
           npm run check:code-quality
           npm run check:source-line-cap
           npm run check:runtime-profile-guards
-      - name: Purpose admission, identity, MiMo regressions
+      - name: Gateway identity, purpose admission and MiMo regressions
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
           libs/summary/adapters/model/reader-summary-attested-purpose-policy.spec.ts
           libs/summary/adapters/model/reader-summary-execution-identity-policy.spec.ts
           libs/summary/adapters/model/reader-summary-mimo-attestation.spec.ts
+          libs/summary/adapters/model/reader-summary-gateway-route-policy.spec.ts
+          libs/summary/adapters/model/reader-summary-generation-identity-policy.spec.ts
