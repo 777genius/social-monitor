@@ -313,6 +313,40 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
     }, client)).toThrow("conflicts with purpose policy");
   });
 
+  it("fails closed when the attestation audit sink rejects a verified response", async () => {
+    const client = new CapturingAgentRuntimeClient({
+      status: "completed",
+      structuredOutput: {
+        decisions: [{
+          leftFeedItemId: "feed:hn",
+          rightFeedItemId: "feed:rss",
+          sameStory: true,
+          confidenceScore: 0.96,
+          rationale: "Matching synthetic story.",
+        }],
+      },
+      warnings: [],
+    });
+    const record = jest.fn(async () => {
+      throw new Error("synthetic-attestation-write-failure");
+    });
+    const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier({
+      client,
+      verifiedAttestationSink: { record },
+    });
+
+    await expect(verifier.verify(input())).rejects.toThrow(
+      "synthetic-attestation-write-failure",
+    );
+    expect(client.commands).toHaveLength(1);
+    expect(record).toHaveBeenCalledTimes(1);
+    expect(record).toHaveBeenCalledWith(expect.objectContaining({
+      taskRole: "story_relation",
+      attempt: "primary",
+      normalizedOutputSha256: expect.any(String),
+    }));
+  });
+
   it("isolates shadow task identity and metadata from the production lane", async () => {
     const client = new CapturingAgentRuntimeClient({
       status: "completed",

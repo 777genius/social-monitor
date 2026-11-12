@@ -1,30 +1,19 @@
 import { buildAgentRuntimeStoryRelationCommand } from "./agent-runtime-reader-summary-story-relation-command";
-import {
-  readDecisionEnvelope,
-  normalizeBinaryDecisions,
-  parseJsonObject,
-} from "./agent-runtime-reader-summary-story-relation-decoder";
+import { executeAgentRuntimeStoryRelationVerification } from "./agent-runtime-reader-summary-story-relation-execution";
 import type {
   AgentRuntimeClientPort,
   ReaderSummaryStoryRelationVerifierInput,
   ReaderSummaryStoryRelationVerifierPort,
 } from "../../ports";
-import { readAgentRuntimeObjectOutput } from "./agent-runtime-model-support";
+
 import {
   resolveStoryRelationVerifierConfig,
   type AgentRuntimeReaderSummaryStoryRelationVerifierOptions,
 } from "./agent-runtime-reader-summary-story-relation-options";
-import {
-  verifyAndRecordReaderSummaryExecution,
-  type VerifiedReaderSummaryExecutionAttestationSink,
-} from "./reader-summary-execution-attestation";
-import {
-  mimoReaderSummaryBackend,
-  type ReaderSummaryGenerationBackend,
-  verifyAndRecordMimoDailyExecution,
-} from "./active-reader-summary-generation-profile";
+import type { VerifiedReaderSummaryExecutionAttestationSink } from "./reader-summary-execution-attestation";
+import type { ReaderSummaryGenerationBackend } from "./active-reader-summary-generation-profile";
 
-import { assertStoryRelationResponseSchema } from "./story-relation-response-schema";
+
 
 export type { AgentRuntimeReaderSummaryStoryRelationVerifierOptions } from "./agent-runtime-reader-summary-story-relation-options";
 export { resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions } from "./agent-runtime-reader-summary-story-relation-options";
@@ -79,32 +68,13 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
       relatedTopicTimeoutMs: this.relatedTopicTimeoutMs,
       maxOutputTokens: this.maxOutputTokens,
     });
-    const result = await this.client.runTask(command, { signal: input.signal });
-    const raw = readAgentRuntimeObjectOutput(
-      result,
-      (text) => parseJsonObject(text, command.outputSchema),
-      "Reader summary story relation verifier",
-    );
-
-    assertStoryRelationResponseSchema(raw, command.outputSchema);
-
-    const decisions = relatedTopicLane
-      ? readDecisionEnvelope(raw)
-      : normalizeBinaryDecisions(raw);
-    await (this.modelBackend === mimoReaderSummaryBackend
-      ? verifyAndRecordMimoDailyExecution
-      : verifyAndRecordReaderSummaryExecution)({
+    return executeAgentRuntimeStoryRelationVerification({
+      client: this.client,
+      input,
       command,
-      result,
-      taskRole: relatedTopicLane ? "related_topic_relation" : "story_relation",
-      attempt: relatedTopicLane ? "related-topic" : "primary",
-      normalizedOutput: decisions,
-      sink:
-        input.verificationLane === "safe_recall_shadow"
-          ? undefined
-          : this.verifiedAttestationSink,
+      modelBackend: this.modelBackend,
+      sink: this.verifiedAttestationSink,
     });
-    return decisions;
   }
 }
 
