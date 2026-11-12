@@ -16,6 +16,20 @@ import {
   isStructuredJsonEvidence,
 } from './lib/external-beta-evidence-artifact-redaction.mjs';
 
+import {
+  postgresUrlEnvNames,
+  rabbitmqUrlEnvNames,
+  localRuntimeEnvNames,
+  isLocalRuntimeEnvValue,
+  httpsEvidenceUrlEnvNames,
+  tokenEvidenceEnvNames,
+  secretReferenceEnvNames,
+  realEvidenceIdentityEnvNames,
+  isFixtureLikeEnvValue,
+  isPlaceholderSecretValue,
+  isRawSecretValueReference
+} from './lib/external-beta-evidence-input-value-policy.mjs';
+
 const contractPath = 'ops/release/external-beta-evidence-runner.json';
 const inputMatrixPath = 'ops/release/external-beta-evidence-input-matrix.json';
 const contract = JSON.parse(readFileSync(contractPath, 'utf8'));
@@ -817,117 +831,6 @@ function validateTypedUrlEnv(job, envName, value, options, violations) {
   if (isFixtureLikeEnvValue(parsed.hostname)) {
     violations.push(`${job.jobId}: env ${envName} must not use local, fixture, example, mock or test hostnames`);
   }
-}
-
-function postgresUrlEnvNames() {
-  return new Set(['DATABASE_URL']);
-}
-
-function rabbitmqUrlEnvNames() {
-  return new Set(['RABBITMQ_URL']);
-}
-
-function localRuntimeEnvNames() {
-  return new Set(['API_BASE_URL', 'DATABASE_URL', 'INFINITY_CONTEXT_URL', 'RABBITMQ_URL', 'RABBITMQ_MANAGEMENT_URL']);
-}
-
-function isLocalRuntimeEnvValue(value) {
-  let parsed;
-  try {
-    parsed = new URL(value);
-  } catch {
-    return false;
-  }
-
-  const hostname = parsed.hostname.toLowerCase();
-  return isFixtureLikeEnvValue(hostname)
-    || hostname === 'host.docker.internal'
-    || hostname.endsWith('.localhost');
-}
-
-function httpsEvidenceUrlEnvNames() {
-  return new Set([
-    'INFINITY_CONTEXT_URL',
-    'JWKS_URL',
-    'OIDC_ISSUER',
-    'RABBITMQ_MANAGEMENT_URL',
-    'WEBHOOK_TEST_ENDPOINT',
-  ]);
-}
-
-function tokenEvidenceEnvNames() {
-  return new Set([
-    'GITHUB_ACCESS_TOKEN',
-    'INFINITY_CONTEXT_TOKEN',
-    'REDDIT_ACCESS_TOKEN',
-    'REDDIT_APP_CLIENT_SECRET',
-    'REDDIT_CLIENT_SECRET',
-    'REDDIT_REFRESH_TOKEN',
-  ]);
-}
-
-function secretReferenceEnvNames() {
-  return new Set(['DATABASE_URL_SECRET_REF', 'OIDC_CONFIG_SECRET_REF', 'OIDC_TEST_TOKEN_REF', 'RABBITMQ_URL_SECRET_REF', 'SYSTEM_DATABASE_URL_SECRET_REF']);
-}
-
-function realEvidenceIdentityEnvNames() {
-  return new Set([
-    'STAGING_ENVIRONMENT_ID',
-    'SOURCE_LIVE_ENVIRONMENT_ID',
-    'SOURCE_LIVE_OPERATOR',
-    'STAGING_SECRET_STORE_ID',
-  ]);
-}
-
-function isFixtureLikeEnvValue(value) {
-  const normalized = String(value).toLowerCase();
-  if (
-    normalized === 'localhost'
-    || normalized === '0.0.0.0'
-    || normalized === '::1'
-    || normalized === '[::1]'
-    || normalized.startsWith('127.')
-  ) {
-    return true;
-  }
-  return normalized.split(/[^a-z0-9]+/).some((segment) => {
-    return ['local', 'localhost', 'fixture', 'example', 'synthetic', 'mock', 'test'].includes(segment);
-  });
-}
-
-function isPlaceholderSecretValue(value) {
-  const normalized = String(value).trim().toLowerCase();
-  if (isFixtureLikeEnvValue(normalized)) {
-    return true;
-  }
-  return [
-    'changeme',
-    'change-me',
-    'dummy',
-    'placeholder',
-    'redacted',
-    'secret',
-    'token',
-    'todo',
-    'undefined',
-  ].includes(normalized);
-}
-
-function isRawSecretValueReference(value) {
-  const normalized = String(value).trim().toLowerCase();
-  return [
-    'bearer ',
-    'basic ',
-    'postgres://',
-    'postgresql://',
-    'amqp://',
-    'amqps://',
-    'github_pat_',
-    'ghp_',
-    'sk-proj-',
-    'sk-live-',
-    'whsec_',
-  ].some((fragment) => normalized.startsWith(fragment) || normalized.includes(fragment));
 }
 
 function validateEvidencePathEnv(job, missingEnvSet, violations) {
