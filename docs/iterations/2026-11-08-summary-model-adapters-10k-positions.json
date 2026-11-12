@@ -219,6 +219,15 @@
         35
       ],
       "responsibility": "Priority by trusted cluster score, lexical tie-break and first-ranked unique node identity; admission budget and grounded cohort coverage stay with separate owners"
+    },
+    {
+      "original": "openai-responses-reader-summary-model.adapter.ts",
+      "owner": "openai-responses-reader-summary-generation.ts",
+      "originalPositions": [
+        197,
+        198
+      ],
+      "responsibility": "Provider-specific prompt/daily-receipt binding and strict one-shot execution now owned outside the model port; route, credential admission and no-signal handling stay on adapter. Two frozen positions are traceable provenance only, not reviewer-approved LOC."
     }
   ]
 }

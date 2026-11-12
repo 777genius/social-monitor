@@ -5,8 +5,6 @@ import {
 } from "./reader-summary-token-budget";
 export { resolveOpenAiResponsesReaderSummaryModelOptions } from "./openai-responses-reader-summary-options";
 import { runOpenAiDailyEditor } from "./openai-responses-reader-summary-daily-editor";
-import { readerSummaryDailyInputReceipt } from "./reader-summary-daily-input-receipt";
-import { buildOpenAiReaderSummaryResponseRequest } from "./openai-responses-reader-summary-response-request";
 import type {
   ReaderSummaryModelBudget,
   ReaderSummaryModelEstimate,
@@ -21,17 +19,12 @@ import type {
 } from "../../ports";
 import { primaryReaderSummaryEvidence } from "../../domain";
 import {
-  completeOpenAiReaderSummaryAttempt,
   validateOpenAiReaderSummaryResponse,
 } from "./openai-responses-reader-summary-response-policy";
-import {
-  buildOpenAiReaderSummaryInstructions,
-  buildOpenAiReaderSummaryPromptPayload,
-  currentReaderSummaryPromptRelease,
-} from "./openai-responses-reader-summary-prompt";
-import { readerSummaryWriterSchema } from "./openai-responses-reader-summary-schema";
+import { currentReaderSummaryPromptRelease } from "./openai-responses-reader-summary-prompt";
 import { classifyOpenAiReaderSummaryModelError } from "./openai-responses-reader-summary-error-policy";
 import { buildReaderSummaryNoSignalAttempt } from "./reader-summary-no-signal-attempt";
+import { runOpenAiReaderSummaryGeneration } from "./openai-responses-reader-summary-generation";
 
 import {
   ReaderSummaryModelProviderError,
@@ -119,24 +112,13 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
       });
     }
 
-    const prompt = buildOpenAiReaderSummaryPromptPayload(input);
-    const dailyGenerationReceipt = readerSummaryDailyInputReceipt(prompt, input.evidence.dailyGenerationInput, input.dailyEditorialPlan);
-    const responseJson = await this.createResponse(
-      buildOpenAiReaderSummaryResponseRequest({
-        model: selectedRoute.model,
-        maxOutputTokens: this.settings.maxOutputTokens,
-        instructions: buildOpenAiReaderSummaryInstructions(input),
-        prompt,
-        schema: readerSummaryWriterSchema(input),
-      }),
-    );
-    return completeOpenAiReaderSummaryAttempt({
-      responseJson,
+    return runOpenAiReaderSummaryGeneration({
       input,
       selectedRoute,
-      estimateUsage: () => this.estimate(input, selectedRoute),
+      maxOutputTokens: this.settings.maxOutputTokens,
       evalDatasetVersion: this.settings.evalDatasetVersion,
-      dailyGenerationReceipt,
+      createResponse: (request) => this.createResponse(request),
+      estimateUsage: () => this.estimate(input, selectedRoute),
     });
   }
 
