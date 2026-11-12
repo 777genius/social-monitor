@@ -1597,6 +1597,26 @@
         462
       ],
       "responsibility": "Configured daily/task route and provider identity, per-backend effort admissibility and fail-closed legacy recovery separation independent of gateway model catalog and transport; legacy profile exports preserved"
+    },
+    {
+      "original": "deterministic-reader-summary-model.adapter.ts",
+      "owner": "deterministic-reader-summary-coverage-selection.ts",
+      "originalPositions": [
+        142,
+        144,
+        145,
+        147,
+        156,
+        157,
+        158,
+        160,
+        162,
+        163,
+        164,
+        165,
+        168
+      ],
+      "responsibility": "Editor-slate evidence order is already trusted; unslated fallback alone applies provider diversity and pinned coverage-plan cluster selection. The adapter retains ports, budget, no-signal and draft assembly; baseline position lineage is provisional, not reviewer-approved meaningful LOC."
     }
   ]
 }

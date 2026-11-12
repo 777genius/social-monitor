@@ -13,6 +13,11 @@ import type {
   ReaderSummaryModelRoute,
 } from "../../ports";
 import { DeterministicReaderSummaryModelAdapter } from "./deterministic-reader-summary-model.adapter";
+import {
+  selectClustersForEvidence,
+  selectProviderDiverseRankedEvidence,
+} from "./deterministic-reader-summary-evidence-selection";
+import { selectDeterministicReaderSummaryCoverage } from "./deterministic-reader-summary-coverage-selection";
 import { buildDeterministicReaderSummaryStoryProjection } from "./deterministic-reader-summary-story-projection";
 import { acceptedDeterministicFixtureHeadline } from "./deterministic-reader-summary-model.spec-support";
 import {
@@ -368,6 +373,42 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
     expect(attempt.draft.qualityFlags).toEqual(["limited_sources"]);
     expect(attempt.draft.confidence).toMatchObject({ level: "low", score: 0.35 });
     expect(attempt.draft.content?.headline).toBe(attempt.draft.headline);
+  });
+
+  it("keeps trusted editorial slate evidence and cluster identity instead of re-ranking it", () => {
+    const input = dailySynthesisReaderSummaryInput();
+    const primary = primaryReaderSummaryEvidence(input.evidence);
+    expect(input.evidence.editorialSlate).toBeDefined();
+    const selected = selectDeterministicReaderSummaryCoverage(input, primary);
+    expect(selected.selectedEvidence).toBe(primary.selectedEvidence);
+    expect(selected.topStoryClusters).toBe(primary.clusters);
+  });
+
+  it("uses provider diversity and explicit coverage pins only without an editorial slate", () => {
+    const original = dailySynthesisReaderSummaryInput();
+    const input: ReaderSummaryModelInput = {
+      ...original,
+      evidence: { ...original.evidence, editorialSlate: undefined },
+    };
+    const primary = primaryReaderSummaryEvidence(input.evidence);
+    const selected = selectDeterministicReaderSummaryCoverage(input, primary);
+    expect(selected.selectedEvidence).toEqual(
+      selectProviderDiverseRankedEvidence(primary.selectedEvidence, input.policy.maxStories),
+    );
+    const pinned = [
+      ...(input.coveragePlan.lead === undefined ? [] : [input.coveragePlan.lead.clusterId]),
+      ...input.coveragePlan.secondary.map((item) => item.clusterId),
+    ];
+    expect(selected.topStoryClusters.map((cluster) => cluster.id)).toEqual(
+      selectClustersForEvidence(
+        input.evidence.clusters,
+        selected.selectedEvidence,
+        input.policy.maxStories,
+        pinned,
+      ).map((cluster) => cluster.id),
+    );
+    expect(new Set(selected.topStoryClusters.map((cluster) => cluster.id)).size)
+      .toBe(selected.topStoryClusters.length);
   });
 
 });

@@ -15,10 +15,7 @@ import {
   estimateDeterministicReaderSummaryTokens,
 } from "./deterministic-reader-summary-budget-policy";
 import { buildDeterministicNoSignalReaderSummaryAttempt } from "./deterministic-reader-summary-no-signal";
-import {
-  selectClustersForEvidence,
-  selectProviderDiverseRankedEvidence,
-} from "./deterministic-reader-summary-evidence-selection";
+import { selectDeterministicReaderSummaryCoverage } from "./deterministic-reader-summary-coverage-selection";
 import { buildDeterministicReaderSummaryStoryProjection } from "./deterministic-reader-summary-story-projection";
 import { buildDeterministicReaderSummaryDocument } from "./deterministic-reader-summary-document";
 
@@ -77,25 +74,8 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
     }
 
     const citedEvidence = input.evidence.selectedEvidence;
-    const selectedEvidence = input.evidence.editorialSlate === undefined
-      ? selectProviderDiverseRankedEvidence(
-          primaryEvidence.selectedEvidence,
-          input.policy.maxStories,
-        )
-      : primaryEvidence.selectedEvidence;
-    const topStoryClusters = input.evidence.editorialSlate === undefined
-      ? selectClustersForEvidence(
-          input.evidence.clusters,
-          selectedEvidence,
-          input.policy.maxStories,
-          [
-            ...(input.coveragePlan.lead === undefined
-              ? []
-              : [input.coveragePlan.lead.clusterId]),
-            ...input.coveragePlan.secondary.map((item) => item.clusterId),
-          ],
-        )
-      : primaryEvidence.clusters;
+    const { selectedEvidence, topStoryClusters } =
+      selectDeterministicReaderSummaryCoverage(input, primaryEvidence);
     const projection =
       buildDeterministicReaderSummaryStoryProjection({
         input,
