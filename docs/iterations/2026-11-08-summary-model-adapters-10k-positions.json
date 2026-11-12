@@ -981,6 +981,24 @@
         168
       ],
       "responsibility": "Provider output decoding, MiMo strict schema admission, complete pair normalization and persisted execution attestation are one fail-closed completion boundary; adapter retains tenant-scoped command construction and runtime selection. Provenance-only first-use positions, not accepted meaningful LOC."
+    },
+    {
+      "original": "agent-runtime-summary-model.adapter.ts",
+      "owner": "agent-runtime-summary-execution.ts",
+      "originalPositions": [
+        203,
+        204,
+        205,
+        206,
+        208,
+        209,
+        212,
+        213,
+        216,
+        221,
+        222
+      ],
+      "responsibility": "Effectful Agent Runtime dispatch, strict object response decoding, metered usage and normalized summary result isolated from route/budget/no-signal port orchestration"
     }
   ]
 }

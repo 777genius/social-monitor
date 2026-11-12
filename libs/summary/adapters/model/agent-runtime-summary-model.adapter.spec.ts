@@ -162,6 +162,46 @@ describe("AgentRuntimeSummaryModelAdapter", () => {
     expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
   });
 
+  it("rejects malformed completed provider output without returning a synthetic summary", async () => {
+    const client = new CapturingAgentRuntimeClient({
+      status: "completed",
+      structuredOutput: { ...validProviderDraft(), headline: null },
+      warnings: [],
+    });
+    const adapter = new AgentRuntimeSummaryModelAdapter({ client });
+    const input = buildInput();
+    const route = adapter.route(input, {
+      preferredProvider: "agent-runtime",
+      maxInputTokens: 12_000,
+      maxOutputTokens: 4_000,
+      maxEstimatedCostUsd: 1,
+    }, { remainingTokens: 20_000, remainingCostUsd: 1 });
+
+    await expect(adapter.summarize(input, route)).rejects.toThrow();
+    expect(client.commands).toHaveLength(1);
+  });
+
+  it("keeps no-evidence fallback local and never dispatches a provider task", async () => {
+    const client = new CapturingAgentRuntimeClient({ status: "completed", warnings: [] });
+    const adapter = new AgentRuntimeSummaryModelAdapter({ client });
+    const sourceInput = buildInput();
+    const input: SummaryModelInput = {
+      ...sourceInput,
+      evidence: { ...sourceInput.evidence, items: [] },
+    };
+    const route = adapter.route(input, {
+      preferredProvider: "agent-runtime",
+      maxInputTokens: 12_000,
+      maxOutputTokens: 4_000,
+      maxEstimatedCostUsd: 1,
+    }, { remainingTokens: 20_000, remainingCostUsd: 1 });
+
+    const attempt = await adapter.summarize(input, route);
+    expect(attempt.draft.qualityFlags).toContain("no_signal");
+    expect(attempt.route).toEqual(route);
+    expect(client.commands).toHaveLength(0);
+  });
+
   it("does not send the default lineage alias as a Codex runtime model", async () => {
     const client = new CapturingAgentRuntimeClient({
       status: "completed",
