@@ -2,6 +2,12 @@
 # This is not the final Ready 20/20 CI; remove after terminal PASS.
 name: Model 665 frozen receipt admission focused
 on:
+  pull_request:
+    paths:
+      - .github/workflows/model-665-frozen-receipt-focused.yml
+      - libs/summary/adapters/model/reader-summary-daily-input-receipt.ts
+      - libs/summary/adapters/model/reader-summary-daily-prompt-admission.ts
+      - libs/summary/adapters/model/reader-summary-daily-input-receipt.spec.ts
   push:
     branches:
       - refactor/summary-model-adapters-10k-20261108
@@ -22,7 +28,7 @@ jobs:
       - name: Checkout exact SHA
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Setup Node 22
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
