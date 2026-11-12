@@ -75,7 +75,7 @@ test("UI technical tag prefixes stay case insensitive, anchored and nonmutating"
     ] },
     { matchedRules: ["PROVIDER:R", "prefix:rule:a"] },
   ];
-  const before = structuredClone(items);
+  const before = items.map(({ matchedRules }) => ({ matchedRules: [...matchedRules] }));
   assert.equal(countUiPayloadTechnicalTags(items), 8);
   assert.equal(countUiPayloadTechnicalTags([]), 0);
   assert.deepEqual(items, before);
