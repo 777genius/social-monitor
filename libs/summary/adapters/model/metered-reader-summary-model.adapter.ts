@@ -4,6 +4,7 @@ import {
   recordReaderSummaryModelUsage,
 } from "./reader-summary-model-metrics";
 import { readFailedDailyEditorUsage } from "./reader-summary-failed-daily-editor-usage";
+import { meterReaderSummaryAttempt } from "./reader-summary-metered-attempt";
 
 import type {
   ReaderSummaryDailyEditorialAttempt,
@@ -46,18 +47,18 @@ export class MeteredReaderSummaryModelAdapter implements ReaderSummaryModelPort 
     if (this.delegate.planDaily === undefined) {
       throw new Error("Daily editorial planning adapter is unavailable");
     }
-    recordReaderSummaryModelRequest(this.metrics,route, "started");
-    try {
-      const attempt = await this.delegate.planDaily(input, route);
-      recordReaderSummaryModelRequest(this.metrics,route, "succeeded");
-      recordReaderSummaryModelUsage(this.metrics,route, attempt.usage);
-      return attempt;
-    } catch (error) {
-      const failedUsage = readFailedDailyEditorUsage(error);
-      if (failedUsage !== undefined) recordReaderSummaryModelUsage(this.metrics,route, failedUsage);
-      recordReaderSummaryModelRequest(this.metrics,route, "failed", this.delegate.classifyError(error).kind);
-      throw error;
-    }
+    const planDaily = this.delegate.planDaily.bind(this.delegate);
+    return meterReaderSummaryAttempt({
+      metrics: this.metrics,
+      route,
+      execute: () => planDaily(input, route),
+      recordSuccess: (attempt) => {
+        recordReaderSummaryModelRequest(this.metrics, route, "succeeded");
+        recordReaderSummaryModelUsage(this.metrics, route, attempt.usage);
+      },
+      classifyFailure: (error) => this.delegate.classifyError(error).kind,
+      failedUsage: readFailedDailyEditorUsage,
+    });
   }
 
   async generate(
@@ -65,21 +66,17 @@ export class MeteredReaderSummaryModelAdapter implements ReaderSummaryModelPort 
     route: ReaderSummaryModelRoute,
     budget?: ReaderSummaryModelBudget,
   ): Promise<ProviderReaderSummaryAttempt> {
-    recordReaderSummaryModelRequest(this.metrics,route, "started");
-
-    try {
-      const attempt = await this.delegate.generate(input, route, budget);
-      const usage = attempt.draft.usage;
-
-      recordReaderSummaryModelRequest(this.metrics,route, "succeeded");
-      recordReaderSummaryModelUsage(this.metrics,route, usage);
-
-      return attempt;
-    } catch (error) {
-      const failure = this.delegate.classifyError(error);
-      recordReaderSummaryModelRequest(this.metrics,route, "failed", failure.kind);
-      throw error;
-    }
+    return meterReaderSummaryAttempt({
+      metrics: this.metrics,
+      route,
+      execute: () => this.delegate.generate(input, route, budget),
+      recordSuccess: (attempt) => {
+        const usage = attempt.draft.usage;
+        recordReaderSummaryModelRequest(this.metrics, route, "succeeded");
+        recordReaderSummaryModelUsage(this.metrics, route, usage);
+      },
+      classifyFailure: (error) => this.delegate.classifyError(error).kind,
+    });
   }
 
   validateRawProviderResponse(
