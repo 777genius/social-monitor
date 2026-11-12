@@ -62,3 +62,48 @@ console.log(`Pinned model originals: ${originalPaths.length} files / ${totalPhys
 console.log(`Different from pinned blob at HEAD: ${changed.length}; unchanged: ${unchanged.length}`);
 for (const path of unchanged) console.log(`UNCHANGED (zero refactored credit): ${path}`);
 console.log("This audit grants zero implementation-LOC credit; map unique original code positions to changed responsibilities and independently review them.");
+
+const positionsManifest = "docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json";
+const ledger = JSON.parse(readFileSync(positionsManifest, "utf8"));
+if (ledger.schemaVersion !== 1 || ledger.baseline !== baseline || !Array.isArray(ledger.slices)) {
+  fail("original-position ledger schema or pinned baseline mismatch");
+}
+const originalSet = new Set(originalPaths);
+const changedSet = new Set(changed);
+const usedPositions = new Set();
+let verifiedPositions = 0;
+for (const slice of ledger.slices) {
+  const path = directory + slice.original;
+  const owner = directory + slice.owner;
+  if (!originalSet.has(path) || !source(owner) || path === owner) {
+    fail(`invalid original/specialist responsibility pair: ${path} -> ${owner}`);
+  }
+  if (!changedSet.has(path)) fail(`unchanged original falsely credited: ${path}`);
+  if (!Array.isArray(slice.originalPositions) || slice.originalPositions.length === 0 ||
+    typeof slice.responsibility !== "string" || slice.responsibility.trim().length === 0) {
+    fail(`missing explicit original coordinates/responsibility for ${path}`);
+  }
+  const frozenLines = git("show", `${baseline}:${path}`).replace(/\r\n/gu, "\n").split("\n");
+  const ownerBody = git("show", `HEAD:${owner}`).replace(/\r\n/gu, "\n");
+  const occurrences = new Map();
+  for (const line of ownerBody.split("\n")) {
+    const trimmed = line.trim();
+    occurrences.set(trimmed, (occurrences.get(trimmed) ?? 0) + 1);
+  }
+  for (const position of slice.originalPositions) {
+    const coordinate = `${path}:${position}`;
+    if (!Number.isSafeInteger(position) || position < 1 || position > frozenLines.length ||
+      usedPositions.has(coordinate)) fail(`duplicate or invalid pinned position: ${coordinate}`);
+    usedPositions.add(coordinate);
+    const line = frozenLines[position - 1].trim();
+    if (!line || /^(?:\/\/|\/\*|\*|\*\/|import\b|export\s+type\b|[{};]+$)/u.test(line)) {
+      fail(`non-implementation original position: ${coordinate}`);
+    }
+    const remaining = occurrences.get(line) ?? 0;
+    if (remaining === 0) fail(`original position absent from specialist owner: ${coordinate}`);
+    occurrences.set(line, remaining - 1);
+    verifiedPositions += 1;
+  }
+}
+console.log(`Machine-verified disjoint original implementation-position subset: ${verifiedPositions} across ${ledger.slices.length} slices`);
+console.log("Position trace establishes source provenance only; excludes unchanged originals, not a complete ledger or accepted meaningful 10,000 LOC.");

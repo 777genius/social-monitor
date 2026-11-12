@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "baseline": "3fa1b9e9ee5bd1302840d1164a975cde3f0eeaba",
+  "scope": "Incrementally machine-verified disjoint original positions; NOT the full historical candidate ledger or reviewer-approved LOC",
+  "slices": [
+    {
+      "original": "summary-provider-labels.ts",
+      "owner": "summary-provider-uniqueness.ts",
+      "originalPositions": [
+        35,
+        36,
+        38,
+        39,
+        40,
+        42,
+        43,
+        46
+      ],
+      "responsibility": "First-seen identity deduplication without presentation labeling or key normalization; public legacy export preserved"
+    }
+  ]
+}
