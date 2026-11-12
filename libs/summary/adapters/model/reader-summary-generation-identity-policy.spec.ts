@@ -3,6 +3,7 @@ import {
   resolveReaderSummaryGenerationIdentityFromEnv,
   parseActiveReaderSummaryModel,
   assertActiveReaderSummaryProvider,
+  resolveReaderSummaryGenerationIdentity,
 } from "./active-reader-summary-generation-profile";
 
 describe("reader-summary generation identity policy", () => {
@@ -23,5 +24,17 @@ describe("reader-summary generation identity policy", () => {
     expect(() => assertActiveReaderSummaryProvider("other")).toThrow(
       "AGENT_RUNTIME_PROVIDER must be",
     );
+  });
+
+  it("rejects legacy recovery on MiMo or gateway backends before model identity is admitted", () => {
+    expect(() => resolveReaderSummaryGenerationIdentity({
+      backend: "xiaomi-mimo-token-plan", legacyRecovery: true,
+    })).toThrow("MiMo reader summary model conflicts with purpose policy");
+    expect(() => resolveReaderSummaryGenerationIdentity({
+      backend: "kimi-code", model: "k3-256k", legacyRecovery: true,
+    })).toThrow("Gateway reader summary model conflicts with purpose policy");
+    expect(() => resolveReaderSummaryGenerationIdentity({
+      backend: "openrouter", model: "gpt-5.6-sol",
+    })).toThrow("Gateway reader summary model conflicts with purpose policy");
   });
 });
