@@ -2,7 +2,6 @@ import type {
   LlmClient, LlmEffort, LlmFailure, LlmPolicy, LlmTask,
 } from "@agent-teams/account-gateway/llm";
 import type { Clock } from "@social-monitor/shared-kernel";
-import { gatewayLlmRuntimeEngine } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 
 import type {
   AgentRuntimeClientPort, AgentRuntimeFailure, AgentRuntimeHealthResult,
@@ -16,6 +15,7 @@ import { prepareGatewayLlmTask, type GatewayLlmPrepared } from "./gateway-llm-ta
 import { completeGatewayLlmTask } from "./gateway-llm-task-completion";
 import { gatewayLlmUsage } from "./gateway-llm-usage";
 import { gatewayLlmDispatchFreeRetry } from "./gateway-llm-dispatch-retry-policy";
+import { readGatewayLlmHealth } from "./gateway-llm-health";
 
 /**
  * The one gateway profile and model a client serves. Tasks must name exactly
@@ -107,19 +107,7 @@ export class GatewayLlmClient implements AgentRuntimeClientPort {
   }
 
   async checkHealth(): Promise<AgentRuntimeHealthResult> {
-    let serving = true;
-    try {
-      serving = this.options.probe === undefined || await this.options.probe();
-    } catch {
-      serving = false;
-    }
-    return {
-      status: serving ? "serving" : "not_serving",
-      runtimeEngine: gatewayLlmRuntimeEngine,
-      runtimeVersion: this.options.sdk.packageVersion,
-      launcherSha256: this.options.sdk.archiveSha256,
-      warnings: [],
-    };
+    return readGatewayLlmHealth(this.options.sdk, this.options.probe);
   }
 
   private withAttempt(prepared: GatewayLlmPrepared, identity: GatewayLlmAttemptIdentity):
