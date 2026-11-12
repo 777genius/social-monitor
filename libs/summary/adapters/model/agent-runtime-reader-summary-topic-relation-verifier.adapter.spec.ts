@@ -141,6 +141,52 @@ describe("AgentRuntimeReaderSummaryTopicRelationVerifier", () => {
     );
   });
 
+  it("does not dispatch or record when no topic relation is requested", async () => {
+    const client = new CapturingAgentRuntimeClient({
+      status: "completed", structuredOutput: { decisions: [] }, warnings: [],
+    });
+    const record = jest.fn();
+    const verifier = new AgentRuntimeReaderSummaryTopicRelationVerifier({
+      client, verifiedAttestationSink: { record },
+    });
+    await expect(verifier.verify({ ...input(), relations: [] })).resolves.toEqual([]);
+    expect(client.commands).toHaveLength(0);
+    expect(record).not.toHaveBeenCalled();
+  });
+
+  it("never records malformed topic relation decisions", async () => {
+    const client = new CapturingAgentRuntimeClient({
+      status: "completed", structuredOutput: { decisions: [] }, warnings: [],
+    });
+    const record = jest.fn();
+    const verifier = new AgentRuntimeReaderSummaryTopicRelationVerifier({
+      client, verifiedAttestationSink: { record },
+    });
+    await expect(verifier.verify(input())).rejects.toThrow(
+      "must decide every requested pair exactly once",
+    );
+    expect(client.commands).toHaveLength(1);
+    expect(record).not.toHaveBeenCalled();
+  });
+
+  it("rejects verified topic decisions when attestation persistence fails", async () => {
+    const client = new CapturingAgentRuntimeClient({
+      status: "completed",
+      structuredOutput: { decisions: [{
+        sourceNodeId: "node:a", targetNodeId: "node:b",
+        sameTopic: true, confidenceScore: 0.94, rationale: "Same synthetic event.",
+      }] },
+      warnings: [],
+    });
+    const record = jest.fn().mockRejectedValue(new Error("synthetic receipt store failure"));
+    const verifier = new AgentRuntimeReaderSummaryTopicRelationVerifier({
+      client, verifiedAttestationSink: { record },
+    });
+    await expect(verifier.verify(input())).rejects.toThrow("synthetic receipt store failure");
+    expect(client.commands).toHaveLength(1);
+    expect(record).toHaveBeenCalledTimes(1);
+  });
+
   it("routes topic relations through MiMo with strict schema and attestation", async () => {
     const client = new CapturingAgentRuntimeClient({
       status: "completed",

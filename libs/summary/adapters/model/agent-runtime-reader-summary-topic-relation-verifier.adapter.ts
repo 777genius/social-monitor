@@ -1,8 +1,5 @@
 import { buildAgentRuntimeTopicRelationCommand } from "./agent-runtime-reader-summary-topic-relation-command";
-import {
-  normalizeDecisions,
-  parseJsonObject,
-} from "./agent-runtime-reader-summary-topic-relation-decisions";
+import { executeAgentRuntimeTopicRelationVerification } from "./agent-runtime-reader-summary-topic-relation-execution";
 import type { ReaderSummaryTopicRelationDecision } from "../../domain";
 import type {
   AgentRuntimeClientPort,
@@ -10,21 +7,12 @@ import type {
   ReaderSummaryTopicRelationVerifierInput,
   ReaderSummaryTopicRelationVerifierPort,
 } from "../../ports";
-import { readAgentRuntimeObjectOutput } from "./agent-runtime-model-support";
 import type {
   AgentRuntimeReaderSummaryTopicLabelerOptions,
 } from "./agent-runtime-reader-summary-topic-labeler.adapter";
-import {
-  verifyAndRecordReaderSummaryExecution,
-  type VerifiedReaderSummaryExecutionAttestationSink,
-} from "./reader-summary-execution-attestation";
-import { assertStoryRelationResponseSchema } from "./story-relation-response-schema";
+import type { VerifiedReaderSummaryExecutionAttestationSink } from "./reader-summary-execution-attestation";
 import { resolveTopicRelationVerifierConfig } from "./agent-runtime-reader-summary-topic-relation-options";
-import {
-  mimoReaderSummaryBackend,
-  type ReaderSummaryGenerationBackend,
-  verifyAndRecordMimoDailyExecution,
-} from "./active-reader-summary-generation-profile";
+import type { ReaderSummaryGenerationBackend } from "./active-reader-summary-generation-profile";
 
 export type AgentRuntimeReaderSummaryTopicRelationVerifierOptions = Pick<
   AgentRuntimeReaderSummaryTopicLabelerOptions,
@@ -66,28 +54,14 @@ export class AgentRuntimeReaderSummaryTopicRelationVerifier implements ReaderSum
       ...this.config,
       providerInstanceId: this.providerInstanceId,
     });
-    const result = await this.client.runTask(command);
-    const raw = readAgentRuntimeObjectOutput(
-      result,
-      parseJsonObject,
-      "Reader summary topic relation verifier",
-    );
-    if (this.config.modelBackend === mimoReaderSummaryBackend) {
-      assertStoryRelationResponseSchema(raw, command.outputSchema);
-    }
-
-    const decisions = normalizeDecisions(raw, input.relations);
-    await (this.config.modelBackend === mimoReaderSummaryBackend
-      ? verifyAndRecordMimoDailyExecution
-      : verifyAndRecordReaderSummaryExecution)({
+    return executeAgentRuntimeTopicRelationVerification({
+      client: this.client,
       command,
-      result,
-      taskRole: "topic_relation",
-      attempt: String(attemptContext.attemptNumber),
-      normalizedOutput: decisions,
+      input,
+      attemptContext,
+      modelBackend: this.config.modelBackend,
       sink: this.verifiedAttestationSink,
     });
-    return decisions;
   }
 }
 
