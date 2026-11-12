@@ -24,7 +24,7 @@ test('category membership returns a fresh mutable Set on each invocation', () =>
   assert.equal(tokenEvidenceEnvNames().size, 6);
 });
 
-test('local runtime URLs continue to reject local, fixture and Docker host aliases', () => {
+test('local runtime URLs continue to identify local, fixture and Docker host aliases', () => {
   for (const value of ['http://localhost:8080', 'http://127.0.0.1:8080', 'http://host.docker.internal:8080', 'https://edge.localhost', 'postgresql://localhost/db', 'https://api.example.com']) {
     assert.equal(isLocalRuntimeEnvValue(value), true, value);
   }
