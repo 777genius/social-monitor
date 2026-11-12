@@ -3,6 +3,7 @@ export const handoffPolicyPath = 'scripts/lib/external-beta-evidence-handoff.mjs
 export const displayPolicyPath = 'scripts/lib/external-beta-evidence-display-formatters.mjs';
 export const consistencyPolicyPath = 'scripts/lib/external-beta-artifact-consistency-freshness.mjs';
 export const readinessPolicyPath = 'scripts/lib/external-beta-evidence-job-readiness.mjs';
+export const artifactShapePolicyPath = 'scripts/lib/external-beta-evidence-artifact-shape-policy.mjs';
 
 export function validateRunnerImplementationMarkers({
   runnerSource,
@@ -10,6 +11,7 @@ export function validateRunnerImplementationMarkers({
   displaySource,
   consistencyPolicySource,
   readinessPolicySource,
+  artifactShapePolicySource,
   checkSource,
   selectionHelperSource,
   redactionPolicySource,
@@ -174,12 +176,7 @@ export function validateRunnerImplementationMarkers({
     'isStructuredJsonEvidence',
     'validateArtifactRedaction',
     'validateArtifactIdentity',
-    'expectedArtifactId',
-    'must use artifactId',
     'validateArtifactProviderKeys',
-    'expectedProviderKeys',
-    'must include providerKey',
-    'must not include providerKey',
     'validateArtifactEnvConsistency',
     'validateArtifactFreshness',
     'validateArtifactLiteralRedaction',
@@ -189,6 +186,32 @@ export function validateRunnerImplementationMarkers({
   ]) {
     if (!runnerSource.includes(marker)) {
       violations.push(`${runnerFile}: runner must fail fast before executing unsafe job selections`);
+    }
+  }
+
+  // Artifact identity and provider membership diagnostics now belong to the extracted policy.
+  for (const marker of [
+    'validateArtifactIdentity',
+    'expectedArtifactId',
+    'must use artifactId',
+    'validateArtifactProviderKeys',
+    'expectedProviderKeys',
+    'must include providerKey',
+    'must not include providerKey',
+  ]) {
+    if (!artifactShapePolicySource.includes(marker)) {
+      violations.push(`${artifactShapePolicyPath}: extracted artifact shape policy must preserve "${marker}"`);
+    }
+  }
+
+  // Imported names alone do not prove the runner actually validates generated artifacts.
+  const activeRunnerSource = runnerSource
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^[ \t]*\/\/.*$/gm, '');
+  for (const validator of ['validateArtifactIdentity', 'validateArtifactProviderKeys']) {
+    const invocation = new RegExp(`^[ \\t]*${validator}\\s*\\(\\s*content\\s*,\\s*job\\s*,\\s*artifact\\s*,\\s*violations\\s*\\)\\s*;`, 'm');
+    if (!invocation.test(activeRunnerSource)) {
+      violations.push(`${runnerFile}: runner must invoke ${validator} for each generated artifact`);
     }
   }
 

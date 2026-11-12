@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { validateRunnerImplementationMarkers, redactionPolicyPath, handoffPolicyPath, displayPolicyPath, consistencyPolicyPath, readinessPolicyPath } from '../lib/external-beta-evidence-runner-markers.mjs';
+import { validateRunnerImplementationMarkers, artifactShapePolicyPath, redactionPolicyPath, handoffPolicyPath, displayPolicyPath, consistencyPolicyPath, readinessPolicyPath } from '../lib/external-beta-evidence-runner-markers.mjs';
 
 const runnerFile = 'scripts/external-beta-evidence-runner.mjs';
 const checkFile = 'scripts/check-external-beta-evidence-runner.mjs';
@@ -13,6 +13,7 @@ const sources = {
   displaySource: readFileSync(displayPolicyPath, 'utf8'),
   consistencyPolicySource: readFileSync(consistencyPolicyPath, 'utf8'),
   readinessPolicySource: readFileSync(readinessPolicyPath, 'utf8'),
+  artifactShapePolicySource: readFileSync(artifactShapePolicyPath, 'utf8'),
   checkSource: readFileSync(checkFile, 'utf8'),
   selectionHelperSource: readFileSync(selectionHelperPath, 'utf8'),
   redactionPolicySource: readFileSync(redactionPolicyPath, 'utf8'),
@@ -152,4 +153,40 @@ test('checker reads readiness markers from their authoritative module', () => {
   });
   assert.equal(violations.length, 9);
   assert.ok(violations.every(value => value.startsWith(readinessPolicyPath)));
+});
+
+test('relocated artifact identity/provider markers fail closed at their actual policy owner', () => {
+  for (const marker of [
+    'validateArtifactIdentity', 'expectedArtifactId', 'must use artifactId',
+    'validateArtifactProviderKeys', 'expectedProviderKeys',
+    'must include providerKey', 'must not include providerKey',
+  ]) {
+    const violations = validateRunnerImplementationMarkers({
+      ...sources,
+      artifactShapePolicySource: sources.artifactShapePolicySource.replaceAll(marker, 'removed-artifact-marker'),
+    });
+    assert.deepEqual(violations, [
+      `${artifactShapePolicyPath}: extracted artifact shape policy must preserve "${marker}"`,
+    ]);
+  }
+});
+
+test('runner still invokes both extracted validators, not merely imports them', () => {
+  for (const validator of ['validateArtifactIdentity', 'validateArtifactProviderKeys']) {
+    const call = `${validator}(content, job, artifact, violations);`;
+    const error = `${runnerFile}: runner must invoke ${validator} for each generated artifact`;
+    assert.ok(sources.runnerSource.includes(call), `original live invocation of ${validator} must exist`);
+    for (const replacement of ['', `// ${call}`, `/* ${call} */`]) {
+      const violations = validateRunnerImplementationMarkers({
+        ...sources,
+        runnerSource: sources.runnerSource.replace(call, replacement),
+      });
+      assert.ok(violations.includes(error), `disabled invocation must fail closed: ${validator}`);
+    }
+  }
+});
+
+test('real checker reads the artifact shape policy for implementation marker enforcement', () => {
+  const checkerSource = readFileSync(checkFile, 'utf8');
+  assert.match(checkerSource, /artifactShapePolicySource:\s*readFileSync\(artifactShapePolicyPath,\s*'utf8'\)/);
 });
