@@ -78,6 +78,7 @@ test('original bounded checker remains after policy tests and source cap ratchet
   const command = pkg.scripts['check:external-beta-evidence-runner'];
   assert.ok(command.includes('scripts/lib/external-beta-evidence-input-value-policy.test.mjs && node scripts/run-with-timeout.mjs'));
   assert.ok(command.includes('--timeout-ms 300000 -- node scripts/check-external-beta-evidence-runner.mjs'));
+  assert.ok(pkg.scripts['check:architecture'].includes('node --test scripts/lib/external-beta-evidence-input-value-policy.test.mjs'), 'Draft Static must run the new policy tests directly');
   const cap = readFileSync(new URL('../check-source-line-cap.mjs', import.meta.url), 'utf8');
   const runner = readFileSync(new URL('../external-beta-evidence-runner.mjs', import.meta.url), 'utf8');
   assert.match(cap, new RegExp('"scripts/external-beta-evidence-runner.mjs", ' + (runner.trimEnd().split('\n').length) + '\\]'));
