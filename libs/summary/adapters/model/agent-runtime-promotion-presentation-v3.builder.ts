@@ -1,5 +1,4 @@
 import {
-  READER_POST_PRESENTATION_V3_MAX_REQUEST_BYTES,
   type PromotionPresentationBuilder,
   type ReaderPostPresentationV3Input,
   type ReaderPostPresentationV3Result,
@@ -7,15 +6,14 @@ import {
 import type { AgentRuntimeClientPort } from "../../ports";
 import {
   activeReaderSummaryProvider,
-  mimoReaderSummaryBackend,
   type ReaderSummaryGenerationBackend,
 } from "./active-reader-summary-generation-profile";
 import {
   resolvePromotionPresentationV3RuntimeOptions,
   type AgentRuntimePromotionPresentationV3BuilderOptions,
 } from "./agent-runtime-promotion-presentation-v3-options";
-import { requestBytes } from "./agent-runtime-promotion-presentation-v3-request";
 import { executeAgentRuntimePromotionPresentation } from "./agent-runtime-promotion-presentation-v3-execution";
+import { runAgentRuntimePromotionPresentationBatches } from "./agent-runtime-promotion-presentation-v3-batching";
 import { createPromotionPresentationTaskCommand } from "./agent-runtime-promotion-presentation-v3-task-command";
 
 
@@ -55,24 +53,13 @@ implements PromotionPresentationBuilder {
 
   async build(inputs: readonly ReaderPostPresentationV3Input[]):
   Promise<readonly ReaderPostPresentationV3Result[]> {
-    if (inputs.length < 1 || inputs.length > 4) {
-      throw new Error("V3 presentation requires a configured batch of 1..4");
-    }
-    // Each MiMo completion attests one story, so a malformed sibling cannot
-    // discard independently valid stories. Rejected outputs remain unread.
-    if (this.modelBackend === mimoReaderSummaryBackend && inputs.length > 1) {
-      const results: ReaderPostPresentationV3Result[] = [];
-      for (const input of inputs) results.push(...await this.build([input]));
-      return results;
-    }
-    if (requestBytes(inputs) > READER_POST_PRESENTATION_V3_MAX_REQUEST_BYTES) {
-      if (inputs.length === 1) {
-        return [{ status: "unavailable", reason: "input_over_budget" }];
-      }
-      const split = Math.ceil(inputs.length / 2);
-      return [...await this.build(inputs.slice(0, split)),
-        ...await this.build(inputs.slice(split))];
-    }
+    return runAgentRuntimePromotionPresentationBatches(
+      inputs, this.modelBackend, (batch) => this.executeBatch(batch),
+    );
+  }
+
+  private async executeBatch(inputs: readonly ReaderPostPresentationV3Input[]):
+  Promise<readonly ReaderPostPresentationV3Result[]> {
     const { command, sourceCopyWire, catalogCandidates } =
       createPromotionPresentationTaskCommand(inputs, {
         provider: this.provider,
