@@ -1252,3 +1252,18 @@ See `docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json` and `
 Machine manifest at `docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json` now lists **177 unique disjoint original positions in seven slices across five pinned original files**. These matchable coordinates do not qualify the stale historical 6,257 or the >=10k target; independently audited meaningful LOC remain unknown. Source/test commit `e527cb9ceea8c3b6f55addc10661677a4e4b2f5a`, temporary focused workflow exact-source SHA `6e70ac004c90e27090632e4fd6a957db524e3d4b`. Scope/CI/reviews/merge restrictions unchanged.
 
 **Verified focused source gate (2026-11-12):** [Actions #43211013615](https://github.com/777genius/social-monitor/actions/runs/43211013615) `COMPLETED SUCCESS` on `6e70ac00` with source/spec identical to `e527cb9c`; **17/17 Jest**, architecture **28/28**, TypeScript, quality/runtime, 1000 LOC across **5,945** checked; frozen original audit **84/15,318 PHYSICAL; 73 changed/11 unchanged; 177/177 machine-traced subset**. The new two original positions prove *identity of source statements only*, not semantic 10k acceptance. Full Ready 20/20, native PG18 ×6, independent approvals, latest-main resolution and postmerge are not yet done.
+
+### 2026-11-12 — Original deterministic summary baseline-to-specialist trace
+
+All rows refer to *one* immutable original file `libs/summary/adapters/model/deterministic-summary-model.adapter.ts` at pinned baseline `3fa1b9e9`, Git blob `06d75bb867760488cb62430d1d4221900644512d`. Source position arrays are recorded exactly in `docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json`, not repeated as a second count. All were prior implementation, now reconstructed; no newly refactored LOC claimed.
+
+| Existing specialist responsibility | New machine-trace original positions | Reason for separate owner |
+| --- | ---: | --- |
+| `deterministic-summary-budget-policy.ts` | 14 | Deterministic token estimate and five hard budget guards independent of draft rendering |
+| `deterministic-summary-draft.ts` | 46 | Pure cited/no-signal draft, quality/confidence, lineage projection |
+| `deterministic-summary-source-highlights.ts` | 52 | GitHub provider metadata, trending highlights and relevance/memory reason formatting |
+| `deterministic-summary-text.ts` | 21 | Editorial/no-signal copy with bounded memory context and unchanged policy tone/language |
+| **Newly recovered first-use provenance only** | **133** | Does not add new implementation or certify meaningful refactor |
+| **All manifest-tracked subset after reconstruction** | **310** | 11 slices / 6 distinct pinned original files; not exhaustive nor independent acceptance |
+
+Selected provenance is exact-text occurrence-disjoint and excludes original lines still in the adapter; excludes import/type/brace-only/comments/short syntax/new code/specs. Hard acceptance remains ≥10,000 *original meaningful implementation* LOC, **not** 310 matching positions nor 15,318 baseline PHYSICAL LOC. Previously claimed historical 6,257 credit is invalid and remains withdrawn. [Exact-source targeted audit #43212482918](https://github.com/777genius/social-monitor/actions/runs/43212482918) on workflow SHA `41df281c` is pending; run Jest and source architecture checks before using this as machine-proof. Source work #665 only; #620/#663/#664 and production untouched.
