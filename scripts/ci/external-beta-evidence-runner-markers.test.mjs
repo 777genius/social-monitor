@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { validateRunnerImplementationMarkers, artifactShapePolicyPath, redactionPolicyPath, handoffPolicyPath, displayPolicyPath, consistencyPolicyPath, readinessPolicyPath } from '../lib/external-beta-evidence-runner-markers.mjs';
+import { validateRunnerImplementationMarkers, artifactShapePolicyPath, duplicatePathsPolicyPath, redactionPolicyPath, handoffPolicyPath, displayPolicyPath, consistencyPolicyPath, readinessPolicyPath } from '../lib/external-beta-evidence-runner-markers.mjs';
 
 const runnerFile = 'scripts/external-beta-evidence-runner.mjs';
 const checkFile = 'scripts/check-external-beta-evidence-runner.mjs';
@@ -14,6 +14,7 @@ const sources = {
   consistencyPolicySource: readFileSync(consistencyPolicyPath, 'utf8'),
   readinessPolicySource: readFileSync(readinessPolicyPath, 'utf8'),
   artifactShapePolicySource: readFileSync(artifactShapePolicyPath, 'utf8'),
+  duplicatePathsPolicySource: readFileSync(duplicatePathsPolicyPath, 'utf8'),
   checkSource: readFileSync(checkFile, 'utf8'),
   selectionHelperSource: readFileSync(selectionHelperPath, 'utf8'),
   redactionPolicySource: readFileSync(redactionPolicyPath, 'utf8'),
@@ -168,6 +169,49 @@ test('relocated artifact identity/provider markers fail closed at their actual p
     assert.deepEqual(violations, [
       `${artifactShapePolicyPath}: extracted artifact shape policy must preserve "${marker}"`,
     ]);
+  }
+});
+
+
+test('moved duplicate-path markers fail closed at their real implementation owner', () => {
+  for (const marker of ['evidencePathEnvForbidsDuplicatePaths', 'evidencePathDuplicateKey',
+    'must not duplicate another evidence artifact path in this run']) {
+    const violations = validateRunnerImplementationMarkers({
+      ...sources,
+      duplicatePathsPolicySource: sources.duplicatePathsPolicySource.replaceAll(marker, 'removed-duplicate-marker'),
+    });
+    assert.deepEqual(violations, [
+      duplicatePathsPolicyPath + ': extracted duplicate evidence path policy must preserve "' + marker + '"',
+    ]);
+  }
+});
+
+test('checker reads duplicate-path module and rejects an empty policy implementation', () => {
+  const checkerSource = readFileSync(checkFile, 'utf8');
+  assert.match(checkerSource, /duplicatePathsPolicySource:\s*readFileSync\(duplicatePathsPolicyPath,\s*'utf8'\)/);
+  assert.equal(validateRunnerImplementationMarkers({
+    ...sources, duplicatePathsPolicySource: '',
+  }).filter(v => v.startsWith(duplicatePathsPolicyPath)).length, 3);
+});
+
+test('factory env binding and all three runner enforcement gates fail closed under mutation', () => {
+  const binding = 'createExternalBetaDuplicateEvidencePaths({ contract, env: process.env });';
+  const invocation = 'violations.push(...duplicateEvidencePathViolations(candidateJobs));';
+  for (const candidate of [
+    sources.runnerSource.replace(binding, 'createExternalBetaDuplicateEvidencePaths({ contract, env: {} });'),
+    sources.runnerSource.replace(binding, '/* ' + binding + ' */'),
+    sources.runnerSource.replace('import { createExternalBetaDuplicateEvidencePaths }',
+      '// import { createExternalBetaDuplicateEvidencePaths }'),
+  ]) {
+    assert.ok(validateRunnerImplementationMarkers({ ...sources, runnerSource: candidate })
+      .includes(runnerFile + ': runner must bind duplicate evidence path policy to live env'));
+  }
+  for (const candidate of [
+    sources.runnerSource.replace(invocation, ''),
+    sources.runnerSource.replace(invocation, '// ' + invocation),
+  ]) {
+    assert.ok(validateRunnerImplementationMarkers({ ...sources, runnerSource: candidate })
+      .includes(runnerFile + ': runner must enforce duplicate evidence path policy in plan, validation and execution'));
   }
 });
 
