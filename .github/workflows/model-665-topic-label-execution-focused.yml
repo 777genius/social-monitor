@@ -1,13 +1,14 @@
-# Temporary focused verification only for existing Draft #665, not a Ready gate.
-name: Model 665 V3 origin-1002 focused
+# Temporary focused workflow for existing Draft PR #665 only.
+name: Model 665 topic-label execution focused
 on:
   push:
-    branches:
-      - refactor/summary-model-adapters-10k-20261108
+    branches: [refactor/summary-model-adapters-10k-20261108]
     paths:
-      - .github/workflows/model-665-v3-origin-1002-focused.yml
+      - .github/workflows/model-665-topic-label-execution-focused.yml
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-labeler.adapter.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-label-execution.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-labeler.adapter.spec.ts
       - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
-      - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-proposal.spec.ts
 permissions:
   contents: read
 jobs:
@@ -17,7 +18,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://social_monitor_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_ci
     steps:
-      - name: Checkout exact source and pinned original
+      - name: Checkout frozen source history
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           ref: ${{ github.sha }}
@@ -33,7 +34,7 @@ jobs:
           set -euo pipefail
           npm ci
           npm run prisma:generate
-      - name: Frozen source position audit and architecture quality
+      - name: Original provenance and architectural gates
         run: |
           set -euo pipefail
           node scripts/audit-summary-model-original-files.mjs
@@ -42,11 +43,7 @@ jobs:
           npm run check:code-quality
           npm run check:source-line-cap
           npm run check:runtime-profile-guards
-      - name: V3 proposal, builder, effectful execution and trust regressions
+      - name: Topic labeling and strict attestation regression
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
-          libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-proposal.spec.ts
-          libs/summary/adapters/model/agent-runtime-promotion-presentation-v3.builder.spec.ts
-          libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-execution.spec.ts
-          libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-result-policy.spec.ts
-          libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-task-command.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-topic-labeler.adapter.spec.ts

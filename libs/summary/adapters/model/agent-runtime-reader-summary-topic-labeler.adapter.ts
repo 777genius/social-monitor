@@ -1,5 +1,4 @@
 import { buildAgentRuntimeTopicLabelCommand } from "./agent-runtime-reader-summary-topic-label-command";
-import { assertMimoTopicLabelSchema } from "./agent-runtime-reader-summary-topic-label-schema";
 import type { ReaderSummaryTopicLabelPlan } from "../../domain";
 import type {
   AgentRuntimeClientPort,
@@ -7,20 +6,9 @@ import type {
   ReaderSummaryTopicLabelerPort,
   ReaderSummaryTopicMapAttemptContext,
 } from "../../ports";
-import { readAgentRuntimeObjectOutput } from "./agent-runtime-model-support";
-import {
-  normalizeAgentRuntimeReaderSummaryTopicLabelPlan,
-  parseAgentRuntimeReaderSummaryTopicLabelerJsonObject,
-} from "./agent-runtime-reader-summary-topic-label-plan-normalizer";
 import { selectAgentRuntimeReaderSummaryTopicCandidates } from "./agent-runtime-reader-summary-topic-labeler-prompt";
-import {
-  verifyAndRecordReaderSummaryExecution,
-  type VerifiedReaderSummaryExecutionAttestationSink,
-} from "./reader-summary-execution-attestation";
-import {
-  mimoReaderSummaryBackend,
-  verifyAndRecordMimoDailyExecution,
-} from "./active-reader-summary-generation-profile";
+import type { VerifiedReaderSummaryExecutionAttestationSink } from "./reader-summary-execution-attestation";
+import { executeAgentRuntimeTopicLabeling } from "./agent-runtime-reader-summary-topic-label-execution";
 import {
   resolveAgentRuntimeTopicLabelerSettings,
   type AgentRuntimeReaderSummaryTopicLabelerOptions,
@@ -65,31 +53,14 @@ export class AgentRuntimeReaderSummaryTopicLabeler implements ReaderSummaryTopic
       timeoutMs: this.settings.timeoutMs,
       maxOutputTokens: this.settings.maxOutputTokens,
     });
-    const result = await this.client.runTask(command);
-    const raw = readAgentRuntimeObjectOutput(
-      result,
-      parseAgentRuntimeReaderSummaryTopicLabelerJsonObject,
-      "Reader summary topic map",
-    );
-    if (this.settings.modelBackend === mimoReaderSummaryBackend) {
-      assertMimoTopicLabelSchema(raw);
-    }
-
-    const plan = normalizeAgentRuntimeReaderSummaryTopicLabelPlan(
-      raw,
-      candidates,
-    );
-    await (this.settings.modelBackend === mimoReaderSummaryBackend
-      ? verifyAndRecordMimoDailyExecution
-      : verifyAndRecordReaderSummaryExecution)({
+    return executeAgentRuntimeTopicLabeling({
+      client: this.client,
       command,
-      result,
-      taskRole: "topic_label",
-      attempt: String(attemptContext.attemptNumber),
-      normalizedOutput: plan,
+      candidates,
+      attemptContext,
+      modelBackend: this.settings.modelBackend,
       sink: this.verifiedAttestationSink,
     });
-    return plan;
   }
 }
 

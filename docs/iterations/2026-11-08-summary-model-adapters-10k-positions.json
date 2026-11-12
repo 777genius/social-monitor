@@ -1207,6 +1207,23 @@
         315
       ],
       "responsibility": "Provider-specific sealed request encoding and strict output shape decoding separated from candidate-binding policy"
+    },
+    {
+      "original": "agent-runtime-reader-summary-topic-labeler.adapter.ts",
+      "owner": "agent-runtime-reader-summary-topic-label-execution.ts",
+      "originalPositions": [
+        169,
+        171,
+        172,
+        184,
+        185,
+        189,
+        190,
+        193,
+        194,
+        195
+      ],
+      "responsibility": "Trusted topic-label response decoding, strict MiMo schema admission and mandatory attestation storage split from scoped task command construction"
     }
   ]
 }
