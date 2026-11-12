@@ -1,5 +1,11 @@
 import { createHash } from "node:crypto";
-import type { GatewayLlmAttemptIdentity } from "./gateway-llm-attempts";
+
+export type GatewayLlmAttemptIdentity = {
+  /** Gateway invocation key of the logical task; a gateway reference. */
+  readonly taskId: string;
+  /** 1-based. Every value is a new execution and may be paid again. */
+  readonly attempt: number;
+};
 
 /** "sm" plus 43 base64url characters: inside the gateway reference grammar. */
 export const gatewayLlmTaskId = (runId: string, requestId: string): string =>

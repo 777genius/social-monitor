@@ -1,12 +1,7 @@
-import { nextGatewayLlmAttemptIdentity } from "./gateway-llm-attempt-identity-policy";
+import { nextGatewayLlmAttemptIdentity, type GatewayLlmAttemptIdentity } from "./gateway-llm-attempt-identity-policy";
 export { gatewayLlmTaskId, gatewayLlmMaxAttempt } from "./gateway-llm-attempt-identity-policy";
 
-export type GatewayLlmAttemptIdentity = {
-  /** Gateway invocation key of the logical task; a gateway reference. */
-  readonly taskId: string;
-  /** 1-based. Every value is a new execution and may be paid again. */
-  readonly attempt: number;
-};
+export type { GatewayLlmAttemptIdentity } from "./gateway-llm-attempt-identity-policy";
 
 /**
  * Allocates gateway attempt identities. A value is never handed out twice:
