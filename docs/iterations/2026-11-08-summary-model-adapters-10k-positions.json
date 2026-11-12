@@ -489,7 +489,14 @@
         151,
         152,
         153,
-        154,
+        154
+      ],
+      "responsibility": "Flat legacy weekly envelope conversion owns exact section/takeaway shape and chronology; sealed/expanded weekly formats have distinct strict decoders"
+    },
+    {
+      "original": "openai-responses-reader-summary-weekly-response-parser.ts",
+      "owner": "openai-responses-reader-summary-weekly-expanded-normalization.ts",
+      "originalPositions": [
         158,
         162,
         163,
@@ -587,7 +594,7 @@
         349,
         350
       ],
-      "responsibility": "Previously implemented weekly legacy/expanded/sealed payload normalization: shape and chronology checks moved out of strict JSON parse/ReaderSummaryWeeklyArtifact boundary. First-of-kind exact frozen source positions only; no imported names, moved-only semantic credit or test lines. Conservative filter excludes original function-signature/typed parameter coordinates even when exact text was relocated."
+      "responsibility": "Sealed compact and expanded weekly envelopes own their strict story/section claim-type mapping and cited chronology, independently of flat legacy conversion and public weekly parser"
     },
     {
       "original": "grpc-agent-runtime-client.ts",
