@@ -1,7 +1,9 @@
-import type { OpenAiResponsesReaderSummaryModelAdapterOptions } from "./openai-responses-reader-summary-model.adapter";
+import type { OpenAiResponsesReaderSummaryModelAdapterOptions } from "./openai-responses-reader-summary-runtime-settings";
 import { openAiApiKeySourceDescription, resolveOpenAiApiKey } from "./openai-api-key-source";
+import { projectOpenAiReaderSummaryEnvironment } from "./openai-responses-reader-summary-env-options";
 import { assertNoReaderSummaryPromptReleaseOverride } from "./openai-responses-reader-summary-prompt";
 
+/** Validate the prompt release and credentials before projecting nonsecret options. */
 export const resolveOpenAiResponsesReaderSummaryModelOptions = (
   env: NodeJS.ProcessEnv,
   params: { readonly requireApiKey: boolean },
@@ -20,42 +22,6 @@ export const resolveOpenAiResponsesReaderSummaryModelOptions = (
 
   return {
     apiKey,
-    endpointUrl: env.OPENAI_RESPONSES_ENDPOINT_URL,
-    model:
-      env.OPENAI_READER_SUMMARY_MODEL ??
-      env.OPENAI_READER_SUMMARY_MODEL ??
-      env.OPENAI_SUMMARY_MODEL,
-    evalDatasetVersion:
-      env.READER_SUMMARY_EVAL_DATASET_VERSION ??
-      env.READER_SUMMARY_EVAL_DATASET_VERSION,
-    timeoutMs: parsePositiveInteger(
-      env.OPENAI_READER_SUMMARY_TIMEOUT_MS ??
-        env.OPENAI_READER_SUMMARY_TIMEOUT_MS,
-    ),
-    maxOutputTokens: parsePositiveInteger(
-      env.OPENAI_READER_SUMMARY_MAX_OUTPUT_TOKENS ??
-        env.OPENAI_READER_SUMMARY_MAX_OUTPUT_TOKENS,
-    ),
-    estimatedInputCostUsdPerMillionTokens: parseNonNegativeNumber(
-      env.OPENAI_SUMMARY_INPUT_COST_USD_PER_MILLION_TOKENS,
-    ),
-    estimatedOutputCostUsdPerMillionTokens: parseNonNegativeNumber(
-      env.OPENAI_SUMMARY_OUTPUT_COST_USD_PER_MILLION_TOKENS,
-    ),
+    ...projectOpenAiReaderSummaryEnvironment(env),
   };
-};
-
-
-const parsePositiveInteger = (
-  value: string | undefined,
-): number | undefined => {
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
-};
-
-const parseNonNegativeNumber = (
-  value: string | undefined,
-): number | undefined => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
 };
