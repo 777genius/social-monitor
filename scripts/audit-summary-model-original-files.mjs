@@ -85,6 +85,21 @@ for (const slice of ledger.slices) {
   }
   const frozenLines = git("show", `${baseline}:${path}`).replace(/\r\n/gu, "\n").split("\n");
   const ownerBody = git("show", `HEAD:${owner}`).replace(/\r\n/gu, "\n");
+  let currentOriginal = "";
+  try {
+    currentOriginal = git("show", `HEAD:${path}`);
+  } catch {
+    // Deleted original has no retained statements; blob identity is checked above.
+  }
+  const retainedOriginalLines = new Set(currentOriginal.split("\n").map((line) => line.trim()));
+  const importClausePositions = new Set();
+  let inImport = false;
+  for (let i = 0; i < frozenLines.length; i += 1) {
+    const line = frozenLines[i].trim();
+    if (/^(?:import\b|export\s+\{)/u.test(line)) inImport = true;
+    if (inImport) importClausePositions.add(i + 1);
+    if (inImport && /;\s*$/u.test(line)) inImport = false;
+  }
   const occurrences = new Map();
   for (const line of ownerBody.split("\n")) {
     const trimmed = line.trim();
@@ -98,6 +113,12 @@ for (const slice of ledger.slices) {
     const line = frozenLines[position - 1].trim();
     if (!line || /^(?:\/\/|\/\*|\*|\*\/|import\b|export\s+type\b|[{};]+$)/u.test(line)) {
       fail(`non-implementation original position: ${coordinate}`);
+    }
+    if (importClausePositions.has(position) || /^\)\s*:\s*.+=>/u.test(line)) {
+      fail(`import/return-type signature is not original implementation: ${coordinate}`);
+    }
+    if (retainedOriginalLines.has(line)) {
+      fail(`original statement still present in unchanged owner responsibility: ${coordinate}`);
     }
     const remaining = occurrences.get(line) ?? 0;
     if (remaining === 0) fail(`original position absent from specialist owner: ${coordinate}`);

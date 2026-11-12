@@ -6,6 +6,8 @@ on:
       - refactor/summary-model-adapters-10k-20261108
     paths:
       - .github/workflows/model-665-original-first-splits-focused.yml
+      - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
+      - scripts/audit-summary-model-original-files.mjs
 permissions:
   contents: read
 jobs:
