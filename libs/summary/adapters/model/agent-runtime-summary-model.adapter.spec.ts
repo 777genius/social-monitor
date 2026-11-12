@@ -162,10 +162,10 @@ describe("AgentRuntimeSummaryModelAdapter", () => {
     expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
   });
 
-  it("rejects malformed completed provider output without returning a synthetic summary", async () => {
+  it("rejects malformed completed provider JSON without returning a draft", async () => {
     const client = new CapturingAgentRuntimeClient({
       status: "completed",
-      structuredOutput: { ...validProviderDraft(), headline: null },
+      outputText: "{not-valid-json",
       warnings: [],
     });
     const adapter = new AgentRuntimeSummaryModelAdapter({ client });
