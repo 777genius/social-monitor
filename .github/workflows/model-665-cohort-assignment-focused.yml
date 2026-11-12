@@ -2,6 +2,12 @@
 # This is not the final Ready 20/20 gate; remove only after a terminal PASS.
 name: Model 665 grounded cohort assignment focused
 on:
+  pull_request:
+    paths:
+      - .github/workflows/model-665-cohort-assignment-focused.yml
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-completion.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-assignment.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-assignment.spec.ts
   push:
     branches:
       - refactor/summary-model-adapters-10k-20261108
