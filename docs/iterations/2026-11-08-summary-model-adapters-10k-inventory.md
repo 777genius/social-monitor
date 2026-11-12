@@ -1172,3 +1172,14 @@ This newly audited frozen original was not credited in earlier ledger entries. O
 
 
 **Current source/type ownership follow-up:** [`aa81e90a`](https://github.com/777genius/social-monitor/commit/aa81e90a917c9c8f6ff048e00955ea86b740c6bc) removes the reverse type-only import by owning `GatewayLlmAttemptIdentity` in the pure policy and re-exporting it from the legacy attempts module; unchanged public API and **zero** additional original implementation lines. Exact code [focused Actions #43150063812](https://github.com/777genius/social-monitor/actions/runs/43150063812) queued (NOT PASS), earlier run #43149607327 superseded. Same provisional **6,196** maximum remains.
+
+### 2026-11-12 — Grounded topic group creation ownership (same Draft PR #665)
+
+| Immutable original at pinned `3fa1b9e9` | Unique 1-based implementation positions | New owning module | Candidate lines |
+|---|---|---|---:|
+| `agent-runtime-reader-summary-topic-group-recovery.ts` blob `30a2d4df6ff70684f4ac5bbd021dda4766ed6a4c` (383 physical lines) | **75–76,79–81,83–85,87–89,91–93,95–97**. 15/17 exact trimmed matches; two receiver-prefix substitutions `params.` only | `agent-runtime-reader-summary-topic-group-creation.ts`: isolated ranked group membership projection, deterministic collision-safe ID allocation, two-unused-member admission and recovered-count. Existing recovery file remains anchor/consensus coordinator; shared consensus file's older **129 physical** moved lines are **not** recredited | **+17 provisional** |
+
+New [implementation+3 Jest scenarios `e324f75e`](https://github.com/777genius/social-monitor/commit/e324f75e1dd401438d5259ba7e5bb775799b96f2) preserves `slice(0,availableGroupSlots)` opportunity semantics, group-ID suffixes, original order and immutable input ownership via local Map/Set copies. Exclude prior unchanged orchestration, 129 previously noted uncredited physical consensus lines, import/signature/braces/test/comment/new files and other PR scope. No repeated original source position. The same workflow includes the new spec in explicit Jest selection; [focused Actions #43156069053](https://github.com/777genius/social-monitor/actions/runs/43156069053) **in progress at documentation write** (no premature PASS). Previous focused [#43150063812](https://github.com/777genius/social-monitor/actions/runs/43150063812) **completed success** on earlier gateway code `aa81e90a`, **not** proof for `e324f75e`.
+
+Running unique **provisional** original-line provenance increases **6,196 + 17 = 6,213 / 10,000** across **76/84** frozen original source files. Optimistic minimum gap **3,787** before independent semantic discounts. Full Ready 20/20 including PG18 x6, reviews, main reconciliation, merge/postmerge remain incomplete; keep Draft and no deployment, #620/#663/#664 edits.
+
