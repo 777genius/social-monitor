@@ -22,7 +22,7 @@ import {
   durableBackendE2ePreflightEnv,
   redditOAuthPreflightEnv,
 } from './lib/external-beta-evidence-preflight-fixtures.mjs';
-import { validateRunnerImplementationMarkers, redactionPolicyPath, handoffPolicyPath, displayPolicyPath, consistencyPolicyPath, readinessPolicyPath } from './lib/external-beta-evidence-runner-markers.mjs';
+import { validateRunnerImplementationMarkers, artifactShapePolicyPath, redactionPolicyPath, handoffPolicyPath, displayPolicyPath, consistencyPolicyPath, readinessPolicyPath } from './lib/external-beta-evidence-runner-markers.mjs';
 import {
   liveOpenConnectorsArtifact,
   redditCredentialLifecycleArtifact,
@@ -346,7 +346,6 @@ function validateArtifactExamples() {
     }
   }
 }
-
 function validateRunnerImplementation() {
   violations.push(...validateRunnerImplementationMarkers({
     runnerSource,
@@ -356,6 +355,7 @@ function validateRunnerImplementation() {
     displaySource: readFileSync(displayPolicyPath, 'utf8'),
     consistencyPolicySource: readFileSync(consistencyPolicyPath, 'utf8'),
     readinessPolicySource: readFileSync(readinessPolicyPath, 'utf8'),
+    artifactShapePolicySource: readFileSync(artifactShapePolicyPath, 'utf8'),
     redactionPolicySource: readFileSync(redactionPolicyPath, 'utf8'),
     runnerFile: contract.runnerFile,
     checkFile: contract.checkFile,
