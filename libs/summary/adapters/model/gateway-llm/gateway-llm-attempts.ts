@@ -1,4 +1,5 @@
-import { createHash } from "node:crypto";
+import { nextGatewayLlmAttemptIdentity } from "./gateway-llm-attempt-identity-policy";
+export { gatewayLlmTaskId, gatewayLlmMaxAttempt } from "./gateway-llm-attempt-identity-policy";
 
 export type GatewayLlmAttemptIdentity = {
   /** Gateway invocation key of the logical task; a gateway reference. */
@@ -16,8 +17,6 @@ export type GatewayLlmAttemptIdentity = {
 export interface GatewayLlmAttemptSource {
   next(requestId: string): GatewayLlmAttemptIdentity;
 }
-
-export const gatewayLlmMaxAttempt = 9_999;
 
 /**
  * Attempt identities scoped to one process run. Agent-runtime request ids are
@@ -37,20 +36,8 @@ export class RunScopedGatewayLlmAttempts implements GatewayLlmAttemptSource {
   }
 
   next(requestId: string): GatewayLlmAttemptIdentity {
-    if (requestId.length === 0) {
-      throw new Error("Gateway llm attempt requires a request id");
-    }
-    const taskId = gatewayLlmTaskId(this.runId, requestId);
-    const attempt = (this.issued.get(taskId) ?? 0) + 1;
-    if (attempt > gatewayLlmMaxAttempt) {
-      throw new Error("Gateway llm attempt budget is exhausted");
-    }
-    this.issued.set(taskId, attempt);
-    return { taskId, attempt };
+    const identity = nextGatewayLlmAttemptIdentity(this.runId, requestId, this.issued);
+    this.issued.set(identity.taskId, identity.attempt);
+    return identity;
   }
 }
-
-/** "sm" plus 43 base64url characters: inside the gateway reference grammar. */
-export const gatewayLlmTaskId = (runId: string, requestId: string): string =>
-  `sm${createHash("sha256").update(`${runId}\u0000${requestId}`, "utf8")
-    .digest("base64url")}`;

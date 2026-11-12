@@ -1,6 +1,6 @@
 # Temporary exact-code verification for a bounded PR #665 refactor slice.
 # This is not the final Ready 20/20 gate; remove only after a terminal PASS.
-name: Model 665 grounded cohort assignment focused
+name: Model 665 cohort and gateway attempt identity focused
 on:
   pull_request:
     paths:
@@ -8,6 +8,9 @@ on:
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-completion.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-assignment.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-assignment.spec.ts
+      - libs/summary/adapters/model/gateway-llm/gateway-llm-attempts.ts
+      - libs/summary/adapters/model/gateway-llm/gateway-llm-attempt-identity-policy.ts
+      - libs/summary/adapters/model/gateway-llm/gateway-llm-attempt-identity-policy.spec.ts
   push:
     branches:
       - refactor/summary-model-adapters-10k-20261108
@@ -16,6 +19,9 @@ on:
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-completion.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-assignment.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-assignment.spec.ts
+      - libs/summary/adapters/model/gateway-llm/gateway-llm-attempts.ts
+      - libs/summary/adapters/model/gateway-llm/gateway-llm-attempt-identity-policy.ts
+      - libs/summary/adapters/model/gateway-llm/gateway-llm-attempt-identity-policy.spec.ts
 permissions:
   contents: read
 jobs:
@@ -47,9 +53,11 @@ jobs:
           npm run check:code-quality
           npm run check:source-line-cap
           npm run check:runtime-profile-guards
-      - name: Test assignment and full candidate-to-topic integrity
+      - name: Test cohort integrity and gateway attempt admission
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
+          libs/summary/adapters/model/gateway-llm/gateway-llm-attempt-identity-policy.spec.ts
+          libs/summary/adapters/model/gateway-llm/gateway-llm-client.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-assignment.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-integrity.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-cohort-grouping.spec.ts
