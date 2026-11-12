@@ -1,4 +1,4 @@
-import { fromGrpcHealthStatus } from "./grpc-agent-runtime-wire-codec";
+import { invokeGrpcAgentRuntimeHealthCheck } from "./grpc-agent-runtime-health-check";
 import { invokeGrpcAgentRuntimeTask } from "./grpc-agent-runtime-task-invocation";
 export { agentRuntimeTaskDeadlineTimeoutMs } from "./grpc-agent-runtime-task-invocation";
 
@@ -10,10 +10,6 @@ import { isAbsolute, normalize } from "node:path";
 import {
   AgentRuntimeServiceClient,
 } from "@social-monitor/contracts/generated/grpc/agent_runtime/v1/agent_runtime";
-import {
-  createGrpcDeadline,
-  createGrpcRequestMetadata,
-} from "@social-monitor/platform-grpc";
 import type { Clock } from "@social-monitor/shared-kernel";
 
 import type {
@@ -85,42 +81,12 @@ export class GrpcAgentRuntimeClient implements AgentRuntimeClientPort {
   }
 
   async checkHealth(service: string): Promise<AgentRuntimeHealthResult> {
-    const metadata = createGrpcRequestMetadata({
-      correlationId: `agent-runtime-health:${service}`,
+    return invokeGrpcAgentRuntimeHealthCheck({
+      client: this.client,
+      clock: this.clock,
+      service,
       serviceToken: this.options.serviceToken,
-    });
-    const deadline = createGrpcDeadline(this.clock, this.options.timeoutMs);
-
-    return new Promise((resolve, reject) => {
-      this.client.checkHealth(
-        { service },
-        metadata,
-        { deadline },
-        (error, response) => {
-          if (error !== null) {
-            reject(error);
-            return;
-          }
-
-          try {
-            resolve({
-              status: fromGrpcHealthStatus(response.status),
-              runtimeEngine: response.runtimeEngine,
-              runtimeVersion: response.runtimeVersion,
-              launcherSha256:
-                response.launcherSha256.trim().length > 0
-                  ? response.launcherSha256
-                  : undefined,
-              warnings: response.warnings.map((warning) => ({
-                code: warning.code,
-                message: warning.message,
-              })),
-            });
-          } catch (parseError) {
-            reject(parseError);
-          }
-        },
-      );
+      timeoutMs: this.options.timeoutMs,
     });
   }
 }

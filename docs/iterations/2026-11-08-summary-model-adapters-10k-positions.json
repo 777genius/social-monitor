@@ -1425,6 +1425,31 @@
         188
       ],
       "responsibility": "Provider strict JSON schema adaptation, fail-closed output decode and safe violation diagnostics moved behind independent trust boundary, separate from route, task budget, account selection and transport; coordinates are provenance candidates pending independent semantic review"
+    },
+    {
+      "original": "grpc-agent-runtime-client.ts",
+      "owner": "grpc-agent-runtime-health-check.ts",
+      "originalPositions": [
+        169,
+        175,
+        176,
+        180,
+        181,
+        182,
+        183,
+        184,
+        185,
+        186,
+        187,
+        188,
+        189,
+        190,
+        191,
+        192,
+        194,
+        195
+      ],
+      "responsibility": "Independent health service RPC: scoped metadata, bounded deadline, strict serving/degraded/non-serving status and warning/launcher projection; task invocation/attestation and legacy public client API untouched. Candidate provenance only, not reviewer-approved semantic LOC."
     }
   ]
 }
