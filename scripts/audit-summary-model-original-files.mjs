@@ -29,9 +29,9 @@ const originalPaths = git("ls-tree", "-r", "--name-only", baseline, "--", direct
 const inventory = readFileSync(manifest, "utf8");
 const table = inventory.split("## File-level baseline\n")[1]?.split("\n## ")[0];
 if (table === undefined) fail("the pinned inventory table is missing");
-const claimed = [...table.matchAll(/^\| \`([^\`]+\.ts)\` \| (\d+) \|$/gmu)]
+const claimed = [...table.matchAll(/^\| `([^`]+\.ts)` \| (\d+) \|$/gmu)]
   .map((match) => ({ path: directory + match[1], lines: Number(match[2]) }))
-  .sort((a, b) => a.path.localeCompare(b.path));
+  .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 if (claimed.length !== 84 || originalPaths.length !== 84) {
   fail(`expected 84 eligible originals, found ${claimed.length} listed / ${originalPaths.length} in Git`);
 }
@@ -51,7 +51,7 @@ for (let i = 0; i < originalPaths.length; i += 1) {
   const baseBlob = git("rev-parse", `${baseline}:${path}`).trim();
   let currentBlob = "";
   try {
-    currentBlob = git("rev-parse", `HEAD:${path}`).trim();
+    currentBlob = git("rev-parse", "--verify", `HEAD:${path}`).trim();
   } catch {
     // A deleted original is changed, but that alone is never LOC credit.
   }
