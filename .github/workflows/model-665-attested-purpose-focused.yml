@@ -1,5 +1,5 @@
 # Temporary exact-code test on existing Draft #665; not a deployment or Ready CI substitute.
-# Requalify hardened runtime role allowlist, 1202 provenance positions and four forged-key regressions.
+# Requalify hardened runtime role allowlist, 1201 provenance positions and four forged-key regressions.
 name: Model 665 attested purpose focused
 on:
   push:

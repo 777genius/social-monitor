@@ -151,8 +151,7 @@
         142,
         143,
         144,
-        145,
-        146
+        145
       ],
       "responsibility": "Allowlisted task-role/purpose and legacy recovery attempt policy independent of attestation wire validation and effectful sink (existing coordinates reassigned; zero new original LOC)"
     },
