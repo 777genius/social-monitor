@@ -12,6 +12,11 @@ import { Pool, type PoolClient } from "pg";
 import { createDurableBackendHttpClient } from "./lib/durable-backend-e2e-http-client";
 import { emptyToUndefined, loadConfig, type RunnerConfig } from "./lib/durable-backend-e2e-config";
 import { createDurableScanTargets, type DurableScanProviderKey, type DurableScanTarget } from "./lib/durable-backend-e2e-scan-targets";
+import {
+  assertProviderCitationCoverage,
+  providerCitationCoverage,
+  type ProviderCitationCoverage,
+} from "./lib/durable-backend-e2e-citation-coverage";
 
 import {
   isRecord,
@@ -91,13 +96,6 @@ type ReaderBriefEvidence = {
   readonly citationProviderKeys: readonly string[];
   readonly citationCoverage: ProviderCitationCoverage;
   readonly qualityStatus: string;
-};
-
-type ProviderCitationCoverage = {
-  readonly expectedProviderKeys: readonly string[];
-  readonly citedProviderKeys: readonly string[];
-  readonly uncitedProviderKeys: readonly string[];
-  readonly minimumCitedProviderCount: number;
 };
 
 type SummaryMemoryEvidence = {
@@ -1073,46 +1071,6 @@ async function captureReaderBriefEvidence(params: {
     citationCoverage,
     qualityStatus: readString(qualityState, "status"),
   };
-}
-
-function providerCitationCoverage(
-  expectedProviderKeys: readonly string[],
-  citedProviderKeys: readonly string[],
-): ProviderCitationCoverage {
-  const expected = [...new Set(expectedProviderKeys)].sort();
-  const cited = [...new Set(citedProviderKeys)].sort();
-  const minimumCitedProviderCount = Math.min(
-    expected.length,
-    Math.max(2, expected.length - 1),
-  );
-
-  return {
-    expectedProviderKeys: expected,
-    citedProviderKeys: cited,
-    uncitedProviderKeys: expected.filter((providerKey) =>
-      !cited.includes(providerKey),
-    ),
-    minimumCitedProviderCount,
-  };
-}
-
-function assertProviderCitationCoverage(
-  label: string,
-  coverage: ProviderCitationCoverage,
-  diagnostics: JsonRecord,
-): void {
-  if (
-    coverage.citedProviderKeys.length < coverage.minimumCitedProviderCount
-  ) {
-    throw new Error(
-      `${label} citations must include at least ${coverage.minimumCitedProviderCount} provider families: ${JSON.stringify(
-        {
-          ...coverage,
-          ...diagnostics,
-        },
-      )}`,
-    );
-  }
 }
 
 async function assertReady(): Promise<void> {
