@@ -14,7 +14,6 @@ import type { VerifiedReaderSummaryExecutionAttestationSink } from "./reader-sum
 import type { ReaderSummaryGenerationBackend } from "./active-reader-summary-generation-profile";
 
 
-
 export type { AgentRuntimeReaderSummaryStoryRelationVerifierOptions } from "./agent-runtime-reader-summary-story-relation-options";
 export { resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions } from "./agent-runtime-reader-summary-story-relation-options";
 
@@ -54,7 +53,6 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
     if (input.candidates.length === 0) {
       return [];
     }
-    const relatedTopicLane = input.verificationLane === "related_topic";
     const command = buildAgentRuntimeStoryRelationCommand({
       input,
       provider: this.provider,
