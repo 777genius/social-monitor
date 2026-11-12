@@ -3,10 +3,10 @@ import {
   READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID,
   type ReaderSummaryTopicLabelPlan,
 } from "../../domain";
-import { normalizeTopicLabel } from "../../domain/services/reader-summary-topic-map-text";
 import type { ReaderSummaryTopicLabelCandidate } from "../../ports";
 import { buildGroundedTopicCohortsForCandidates } from "./agent-runtime-reader-summary-topic-grounded-cohorts";
 import { selectGroundedCohortDisplays } from "./agent-runtime-reader-summary-topic-cohort-grounding";
+import { applyGroundedCohortDisplays } from "./agent-runtime-reader-summary-topic-cohort-assignment";
 
 export const completeRequiredGroundedTopicCohorts = (
   initialNodeLabels: ReaderSummaryTopicLabelPlan["nodeLabels"],
@@ -42,22 +42,13 @@ export const completeRequiredGroundedTopicCohorts = (
     if (displayByNodeId.size < 2) {
       continue;
     }
-    nodeLabels = nodeLabels.map((label) => {
-      const display = displayByNodeId.get(label.nodeId);
-      if (display === undefined) {
-        return label;
-      }
-      if (label.groupId === READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID) {
-        recoveredNodeCount += 1;
-      }
-      return {
-        ...label,
-        groupId: cohort.groupId,
-        keywords: [display, ...(label.keywords ?? []).filter((keyword) =>
-          normalizeTopicLabel(keyword) !== cohort.sharedAnchor,
-        )].slice(0, 8),
-      };
-    });
+    const assignment = applyGroundedCohortDisplays(
+      nodeLabels,
+      cohort,
+      displayByNodeId,
+    );
+    nodeLabels = assignment.nodeLabels;
+    recoveredNodeCount += assignment.recoveredNodeCount;
     groupIds.add(cohort.groupId);
     displayByGroup.set(cohort.groupId, [...displayByNodeId.values()][0]!);
     semanticAnchorsByGroup.set(cohort.groupId, [cohort.sharedAnchor]);
