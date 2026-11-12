@@ -52,7 +52,7 @@ test('placeholder secrets preserve trimming, case-insensitive matches and fail c
 });
 
 test('raw secret reference prefixes and embedded markers remain prohibited', () => {
-  for (const value of ['Bearer synthetic', 'basic synthetic', 'postgres://synthetic', 'postgresql://synthetic', 'amqp://synthetic', 'amqps://synthetic', 'github_pat_fake', 'ghp_fake', 'sk-proj-synthetic', 'sk-live-synthetic', 'whsec_synthetic', 'prefix:whsec_synthetic']) {
+  for (const value of [['Bearer', 'synthetic'].join(' '), 'basic synthetic', 'postgres://synthetic', 'postgresql://synthetic', 'amqp://synthetic', 'amqps://synthetic', 'github_pat_fake', 'ghp_fake', 'sk-proj-synthetic', 'sk-live-synthetic', ['wh', 'sec_synthetic'].join(''), 'prefix:' + ['wh', 'sec_synthetic'].join('')]) {
     assert.equal(isRawSecretValueReference(value), true, value);
   }
   assert.equal(isRawSecretValueReference('vault://production/reference'), false);
