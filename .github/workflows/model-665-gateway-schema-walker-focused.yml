@@ -1,0 +1,49 @@
+# Temporary focused source gate only for existing Draft PR #665; no deployments or paid calls.
+name: PR 665 gateway schema walker focused
+on:
+  push:
+    branches:
+      - refactor/summary-model-adapters-10k-20261108
+    paths:
+      - .github/workflows/model-665-gateway-schema-walker-focused.yml
+permissions:
+  contents: read
+jobs:
+  focused:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      DATABASE_URL: postgresql://social_monitor_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_ci
+    steps:
+      - name: Checkout exact HEAD and pinned origin
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Setup Node 22
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install locked dependencies and generate Prisma
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run prisma:generate
+      - name: Strict TypeScript, architecture, code quality, hard LOC cap, runtime and origin
+        run: |
+          set -euo pipefail
+          npx tsc --noEmit
+          npm run check:architecture
+          npm run check:code-quality
+          npm run check:source-line-cap
+          npm run check:runtime-profile-guards
+          node scripts/audit-summary-model-original-files.mjs
+      - name: Gateway schema, diagnostics and client regression tests
+        run: >-
+          npx jest --config jest.config.ts --runInBand --runTestsByPath
+          libs/summary/adapters/model/gateway-llm/gateway-llm-output-violations.spec.ts
+          libs/summary/adapters/model/gateway-llm/gateway-llm-output-node-constraints.spec.ts
+          libs/summary/adapters/model/gateway-llm/gateway-llm-output-schema.spec.ts
+          libs/summary/adapters/model/gateway-llm/gateway-llm-client.spec.ts

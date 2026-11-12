@@ -389,6 +389,48 @@
         356
       ],
       "responsibility": "Executive-summary/no-signal wording and privacy-bounded memory context projection isolated from evidence/draft selection. Retrospective candidate provenance only; this work predates the current run and is not accepted 10k credit."
+    },
+    {
+      "original": "gateway-llm/gateway-llm-output-violations.ts",
+      "owner": "gateway-llm/gateway-llm-output-violation-traversal.ts",
+      "originalPositions": [
+        4,
+        18,
+        19,
+        20,
+        23,
+        25,
+        26,
+        27,
+        29,
+        30,
+        32,
+        35,
+        36,
+        37,
+        38,
+        41,
+        42,
+        59,
+        62,
+        63,
+        64,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        78,
+        79,
+        84,
+        85,
+        86,
+        87
+      ],
+      "responsibility": "Recursive bounded $ref/anyOf/oneOf traversal and schema-owned diagnostic paths separated from stable gateway repair-feedback facade and public safety format. Origin coordinates only; extraction is not accepted meaningful 10k credit without independent architectural review."
     }
   ]
 }
