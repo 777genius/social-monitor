@@ -20,7 +20,8 @@ export const readerSummaryAttestedPurposeMatches = (
   attempt: string,
   purpose: string,
   legacyRecoveryContract?: FrozenLegacyReaderSummaryRecoveryContract,
-): boolean => ({
+): boolean => {
+  const authorizedPurposes = ({
   summary: legacyRecoveryContract === frozenLegacyReaderSummaryRecoveryContract
     ? attempt === "primary"
       ? [frozenLegacyReaderSummaryRecoveryContract.purposes.generate]
@@ -39,4 +40,11 @@ export const readerSummaryAttestedPurposeMatches = (
   related_topic_relation: [activeReaderSummaryPurposes.relatedTopicRelations],
   weekly_review: [activeReaderSummaryPurposes.weeklyReview],
   weekly_generate: [activeReaderSummaryPurposes.weeklyGenerate],
-} as const)[role].some((candidate: string) => candidate === purpose);
+  } as const);
+  // Runtime callers can be malformed despite the compile-time role union.
+  // An inherited object key must never bypass the fail-closed purpose gate.
+  if (!Object.prototype.hasOwnProperty.call(authorizedPurposes, role)) {
+    return false;
+  }
+  return authorizedPurposes[role].some((candidate: string) => candidate === purpose);
+};

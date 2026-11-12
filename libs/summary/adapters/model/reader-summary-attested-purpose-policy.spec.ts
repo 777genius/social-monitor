@@ -62,6 +62,17 @@ describe("attested reader-summary task-role purpose policy", () => {
     )).toBe(false);
   });
 
+  it.each(["not-a-task-role", "__proto__", "constructor", "toString"])(
+    "rejects forged runtime role %s without throwing during purpose lookup",
+    (role) => {
+      expect(readerSummaryAttestedPurposeMatches(
+        role as ReaderSummaryAttestedTaskRole,
+        "primary",
+        activeReaderSummaryPurposes.generate,
+      )).toBe(false);
+    },
+  );
+
   it("preserves the existing purpose binding for non-summary roles irrespective of attempt label", () => {
     expect(readerSummaryAttestedPurposeMatches(
       "topic_label", "attempt-2", activeReaderSummaryPurposes.topicLabel,
