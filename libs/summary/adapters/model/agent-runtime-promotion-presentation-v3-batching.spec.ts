@@ -3,6 +3,7 @@ import type {
   ReaderPostPresentationV3Result,
 } from "../../domain/services/reader-post-presentation-v3";
 import { runAgentRuntimePromotionPresentationBatches } from "./agent-runtime-promotion-presentation-v3-batching";
+import { codexReaderSummaryBackend, mimoReaderSummaryBackend } from "./active-reader-summary-generation-profile";
 
 const input = (candidateId: string, body = "Source evidence"): ReaderPostPresentationV3Input => ({
   tenantId: "tenant-test",
@@ -29,10 +30,10 @@ const executor = () => jest.fn(async (batch: readonly ReaderPostPresentationV3In
 describe("agent-runtime promotion presentation batch admission", () => {
   it("rejects zero and more than four inputs before dispatching", async () => {
     const dispatch = executor();
-    await expect(runAgentRuntimePromotionPresentationBatches([], "codex", dispatch))
+    await expect(runAgentRuntimePromotionPresentationBatches([], codexReaderSummaryBackend, dispatch))
       .rejects.toThrow("V3 presentation requires a configured batch of 1..4");
     await expect(runAgentRuntimePromotionPresentationBatches(
-      [1, 2, 3, 4, 5].map((id) => input(String(id))), "codex", dispatch,
+      [1, 2, 3, 4, 5].map((id) => input(String(id))), codexReaderSummaryBackend, dispatch,
     )).rejects.toThrow("V3 presentation requires a configured batch of 1..4");
     expect(dispatch).not.toHaveBeenCalled();
   });
@@ -40,7 +41,7 @@ describe("agent-runtime promotion presentation batch admission", () => {
   it("keeps a normal Codex batch together and in original order", async () => {
     const items = [input("first"), input("second"), input("third")];
     const dispatch = executor();
-    await expect(runAgentRuntimePromotionPresentationBatches(items, "codex", dispatch))
+    await expect(runAgentRuntimePromotionPresentationBatches(items, codexReaderSummaryBackend, dispatch))
       .resolves.toEqual(items.map(() => unavailable));
     expect(dispatch).toHaveBeenCalledTimes(1);
     expect(dispatch).toHaveBeenCalledWith(items);
@@ -54,7 +55,7 @@ describe("agent-runtime promotion presentation batch admission", () => {
       return batch.map(() => unavailable);
     });
     await expect(runAgentRuntimePromotionPresentationBatches(
-      items, "xiaomi-mimo-token-plan", dispatch,
+      items, mimoReaderSummaryBackend, dispatch,
     )).resolves.toEqual(items.map(() => unavailable));
     expect(batches).toEqual([["first"], ["second"], ["third"]]);
   });
@@ -62,7 +63,7 @@ describe("agent-runtime promotion presentation batch admission", () => {
   it("splits oversized Codex payloads in stable left-to-right order", async () => {
     const items = [input("first", "a".repeat(600_000)), input("second", "b".repeat(600_000))];
     const dispatch = executor();
-    await expect(runAgentRuntimePromotionPresentationBatches(items, "codex", dispatch))
+    await expect(runAgentRuntimePromotionPresentationBatches(items, codexReaderSummaryBackend, dispatch))
       .resolves.toEqual([unavailable, unavailable]);
     expect(dispatch.mock.calls.map(([batch]) => batch.map((item) => item.candidateId)))
       .toEqual([["first"], ["second"]]);
@@ -71,7 +72,7 @@ describe("agent-runtime promotion presentation batch admission", () => {
   it("rejects an oversized singleton without executing or exposing provider output", async () => {
     const dispatch = executor();
     await expect(runAgentRuntimePromotionPresentationBatches(
-      [input("oversize", "x".repeat(1_050_000))], "codex", dispatch,
+      [input("oversize", "x".repeat(1_050_000))], codexReaderSummaryBackend, dispatch,
     )).resolves.toEqual([{ status: "unavailable", reason: "input_over_budget" }]);
     expect(dispatch).not.toHaveBeenCalled();
   });
@@ -83,7 +84,7 @@ describe("agent-runtime promotion presentation batch admission", () => {
     });
     await expect(runAgentRuntimePromotionPresentationBatches(
       [input("first", "a".repeat(600_000)), input("second", "b".repeat(600_000))],
-      "codex", dispatch,
+      codexReaderSummaryBackend, dispatch,
     )).rejects.toBe(failure);
     expect(dispatch).toHaveBeenCalledTimes(1);
     expect(dispatch).toHaveBeenCalledWith([expect.objectContaining({ candidateId: "first" })]);
