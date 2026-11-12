@@ -134,6 +134,8 @@ test('qualification/upload retry retains exact build and export and rereads iden
   assert.ok(fixture.calls.filter(c => c[2] === 'inspect').length >= 3);
   const build = fixture.calls.find(c => c[1] === 'build');
   assert.ok(build.includes('--provenance=false'));
+  assert.equal(build[build.indexOf('--build-context') + 1],
+    'node:22-bookworm-slim=docker-image://node:22.23.4-bookworm-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d');
   assert.ok(build.includes('linux/amd64'));
   assert.ok(!build.includes('--tag'));
   assert.equal(build.at(-1), '-');
