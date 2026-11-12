@@ -18,7 +18,7 @@ describe("applyGroundedCohortDisplays", () => {
     const result = applyGroundedCohortDisplays(
       before,
       { groupId: "group:orion", sharedAnchor: "orion" },
-      new Map(before.slice(0, 2).map((label) => [label.nodeId, "Orion"])),
+      new Map(before.slice(0, 2).map((label) => [label.nodeId, "Orion"] as const)),
     );
 
     expect(result.recoveredNodeCount).toBe(2);
@@ -48,7 +48,7 @@ describe("applyGroundedCohortDisplays", () => {
     const result = applyGroundedCohortDisplays(
       before,
       { groupId: "group:orion", sharedAnchor: "orion" },
-      new Map(before.map((label) => [label.nodeId, "Orion"])),
+      new Map(before.map((label) => [label.nodeId, "Orion"] as const)),
     );
 
     expect(result.recoveredNodeCount).toBe(1);
