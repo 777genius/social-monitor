@@ -7,8 +7,8 @@ import type { ReaderSummaryTopicLabelerInput } from "../../ports";
 import {
   groundedNodeAnchors,
   identityAnchors,
-  uniqueRecoveredGroupId,
 } from "./agent-runtime-reader-summary-topic-anchor-keys";
+import { assignNewGroundedTopicGroups } from "./agent-runtime-reader-summary-topic-group-creation";
 import {
   recoverIntoExistingGroups,
   normalizeExistingGroups,
@@ -77,35 +77,20 @@ export const recoverGroundedTopicGroups = (params: {
     candidateByNodeId,
   );
 
-  for (const recovery of recoveryCandidates.slice(0, availableGroupSlots)) {
-    const matchingNodeIds = nodeLabels
-      .filter(
-        (label) =>
-          label.groupId === READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID &&
-          !recoveredNodeIds.has(label.nodeId) &&
-          identityAnchorsByNodeId.get(label.nodeId)?.has(recovery.key) === true,
-      )
-      .map((label) => label.nodeId);
-    if (matchingNodeIds.length < 2) {
-      continue;
-    }
-    const groupId = uniqueRecoveredGroupId(
-      recovery.display,
-      new Set([...activeGroupIds, ...semanticAnchorsByGroup.keys()]),
-    );
-    const matchingNodeIdSet = new Set(matchingNodeIds);
-    nodeLabels = nodeLabels.map((label) =>
-      matchingNodeIdSet.has(label.nodeId) ? { ...label, groupId } : label,
-    );
-    matchingNodeIds.forEach((nodeId) => recoveredNodeIds.add(nodeId));
-    activeGroupIds.add(groupId);
-    semanticAnchorsByGroup.set(groupId, [recovery.display]);
-  }
+  const assignment = assignNewGroundedTopicGroups({
+    nodeLabels,
+    identityAnchorsByNodeId,
+    recoveryCandidates,
+    activeGroupIds,
+    semanticAnchorsByGroup,
+    recoveredNodeIds,
+    availableGroupSlots,
+  });
 
   return {
-    nodeLabels,
-    semanticAnchorsByGroup,
-    recoveredNodeCount: recoveredNodeIds.size,
+    nodeLabels: assignment.nodeLabels,
+    semanticAnchorsByGroup: assignment.semanticAnchorsByGroup,
+    recoveredNodeCount: assignment.recoveredNodeIds.size,
   };
 };
 
