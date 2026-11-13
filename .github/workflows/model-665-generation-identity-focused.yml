@@ -7,6 +7,7 @@ on:
       - refactor/summary-model-adapters-10k-20261108
     paths:
       - .github/workflows/model-665-generation-identity-focused.yml
+      - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
       - libs/summary/adapters/model/reader-summary-generation-identity-policy.ts
       - libs/summary/adapters/model/reader-summary-generation-identity-core.ts
       - libs/summary/adapters/model/reader-summary-generation-env-resolution.ts
