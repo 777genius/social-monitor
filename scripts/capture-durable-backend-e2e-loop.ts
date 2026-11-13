@@ -3,13 +3,13 @@ import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { minimumScanIntervalSecondsForProvider } from "@social-monitor/monitoring/features/shared/scan-cadence-policy";
-import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 import { defaultMemoStackTimeoutMs } from "@social-monitor/summary/adapters/memory/memo-stack-memory-client";
 import { MemoStackSummaryMemoryAdapter } from "@social-monitor/summary/adapters/memory/memo-stack-summary-memory.adapter";
 import type { SummaryMemoryContext } from "@social-monitor/summary/ports";
 import { Pool, type PoolClient } from "pg";
 
 import { createDurableBackendHttpClient } from "./lib/durable-backend-e2e-http-client";
+import { summaryMemoryContextQuery } from "./lib/durable-backend-e2e-summary-memory-query";
 import { emptyToUndefined, loadConfig } from "./lib/durable-backend-e2e-config";
 import { writeFrontendRuntimeEnvFile } from "./lib/durable-backend-e2e-frontend-env";
 import { authHeaders, resolveAccessToken, withIdempotency, type AuthContext } from "./lib/durable-backend-e2e-auth";
@@ -1173,58 +1173,6 @@ async function pollSummaryMemoryEvidence(
   );
 }
 
-function summaryMemoryContextQuery(params: {
-  readonly tenantId: string;
-  readonly workspaceId: string;
-  readonly userId: string;
-  readonly interestId: string;
-  readonly feedItems: readonly JsonRecord[];
-}): Parameters<MemoStackSummaryMemoryAdapter["buildContext"]>[0] {
-  const requestedAt = new Date();
-  const evidenceItems = params.feedItems.slice(0, 12).map((item, index) => {
-    const providerKey = readString(item, "providerKey");
-    const feedItemId = readString(item, "id");
-    const bodyPreview = optionalString(item, "bodyPreview");
-    const canonicalUrl = optionalString(item, "canonicalUrl");
-
-    return {
-      feedItemId,
-      sourceItemId:
-        optionalString(item, "sourceItemId") ??
-        `source-${providerKey}-${index}`,
-      sourceBindingId: readString(item, "sourceBindingId"),
-      providerKey,
-      title:
-        optionalString(item, "title") ??
-        `${providerKey} feed item ${index + 1}`,
-      ...(bodyPreview === undefined ? {} : { bodyPreview }),
-      ...(canonicalUrl === undefined ? {} : { canonicalUrl }),
-      observedAt: parseDateOrFallback(
-        optionalString(item, "observedAt"),
-        requestedAt,
-      ),
-    };
-  });
-
-  return {
-    tenantId: tenantId(params.tenantId),
-    workspaceId: workspaceId(params.workspaceId),
-    interestId: params.interestId,
-    userId: params.userId,
-    requestedAt,
-    evidence: {
-      sourceWindow: {
-        windowId: `durable-backend-loop-memory-${params.interestId}`,
-        startedAt: requestedAt,
-        endedAt: requestedAt,
-        selectedFeedItemIds: evidenceItems.map((item) => item.feedItemId),
-      },
-      items: evidenceItems,
-    },
-  };
-}
-
-
 async function pollScheduledScanEvidence(
   params: {
     readonly tenantId: string;
@@ -1600,14 +1548,6 @@ function signalResult(
 }
 
 
-
-function parseDateOrFallback(value: string | undefined, fallback: Date): Date {
-  if (value === undefined) {
-    return fallback;
-  }
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? fallback : parsed;
-}
 
 
 function nowIso(): string {
