@@ -16,11 +16,17 @@ export const gatewayLlmDispatchFreeRetry = (params: {
 }): { readonly afterMs: number; readonly replay: GatewayReplayKind | null } => {
   const { retry } = params;
   const afterMs = retry.kind === "never" ? 0 : retry.afterMs;
+  const remainingMs = params.deadlineMs - params.nowMs;
+  // SDK types are compile-time only: never schedule an unbounded/negative retry
+  // if a provider response or an injected clock violates the wire contract.
+  if (!Number.isFinite(afterMs) || afterMs < 0 || !Number.isFinite(remainingMs)) {
+    return { afterMs: 0, replay: null };
+  }
   const replay = retry.kind === "same_attempt" ||
     (retry.kind === "new_attempt" && !retry.mayDuplicateCost);
   if (!replay || params.retries >= params.maxRetries ||
       params.signal?.aborted === true ||
-      params.deadlineMs - params.nowMs <= afterMs) {
+      remainingMs <= afterMs) {
     return { afterMs, replay: null };
   }
   return { afterMs, replay: retry.kind as GatewayReplayKind };
