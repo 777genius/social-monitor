@@ -1,10 +1,8 @@
-import { createHash } from "node:crypto";
-import { readerSummaryScopeKey } from "../../domain";
+import { buildAgentRuntimeStoryRelationIdentity } from "./agent-runtime-reader-summary-story-relation-identity";
 import type {
   AgentRuntimeTaskCommand,
   ReaderSummaryStoryRelationVerifierInput,
 } from "../../ports";
-import { buildAgentRuntimeRequestId } from "./agent-runtime-model-support";
 import {
   agentRuntimeReaderSummaryStoryRelationVerifierInstructions,
   agentRuntimeReaderSummaryIndependentNewsVerifierInstructions,
@@ -39,38 +37,13 @@ export const buildAgentRuntimeStoryRelationCommand = (
 }>,
 ): AgentRuntimeTaskCommand => {
   const input = params.input;
-    const scopeKey = readerSummaryScopeKey(input.scope);
-    const requestScopeKey = input.verificationLane === "safe_recall_shadow"
-      ? `${scopeKey}:safe-recall-shadow`
-      : input.verificationLane === "related_topic"
-        ? `${scopeKey}:related-topic`
-        : input.verificationLane === "independent_news"
-          ? `${scopeKey}:independent-news:${createHash("sha256")
-            .update(buildAgentRuntimeReaderSummaryStoryRelationVerifierPrompt(input))
-            .digest("hex").slice(0, 24)}`
-          : scopeKey;
-    const relatedTopicLane = input.verificationLane === "related_topic";
+    const identity = buildAgentRuntimeStoryRelationIdentity(input);
+    const relatedTopicLane = identity.relatedTopicLane;
     const command = {
-      requestId: buildAgentRuntimeRequestId(
-        relatedTopicLane
-          ? "reader-summary-related-topic-relations"
-          : "reader-summary-story-relations",
-        input.tenantId,
-        input.workspaceId,
-        requestScopeKey,
-        input.requestedAt,
-      ),
+      requestId: identity.requestId,
       tenantId: input.tenantId,
       workspaceId: input.workspaceId,
-      correlationId: buildAgentRuntimeRequestId(
-        relatedTopicLane
-          ? "reader-summary-related-topic-relations-correlation"
-          : "reader-summary-story-relations-correlation",
-        input.tenantId,
-        input.workspaceId,
-        requestScopeKey,
-        input.requestedAt,
-      ),
+      correlationId: identity.correlationId,
       provider: params.provider,
       providerInstanceId: params.providerInstanceId,
       purpose: relatedTopicLane

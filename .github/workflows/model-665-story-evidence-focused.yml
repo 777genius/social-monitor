@@ -9,6 +9,8 @@ on:
       - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
       - libs/summary/adapters/model/agent-runtime-reader-summary-story-evidence-prompt.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-verifier-prompt.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-identity.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-command.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter.spec.ts
 permissions:
   contents: read

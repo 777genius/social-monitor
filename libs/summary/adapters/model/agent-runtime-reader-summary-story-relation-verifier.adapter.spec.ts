@@ -1,3 +1,7 @@
+import { createHash } from "node:crypto";
+import { readerSummaryScopeKey } from "../../domain";
+import { buildAgentRuntimeRequestId } from "./agent-runtime-model-support";
+import { buildAgentRuntimeStoryRelationIdentity } from "./agent-runtime-reader-summary-story-relation-identity";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import type {
@@ -16,6 +20,42 @@ import { buildAgentRuntimeStoryRelationEvidencePairs } from "./agent-runtime-rea
 import { buildAgentRuntimeReaderSummaryStoryRelationVerifierPrompt } from "./agent-runtime-reader-summary-story-relation-verifier-prompt";
 
 describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
+  it("pins lane-specific scoped idempotency and correlation identities without dispatch", () => {
+    const base = input();
+    const scope = readerSummaryScopeKey(base.scope);
+    const independentDigest = createHash("sha256")
+      .update(buildAgentRuntimeReaderSummaryStoryRelationVerifierPrompt(base))
+      .digest("hex").slice(0, 24);
+    const lanes = [
+      { lane: undefined, suffix: "", related: false },
+      { lane: "safe_recall_shadow" as const, suffix: ":safe-recall-shadow", related: false },
+      { lane: "related_topic" as const, suffix: ":related-topic", related: true },
+      { lane: "independent_news" as const, suffix: `:independent-news:${independentDigest}`, related: false },
+    ];
+    for (const { lane, suffix, related } of lanes) {
+      const scoped = { ...base, ...(lane === undefined ? {} : { verificationLane: lane }) };
+      const identity = buildAgentRuntimeStoryRelationIdentity(scoped);
+      expect(identity.relatedTopicLane).toBe(related);
+      expect(identity.requestId).toBe(buildAgentRuntimeRequestId(
+        related ? "reader-summary-related-topic-relations" : "reader-summary-story-relations",
+        base.tenantId, base.workspaceId, `${scope}${suffix}`, base.requestedAt,
+      ));
+      expect(identity.correlationId).toBe(buildAgentRuntimeRequestId(
+        related ? "reader-summary-related-topic-relations-correlation" : "reader-summary-story-relations-correlation",
+        base.tenantId, base.workspaceId, `${scope}${suffix}`, base.requestedAt,
+      ));
+    }
+    expect(buildAgentRuntimeStoryRelationIdentity(base).requestId)
+      .not.toBe(buildAgentRuntimeStoryRelationIdentity({ ...base, verificationLane: "safe_recall_shadow" }).requestId);
+    const independent = { ...base, verificationLane: "independent_news" as const };
+    const changedEvidence = { ...independent, evidence: independent.evidence.map((item, index) =>
+      index === 0 ? { ...item, title: item.title + " corrected" } : item) };
+    expect(buildAgentRuntimeStoryRelationIdentity(independent).requestId)
+      .not.toBe(buildAgentRuntimeStoryRelationIdentity(changedEvidence).requestId);
+    expect(buildAgentRuntimeStoryRelationIdentity(base).requestId)
+      .toBe(buildAgentRuntimeStoryRelationIdentity({ ...base, evidence: changedEvidence.evidence }).requestId);
+  });
+
   it("uses subscription runtime and decides every shortlisted pair", async () => {
     const client = new CapturingAgentRuntimeClient({
       status: "completed",
