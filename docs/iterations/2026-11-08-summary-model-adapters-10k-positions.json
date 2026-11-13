@@ -1808,6 +1808,44 @@
         62
       ],
       "responsibility": "Cluster-bound selected-evidence admission, duplicate-ID filtering, bounded samples and normalized provider snippets independently owned from trusted topic-node prompt projection; legacy samples export preserved. Frozen-position evidence is provisional, not accepted semantic LOC."
+    },
+    {
+      "original": "metered-summary-model.adapter.ts",
+      "owner": "summary-model-metrics.ts",
+      "originalPositions": [
+        38,
+        39,
+        41,
+        42,
+        43,
+        47,
+        48,
+        50,
+        51,
+        52,
+        56,
+        57,
+        59,
+        60,
+        81,
+        82,
+        83,
+        84,
+        85,
+        89,
+        90
+      ],
+      "responsibility": "Previously extracted provider-neutral summary token/cost/request metric taxonomy; three scoped operation statuses and failure-kind label remain stable, retroactive first-use source mapping only"
+    },
+    {
+      "original": "metered-summary-model.adapter.ts",
+      "owner": "summary-model-metered-attempt.ts",
+      "originalPositions": [
+        34,
+        64,
+        68
+      ],
+      "responsibility": "New independent telemetry lifecycle of a summary provider attempt, original provider result identity, event ordering, failure classification and exact-error rethrow"
     }
   ]
 }
