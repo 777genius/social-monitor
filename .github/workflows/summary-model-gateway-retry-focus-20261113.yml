@@ -13,6 +13,8 @@ jobs:
     timeout-minutes: 35
     permissions:
       contents: read
+    env:
+      DATABASE_URL: postgresql://social_monitor_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_ci
     steps:
       - name: Checkout exact branch commit
         uses: actions/checkout@v4
