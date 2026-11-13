@@ -29,4 +29,42 @@ describe('OpenAI summary transport', () => {
       apiKey: 'synthetic-unit-value', timeoutMs: 250, fetchFn,
     })).rejects.toMatchObject({ failure: { retryable: false } });
   });
+
+  it('rejects a successful HTTP response with a non-object JSON body', async () => {
+    await expect(createOpenAiSummaryResponse({
+      request: {}, endpointUrl: 'https://example.invalid/v1/responses',
+      apiKey: 'synthetic-unit-value', timeoutMs: 250,
+      fetchFn: async () => new Response('[]', { status: 200 }),
+    })).rejects.toMatchObject({
+      failure: {
+        kind: 'invalid_schema',
+        retryable: false,
+        message: 'OpenAI response body must be a JSON object',
+      },
+    });
+  });
+
+  it('classifies transport failures without masking the original message', async () => {
+    await expect(createOpenAiSummaryResponse({
+      request: {}, endpointUrl: 'https://example.invalid/v1/responses',
+      apiKey: 'synthetic-unit-value', timeoutMs: 250,
+      fetchFn: async () => { throw new TypeError('synthetic connection reset'); },
+    })).rejects.toMatchObject({
+      failure: {
+        kind: 'provider_unavailable',
+        retryable: true,
+        message: 'synthetic connection reset',
+      },
+    });
+  });
+
+  it('preserves AbortError identity rather than treating an abort as a retriable network failure', async () => {
+    const aborted = new Error('synthetic deadline');
+    aborted.name = 'AbortError';
+    await expect(createOpenAiSummaryResponse({
+      request: {}, endpointUrl: 'https://example.invalid/v1/responses',
+      apiKey: 'synthetic-unit-value', timeoutMs: 250,
+      fetchFn: async () => { throw aborted; },
+    })).rejects.toBe(aborted);
+  });
 });

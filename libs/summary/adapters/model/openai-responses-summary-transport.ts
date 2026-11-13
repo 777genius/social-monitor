@@ -1,4 +1,5 @@
 import { SummaryModelProviderError } from './openai-responses-summary-model-error';
+import { rethrowOpenAiSummaryTransportFailure } from './openai-responses-summary-transport-failure';
 import {
   classifyOpenAiHttpFailure,
   readOpenAiResponseBody,
@@ -47,21 +48,7 @@ export const createOpenAiSummaryResponse = async (params: Readonly<{
 
       return record;
     } catch (error) {
-      if (
-        error instanceof SummaryModelProviderError ||
-        (error instanceof Error && error.name === 'AbortError')
-      ) {
-        throw error;
-      }
-
-      throw new SummaryModelProviderError({
-        kind: 'provider_unavailable',
-        retryable: true,
-        message:
-          error instanceof Error
-            ? error.message
-            : 'OpenAI summary request failed',
-      });
+      rethrowOpenAiSummaryTransportFailure(error);
     } finally {
       clearTimeout(timeout);
     }
