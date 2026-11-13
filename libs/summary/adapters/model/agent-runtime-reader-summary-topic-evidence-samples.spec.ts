@@ -13,7 +13,7 @@ const evidence = (feedItemId: string, bodyPreview: string): Evidence => ({
   publishedAt: new Date("2026-07-09T12:00:00.000Z"),
   bodyPreview,
   whyImportant: ["signal", "context", "untrusted-extra"],
-} as Evidence);
+} as unknown as Evidence);
 
 describe("topic label prompt cluster evidence admission", () => {
   it("deduplicates cluster ids, rejects unrelated evidence and limits projected samples", () => {
@@ -23,7 +23,7 @@ describe("topic label prompt cluster evidence admission", () => {
         "feed:one", "feed:missing", "feed:two", "feed:three",
         "feed:four", "feed:five",
       ],
-    } as Cluster;
+    } as unknown as Cluster;
     const items = [
       evidence("feed:one", "  First   sentence  with spaces. "),
       evidence("feed:two", "Second"),
@@ -61,7 +61,7 @@ describe("topic label prompt cluster evidence admission", () => {
       clusterById: new Map([["cluster:one", {
         representativeFeedItemId: "feed:one",
         duplicateFeedItemIds: [],
-      } as Cluster]]),
+      } as unknown as Cluster]]),
       evidenceByFeedItemId: new Map([["feed:one", item]]),
     });
     expect(samples).toHaveLength(1);
