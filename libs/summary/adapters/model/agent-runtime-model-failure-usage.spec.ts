@@ -20,3 +20,48 @@ describe("Agent Runtime failure and usage policies", () => {
     })).toThrow("Daily editorial writer cannot repair within the shared model budget");
   });
 });
+
+describe("agent runtime trust-boundary regression cases", () => {
+  const failure = (overrides: Partial<NonNullable<Parameters<typeof mapAgentRuntimeFailure>[0]>> = {}) => ({
+    code: "execution_failed",
+    safeMessage: "Synthetic failure",
+    retryable: false,
+    reconnectRequired: false,
+    causeCategory: "worker",
+    details: {},
+    ...overrides,
+  });
+
+  it("never lets untrusted validation path override the failure category", () => {
+    expect(mapAgentRuntimeFailure(failure({
+      details: { outputValidationPath: "quota_rate_limit" },
+    }), "fallback")).toEqual({
+      kind: "unknown", retryable: false,
+      message: "Synthetic failure at quota_rate_limit",
+    });
+    expect(mapAgentRuntimeFailure(failure({
+      code: "rate_limited", retryable: true,
+      safeMessage: "Synthetic limit",
+      details: { outputValidationPath: "draft.json" },
+    }), "fallback")).toEqual({
+      kind: "provider_rate_limited", retryable: true,
+      message: "Synthetic limit at draft.json",
+    });
+  });
+
+  it("retains reconnect advice without silently upgrading failure classification", () => {
+    expect(mapAgentRuntimeFailure(failure({
+      safeMessage: "", reconnectRequired: true,
+    }), "Synthetic fallback")).toEqual({
+      kind: "unknown", retryable: true, message: "Synthetic fallback",
+    });
+  });
+
+  it("refuses paid repair at exact cost exhaustion, even with zero estimated tokens", () => {
+    expect(() => assertReaderSummaryRepairWithinBudget(
+      { inputTokens: 30, outputTokens: 5, estimatedCostUsd: 0.2 },
+      { inputTokens: 0, outputTokens: 0, estimatedCostUsd: 0 },
+      { remainingTokens: 100, remainingCostUsd: 0.2 },
+    )).toThrow("Daily editorial writer cannot repair within the shared model budget");
+  });
+});
