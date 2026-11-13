@@ -10,6 +10,10 @@ export const extractReaderSummaryGatewaySchemaViolations = (result: AgentRuntime
     const reported = (failure.details.outputValidationViolations ?? "").split(" ")
       .filter((entry) => safeOutputViolationPattern.test(entry));
     const first = failure.details.outputValidationPath;
-    return (reported.length > 0 ? reported : [first ?? "json_parse_or_empty"])
+    // The fallback path is also external failure metadata: never relay arbitrary
+    // provider-originated text into the next attempt's repair instruction.
+    const safeFirst = typeof first === "string" && safeOutputViolationPattern.test(first)
+      ? first : "json_parse_or_empty";
+    return (reported.length > 0 ? reported : [safeFirst])
       .slice(0, maxReportedOutputViolations);
 };
