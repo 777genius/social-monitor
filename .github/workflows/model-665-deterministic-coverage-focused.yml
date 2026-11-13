@@ -9,6 +9,8 @@ on:
       - libs/summary/adapters/model/deterministic-reader-summary-model.adapter.ts
       - libs/summary/adapters/model/deterministic-reader-summary-coverage-selection.ts
       - libs/summary/adapters/model/deterministic-reader-summary-model.adapter.spec.ts
+      - libs/summary/adapters/model/deterministic-reader-summary-outcome-policy.ts
+      - libs/summary/adapters/model/deterministic-reader-summary-outcome-policy.spec.ts
       - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
 permissions:
   contents: read
@@ -49,3 +51,4 @@ jobs:
           npx jest --config jest.config.ts --runInBand --runTestsByPath
           libs/summary/adapters/model/deterministic-reader-summary-model.adapter.spec.ts
           libs/summary/adapters/model/deterministic-reader-summary-evidence-selection.spec.ts
+          libs/summary/adapters/model/deterministic-reader-summary-outcome-policy.spec.ts

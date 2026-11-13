@@ -18,6 +18,10 @@ import { buildDeterministicNoSignalReaderSummaryAttempt } from "./deterministic-
 import { selectDeterministicReaderSummaryCoverage } from "./deterministic-reader-summary-coverage-selection";
 import { buildDeterministicReaderSummaryStoryProjection } from "./deterministic-reader-summary-story-projection";
 import { buildDeterministicReaderSummaryDocument } from "./deterministic-reader-summary-document";
+import {
+  classifyDeterministicReaderSummaryError,
+  validateDeterministicReaderSummaryProviderResponse,
+} from "./deterministic-reader-summary-outcome-policy";
 
 const route: ReaderSummaryModelRoute = {
   provider: "deterministic-local",
@@ -99,47 +103,11 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
   validateRawProviderResponse(
     attempt: ProviderReaderSummaryAttempt,
   ): ReaderSummaryModelValidationResult {
-    if (attempt.route.schemaVersion !== "reader_summary.artifact.v1") {
-      return {
-        ok: false,
-        failure: {
-          kind: "invalid_schema",
-          retryable: false,
-          message: "Unsupported reader summary schema version",
-        },
-      };
-    }
-
-    return { ok: true };
+    return validateDeterministicReaderSummaryProviderResponse(attempt);
   }
 
   classifyError(error: unknown): ReaderSummaryModelFailure {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Unknown reader summary model error";
-
-    if (message.toLowerCase().includes("budget")) {
-      return {
-        kind: "budget_exceeded",
-        retryable: false,
-        message,
-      };
-    }
-
-    if (message.toLowerCase().includes("citation")) {
-      return {
-        kind: "citation_validation_failed",
-        retryable: false,
-        message,
-      };
-    }
-
-    return {
-      kind: "unknown",
-      retryable: false,
-      message,
-    };
+    return classifyDeterministicReaderSummaryError(error);
   }
 }
 

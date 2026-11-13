@@ -2737,6 +2737,33 @@
         203
       ],
       "responsibility": "Strict object and bounded string/array schema factory primitives, without copying provider response schema payload (retrospective frozen provenance; no new implementation)"
+    },
+    {
+      "original": "deterministic-reader-summary-model.adapter.ts",
+      "owner": "deterministic-reader-summary-outcome-policy.ts",
+      "originalPositions": [
+        290,
+        294,
+        295,
+        296,
+        301,
+        305,
+        306,
+        307,
+        308,
+        310,
+        312,
+        313,
+        314,
+        318,
+        320,
+        321,
+        322,
+        327,
+        328,
+        329
+      ],
+      "responsibility": "Deterministic provider schema rejection and ordered error-kind classification owned by side-effect-free outcome policy instead of evidence, budget and document orchestration; no response/model contract change (provenance candidates, not accepted meaningful LOC)"
     }
   ]
 }
