@@ -8,6 +8,9 @@ on:
     paths:
       - .github/workflows/model-665-openai-summary-projection-focused.yml
       - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
+      - libs/summary/adapters/model/openai-responses-reader-summary-prompt.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-legacy-instructions.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-legacy-instructions.spec.ts
       - libs/summary/adapters/model/openai-responses-summary-quality.spec.ts
       - libs/summary/adapters/model/openai-responses-summary-json-boundaries.spec.ts
       - libs/summary/adapters/model/openai-responses-summary-required-json.ts
@@ -51,6 +54,8 @@ jobs:
       - name: Verify prompt policy and provider request/response parity
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
+          libs/summary/adapters/model/openai-responses-reader-summary-legacy-instructions.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-prompt-contract.spec.ts
           libs/summary/adapters/model/openai-responses-summary-prompt.spec.ts
           libs/summary/adapters/model/openai-responses-summary-model.adapter.spec.ts
           libs/summary/adapters/model/openai-responses-summary-quality.spec.ts
