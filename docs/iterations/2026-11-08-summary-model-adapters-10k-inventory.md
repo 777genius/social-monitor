@@ -1578,3 +1578,21 @@ Frozen original `agent-runtime-model-support.ts` (290 pinned physical LOC; now c
 
 - Freeze `3fa1b9e9:agent-runtime-reader-summary-topic-labeler.adapter.ts` blob `25ace69699d86411da9f30687c035a927e8c337d`. On exact code snapshot [`8c175e7ad7ce0963f70eb47f1996a30bb0cb6ff5`](https://github.com/777genius/social-monitor/commit/8c175e7ad7ce0963f70eb47f1996a30bb0cb6ff5), 66 **previously refactored** disjoint original executable coordinates can be verified as moved out of adapter: **26** → `agent-runtime-reader-summary-topic-label-command.ts` (tenant/workspace, purpose/schema, attempts); **8** → `agent-runtime-reader-summary-topic-labeler-runtime-settings.ts` (pinned release and config defaults); **14** → `agent-runtime-reader-summary-topic-labeler-options.ts` (composition env parsing); **18** → `agent-runtime-reader-summary-topic-label-schema.ts` (strict MiMo validation). Each original line text matched specialist and not retained source, without multiplicity overflow or reuse of the prior ten execution entries. OriginalPositions are explicitly listed in frozen JSON ledger.
 - **Provisional machine trace 2,246 → 2,312 distinct original positions / 76 → 80 responsibility slices / 32 already represented original files**; zero new code refactored by this retrospective audit, zero independently approved meaningful LOC. Threshold ≥10,000 not proven; ≥7,688 more *before* discounting mechanical-only lines. Existing typed Jest and exact-HEAD focused/Ready CI must be independently checked. No changes to #620/#663/#664 or production.
+
+### 2026-11-13 — Agent Runtime reader summary original-to-owner first-use ledger
+
+Pinned 2026-11-08 baseline `3fa1b9e9`: `agent-runtime-reader-summary-model.adapter.ts` (490 physical lines, **not** 490 accepted refactored implementation LOC). Newly mapped first-use *retrospective* original coordinates by existing responsibility owner:
+
+| Existing specialist owner | Original implementation positions (first-use, no overlap) | Distinct count |
+|---|---|---:|
+| `agent-runtime-reader-summary-options.ts` | 468–470, 473, 477, 480–484, 486–487 | 12 |
+| `agent-runtime-reader-summary-runtime-settings.ts` | 93, 96–97, 115–119, 127–128, 130, 134, 139–140, 143–144, 147–148, 151–152 | 20 |
+| `agent-runtime-reader-summary-generation.ts` | 228–229, 231, 233, 236–238, 240, 246, 248–249, 251, 255, 258, 261, 263, 265–266, 272, 276, 280 | 21 |
+| `agent-runtime-reader-summary-task-command.ts` | Exact coordinates in frozen JSON ledger (36) | 36 |
+| `agent-runtime-reader-summary-gateway-violations.ts` | 290–296, 298 (changed 297 excluded) | 8 |
+| `agent-runtime-reader-summary-response-validation.ts` | 369–371, 374, 380–382, 385–387 | 10 |
+| `reader-summary-no-signal-attempt.ts` | Exact coordinates in frozen JSON ledger (29) | 29 |
+| `reader-summary-token-budget.ts` | 169–172, 191–192, 195, 198, 200 | 9 |
+| **Total, no double count** | Pinned original code-only coordinates | **145** |
+
+Machine counter: **2,312 → 2,457** provenance candidates, **80 → 88** responsibility slices, **32 → 33** original source modules. Exact paths/positions in `docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json`; CI must verify content/multiplicity. This documents existing SRP work, **zero new production LOC**, and does not assert independently qualified meaningful LOC. Even before discounts ≥7,543 coordinates remain. Security fix [`c5aae072`](https://github.com/777genius/social-monitor/commit/c5aae0726a78d9b148889651a3bf6dcfa973162d) rejects untrusted gateway fallback error paths before building repair instructions; actual newline-injection regression in `59f01a61`. CI and independent review are pending; no #620/#663/#664, dependencies, schema, flags or deploy changes.
