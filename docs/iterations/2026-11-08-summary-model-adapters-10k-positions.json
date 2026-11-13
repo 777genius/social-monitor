@@ -3432,7 +3432,6 @@
         143,
         144,
         145,
-        146,
         149,
         150,
         151,
@@ -3440,8 +3439,7 @@
         153,
         154,
         155,
-        156,
-        157
+        156
       ],
       "responsibility": "Tenant/workspace scoped lane request/correlation IDs and independent-news prompt hash now isolated from provider instruction, model controls, timeout and schema command projection; frozen original statements preserved, ownership auditable, no changes to idempotency or attestation."
     }
