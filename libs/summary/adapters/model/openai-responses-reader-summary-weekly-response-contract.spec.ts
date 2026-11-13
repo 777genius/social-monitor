@@ -61,4 +61,42 @@ describe("OpenAI weekly response contract", () => {
     expect(isTimeoutError(deadline)).toBe(true);
     expect(isTimeoutError(new Error("synthetic"))).toBe(false);
   });
+
+  it.each([
+    ["top-level error", { status: "completed", error: { code: "synthetic" } }, "response_state"],
+    ["top-level refusal", { status: "completed", refusal: "synthetic" }, "refusal"],
+    ["nested message error", { status: "completed", output: [{ type: "error" }] }, "response_state"],
+    ["nested incomplete message", { status: "completed", output: [{ status: "in_progress" }] }, "response_state"],
+    ["nested incomplete details", { status: "completed", output: [{ incomplete_details: { reason: "synthetic" } }] }, "response_state"],
+  ] as const)("fails closed for %s without exposing provider data", async (_name, body, expectedKind) => {
+    await expect(readCompletedResponse(completed(body))).rejects.toMatchObject({
+      failure: { kind: expectedKind, retryable: false },
+    });
+  });
+
+  it.each([
+    ["non-array output", { output: {} }],
+    ["empty output text", { output: [{ content: [{ type: "output_text", text: " " }] }] }],
+    ["inconsistent aggregate", { output_text: "first", output: [{ content: [{ type: "output_text", text: "second" }] }] }],
+    ["no text", { output: [{ content: [{ type: "metadata", text: "ignored" }] }] }],
+  ] as const)("rejects %s as invalid response", (_name, response) => {
+    try {
+      extractSingleOutputText(response);
+      throw new Error("Expected invalid response");
+    } catch (error) {
+      expect(failureOf(error)).toMatchObject({ kind: "invalid_response", retryable: false });
+    }
+  });
+
+  it("contains transport read failures without leaking provider exception details", async () => {
+    const response = { ok: true, status: 200, text: jest.fn().mockRejectedValue(new Error("synthetic-private-payload")) } as unknown as Response;
+    await expect(readCompletedResponse(response)).rejects.toMatchObject({
+      failure: {
+        kind: "transport",
+        retryable: true,
+        message: "OpenAI reader summary weekly response transport failed",
+      },
+    });
+  });
+
 });
