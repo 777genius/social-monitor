@@ -3160,7 +3160,6 @@
       "original": "openai-responses-reader-summary-content-support.ts",
       "owner": "openai-responses-reader-summary-item-normalization.ts",
       "originalPositions": [
-        111,
         117,
         118,
         119,
