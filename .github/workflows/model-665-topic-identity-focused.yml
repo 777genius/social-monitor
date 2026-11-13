@@ -10,6 +10,10 @@ on:
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-grounded-cohorts.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-candidate-anchor-policy.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-candidate-anchor-policy.spec.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-recovery.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-anchor-keys.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-anchor-keys.spec.ts
+      - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
 permissions:
   contents: read
 jobs:
@@ -23,6 +27,7 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           ref: ${{ github.sha }}
+          fetch-depth: 0
           persist-credentials: false
       - name: Setup Node 22
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
@@ -36,6 +41,7 @@ jobs:
       - name: Strict static and runtime policy checks
         run: |
           set -euo pipefail
+          node scripts/audit-summary-model-original-files.mjs
           npx tsc --noEmit
           npm run check:architecture
           npm run check:code-quality
@@ -46,4 +52,6 @@ jobs:
           npx jest --config jest.config.ts --runInBand --runTestsByPath
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-candidate-anchor-policy.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-integrity.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-topic-anchor-keys.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-recovery.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-cohort-grouping.spec.ts

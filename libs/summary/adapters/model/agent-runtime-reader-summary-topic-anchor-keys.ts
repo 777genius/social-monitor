@@ -30,6 +30,28 @@ export const identityAnchors = (
     ].flatMap((value) => (value === undefined ? [] : anchorKeys(value))),
   );
 
+/** Keep candidate evidence anchoring separate from cohort assignment and mutation. */
+export const buildGroundedTopicRecoveryAnchorMaps = (params: {
+  readonly nodeLabels: readonly ReaderSummaryTopicNodeLabel[];
+  readonly candidates: readonly ReaderSummaryTopicLabelerInput["candidates"][number][];
+}) => {
+  const candidateByNodeId = new Map(
+    params.candidates.map(
+      (candidate) => [candidate.nodeId, candidate] as const,
+    ),
+  );
+  const anchorsByNodeId = new Map(
+    params.nodeLabels.map((label) => [
+      label.nodeId,
+      groundedNodeAnchors(label, candidateByNodeId.get(label.nodeId)),
+    ]),
+  );
+  const identityAnchorsByNodeId = new Map(
+    params.nodeLabels.map((label) => [label.nodeId, identityAnchors(label)]),
+  );
+  return { candidateByNodeId, anchorsByNodeId, identityAnchorsByNodeId };
+};
+
 export const anchorKeys = (value: string): readonly string[] =>
   meaningfulTopicLabelTokens(value)
     .map(normalizeTopicLabel)

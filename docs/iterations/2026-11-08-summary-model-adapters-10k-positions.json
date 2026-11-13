@@ -2764,6 +2764,22 @@
         329
       ],
       "responsibility": "Deterministic provider schema rejection and ordered error-kind classification owned by side-effect-free outcome policy instead of evidence, budget and document orchestration; no response/model contract change (provenance candidates, not accepted meaningful LOC)"
+    },
+    {
+      "original": "agent-runtime-reader-summary-topic-group-recovery.ts",
+      "owner": "agent-runtime-reader-summary-topic-anchor-keys.ts",
+      "originalPositions": [
+        25,
+        26,
+        27,
+        30,
+        31,
+        32,
+        33,
+        36,
+        37
+      ],
+      "responsibility": "Pure node-ID-to-candidate grounding, distinct evidence-dependent versus identity anchor maps, now owned alongside anchor-token policy instead of recovery/group assignment orchestration; original-line provenance only, not independently accepted meaningful LOC"
     }
   ]
 }

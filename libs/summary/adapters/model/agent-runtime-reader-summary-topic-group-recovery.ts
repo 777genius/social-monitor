@@ -4,10 +4,7 @@ import {
   type ReaderSummaryTopicNodeLabel,
 } from "../../domain";
 import type { ReaderSummaryTopicLabelerInput } from "../../ports";
-import {
-  groundedNodeAnchors,
-  identityAnchors,
-} from "./agent-runtime-reader-summary-topic-anchor-keys";
+import { buildGroundedTopicRecoveryAnchorMaps } from "./agent-runtime-reader-summary-topic-anchor-keys";
 import { assignNewGroundedTopicGroups } from "./agent-runtime-reader-summary-topic-group-creation";
 import {
   recoverIntoExistingGroups,
@@ -27,20 +24,11 @@ export const recoverGroundedTopicGroups = (params: {
   readonly candidates: readonly ReaderSummaryTopicLabelerInput["candidates"][number][];
   readonly explicitAnchorsByGroup: ReadonlyMap<string, readonly string[]>;
 }): RecoveredTopicGroups => {
-  const candidateByNodeId = new Map(
-    params.candidates.map(
-      (candidate) => [candidate.nodeId, candidate] as const,
-    ),
-  );
-  const anchorsByNodeId = new Map(
-    params.nodeLabels.map((label) => [
-      label.nodeId,
-      groundedNodeAnchors(label, candidateByNodeId.get(label.nodeId)),
-    ]),
-  );
-  const identityAnchorsByNodeId = new Map(
-    params.nodeLabels.map((label) => [label.nodeId, identityAnchors(label)]),
-  );
+  const { candidateByNodeId, anchorsByNodeId, identityAnchorsByNodeId } =
+    buildGroundedTopicRecoveryAnchorMaps({
+      nodeLabels: params.nodeLabels,
+      candidates: params.candidates,
+    });
   let nodeLabels = normalizeExistingGroups({
     nodeLabels: params.nodeLabels,
     anchorsByNodeId,
