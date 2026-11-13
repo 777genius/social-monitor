@@ -2216,6 +2216,28 @@
         287
       ],
       "responsibility": "Physical usage reconciliation and paid repair budget guard independently owned from transport output and failure classification"
+    },
+    {
+      "original": "gateway-llm/gateway-llm-account-selector.ts",
+      "owner": "gateway-llm/gateway-llm-account-cooldowns.ts",
+      "originalPositions": [
+        42,
+        46,
+        62,
+        63,
+        64,
+        65,
+        66,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        78,
+        79
+      ],
+      "responsibility": "Process-local busy/auth cooldown admission, nonfinite gateway retry normalization and valid-time enforcement isolated from deterministic task-hash rotation; account preference list never shortened. Existing historical original positions audited only once; semantic qualification pending independent review."
     }
   ]
 }

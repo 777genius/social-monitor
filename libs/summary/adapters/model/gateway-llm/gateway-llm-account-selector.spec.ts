@@ -78,4 +78,37 @@ describe("gateway account rotation and cooldown admissions", () => {
     expect(order(selector, later(44_999)).at(-1)).toBe(first);
     expect(order(selector, later(45_000))).toEqual(order(configured()));
   });
+  it("rejects non-finite cooldown configuration rather than permanently cooling an account", () => {
+    for (const field of ["busyCooldownMs", "unauthorizedCooldownMs"] as const) {
+      expect(() => new CooldownRotatingAccountSelector({
+        busyCooldownMs: 30_000,
+        unauthorizedCooldownMs: 3_600_000,
+        [field]: Number.POSITIVE_INFINITY,
+      })).toThrow("Gateway account cooldowns must be non-negative");
+    }
+  });
+
+  it("uses the configured busy floor when the gateway sends non-finite retry metadata", () => {
+    for (const retryAfterMs of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      const selector = configured();
+      const first = order(selector)[0]!;
+      selector.observe({ accountRef: first, outcome: "busy", retryAfterMs, now: start });
+      expect(order(selector, later(29_999)).at(-1)).toBe(first);
+      expect(order(selector, later(30_000))).toEqual(order(configured()));
+    }
+  });
+
+  it("rejects invalid clocks without mutating cooldowns or dropping account preferences", () => {
+    const selector = configured();
+    const first = order(selector)[0]!;
+    const invalid = new Date(Number.NaN);
+    expect(() => selector.observe({ accountRef: first, outcome: "busy",
+      retryAfterMs: 45_000, now: invalid }))
+      .toThrow("Gateway account observation time must be valid");
+    expect(order(selector)).toEqual(order(configured()));
+    selector.observe({ accountRef: first, outcome: "busy", retryAfterMs: 30_000, now: start });
+    expect(() => order(selector, invalid)).toThrow("Gateway account observation time must be valid");
+    expect(order(selector, later(30_000))).toEqual(order(configured()));
+  });
+
 });

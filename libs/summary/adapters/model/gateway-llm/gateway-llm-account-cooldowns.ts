@@ -21,7 +21,10 @@ export class GatewayLlmAccountCooldowns {
   private readonly coolUntil = new Map<string, number>();
 
   constructor(private readonly policy: CooldownAccountSelectorPolicy) {
-    if (!(policy.busyCooldownMs >= 0) || !(policy.unauthorizedCooldownMs >= 0)) {
+    if (
+      !(policy.busyCooldownMs >= 0) || !Number.isFinite(policy.busyCooldownMs) ||
+      !(policy.unauthorizedCooldownMs >= 0) || !Number.isFinite(policy.unauthorizedCooldownMs)
+    ) {
       throw new Error("Gateway account cooldowns must be non-negative");
     }
   }
@@ -29,6 +32,9 @@ export class GatewayLlmAccountCooldowns {
   /** Retain stable rotated order for ready accounts and expiry order for cooling ones. */
   prioritize(rotated: readonly string[], at: Date): readonly string[] {
     const now = at.getTime();
+    if (!Number.isFinite(now)) {
+      throw new Error("Gateway account observation time must be valid");
+    }
     const ready = rotated.filter((ref) => (this.coolUntil.get(ref) ?? 0) <= now);
     const cooling = rotated
       .filter((ref) => (this.coolUntil.get(ref) ?? 0) > now)
@@ -40,10 +46,16 @@ export class GatewayLlmAccountCooldowns {
     const ref = observation.accountRef;
     if (ref === null) return;
     const now = observation.now.getTime();
+    if (!Number.isFinite(now)) {
+      throw new Error("Gateway account observation time must be valid");
+    }
     if (observation.outcome === "completed") {
       this.coolUntil.delete(ref);
     } else if (observation.outcome === "busy") {
-      this.coolUntil.set(ref, now + Math.max(observation.retryAfterMs,
+      const retryAfterMs = Number.isFinite(observation.retryAfterMs)
+        ? observation.retryAfterMs
+        : this.policy.busyCooldownMs;
+      this.coolUntil.set(ref, now + Math.max(retryAfterMs,
         this.policy.busyCooldownMs));
     } else if (observation.outcome === "unauthorized") {
       this.coolUntil.set(ref, now + this.policy.unauthorizedCooldownMs);

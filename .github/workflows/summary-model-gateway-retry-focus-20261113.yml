@@ -6,6 +6,9 @@ on:
       - .github/workflows/summary-model-gateway-retry-focus-20261113.yml
       - libs/summary/adapters/model/gateway-llm/gateway-llm-dispatch-retry-policy.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-dispatch-retry-policy.spec.ts
+      - libs/summary/adapters/model/gateway-llm/gateway-llm-account-cooldowns.ts
+      - libs/summary/adapters/model/gateway-llm/gateway-llm-account-selector.spec.ts
+      - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
   workflow_dispatch:
 jobs:
   focused:
@@ -42,5 +45,6 @@ jobs:
           npx jest --config jest.config.ts --runInBand --runTestsByPath \
             libs/summary/adapters/model/gateway-llm/gateway-llm-dispatch-retry-policy.spec.ts \
             libs/summary/adapters/model/gateway-llm/gateway-llm-client.spec.ts \
+            libs/summary/adapters/model/gateway-llm/gateway-llm-account-selector.spec.ts \
             libs/summary/adapters/model/openai-responses-reader-summary-adaptive-evidence.spec.ts \
             libs/summary/adapters/model/openai-responses-reader-summary-source-content.spec.ts
