@@ -3,6 +3,7 @@ import type { LlmFailure } from "@agent-teams/account-gateway/llm";
 import type { AgentRuntimeFailure } from "../../../ports";
 import type { GatewayLlmAttemptIdentity } from "./gateway-llm-attempts";
 import { gatewayLlmFailureShape } from "./gateway-llm-failure-taxonomy";
+import { gatewayLlmFailureAttemptDetails } from "./gateway-llm-failure-attempt-details";
 import {
   gatewayLlmOutputViolationDetails,
   type GatewayLlmOutputViolations,
@@ -25,21 +26,7 @@ export const gatewayLlmFailure = (
     details: {
       ...shape.details,
       ...gatewayLlmOutputViolationDetails(failure.code, outputViolations),
-      gatewayCode: failure.code,
-      gatewayEffect: failure.effect,
-      gatewayRetry: retry.kind,
-      gatewayRetryAfterMs: retry.kind === "never" ? "0" : String(retry.afterMs),
-      gatewayMayDuplicateCost: retry.kind === "new_attempt"
-        ? String(retry.mayDuplicateCost) : "false",
-      gatewayCleanup: failure.cleanup,
-      gatewayTaskId: identity.taskId,
-      gatewayAttempt: String(identity.attempt),
-      ...(failure.traceRef === undefined ? {} : { gatewayTraceRef: failure.traceRef }),
-      ...(failure.execution === null ? {} : {
-        gatewayExecutionRef: failure.execution.executionRef,
-        gatewayRequestRef: failure.execution.requestRef,
-        gatewayAccountRef: failure.execution.accountRef,
-      }),
+      ...gatewayLlmFailureAttemptDetails(failure, identity),
     },
   };
 };

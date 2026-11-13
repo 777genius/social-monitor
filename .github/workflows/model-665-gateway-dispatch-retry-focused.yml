@@ -7,6 +7,7 @@ on:
       - refactor/summary-model-adapters-10k-20261108
     paths:
       - .github/workflows/model-665-gateway-dispatch-retry-focused.yml
+      - libs/summary/adapters/model/gateway-llm/gateway-llm-failure*.ts
 permissions:
   contents: read
 jobs:
