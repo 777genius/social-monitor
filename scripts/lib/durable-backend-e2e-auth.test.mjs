@@ -81,7 +81,7 @@ test("auth headers preserve scope and token and create distinct request IDs", ()
 });
 
 test("idempotency header returns a new object and overrides only the idempotency key", () => {
-  const original = { "x-tenant-id": "tenant", "idempotency-key": "old", authorization: "Bearer fixture" };
+  const original = { "x-tenant-id": "tenant", "idempotency-key": "old", authorization: "Bearer token-value" };
   const value = withIdempotency(original, "updated");
   assert.deepEqual(value, { ...original, "idempotency-key": "updated" });
   assert.equal(original["idempotency-key"], "old");
