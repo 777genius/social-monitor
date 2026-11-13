@@ -4,6 +4,7 @@ export const displayPolicyPath = 'scripts/lib/external-beta-evidence-display-for
 export const consistencyPolicyPath = 'scripts/lib/external-beta-artifact-consistency-freshness.mjs';
 export const readinessPolicyPath = 'scripts/lib/external-beta-evidence-job-readiness.mjs';
 export const artifactShapePolicyPath = 'scripts/lib/external-beta-evidence-artifact-shape-policy.mjs';
+export const duplicatePathsPolicyPath = 'scripts/lib/external-beta-evidence-duplicate-paths.mjs';
 
 export function validateRunnerImplementationMarkers({
   runnerSource,
@@ -12,6 +13,7 @@ export function validateRunnerImplementationMarkers({
   consistencyPolicySource,
   readinessPolicySource,
   artifactShapePolicySource,
+  duplicatePathsPolicySource,
   checkSource,
   selectionHelperSource,
   redactionPolicySource,
@@ -145,7 +147,6 @@ export function validateRunnerImplementationMarkers({
     'evidencePathEnvRequiresJsonContent',
     'evidencePathEnvForbidsWorkspacePath',
     'evidencePathEnvRequiresWritableParent',
-    'evidencePathEnvForbidsDuplicatePaths',
     'requiresJsonEvidencePathEnv',
     'requiresJsonEvidencePathContent',
     'forbidsWorkspaceEvidencePaths',
@@ -158,8 +159,6 @@ export function validateRunnerImplementationMarkers({
     'parent directory must not be inside the git workspace',
     'duplicateEvidencePathViolations',
     'duplicateEvidencePathViolationsByJob',
-    'evidencePathDuplicateKey',
-    'must not duplicate another evidence artifact path in this run',
     'outputArtifactPathEnvRequiresJsonExtension',
     'isJsonEvidencePath',
     'path must end with .json',
@@ -189,6 +188,17 @@ export function validateRunnerImplementationMarkers({
     }
   }
 
+  // Moved duplicate-path checks must remain enforced at their actual module owner.
+  for (const marker of [
+    'evidencePathEnvForbidsDuplicatePaths',
+    'evidencePathDuplicateKey',
+    'must not duplicate another evidence artifact path in this run',
+  ]) {
+    if (!duplicatePathsPolicySource.includes(marker)) {
+      violations.push(`${duplicatePathsPolicyPath}: extracted duplicate evidence path policy must preserve "${marker}"`);
+    }
+  }
+
   // Artifact identity and provider membership diagnostics now belong to the extracted policy.
   for (const marker of [
     'validateArtifactIdentity',
@@ -208,6 +218,15 @@ export function validateRunnerImplementationMarkers({
   const activeRunnerSource = runnerSource
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^[ \t]*\/\/.*$/gm, '');
+  // Import-only wiring cannot satisfy the security check: enforce live env and all entry points.
+  if (!/^\s*import \{ createExternalBetaDuplicateEvidencePaths \} from '\.\/lib\/external-beta-evidence-duplicate-paths\.mjs';/m.test(activeRunnerSource)
+    || !/^[ \t]*\}\s*=\s*createExternalBetaDuplicateEvidencePaths\(\{\s*contract,\s*env:\s*process\.env\s*\}\);[ \t]*$/m.test(activeRunnerSource)) {
+    violations.push(`${runnerFile}: runner must bind duplicate evidence path policy to live env`);
+  }
+  if ((activeRunnerSource.match(/^[ \t]*violations\.push\(\.\.\.duplicateEvidencePathViolations\(candidateJobs\)\);[ \t]*$/gm) ?? []).length !== 3
+    || !/^\s*duplicateEvidencePathViolationsByJob,\s*$/m.test(activeRunnerSource)) {
+    violations.push(`${runnerFile}: runner must enforce duplicate evidence path policy in plan, validation and execution`);
+  }
   for (const validator of ['validateArtifactIdentity', 'validateArtifactProviderKeys']) {
     const invocation = new RegExp(`^[ \\t]*${validator}\\s*\\(\\s*content\\s*,\\s*job\\s*,\\s*artifact\\s*,\\s*violations\\s*\\)\\s*;`, 'm');
     if (!invocation.test(activeRunnerSource)) {
