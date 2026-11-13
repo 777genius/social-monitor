@@ -147,7 +147,12 @@ class CohortEvidenceTests(unittest.TestCase):
                    'scripts/lib/source-provider-github-issues-runtime-smoke.ts',
                    'scripts/lib/source-provider-github-trending-runtime-smoke.ts',
                    'scripts/capture-durable-backend-e2e-loop.ts',
-                   'scripts/lib/durable-backend-e2e-scan-targets.ts')
+                   'scripts/lib/durable-backend-e2e-scan-targets.ts',
+                   'scripts/lib/durable-backend-e2e-citation-coverage.ts',
+                   'scripts/lib/durable-backend-e2e-frontend-env.ts',
+                   'scripts/lib/durable-backend-e2e-summary-memory-evidence.ts',
+                   'scripts/check-yesterday-reader-summary-artifact-quality.ts',
+                   'scripts/lib/reader-summary-artifact-technical-leak-policy.ts')
         for paths in tuple((path,) for path in allowed) + (allowed,):
             def add_sources(endpoint, value):
                 if endpoint.startswith('git/trees/'):

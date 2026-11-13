@@ -62,6 +62,11 @@ PACKAGE_COPIED_MJS = {'scripts/rewrite-build-aliases.mjs', 'scripts/run-with-tim
 PACKAGE_CI_TS = {'scripts/check-source-provider-runtime-contract.ts',
                  'scripts/capture-durable-backend-e2e-loop.ts',
                  'scripts/lib/durable-backend-e2e-scan-targets.ts',
+                 'scripts/lib/durable-backend-e2e-citation-coverage.ts',
+                 'scripts/lib/durable-backend-e2e-frontend-env.ts',
+                 'scripts/lib/durable-backend-e2e-summary-memory-evidence.ts',
+                 'scripts/check-yesterday-reader-summary-artifact-quality.ts',
+                 'scripts/lib/reader-summary-artifact-technical-leak-policy.ts',
                  'scripts/lib/source-provider-github-issues-runtime-smoke.ts',
                  'scripts/lib/source-provider-github-trending-runtime-smoke.ts'}
 
