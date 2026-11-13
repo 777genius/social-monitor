@@ -9,7 +9,15 @@ export type AuthContext = {
 };
 
 export function resolveAccessToken(
-  runnerConfig: RunnerConfig,
+  runnerConfig: Pick<
+    RunnerConfig,
+    | "accessToken"
+    | "privateKeyPem"
+    | "keyId"
+    | "issuer"
+    | "audience"
+    | "accessTokenTtlSeconds"
+  >,
   runtimeIds: Readonly<{ userId: string; tenantId: string; workspaceId: string }>,
 ): string {
   if (runnerConfig.accessToken !== undefined) {
