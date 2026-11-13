@@ -169,7 +169,7 @@ otel_services=$(
 )
 [[ $otel_services == otel-collector ]]
 git -C "$REPO" checkout -q main
-grep -F "if printf '%s\\n' \"\${persistent[@]}\" | grep -qx api && ! refresh_frontend_api_proxy; then" \
+grep -F "if printf '%s\\n' \"\${persistent[@]}\" | grep -x api >/dev/null && ! refresh_frontend_api_proxy; then" \
   "$ENTRYPOINT" >/dev/null
 grep -F "if [[ \$api_rolled_back == true ]]; then" \
   "$SCRIPT_DIR/backend-image-rescue-lib.sh" >/dev/null
