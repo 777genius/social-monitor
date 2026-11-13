@@ -22,6 +22,7 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           ref: ${{ github.sha }}
+          fetch-depth: 0 # required for pinned 2026-11-08 original-source provenance audit
           persist-credentials: false
       - name: Setup Node 22
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
