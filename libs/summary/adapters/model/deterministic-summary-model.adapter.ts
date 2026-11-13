@@ -14,6 +14,10 @@ import {
   estimateDeterministicSummaryTokens,
 } from './deterministic-summary-budget-policy';
 import { buildDeterministicSummaryAttempt } from './deterministic-summary-draft';
+import {
+  classifyDeterministicSummaryError,
+  validateDeterministicSummaryProviderResponse,
+} from './deterministic-summary-outcome-policy';
 
 const route: SummaryModelRoute = {
   provider: 'deterministic-local',
@@ -52,45 +56,11 @@ export class DeterministicSummaryModelAdapter implements SummaryModelPort {
   validateRawProviderResponse(
     attempt: ProviderSummaryAttempt,
   ): SummaryModelValidationResult {
-    if (attempt.route.schemaVersion !== 'summary.artifact.v1') {
-      return {
-        ok: false,
-        failure: {
-          kind: 'invalid_schema',
-          retryable: false,
-          message: 'Unsupported summary schema version',
-        },
-      };
-    }
-
-    return { ok: true };
+    return validateDeterministicSummaryProviderResponse(attempt);
   }
 
   classifyError(error: unknown): SummaryModelFailure {
-    const message =
-      error instanceof Error ? error.message : 'Unknown summary model error';
-
-    if (message.toLowerCase().includes('budget')) {
-      return {
-        kind: 'budget_exceeded',
-        retryable: false,
-        message,
-      };
-    }
-
-    if (message.toLowerCase().includes('citation')) {
-      return {
-        kind: 'citation_validation_failed',
-        retryable: false,
-        message,
-      };
-    }
-
-    return {
-      kind: 'unknown',
-      retryable: false,
-      message,
-    };
+    return classifyDeterministicSummaryError(error);
   }
 }
 

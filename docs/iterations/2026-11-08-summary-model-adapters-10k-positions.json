@@ -3123,6 +3123,38 @@
         111
       ],
       "responsibility": "Reader summary headline/legacy text admission and no-signal/publication copy fallback precedence moved from multi-step JSON normalizer into pure presentation-copy policy; citation grounding, narrative assembly, and public normalization remain in their original owners; provisional provenance only, not independently accepted meaningful LOC"
+    },
+    {
+      "original": "deterministic-summary-model.adapter.ts",
+      "owner": "deterministic-summary-outcome-policy.ts",
+      "originalPositions": [
+        164,
+        165,
+        166,
+        167,
+        168,
+        169,
+        170,
+        171,
+        175,
+        179,
+        180,
+        182,
+        183,
+        184,
+        185,
+        186,
+        190,
+        191,
+        192,
+        193,
+        194,
+        198,
+        199,
+        200,
+        201
+      ],
+      "responsibility": "Public deterministic summary adapter delegates exact schema-version rejection and ordered fail-closed error taxonomy to pure outcome policy, separating external failure policy from local evidence/draft construction; only nonduplicate pinned executable statement origins counted, pending independent semantic qualification"
     }
   ]
 }
