@@ -1,0 +1,37 @@
+name: Summary model gateway dispatch replay focused qualification
+on:
+  push:
+    branches: [refactor/summary-model-adapters-10k-20261108]
+    paths:
+      - .github/workflows/summary-model-gateway-retry-focus-20261113.yml
+      - libs/summary/adapters/model/gateway-llm/gateway-llm-dispatch-retry-policy.ts
+      - libs/summary/adapters/model/gateway-llm/gateway-llm-dispatch-retry-policy.spec.ts
+  workflow_dispatch:
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact branch commit
+        uses: actions/checkout@v4
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Strict TypeScript and source boundary guards
+        run: |
+          npx tsc --noEmit
+          npm run check:architecture
+          npm run check:code-quality
+          npm run check:source-line-cap
+          npm run check:runtime-profile-guards
+      - name: Gateway dispatch replay and adjacent gateway regressions
+        run: |
+          npx jest --config jest.config.ts --runInBand --runTestsByPath \
+            libs/summary/adapters/model/gateway-llm/gateway-llm-dispatch-retry-policy.spec.ts \
+            libs/summary/adapters/model/gateway-llm/gateway-llm-client.spec.ts
