@@ -9,11 +9,10 @@ import type {
 } from "../../../ports";
 import type { GatewayLlmAccountSelector } from "./gateway-llm-account-selector";
 import type { GatewayLlmAttemptIdentity, GatewayLlmAttemptSource } from "./gateway-llm-attempts";
-import { gatewayLlmFailure } from "./gateway-llm-failure";
+import { completeGatewayLlmFailedTask } from "./gateway-llm-task-failure";
 import type { GatewayLlmSdkIdentity } from "./gateway-llm-sdk-identity";
 import { prepareGatewayLlmTask, type GatewayLlmPrepared } from "./gateway-llm-task-preparation";
 import { completeGatewayLlmTask } from "./gateway-llm-task-completion";
-import { gatewayLlmUsage } from "./gateway-llm-usage";
 import { gatewayLlmDispatchFreeRetry } from "./gateway-llm-dispatch-retry-policy";
 import { readGatewayLlmHealth } from "./gateway-llm-health";
 
@@ -90,13 +89,9 @@ export class GatewayLlmClient implements AgentRuntimeClientPort {
       });
       this.observe(result.execution?.accountRef ?? null, observation(result), retryDecision.afterMs, now);
       if (retryDecision.replay === null) {
-        const elapsedMs = now.getTime() - startedAt;
-        const failure = gatewayLlmFailure(result, identity, prepared.outputViolations());
-        return { ...failed({ ...failure, details: { ...failure.details,
-          gatewayElapsedMs: String(elapsedMs),
-          gatewaySoftTimeoutMs: String(command.timeoutMs),
-          gatewayHardTimeoutMs: String(prepared.task.deadline.getTime() - startedAt),
-        } }, elapsedMs), ...gatewayLlmUsage(result.usage) };
+        return completeGatewayLlmFailedTask({
+          command, prepared, identity, result, now, startedAt,
+        });
       }
       await this.options.sleep(retryDecision.afterMs, options?.signal);
       if (retryDecision.replay === "new_attempt") {

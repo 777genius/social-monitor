@@ -468,6 +468,31 @@ describe("GatewayLlmClient", () => {
     expect(result.executionAttestation?.gateway?.accountRef).toBe(secondPrepare!.accountRefs[0]);
   });
 
+  it("preserves terminal paid-failure diagnostics without attestation or duplicate dispatch", async () => {
+    const fake = harness({ request: async () => {
+      throw safe("dispatch_started", "upstream_failure");
+    } });
+    const result = await fake.client.runTask(command({ timeoutMs: 1_000 }));
+    expect(result).toMatchObject({
+      status: "failed",
+      failure: {
+        code: "provider_failed", retryable: true,
+        details: {
+          gatewayMayDuplicateCost: "true",
+          gatewayAttempt: "1",
+          gatewayElapsedMs: expect.stringMatching(/^\d+$/u),
+          gatewaySoftTimeoutMs: "1000",
+          gatewayHardTimeoutMs: "31000",
+        },
+      },
+    });
+    expect(result.executionAttestation).toBeUndefined();
+    expect(result.structuredOutput).toBeUndefined();
+    expect(fake.prepares).toHaveLength(1);
+    expect(fake.requests()).toBe(1);
+    expect(fake.sleeps).toEqual([]);
+  });
+
   it("leaves a possibly paid failure to the caller", async () => {
     const fake = harness({ request: async () => { throw safe("dispatch_started", "upstream_failure"); } });
     const result = await fake.client.runTask(command());

@@ -2578,6 +2578,18 @@
         107
       ],
       "responsibility": "Previously extracted strict schema decode-path sanitizer; keeps rejected provider text out of safe diagnostics independently from failure taxonomy and attempt provenance; retrospectively traced, zero new code"
+    },
+    {
+      "original": "gateway-llm/gateway-llm-client.ts",
+      "owner": "gateway-llm/gateway-llm-task-failure.ts",
+      "responsibility": "Terminal SDK failure projection owns diagnostics and settled usage, separate from dispatch-free retry/account observation. These five executable source coordinates are provenance candidates, not accepted meaningful 10k LOC.",
+      "originalPositions": [
+        112,
+        113,
+        115,
+        116,
+        117
+      ]
     }
   ]
 }
