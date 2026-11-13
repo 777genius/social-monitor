@@ -2368,6 +2368,42 @@
         357
       ],
       "responsibility": "Deterministic summary/headline fallback and source-highlight display normalization split from risks and schema validation"
+    },
+    {
+      "original": "openai-responses-summary-json.ts",
+      "owner": "openai-responses-summary-required-json.ts",
+      "originalPositions": [
+        2,
+        3,
+        6,
+        24,
+        25,
+        35,
+        36,
+        46,
+        48,
+        49,
+        67,
+        69,
+        70,
+        73,
+        77,
+        78
+      ],
+      "responsibility": "Required nonempty strings, finite numbers, arrays, objects and indexed error rejection live at provider-input trust boundary"
+    },
+    {
+      "original": "openai-responses-summary-json.ts",
+      "owner": "openai-responses-summary-optional-json.ts",
+      "originalPositions": [
+        14,
+        15,
+        18,
+        20,
+        60,
+        84
+      ],
+      "responsibility": "Missing/blank optional field and optional integer handling separated from mandatory provider output rejection"
     }
   ]
 }

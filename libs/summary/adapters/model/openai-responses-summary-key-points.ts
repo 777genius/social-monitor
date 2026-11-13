@@ -1,6 +1,6 @@
 import type { SummaryCitation, SummaryKeyPoint } from '../../domain';
 import { normalizeCitationIds } from './openai-responses-summary-citations';
-import { requiredArray, requiredRecord } from './openai-responses-summary-json';
+import { requiredArray, requiredRecord } from './openai-responses-summary-required-json';
 import { stringOrFallback } from './openai-responses-summary-text';
 
 export const normalizeKeyPoints = (

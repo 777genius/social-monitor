@@ -4,7 +4,7 @@ import {
   requiredArray,
   requiredRecord,
   requiredString,
-} from './openai-responses-summary-json';
+} from './openai-responses-summary-required-json';
 
 const citationFields = new Set<SummaryCitation['field']>([
   'title',

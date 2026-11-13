@@ -1,5 +1,5 @@
 import { SummaryModelProviderError } from "./openai-responses-summary-model-error";
-import { requiredRecord } from "./openai-responses-summary-json";
+import { requiredRecord } from "./openai-responses-summary-required-json";
 
 // Preserve the historical direct-import surface; new consumers use the owning modules.
 export { resolveOpenAiSummaryUsage } from "./openai-responses-summary-usage";
