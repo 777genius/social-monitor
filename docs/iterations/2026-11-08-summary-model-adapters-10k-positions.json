@@ -3212,6 +3212,20 @@
         123
       ],
       "responsibility": "One shared first-recognized trusted citation lookup for reader items and next actions, preserving original provider/URL priority"
+    },
+    {
+      "original": "agent-runtime-promotion-presentation-v3-runtime-failure.ts",
+      "owner": "agent-runtime-promotion-presentation-v3-run-wide-failure-policy.ts",
+      "originalPositions": [
+        28,
+        29,
+        34,
+        35,
+        36,
+        39,
+        40
+      ],
+      "responsibility": "Run-wide capacity, account availability, safe diagnostic and validation-evidence veto now independently owned, preserving task-local retry, timeout and ambiguous dispatch ordering"
     }
   ]
 }
