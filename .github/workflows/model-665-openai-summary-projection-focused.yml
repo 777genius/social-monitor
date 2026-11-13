@@ -49,5 +49,5 @@ jobs:
           npx jest --config jest.config.ts --runInBand --runTestsByPath
           libs/summary/adapters/model/openai-responses-summary-prompt.spec.ts
           libs/summary/adapters/model/openai-responses-summary-model.adapter.spec.ts
-          libs/summary/adapters/model/openai-responses-summary-quality.spec.ts \
+          libs/summary/adapters/model/openai-responses-summary-quality.spec.ts
           libs/summary/adapters/model/openai-responses-summary-json-boundaries.spec.ts
