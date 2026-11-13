@@ -17,6 +17,39 @@ import {
   legacyClaimTypeFromStories,
 } from "./openai-responses-reader-summary-weekly-legacy-evidence-policy";
 
+// Both accepted legacy envelopes share this decoder, retaining original
+// per-envelope labels and story-validation order in their callers.
+const normalizeExpandedWeeklySection = (
+  input: ReaderSummaryWeeklyModelInput,
+  rawSection: unknown,
+  stories: unknown,
+  label: string,
+) => {
+  const section = hasExactKeys(rawSection, expandedLegacySectionKeys)
+    ? rawSection
+    : hasExactKeys(rawSection, expandedLegacySectionKeysWithoutClaimType)
+      ? {
+          ...rawSection,
+          claimType: legacyClaimTypeFromStories(stories, rawSection.storyId, label),
+        }
+      : undefined;
+  if (section === undefined) {
+    throw new Error(`${label} must contain exactly the supported fields`);
+  }
+  const citationIds = exactLegacyCitationRange(input, section, label);
+  return {
+    sectionId: section.sectionId,
+    storyId: section.storyId,
+    kind: normalizeExpandedLegacySectionKind(section.kind),
+    claimType: exactLegacyClaimType(section.claimType, label),
+    heading: section.headline,
+    text: section.synthesis,
+    observedFrom: section.observedFrom,
+    observedThrough: section.observedThrough,
+    citationIds,
+  };
+};
+
 const normalizeSealedCompactWeeklyModelOutput = (
   input: ReaderSummaryWeeklyModelInput,
   value: Record<(typeof sealedCompactOutputKeys)[number], unknown>,
@@ -29,44 +62,11 @@ const normalizeSealedCompactWeeklyModelOutput = (
     value,
     "sealed compact weekly output",
   );
-  const sections = value.sections.map((rawSection, index) => {
-    const section = hasExactKeys(rawSection, expandedLegacySectionKeys)
-      ? rawSection
-      : hasExactKeys(rawSection, expandedLegacySectionKeysWithoutClaimType)
-        ? {
-            ...rawSection,
-            claimType: legacyClaimTypeFromStories(
-              value.stories,
-              rawSection.storyId,
-              `sealed compact weekly section ${index + 1}`,
-            ),
-          }
-        : undefined;
-    if (section === undefined) {
-      throw new Error(
-        `Sealed compact weekly section ${index + 1} must contain exactly the supported fields`,
-      );
-    }
-    const citationIds = exactLegacyCitationRange(
-      input,
-      section,
-      `sealed compact weekly section ${index + 1}`,
-    );
-    return {
-      sectionId: section.sectionId,
-      storyId: section.storyId,
-      kind: normalizeExpandedLegacySectionKind(section.kind),
-      claimType: exactLegacyClaimType(
-        section.claimType,
-        `sealed compact weekly section ${index + 1}`,
-      ),
-      heading: section.headline,
-      text: section.synthesis,
-      observedFrom: section.observedFrom,
-      observedThrough: section.observedThrough,
-      citationIds,
-    };
-  });
+  const sections = value.sections.map((rawSection, index) =>
+    normalizeExpandedWeeklySection(
+      input, rawSection, value.stories, `Sealed compact weekly section ${index + 1}`,
+    ),
+  );
   const stories = value.stories.map((rawStory, index) => {
     const story = hasExactKeys(rawStory, sealedCompactStoryKeys)
       ? rawStory
@@ -160,44 +160,11 @@ const normalizeExpandedLegacyWeeklyModelOutput = (
       citationIds,
     };
   });
-  const sections = value.sections.map((rawSection, index) => {
-    const section = hasExactKeys(rawSection, expandedLegacySectionKeys)
-      ? rawSection
-      : hasExactKeys(rawSection, expandedLegacySectionKeysWithoutClaimType)
-        ? {
-            ...rawSection,
-            claimType: legacyClaimTypeFromStories(
-              value.stories,
-              rawSection.storyId,
-              `expanded legacy weekly section ${index + 1}`,
-            ),
-          }
-        : undefined;
-    if (section === undefined) {
-      throw new Error(
-        `Expanded legacy weekly section ${index + 1} must contain exactly the supported fields`,
-      );
-    }
-    const citationIds = exactLegacyCitationRange(
-      input,
-      section,
-      `expanded legacy weekly section ${index + 1}`,
-    );
-    return {
-      sectionId: section.sectionId,
-      storyId: section.storyId,
-      kind: normalizeExpandedLegacySectionKind(section.kind),
-      claimType: exactLegacyClaimType(
-        section.claimType,
-        `expanded legacy weekly section ${index + 1}`,
-      ),
-      heading: section.headline,
-      text: section.synthesis,
-      observedFrom: section.observedFrom,
-      observedThrough: section.observedThrough,
-      citationIds,
-    };
-  });
+  const sections = value.sections.map((rawSection, index) =>
+    normalizeExpandedWeeklySection(
+      input, rawSection, value.stories, `Expanded legacy weekly section ${index + 1}`,
+    ),
+  );
   return {
     schemaVersion: value.schemaVersion,
     sealId: value.sealId,

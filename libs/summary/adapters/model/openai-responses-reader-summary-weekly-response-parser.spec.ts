@@ -131,6 +131,33 @@ describe("OpenAI reader summary weekly response parser", () => {
     ).toThrow("exactly one story");
   });
 
+  it("keeps each weekly envelope's section trust failures and chronology labels", () => {
+    const input = weeklyInput();
+    const current = weeklyOutput(input);
+    const variants = [
+      { value: sealedCompactWeeklyOutput(input, current), label: "Sealed compact weekly section" },
+      { value: expandedLegacyWeeklyOutput(input, current), label: "Expanded legacy weekly section" },
+    ] as const;
+
+    for (const { value, label } of variants) {
+      expect(() => parseOpenAiReaderSummaryWeeklyValue(input, {
+        ...value,
+        sections: [
+          { ...value.sections[0]!, unrecognized: true },
+          ...value.sections.slice(1),
+        ],
+      })).toThrow(`${label} 1 must contain exactly the supported fields`);
+
+      expect(() => parseOpenAiReaderSummaryWeeklyValue(input, {
+        ...value,
+        sections: [
+          { ...value.sections[0]!, observedFrom: "2026-07-01" },
+          ...value.sections.slice(1),
+        ],
+      })).toThrow(`${label} 1 fabricates chronology`);
+    }
+  });
+
   it("normalizes the observed context section kind to development", () => {
     const input = weeklyInput();
     const current = weeklyOutput(input);

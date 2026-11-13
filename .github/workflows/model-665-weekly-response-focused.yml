@@ -6,6 +6,8 @@ on:
       - refactor/summary-model-adapters-10k-20261108
     paths:
       - .github/workflows/model-665-weekly-response-focused.yml
+      - libs/summary/adapters/model/openai-responses-reader-summary-weekly-expanded-normalization.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-parser.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-contract.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-failure.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-records.ts
@@ -50,6 +52,8 @@ jobs:
       - name: Weekly response failures and public adapter behavior
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
+          libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-parser.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-weekly-legacy-normalization.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-contract.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-weekly-model.adapter.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-weekly-failure-policy.spec.ts
