@@ -1,0 +1,54 @@
+# Temporary branch-only focused verification of the existing Draft PR #665.
+# Does not replace full Ready 20/20, PG18, security, image or E2E.
+name: Model 665 reader identity boundary focused
+on:
+  push:
+    branches:
+      - refactor/summary-model-adapters-10k-20261108
+    paths:
+      - .github/workflows/model-665-generation-identity-focused.yml
+      - libs/summary/adapters/model/reader-summary-generation-identity-policy.ts
+      - libs/summary/adapters/model/reader-summary-generation-identity-core.ts
+      - libs/summary/adapters/model/reader-summary-generation-env-resolution.ts
+      - libs/summary/adapters/model/reader-summary-generation-identity-policy.spec.ts
+permissions:
+  contents: read
+jobs:
+  focused:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      DATABASE_URL: postgresql://social_monitor_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_ci
+    steps:
+      - name: Checkout exact head and frozen source history
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Node 22
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
+          cache: npm
+      - name: Locked install and Prisma
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run prisma:generate
+      - name: Source provenance and strict architecture
+        run: |
+          set -euo pipefail
+          node scripts/audit-summary-model-original-files.mjs
+          npx tsc --noEmit
+          npm run check:architecture
+          npm run check:code-quality
+          npm run check:source-line-cap
+          npm run check:runtime-profile-guards
+      - name: Generation identity, gateway model contract and reader adapters
+        run: >-
+          npx jest --config jest.config.ts --runInBand --runTestsByPath
+          libs/summary/adapters/model/reader-summary-generation-identity-policy.spec.ts
+          libs/summary/adapters/model/reader-summary-gateway-route-policy.spec.ts
+          libs/summary/adapters/model/codex-reader-summary-gateway-route-policy.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-model.adapter.spec.ts
