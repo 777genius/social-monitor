@@ -55,4 +55,14 @@ describe("untrusted topic map response admission", () => {
       );
     }
   });
+
+  it("normalizes absent or invalid raw confidence into a required zero-score semantic label", () => {
+    const { candidates, rawLabels } = fixture();
+    const admitted = readCompleteTopicNodeLabels([
+      { ...rawLabels[0], confidenceScore: undefined },
+      { ...rawLabels[1], confidenceScore: "not-a-number" },
+    ], candidates);
+    expect(admitted.map((label) => label.semantic.confidenceScore)).toEqual([0, 0]);
+    expect(admitted.every((label) => label.semantic !== undefined)).toBe(true);
+  });
 });

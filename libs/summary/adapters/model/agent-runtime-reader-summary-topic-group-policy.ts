@@ -60,8 +60,13 @@ export const retainedSemanticGroupIds = (
 /** Semantic admission is independent of untrusted response decoding and recovery. */
 type ParsedTopicNodeLabel = Pick<
   ReaderSummaryTopicLabelPlan["nodeLabels"][number],
-  "nodeId" | "topicId" | "label" | "semantic" | "keywords" | "rationale"
-> & { readonly groupId: string };
+  "nodeId" | "topicId" | "label" | "keywords" | "rationale"
+> & {
+  readonly semantic: NonNullable<
+    ReaderSummaryTopicLabelPlan["nodeLabels"][number]["semantic"]
+  >;
+  readonly groupId: string;
+};
 
 export const projectInitialTopicGroupAssignments = (
   parsedNodeLabels: readonly ParsedTopicNodeLabel[],
