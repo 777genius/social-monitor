@@ -1,4 +1,4 @@
-import { createPrivateKey, randomUUID, sign as signJwt } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
@@ -10,8 +10,9 @@ import type { SummaryMemoryContext } from "@social-monitor/summary/ports";
 import { Pool, type PoolClient } from "pg";
 
 import { createDurableBackendHttpClient } from "./lib/durable-backend-e2e-http-client";
-import { emptyToUndefined, loadConfig, type RunnerConfig } from "./lib/durable-backend-e2e-config";
+import { emptyToUndefined, loadConfig } from "./lib/durable-backend-e2e-config";
 import { writeFrontendRuntimeEnvFile } from "./lib/durable-backend-e2e-frontend-env";
+import { authHeaders, resolveAccessToken, withIdempotency, type AuthContext } from "./lib/durable-backend-e2e-auth";
 import { createDurableScanTargets, type DurableScanProviderKey, type DurableScanTarget } from "./lib/durable-backend-e2e-scan-targets";
 import {
   assertProviderCitationCoverage,
@@ -45,11 +46,7 @@ type RuntimeIds = {
   readonly membershipId: string;
 };
 
-type AuthContext = {
-  readonly tenantId: string;
-  readonly workspaceId: string;
-  readonly token: string;
-};
+
 
 type SignalResult = {
   readonly signalId: string;
@@ -1515,67 +1512,11 @@ async function withClient<T>(
   }
 }
 
-function resolveAccessToken(
-  runnerConfig: RunnerConfig,
-  runtimeIds: RuntimeIds,
-): string {
-  if (runnerConfig.accessToken !== undefined) {
-    return runnerConfig.accessToken;
-  }
-  if (
-    runnerConfig.privateKeyPem === undefined ||
-    runnerConfig.keyId === undefined
-  ) {
-    throw new Error(
-      "DURABLE_BACKEND_E2E_PRIVATE_KEY_PEM and DURABLE_BACKEND_E2E_JWT_KID are required when no access token is supplied",
-    );
-  }
 
-  const nowSeconds = Math.floor(Date.now() / 1000);
-  const privateKey = createPrivateKey(runnerConfig.privateKeyPem);
-  const encodedHeader = encodeJson({
-    alg: "RS256",
-    typ: "JWT",
-    kid: runnerConfig.keyId,
-  });
-  const encodedPayload = encodeJson({
-    sub: runtimeIds.userId,
-    iss: runnerConfig.issuer,
-    aud: runnerConfig.audience,
-    iat: nowSeconds,
-    exp: nowSeconds + runnerConfig.accessTokenTtlSeconds,
-    tenant_id: runtimeIds.tenantId,
-    workspace_id: runtimeIds.workspaceId,
-    workspace_roles: ["owner"],
-  });
-  const signingInput = `${encodedHeader}.${encodedPayload}`;
-  const signature = signJwt(
-    "RSA-SHA256",
-    Buffer.from(signingInput, "ascii"),
-    privateKey,
-  ).toString("base64url");
 
-  return `${signingInput}.${signature}`;
-}
 
-function authHeaders(auth: AuthContext): Record<string, string> {
-  return {
-    "x-tenant-id": auth.tenantId,
-    "x-workspace-id": auth.workspaceId,
-    authorization: `Bearer ${auth.token}`,
-    "x-request-id": `durable-backend-loop-${randomUUID()}`,
-  };
-}
 
-function withIdempotency(
-  headers: Readonly<Record<string, string>>,
-  key: string,
-): Record<string, string> {
-  return {
-    ...headers,
-    "idempotency-key": key,
-  };
-}
+
 
 function durableScanPolicyCadence(providerKey: DurableScanProviderKey): {
   readonly intervalSeconds: number;
@@ -1658,9 +1599,6 @@ function signalResult(
   };
 }
 
-function encodeJson(value: JsonRecord): string {
-  return Buffer.from(JSON.stringify(value)).toString("base64url");
-}
 
 
 function parseDateOrFallback(value: string | undefined, fallback: Date): Date {
