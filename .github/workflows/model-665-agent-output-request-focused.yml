@@ -9,6 +9,9 @@ on:
       - .github/workflows/model-665-agent-output-request-focused.yml
       - libs/summary/adapters/model/agent-runtime-model-failure-usage.spec.ts
       - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
+      - libs/summary/adapters/model/agent-runtime-reader-summary-gateway-violations.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-gateway-violations.spec.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-model.gateway-repair.spec.ts
 permissions:
   contents: read
 jobs:
@@ -23,6 +26,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+          fetch-depth: 0
       - name: Setup Node 22
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
@@ -40,6 +44,8 @@ jobs:
           npm run check:code-quality
           npm run check:source-line-cap
           npm run check:runtime-profile-guards
+      - name: Audit frozen original implementation ownership
+        run: node scripts/audit-summary-model-original-files.mjs
       - name: Verify output trust and request identity in model adapter
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
@@ -47,3 +53,6 @@ jobs:
           libs/summary/adapters/model/agent-runtime-model-failure-usage.spec.ts
           libs/summary/adapters/model/agent-runtime-summary-model.adapter.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-model.adapter.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-gateway-violations.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-model.gateway-repair.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-generation.spec.ts
