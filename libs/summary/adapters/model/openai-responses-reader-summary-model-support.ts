@@ -10,8 +10,8 @@ export {
 export { asRecord } from "./openai-responses-reader-summary-json";
 export { assertOpenAiReaderSummaryClaimCitationIds } from "./openai-responses-reader-summary-claim-citations";
 export { resolveOpenAiReaderSummaryUsage } from "./openai-responses-reader-summary-usage";
+export { extractOpenAiOutputText } from "./openai-responses-reader-summary-output-text";
 export {
-  extractOpenAiOutputText,
   OpenAiReaderSummaryOutputParseError,
   parseOpenAiReaderSummaryJsonObject,
 } from "./openai-responses-reader-summary-response-parser";

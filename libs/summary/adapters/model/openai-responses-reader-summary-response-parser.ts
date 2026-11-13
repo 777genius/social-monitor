@@ -1,38 +1,9 @@
 // Keep the direct response-parser entrypoint compatible for existing callers.
+export { extractOpenAiOutputText } from "./openai-responses-reader-summary-output-text";
 export { assertOpenAiReaderSummaryClaimCitationIds } from "./openai-responses-reader-summary-claim-citations";
 export { resolveOpenAiReaderSummaryUsage } from "./openai-responses-reader-summary-usage";
 
-import {
-  requiredArray,
-  requiredRecord,
-} from "./openai-responses-reader-summary-json";
-
-export const extractOpenAiOutputText = (
-  response: Record<string, unknown>,
-): string | undefined => {
-  if (
-    typeof response.output_text === "string" &&
-    response.output_text.trim().length > 0
-  ) {
-    return response.output_text;
-  }
-
-  for (const output of requiredArray<Record<string, unknown>>(
-    response.output ?? [],
-    "OpenAI output",
-  )) {
-    for (const content of requiredArray<Record<string, unknown>>(
-      output.content ?? [],
-      "OpenAI content",
-    )) {
-      if (typeof content.text === "string" && content.text.trim().length > 0) {
-        return content.text;
-      }
-    }
-  }
-
-  return undefined;
-};
+import { requiredRecord } from "./openai-responses-reader-summary-json";
 
 export const parseOpenAiReaderSummaryJsonObject = (
   value: string,

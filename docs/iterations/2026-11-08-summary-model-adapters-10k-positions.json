@@ -2590,6 +2590,25 @@
         116,
         117
       ]
+    },
+    {
+      "original": "openai-responses-reader-summary-response-parser.ts",
+      "owner": "openai-responses-reader-summary-output-text.ts",
+      "originalPositions": [
+        16,
+        17,
+        19,
+        22,
+        23,
+        24,
+        26,
+        27,
+        28,
+        30,
+        31,
+        36
+      ],
+      "responsibility": "Provider response envelope text selection and strict nested array validation isolated from JSON-object parsing; unchanged text precedence and fail-closed rejection"
     }
   ]
 }
