@@ -155,4 +155,42 @@ describe('MeteredSummaryModelAdapter', () => {
     expect(adapter.validateRawProviderResponse(attempt)).toBe(validation);
     expect(delegate.validateRawProviderResponse).toHaveBeenCalledWith(attempt);
   });
+  it('does not dispatch a provider attempt if started telemetry throws', async () => {
+    const telemetryError = new Error('synthetic started metric rejection');
+    const summarize = jest.fn();
+    const delegate = { summarize } as unknown as SummaryModelPort;
+    const incrementCounter = jest.fn().mockImplementation(() => { throw telemetryError; });
+    const adapter = new MeteredSummaryModelAdapter(
+      delegate,
+      { incrementCounter } as unknown as MetricsRecorderPort,
+    );
+
+    await expect(adapter.summarize(input, route)).rejects.toBe(telemetryError);
+    expect(summarize).not.toHaveBeenCalled();
+    expect(incrementCounter).toHaveBeenCalledTimes(1);
+  });
+
+  it('classifies succeeded-metric failures and preserves the original telemetry error', async () => {
+    const telemetryError = new Error('synthetic success metric rejection');
+    const classifyError = jest.fn().mockReturnValue({ kind: 'invalid_schema' });
+    const incrementCounter = jest.fn().mockImplementation((event: { labels?: { status?: string } }) => {
+      if (event.labels?.status === 'succeeded') throw telemetryError;
+    });
+    const delegate = {
+      summarize: jest.fn().mockResolvedValue(attempt),
+      classifyError,
+    } as unknown as SummaryModelPort;
+    const adapter = new MeteredSummaryModelAdapter(
+      delegate,
+      { incrementCounter } as unknown as MetricsRecorderPort,
+    );
+
+    await expect(adapter.summarize(input, route)).rejects.toBe(telemetryError);
+    expect(classifyError).toHaveBeenCalledWith(telemetryError);
+    expect(incrementCounter.mock.calls.map(([event]) => event.labels?.status)).toEqual([
+      'started', 'succeeded', 'failed',
+    ]);
+    expect(incrementCounter.mock.calls[2]?.[0]?.labels?.failure_kind).toBe('invalid_schema');
+  });
+
 });

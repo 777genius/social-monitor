@@ -11,10 +11,7 @@ import type {
   SummaryModelRoute,
   SummaryModelValidationResult,
 } from '../../ports';
-import {
-  recordSummaryModelRequest,
-  recordSummaryModelUsage,
-} from './summary-model-metrics';
+import { meterSummaryModelAttempt } from './summary-model-metered-attempt';
 
 export class MeteredSummaryModelAdapter implements SummaryModelPort {
   constructor(
@@ -31,21 +28,12 @@ export class MeteredSummaryModelAdapter implements SummaryModelPort {
   }
 
   async summarize(input: SummaryModelInput, route: SummaryModelRoute): Promise<ProviderSummaryAttempt> {
-    recordSummaryModelRequest(this.metrics, route, 'started');
-
-    try {
-      const attempt = await this.delegate.summarize(input, route);
-      const usage = attempt.draft.usage;
-
-      recordSummaryModelRequest(this.metrics, route, 'succeeded');
-      recordSummaryModelUsage(this.metrics, route, usage);
-
-      return attempt;
-    } catch (error) {
-      const failure = this.delegate.classifyError(error);
-      recordSummaryModelRequest(this.metrics, route, 'failed', failure.kind);
-      throw error;
-    }
+    return meterSummaryModelAttempt({
+      metrics: this.metrics,
+      route,
+      execute: () => this.delegate.summarize(input, route),
+      classifyFailure: (error) => this.delegate.classifyError(error).kind,
+    });
   }
 
   validateRawProviderResponse(attempt: ProviderSummaryAttempt): SummaryModelValidationResult {
