@@ -1,9 +1,10 @@
+import { createExternalBetaDuplicateEvidencePaths } from './lib/external-beta-evidence-duplicate-paths.mjs';
 import { validateArtifactIdentity, validateArtifactProviderKeys } from './lib/external-beta-evidence-artifact-shape-policy.mjs';
 import { createExternalBetaArtifactConsistencyFreshness } from './lib/external-beta-artifact-consistency-freshness.mjs';
 import { createExternalBetaJobReadiness } from './lib/external-beta-evidence-job-readiness.mjs';
 import { execFileSync } from 'node:child_process';
 import { accessSync, constants, existsSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
-import { basename, dirname, isAbsolute, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, relative } from 'node:path';
 import { URL } from 'node:url';
 import { parse as parseDotenv } from 'dotenv';
 import { readEnvFileSelection, readSelectedJobSelection } from './lib/external-beta-evidence-selections.mjs';
@@ -35,6 +36,10 @@ const contractPath = 'ops/release/external-beta-evidence-runner.json';
 const inputMatrixPath = 'ops/release/external-beta-evidence-input-matrix.json';
 const contract = JSON.parse(readFileSync(contractPath, 'utf8'));
 const inputMatrix = JSON.parse(readFileSync(inputMatrixPath, 'utf8'));
+const {
+  duplicateEvidencePathViolations,
+  duplicateEvidencePathViolationsByJob,
+} = createExternalBetaDuplicateEvidencePaths({ contract, env: process.env });
 const { validateArtifactEnvConsistency, validateArtifactFreshness } = createExternalBetaArtifactConsistencyFreshness({ contract, process, Date });
 const {
   missingRequiredEnv, missingOptionalEnvNames, requiredEnvAlternativeCoveredEnvNames,
@@ -536,66 +541,6 @@ function artifactValidationViolations(candidateJobs) {
     }
   }
   return violations;
-}
-
-function duplicateEvidencePathViolations(candidateJobs) {
-  return [...duplicateEvidencePathViolationsByJob(candidateJobs).values()].flat();
-}
-
-function duplicateEvidencePathViolationsByJob(candidateJobs) {
-  const violationsByJob = new Map();
-  if (contract.executionSafety?.evidencePathEnvForbidsDuplicatePaths !== true) {
-    return violationsByJob;
-  }
-
-  const entriesByPath = new Map();
-  for (const job of candidateJobs) {
-    for (const artifact of job.outputArtifacts ?? []) {
-      const envName = artifact.env;
-      if (envName === undefined || !envName.endsWith('_PATH')) {
-        continue;
-      }
-      const value = process.env[envName]?.trim();
-      if (value === undefined || value === '') {
-        continue;
-      }
-
-      const duplicateKey = evidencePathDuplicateKey(value);
-      const entries = entriesByPath.get(duplicateKey) ?? [];
-      entries.push({ jobId: job.jobId, envName });
-      entriesByPath.set(duplicateKey, entries);
-    }
-  }
-
-  for (const entries of entriesByPath.values()) {
-    if (entries.length < 2) {
-      continue;
-    }
-    for (const entry of entries) {
-      const violations = violationsByJob.get(entry.jobId) ?? [];
-      violations.push(`${entry.jobId}: evidence path env ${entry.envName} must not duplicate another evidence artifact path in this run`);
-      violationsByJob.set(entry.jobId, violations);
-    }
-  }
-
-  return violationsByJob;
-}
-
-function evidencePathDuplicateKey(path) {
-  if (existsSync(path)) {
-    try {
-      return realpathSync(path);
-    } catch {
-      return resolve(path);
-    }
-  }
-
-  const parentDirectory = dirname(path);
-  try {
-    return resolve(realpathSync(parentDirectory), basename(path));
-  } catch {
-    return resolve(path);
-  }
 }
 
 function validateExecutableOutputArtifactPathEnv(job, missingEnvSet, violations) {
