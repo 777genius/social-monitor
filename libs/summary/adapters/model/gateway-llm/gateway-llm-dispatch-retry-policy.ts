@@ -19,7 +19,9 @@ export const gatewayLlmDispatchFreeRetry = (params: {
   const remainingMs = params.deadlineMs - params.nowMs;
   // SDK types are compile-time only: never schedule an unbounded/negative retry
   // if a provider response or an injected clock violates the wire contract.
-  if (!Number.isFinite(afterMs) || afterMs < 0 || !Number.isFinite(remainingMs)) {
+  if (!Number.isSafeInteger(params.retries) || params.retries < 0 ||
+      !Number.isSafeInteger(params.maxRetries) || params.maxRetries < 0 ||
+      !Number.isFinite(afterMs) || afterMs < 0 || !Number.isFinite(remainingMs)) {
     return { afterMs: 0, replay: null };
   }
   const replay = retry.kind === "same_attempt" ||

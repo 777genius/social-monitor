@@ -34,6 +34,24 @@ describe("gateway LLM dispatch-free replay policy", () => {
     expect(decision(retry(0))).toEqual({ afterMs: 0, replay: "same_attempt" });
     expect(decision(retry(5), { deadlineMs: 105 })).toEqual({ afterMs: 5, replay: null });
   });
+  it("fails closed when the retry budget or attempt counter is malformed", () => {
+    const retry = { kind: "same_attempt", afterMs: 5 } as const;
+    for (const maxRetries of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY,
+      Number.MAX_SAFE_INTEGER + 1]) {
+      expect(decision(retry, { maxRetries })).toEqual({ afterMs: 0, replay: null });
+    }
+    for (const retries of [-1, 0.5, Number.NaN, Number.NEGATIVE_INFINITY,
+      Number.MAX_SAFE_INTEGER + 1]) {
+      expect(decision(retry, { retries })).toEqual({ afterMs: 0, replay: null });
+    }
+    // Zero explicitly disables replay; valid integer ceilings remain inclusive.
+    expect(decision(retry, { maxRetries: 0 })).toEqual({ afterMs: 5, replay: null });
+    expect(decision(retry, { maxRetries: 1, retries: 0 }))
+      .toEqual({ afterMs: 5, replay: "same_attempt" });
+    expect(decision(retry, { maxRetries: 1, retries: 1 }))
+      .toEqual({ afterMs: 5, replay: null });
+  });
+
   it("stops when retry count is exhausted, signal aborted or deadline consumed", () => {
     const retry = { kind: "same_attempt", afterMs: 5 } as const;
     expect(decision(retry, { retries: 2 }).replay).toBeNull();
