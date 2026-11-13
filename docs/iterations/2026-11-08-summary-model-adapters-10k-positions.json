@@ -1778,6 +1778,36 @@
         271
       ],
       "responsibility": "Weekly HTTP status/body JSON decoding and bounded transport errors delegates semantic response-state validation to specialist"
+    },
+    {
+      "original": "agent-runtime-reader-summary-topic-evidence-prompt.ts",
+      "owner": "agent-runtime-reader-summary-topic-evidence-samples.ts",
+      "originalPositions": [
+        14,
+        15,
+        16,
+        17,
+        20,
+        21,
+        22,
+        26,
+        28,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        44,
+        46,
+        55,
+        56,
+        57,
+        60,
+        61,
+        62
+      ],
+      "responsibility": "Cluster-bound selected-evidence admission, duplicate-ID filtering, bounded samples and normalized provider snippets independently owned from trusted topic-node prompt projection; legacy samples export preserved. Frozen-position evidence is provisional, not accepted semantic LOC."
     }
   ]
 }

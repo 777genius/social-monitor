@@ -1,0 +1,52 @@
+# Temporary scoped checks for Draft #665. Not Ready 20/20, native PG18 E2E or a deploy.
+name: Model 665 topic evidence admission focused
+on:
+  push:
+    branches:
+      - refactor/summary-model-adapters-10k-20261108
+    paths:
+      - .github/workflows/model-665-topic-evidence-focused.yml
+      - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-evidence-prompt.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-evidence-samples.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-evidence-samples.spec.ts
+permissions:
+  contents: read
+jobs:
+  focused:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      DATABASE_URL: postgresql://social_monitor_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_ci
+    steps:
+      - name: Checkout exact source and frozen baseline
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Node 22
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 22
+          cache: npm
+      - name: Locked install and Prisma
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run prisma:generate
+      - name: Frozen source, strict TypeScript and boundary checks
+        run: |
+          set -euo pipefail
+          node scripts/audit-summary-model-original-files.mjs
+          npx tsc --noEmit
+          npm run check:architecture
+          npm run check:code-quality
+          npm run check:source-line-cap
+          npm run check:runtime-profile-guards
+      - name: Cluster samples, label prompt and labeler model regression
+        run: >-
+          npx jest --config jest.config.ts --runInBand --runTestsByPath
+          libs/summary/adapters/model/agent-runtime-reader-summary-topic-evidence-samples.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-topic-labeler-prompt.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-topic-labeler.adapter.spec.ts
