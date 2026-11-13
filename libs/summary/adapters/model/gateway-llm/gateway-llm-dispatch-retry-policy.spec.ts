@@ -17,6 +17,23 @@ describe("gateway LLM dispatch-free replay policy", () => {
     expect(decision({ kind: "new_attempt", afterMs: 5, mayDuplicateCost: false })).toEqual({ afterMs: 5, replay: "new_attempt" });
     expect(decision({ kind: "new_attempt", afterMs: 5, mayDuplicateCost: true })).toEqual({ afterMs: 5, replay: null });
   });
+  it("rejects malformed SDK retry delays and clock ranges before replay", () => {
+    const retry = (afterMs: number) => ({ kind: "same_attempt" as const, afterMs });
+    for (const afterMs of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(decision(retry(afterMs))).toEqual({ afterMs: 0, replay: null });
+    }
+    for (const timing of [
+      { nowMs: Number.NaN },
+      { nowMs: Number.NEGATIVE_INFINITY },
+      { deadlineMs: Number.POSITIVE_INFINITY },
+      { nowMs: -Number.MAX_VALUE, deadlineMs: Number.MAX_VALUE },
+    ]) {
+      expect(decision(retry(5), timing)).toEqual({ afterMs: 0, replay: null });
+    }
+    // A valid immediate dispatch-free retry and exact deadline cutoff are unchanged.
+    expect(decision(retry(0))).toEqual({ afterMs: 0, replay: "same_attempt" });
+    expect(decision(retry(5), { deadlineMs: 105 })).toEqual({ afterMs: 5, replay: null });
+  });
   it("stops when retry count is exhausted, signal aborted or deadline consumed", () => {
     const retry = { kind: "same_attempt", afterMs: 5 } as const;
     expect(decision(retry, { retries: 2 }).replay).toBeNull();
