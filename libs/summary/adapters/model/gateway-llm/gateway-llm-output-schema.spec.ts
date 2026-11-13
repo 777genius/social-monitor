@@ -80,4 +80,36 @@ describe("toGatewayOutputSchema", () => {
     }
     expect(accepts(rewritten.decode, { text: "abcd", ids: [], reason: "x" })).toBe(false);
   });
+
+  it("keeps pre-composed nullable unions intact instead of changing the accepted value set", () => {
+    const composed = {
+      type: ["string", "null"],
+      oneOf: [{ type: "string", minLength: 2 }, { type: "null" }],
+      maxLength: 6,
+    };
+    expect(toGatewayOutputSchema(composed)).toEqual(composed);
+  });
+
+  it("rewrites nested schema nodes without mutating the supplied contract", () => {
+    const source = {
+      type: "object",
+      $defs: { state: { enum: ["new", "done"] } },
+      properties: {
+        items: { type: "array", prefixItems: [{ enum: [null] }] },
+        flags: { type: "object", additionalProperties: { const: false } },
+      },
+      not: { enum: ["blocked"] },
+    };
+    const snapshot = JSON.parse(JSON.stringify(source)) as typeof source;
+    const rewritten = toGatewayOutputSchema(source);
+    expect(source).toEqual(snapshot);
+    expect(rewritten).toMatchObject({
+      $defs: { state: { type: "string", enum: ["new", "done"] } },
+      properties: {
+        items: { prefixItems: [{ type: "null", enum: [null] }] },
+        flags: { additionalProperties: { type: "boolean", const: false } },
+      },
+      not: { type: "string", enum: ["blocked"] },
+    });
+  });
 });

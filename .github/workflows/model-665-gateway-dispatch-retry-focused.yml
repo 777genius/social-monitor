@@ -10,6 +10,10 @@ on:
       - libs/summary/adapters/model/gateway-llm/gateway-llm-failure*.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-task-failure.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-client.ts
+      - libs/summary/adapters/model/gateway-llm/gateway-llm-output-schema.ts
+      - libs/summary/adapters/model/gateway-llm/gateway-llm-schema-primitives.ts
+      - libs/summary/adapters/model/gateway-llm/gateway-llm-schema-type-policy.ts
+      - libs/summary/adapters/model/gateway-llm/gateway-llm-output-schema.spec.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-client.spec.ts
       - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
 permissions:
@@ -51,3 +55,4 @@ jobs:
           libs/summary/adapters/model/gateway-llm/gateway-llm-dispatch-retry-policy.spec.ts
           libs/summary/adapters/model/gateway-llm/gateway-llm-client.spec.ts
           libs/summary/adapters/model/gateway-llm/gateway-llm-failure-policies.spec.ts
+          libs/summary/adapters/model/gateway-llm/gateway-llm-output-schema.spec.ts

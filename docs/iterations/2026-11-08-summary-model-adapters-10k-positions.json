@@ -3226,6 +3226,188 @@
         40
       ],
       "responsibility": "Run-wide capacity, account availability, safe diagnostic and validation-evidence veto now independently owned, preserving task-local retry, timeout and ambiguous dispatch ordering"
+    },
+    {
+      "original": "openai-responses-summary-model.adapter.ts",
+      "owner": "openai-responses-summary-budget.ts",
+      "originalPositions": [
+        130,
+        131,
+        132,
+        133,
+        134,
+        152,
+        155,
+        156,
+        160,
+        162
+      ],
+      "responsibility": "Provider budget admission and evidence-dependent token/cost estimation are owned independently of HTTP adapter orchestration"
+    },
+    {
+      "original": "openai-responses-summary-model.adapter.ts",
+      "owner": "openai-responses-summary-response-policy.ts",
+      "originalPositions": [
+        210,
+        218,
+        223,
+        241,
+        251,
+        259,
+        260
+      ],
+      "responsibility": "Untrusted output interpretation, draft normalization and postnormalization route/shape rejection have a dedicated response boundary"
+    },
+    {
+      "original": "openai-responses-summary-model.adapter.ts",
+      "owner": "openai-responses-summary-transport.ts",
+      "originalPositions": [
+        364,
+        369,
+        372,
+        375,
+        377,
+        379,
+        380,
+        381,
+        385,
+        387,
+        391,
+        413
+      ],
+      "responsibility": "Bounded POST transport, HTTP body reading, JSON object validation and timeout cleanup are separate from port decisions"
+    },
+    {
+      "original": "openai-responses-summary-model.adapter.ts",
+      "owner": "openai-responses-summary-transport-failure.ts",
+      "originalPositions": [
+        398,
+        399,
+        401,
+        410
+      ],
+      "responsibility": "Dedicated transport failure boundary preserves AbortError and already classified failures without changing retry behavior"
+    },
+    {
+      "original": "openai-responses-summary-model.adapter.ts",
+      "owner": "openai-responses-summary-model-error.ts",
+      "originalPositions": [
+        268,
+        269,
+        272,
+        276,
+        280,
+        281,
+        282,
+        284,
+        292,
+        294,
+        300,
+        309
+      ],
+      "responsibility": "Provider failure classification preserves budget, citation, schema, abort and unknown error priorities independently of dispatch"
+    },
+    {
+      "original": "openai-responses-summary-model.adapter.ts",
+      "owner": "openai-responses-summary-options.ts",
+      "originalPositions": [
+        422,
+        424,
+        426,
+        432,
+        433,
+        434,
+        435,
+        436,
+        437,
+        438,
+        439,
+        441,
+        442
+      ],
+      "responsibility": "Environment option admission and typed model runtime configuration are separated from the model adapter"
+    },
+    {
+      "original": "openai-responses-summary-model.adapter.ts",
+      "owner": "openai-responses-summary-request-contract.ts",
+      "originalPositions": [
+        195,
+        196,
+        202
+      ],
+      "responsibility": "Exact no-retention Responses request contract, schema and prompt identity are composed outside transport"
+    },
+    {
+      "original": "openai-responses-summary-model.adapter.ts",
+      "owner": "summary-no-signal-attempt.ts",
+      "originalPositions": [
+        332,
+        342,
+        343,
+        350
+      ],
+      "responsibility": "Deterministic no-signal summary artifact/lineage construction is separated from paid provider invocation"
+    },
+    {
+      "original": "gateway-llm/gateway-llm-output-schema.ts",
+      "owner": "gateway-llm/gateway-llm-schema-primitives.ts",
+      "originalPositions": [
+        110,
+        113,
+        114,
+        115,
+        116
+      ],
+      "responsibility": "Schema JSON-node and exact primitive type identity functions are separated from provider-specific rewriting"
+    },
+    {
+      "original": "gateway-llm/gateway-llm-output-schema.ts",
+      "owner": "gateway-llm/gateway-llm-schema-type-policy.ts",
+      "originalPositions": [
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        16,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        66,
+        67,
+        68,
+        70,
+        71,
+        75,
+        76,
+        77,
+        80,
+        81,
+        82,
+        83,
+        86,
+        87,
+        88,
+        90,
+        91,
+        92,
+        93,
+        95,
+        96,
+        97,
+        99,
+        101,
+        104,
+        105,
+        106
+      ],
+      "responsibility": "Provider-enforceable schema type inference and nullable union branch constraints are distinct from recursive schema traversal"
     }
   ]
 }
