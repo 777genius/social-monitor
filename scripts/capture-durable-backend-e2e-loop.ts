@@ -1,6 +1,6 @@
 import { createPrivateKey, randomUUID, sign as signJwt } from "node:crypto";
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { dirname } from "node:path";
 
 import { minimumScanIntervalSecondsForProvider } from "@social-monitor/monitoring/features/shared/scan-cadence-policy";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
@@ -11,6 +11,19 @@ import { Pool, type PoolClient } from "pg";
 
 import { createDurableBackendHttpClient } from "./lib/durable-backend-e2e-http-client";
 import { emptyToUndefined, loadConfig, type RunnerConfig } from "./lib/durable-backend-e2e-config";
+import { writeFrontendRuntimeEnvFile } from "./lib/durable-backend-e2e-frontend-env";
+import { createDurableScanTargets, type DurableScanProviderKey, type DurableScanTarget } from "./lib/durable-backend-e2e-scan-targets";
+import {
+  assertProviderCitationCoverage,
+  providerCitationCoverage,
+  type ProviderCitationCoverage,
+} from "./lib/durable-backend-e2e-citation-coverage";
+
+import {
+  safeMemoryContextDebug,
+  summaryMemoryEvidenceSnapshot,
+  type SummaryMemoryEvidence,
+} from "./lib/durable-backend-e2e-summary-memory-evidence";
 
 import {
   isRecord,
@@ -43,18 +56,6 @@ type SignalResult = {
   readonly status: "passed";
   readonly observedAt: string;
   readonly evidence: JsonRecord;
-};
-
-type DurableScanProviderKey =
-  | "hacker-news"
-  | "github-issues"
-  | "github-trending-page"
-  | "reddit"
-  | "rss";
-
-type DurableScanTarget = {
-  readonly providerKey: DurableScanProviderKey;
-  readonly config: JsonRecord;
 };
 
 type SourceBindingEvidence = {
@@ -104,28 +105,9 @@ type ReaderBriefEvidence = {
   readonly qualityStatus: string;
 };
 
-type ProviderCitationCoverage = {
-  readonly expectedProviderKeys: readonly string[];
-  readonly citedProviderKeys: readonly string[];
-  readonly uncitedProviderKeys: readonly string[];
-  readonly minimumCitedProviderCount: number;
-};
-
-type SummaryMemoryEvidence = {
-  readonly status: "available";
-  readonly memoryBaseUrlOrigin: string;
-  readonly topicScopeExternalRef: string;
-  readonly providerScopeExternalRef: string;
-  readonly sourceRefTypes: readonly string[];
-  readonly sourceRefCount: number;
-  readonly renderedTextChars: number;
-  readonly factsUsed?: number | undefined;
-  readonly itemsUsed?: number | undefined;
-  readonly retrievalSourcesUsed?: readonly string[] | undefined;
-  readonly memoryEffectMatched: boolean;
-};
 
 const config = loadConfig(defaultMemoStackTimeoutMs);
+const { durableScanTargets, scheduledScanTarget } = createDurableScanTargets({ process, emptyToUndefined });
 const { pollJson, requestStatus, requestJsonWithContext, requestJson } =
   createDurableBackendHttpClient(config, { isRecord, delay });
 const ids: RuntimeIds = {
@@ -286,66 +268,6 @@ async function main(): Promise<void> {
   } finally {
     await pool.end();
   }
-}
-
-function writeFrontendRuntimeEnvFile(
-  runnerConfig: RunnerConfig,
-  auth: AuthContext,
-  runtimeIds: RuntimeIds,
-): void {
-  if (runnerConfig.frontendEnvPath === undefined) {
-    return;
-  }
-
-  const frontendEnvPath = validatePrivateOutOfWorkspacePath(
-    runnerConfig.frontendEnvPath,
-    "DURABLE_BACKEND_E2E_FRONTEND_ENV_PATH",
-  );
-  const lines = [
-    "# Generated for local Marionette visual verification only.",
-    "# Contains a short-lived backend JWT. Keep outside git and do not commit.",
-    `SOCIAL_MONITOR_API_BASE_URL=${shellQuote(runnerConfig.apiBaseUrl)}`,
-    `SOCIAL_MONITOR_TENANT_ID=${shellQuote(auth.tenantId)}`,
-    `SOCIAL_MONITOR_WORKSPACE_ID=${shellQuote(auth.workspaceId)}`,
-    `SOCIAL_MONITOR_TENANT_NAME=${shellQuote(`tenant-${runtimeIds.runId}`)}`,
-    `SOCIAL_MONITOR_WORKSPACE_NAME=${shellQuote(
-      `workspace-${runtimeIds.runId}`,
-    )}`,
-    "SOCIAL_MONITOR_WORKSPACE_ROLE='owner'",
-    `SOCIAL_MONITOR_USER_ID=${shellQuote(runtimeIds.userId)}`,
-    `SOCIAL_MONITOR_USER_LABEL=${shellQuote("MVP Operator")}`,
-    `SOCIAL_MONITOR_CORRELATION_ID=${shellQuote(
-      `frontend-visual-${runtimeIds.runId}`,
-    )}`,
-    `SOCIAL_MONITOR_API_BEARER_TOKEN=${shellQuote(auth.token)}`,
-  ];
-
-  mkdirSync(dirname(frontendEnvPath), { recursive: true });
-  writeFileSync(frontendEnvPath, `${lines.join("\n")}\n`, { mode: 0o600 });
-  chmodSync(frontendEnvPath, 0o600);
-  console.log(`DURABLE_BACKEND_E2E_FRONTEND_ENV_PATH=${frontendEnvPath}`);
-}
-
-function validatePrivateOutOfWorkspacePath(path: string, label: string): string {
-  if (!isAbsolute(path)) {
-    throw new Error(`${label} must be an absolute path`);
-  }
-
-  const resolvedPath = resolve(path);
-  const workspaceRelativePath = relative(process.cwd(), resolvedPath);
-  if (
-    workspaceRelativePath === "" ||
-    (!workspaceRelativePath.startsWith(`..${sep}`) &&
-      workspaceRelativePath !== "..")
-  ) {
-    throw new Error(`${label} must not be inside the git workspace`);
-  }
-
-  return resolvedPath;
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 async function executeBackendLoop(
@@ -1085,46 +1007,6 @@ async function captureReaderBriefEvidence(params: {
   };
 }
 
-function providerCitationCoverage(
-  expectedProviderKeys: readonly string[],
-  citedProviderKeys: readonly string[],
-): ProviderCitationCoverage {
-  const expected = [...new Set(expectedProviderKeys)].sort();
-  const cited = [...new Set(citedProviderKeys)].sort();
-  const minimumCitedProviderCount = Math.min(
-    expected.length,
-    Math.max(2, expected.length - 1),
-  );
-
-  return {
-    expectedProviderKeys: expected,
-    citedProviderKeys: cited,
-    uncitedProviderKeys: expected.filter((providerKey) =>
-      !cited.includes(providerKey),
-    ),
-    minimumCitedProviderCount,
-  };
-}
-
-function assertProviderCitationCoverage(
-  label: string,
-  coverage: ProviderCitationCoverage,
-  diagnostics: JsonRecord,
-): void {
-  if (
-    coverage.citedProviderKeys.length < coverage.minimumCitedProviderCount
-  ) {
-    throw new Error(
-      `${label} citations must include at least ${coverage.minimumCitedProviderCount} provider families: ${JSON.stringify(
-        {
-          ...coverage,
-          ...diagnostics,
-        },
-      )}`,
-    );
-  }
-}
-
 async function assertReady(): Promise<void> {
   const ready = await requestJson<JsonRecord>("GET", "/ready", { headers: {} });
   if (ready.status !== "ok") {
@@ -1282,7 +1164,7 @@ async function pollSummaryMemoryEvidence(
       await delay(1_000);
       continue;
     }
-    const evidence = summaryMemoryEvidenceSnapshot(params, latest);
+    const evidence = summaryMemoryEvidenceSnapshot(params, latest, config);
     if (evidence !== undefined) {
       return evidence;
     }
@@ -1345,79 +1227,6 @@ function summaryMemoryContextQuery(params: {
   };
 }
 
-function summaryMemoryEvidenceSnapshot(
-  params: {
-    readonly interestId: string;
-    readonly feedbackId: string;
-    readonly feedbackProviderKey: string;
-  },
-  context: SummaryMemoryContext,
-): SummaryMemoryEvidence | undefined {
-  if (context.status !== "available") {
-    return undefined;
-  }
-
-  const sourceRefs = context.sourceRefs ?? [];
-  const sourceRefTypes = [
-    ...new Set(
-      sourceRefs
-        .map((ref) =>
-          typeof ref.source_type === "string" ? ref.source_type : undefined,
-        )
-        .filter(
-          (value): value is string =>
-            value !== undefined && value.trim().length > 0,
-        ),
-    ),
-  ].sort((left, right) => left.localeCompare(right));
-  const renderedText = context.renderedText ?? "";
-  const rendered = renderedText.toLocaleLowerCase("en-US");
-  const matchedBySourceRef = sourceRefs.some(
-    (ref) =>
-      ref.source_type === "social-monitor.summary-feedback" &&
-      ref.source_id === params.feedbackId,
-  );
-  const matchedByText =
-    rendered.includes(
-      `summary feedback for topic ${params.interestId}`.toLocaleLowerCase("en-US"),
-    ) ||
-    rendered.includes(
-      `provider ${params.feedbackProviderKey}`.toLocaleLowerCase("en-US"),
-    );
-  const matchedByDiagnostics =
-    Number(
-      context.retrieval?.factsUsed ?? context.diagnostics.facts_used ?? 0,
-    ) > 0 ||
-    Number(
-      context.retrieval?.itemsUsed ?? context.diagnostics.items_used ?? 0,
-    ) > 0;
-  const memoryEffectMatched =
-    matchedBySourceRef || matchedByText || matchedByDiagnostics;
-  if (!memoryEffectMatched) {
-    return undefined;
-  }
-
-  return {
-    status: "available",
-    memoryBaseUrlOrigin: safeUrlOrigin(config.memoryBaseUrl),
-    topicScopeExternalRef: `interest:${params.interestId}:feedback`,
-    providerScopeExternalRef: `interest:${params.interestId}:provider:${params.feedbackProviderKey}:quality`,
-    sourceRefTypes,
-    sourceRefCount: sourceRefs.length,
-    renderedTextChars: renderedText.length,
-    factsUsed: numberOrUndefined(
-      context.retrieval?.factsUsed ?? context.diagnostics.facts_used,
-    ),
-    itemsUsed: numberOrUndefined(
-      context.retrieval?.itemsUsed ?? context.diagnostics.items_used,
-    ),
-    retrievalSourcesUsed: stringArrayOrUndefined(
-      context.retrieval?.retrievalSourcesUsed ??
-        context.diagnostics.retrieval_sources_used,
-    ),
-    memoryEffectMatched,
-  };
-}
 
 async function pollScheduledScanEvidence(
   params: {
@@ -1803,90 +1612,8 @@ function durableDeliveryDigestScheduleWindow(params: {
   };
 }
 
-function durableScanTargets(): readonly DurableScanTarget[] {
-  const githubAccessToken = emptyToUndefined(process.env.GITHUB_ACCESS_TOKEN);
-  if (!hasRedditAppOnlyCredentials()) {
-    throw new Error(
-      "REDDIT_APP_CLIENT_ID and REDDIT_APP_CLIENT_SECRET are required because durable backend E2E must scan Reddit, GitHub Issues, GitHub Trending Page, Hacker News and RSS in one loop",
-    );
-  }
-
-  return [
-    {
-      providerKey: "hacker-news",
-      config: {
-        mode: "search",
-        query: "monitoring",
-        maxItems: 2,
-      },
-    },
-    {
-      providerKey: "github-issues",
-      config: {
-        query: "repo:microsoft/TypeScript is:issue",
-        maxItems: 2,
-        userAgent:
-          emptyToUndefined(process.env.GITHUB_USER_AGENT) ??
-          "social-monitor-mvp/0.1 github-live-smoke",
-        ...(githubAccessToken === undefined
-          ? {}
-          : { accessToken: githubAccessToken }),
-      },
-    },
-    {
-      providerKey: "github-trending-page",
-      config: {
-        window: "daily",
-        language: "python",
-        maxItems: 3,
-        userAgent:
-          emptyToUndefined(process.env.GITHUB_TRENDING_PAGE_USER_AGENT) ??
-          emptyToUndefined(process.env.GITHUB_USER_AGENT) ??
-          "social-monitor-mvp/0.1 github-trending-page",
-      },
-    },
-    {
-      providerKey: "reddit",
-      config: {
-        mode: "listing",
-        subreddit: "programming",
-        listing: "hot",
-        maxItems: 2,
-        userAgent:
-          process.env.REDDIT_APP_USER_AGENT ??
-          process.env.REDDIT_USER_AGENT ??
-          "social-monitor-mvp/0.1 reddit-app-only",
-      },
-    },
-    {
-      providerKey: "rss",
-      config: {
-        feedUrl: "https://hnrss.org/frontpage",
-        maxItems: 2,
-      },
-    },
-  ];
-}
-
-function scheduledScanTarget(): DurableScanTarget {
-  return {
-    providerKey: "rss",
-    config: {
-      feedUrl: "https://hnrss.org/newest",
-      maxItems: 2,
-    },
-  };
-}
-
 function scheduledInterestIdempotencyKey(runId: string): string {
   return `scheduled-topic-${runId}`;
-}
-
-function hasRedditAppOnlyCredentials(): boolean {
-  return (
-    emptyToUndefined(process.env.REDDIT_APP_CLIENT_ID) !== undefined &&
-    emptyToUndefined(process.env.REDDIT_APP_CLIENT_SECRET) !== undefined
-  );
 }
 
 function bindingIdempotencyKey(
@@ -1935,17 +1662,6 @@ function encodeJson(value: JsonRecord): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
 
-function numberOrUndefined(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value)
-    ? value
-    : undefined;
-}
-
-function stringArrayOrUndefined(value: unknown): readonly string[] | undefined {
-  return Array.isArray(value) && value.every((item) => typeof item === "string")
-    ? value
-    : undefined;
-}
 
 function parseDateOrFallback(value: string | undefined, fallback: Date): Date {
   if (value === undefined) {
@@ -1955,37 +1671,6 @@ function parseDateOrFallback(value: string | undefined, fallback: Date): Date {
   return Number.isNaN(parsed.getTime()) ? fallback : parsed;
 }
 
-function safeMemoryContextDebug(
-  context: SummaryMemoryContext | undefined,
-): string {
-  if (context === undefined) {
-    return "{}";
-  }
-
-  return JSON.stringify({
-    status: context.status,
-    sourceRefTypes: [
-      ...new Set(
-        (context.sourceRefs ?? [])
-          .map((ref) =>
-            typeof ref.source_type === "string" ? ref.source_type : undefined,
-          )
-          .filter((value): value is string => value !== undefined),
-      ),
-    ],
-    factsUsed: context.retrieval?.factsUsed ?? context.diagnostics.facts_used,
-    itemsUsed: context.retrieval?.itemsUsed ?? context.diagnostics.items_used,
-    renderedTextChars: context.renderedText?.length ?? 0,
-  });
-}
-
-function safeUrlOrigin(value: string): string {
-  try {
-    return new URL(value).origin;
-  } catch {
-    return "invalid-url-redacted";
-  }
-}
 
 function nowIso(): string {
   return new Date().toISOString();

@@ -352,7 +352,9 @@ export async function candidate(options, run = command, emit = value => process.
       // automatic retry is never permission to start another build.
       await atomic(phases, state);
       emit(state);
+      // Keep the runtime version stable until a coordinated Node upgrade is reviewed.
       await run('docker', ['build', '--file', 'Dockerfile', '--target', 'app',
+        '--build-context', 'node:22-bookworm-slim=docker-image://node:22.23.4-bookworm-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d',
         '--provenance=false', '--platform', 'linux/amd64', '--iidfile', iid,
         '--label', 'org.opencontainers.image.revision=' + options.sha,
         '--label', 'social-monitor.ci-run-id=' + options.runId, '-'],

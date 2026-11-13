@@ -29,9 +29,9 @@ const ignoredPathPatterns = [
 ];
 
 const legacyLineCapDebt = new Map([
-  ["scripts/capture-durable-backend-e2e-loop.ts", 1998],
+  ["scripts/capture-durable-backend-e2e-loop.ts", 1683],
   ["scripts/check-external-beta-evidence-runner.mjs", 1068],
-  ["scripts/external-beta-evidence-runner.mjs", 1420],
+  ["scripts/external-beta-evidence-runner.mjs", 1103],
 ]);
 
 function normalizePath(file) {

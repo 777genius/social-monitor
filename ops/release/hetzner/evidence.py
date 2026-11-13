@@ -60,6 +60,8 @@ REVIEW_746_PATHS = frozenset((
 PACKAGE_COPIED_MJS = {'scripts/rewrite-build-aliases.mjs', 'scripts/run-with-timeout.mjs'}
 # These exact CI sources are absent from the pinned Dockerfile's COPY closure.
 PACKAGE_CI_TS = {'scripts/check-source-provider-runtime-contract.ts',
+                 'scripts/capture-durable-backend-e2e-loop.ts',
+                 'scripts/lib/durable-backend-e2e-scan-targets.ts',
                  'scripts/lib/source-provider-github-issues-runtime-smoke.ts',
                  'scripts/lib/source-provider-github-trending-runtime-smoke.ts'}
 

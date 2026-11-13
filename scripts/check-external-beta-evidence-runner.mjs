@@ -22,7 +22,7 @@ import {
   durableBackendE2ePreflightEnv,
   redditOAuthPreflightEnv,
 } from './lib/external-beta-evidence-preflight-fixtures.mjs';
-import { validateRunnerImplementationMarkers, redactionPolicyPath, handoffPolicyPath, displayPolicyPath, consistencyPolicyPath } from './lib/external-beta-evidence-runner-markers.mjs';
+import { validateRunnerImplementationMarkers, artifactShapePolicyPath, redactionPolicyPath, handoffPolicyPath, displayPolicyPath, consistencyPolicyPath, readinessPolicyPath, duplicatePathsPolicyPath } from './lib/external-beta-evidence-runner-markers.mjs';
 import {
   liveOpenConnectorsArtifact,
   redditCredentialLifecycleArtifact,
@@ -39,7 +39,6 @@ import {
 } from './lib/external-beta-security-final-sweep-fixtures.mjs';
 
 import { summaryFeedbackSamplesArtifact } from './lib/external-beta-summary-feedback-fixtures.mjs';
-
 import {
   sourceCredentialRotationArtifact,
   webhookSecretRotationArtifact,
@@ -347,7 +346,6 @@ function validateArtifactExamples() {
     }
   }
 }
-
 function validateRunnerImplementation() {
   violations.push(...validateRunnerImplementationMarkers({
     runnerSource,
@@ -356,7 +354,9 @@ function validateRunnerImplementation() {
     handoffSource: readFileSync(handoffPolicyPath, 'utf8'),
     displaySource: readFileSync(displayPolicyPath, 'utf8'),
     consistencyPolicySource: readFileSync(consistencyPolicyPath, 'utf8'),
-    redactionPolicySource: readFileSync(redactionPolicyPath, 'utf8'),
+    readinessPolicySource: readFileSync(readinessPolicyPath, 'utf8'),
+    artifactShapePolicySource: readFileSync(artifactShapePolicyPath, 'utf8'),
+    redactionPolicySource: readFileSync(redactionPolicyPath, 'utf8'), duplicatePathsPolicySource: readFileSync(duplicatePathsPolicyPath, 'utf8'),
     runnerFile: contract.runnerFile,
     checkFile: contract.checkFile,
     selectionHelperPath,

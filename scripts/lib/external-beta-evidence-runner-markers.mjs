@@ -2,12 +2,18 @@ export const redactionPolicyPath = 'scripts/lib/external-beta-evidence-artifact-
 export const handoffPolicyPath = 'scripts/lib/external-beta-evidence-handoff.mjs';
 export const displayPolicyPath = 'scripts/lib/external-beta-evidence-display-formatters.mjs';
 export const consistencyPolicyPath = 'scripts/lib/external-beta-artifact-consistency-freshness.mjs';
+export const readinessPolicyPath = 'scripts/lib/external-beta-evidence-job-readiness.mjs';
+export const artifactShapePolicyPath = 'scripts/lib/external-beta-evidence-artifact-shape-policy.mjs';
+export const duplicatePathsPolicyPath = 'scripts/lib/external-beta-evidence-duplicate-paths.mjs';
 
 export function validateRunnerImplementationMarkers({
   runnerSource,
   handoffSource,
   displaySource,
   consistencyPolicySource,
+  readinessPolicySource,
+  artifactShapePolicySource,
+  duplicatePathsPolicySource,
   checkSource,
   selectionHelperSource,
   redactionPolicySource,
@@ -57,19 +63,10 @@ export function validateRunnerImplementationMarkers({
     'missingOptionalEnvCount',
     'uniqueMissingOptionalEnv',
     'requiredEnvAlternatives',
-    'satisfiedRequiredEnvAlternatives',
     'requiredEnvAlternativeCoveredEnvNames',
     'jobInputEnvNames',
-    'coversEnv',
     'allowCapturedArtifactAlternatives',
-    'hasSatisfiedCapturedArtifactAlternative',
-    'captured_artifact',
     'jobExecutionReadiness',
-    'blocked_missing_required_env',
-    'blocked_invalid_env',
-    'blocked_local_runtime_env',
-    'live_artifact_ready_for_validation',
-    'hasOnlyLocalRuntimeEnvViolations',
     'localRuntimeEnvNames',
     'isLocalRuntimeEnvValue',
     'manualArtifactJobCount',
@@ -150,7 +147,6 @@ export function validateRunnerImplementationMarkers({
     'evidencePathEnvRequiresJsonContent',
     'evidencePathEnvForbidsWorkspacePath',
     'evidencePathEnvRequiresWritableParent',
-    'evidencePathEnvForbidsDuplicatePaths',
     'requiresJsonEvidencePathEnv',
     'requiresJsonEvidencePathContent',
     'forbidsWorkspaceEvidencePaths',
@@ -163,8 +159,6 @@ export function validateRunnerImplementationMarkers({
     'parent directory must not be inside the git workspace',
     'duplicateEvidencePathViolations',
     'duplicateEvidencePathViolationsByJob',
-    'evidencePathDuplicateKey',
-    'must not duplicate another evidence artifact path in this run',
     'outputArtifactPathEnvRequiresJsonExtension',
     'isJsonEvidencePath',
     'path must end with .json',
@@ -181,12 +175,7 @@ export function validateRunnerImplementationMarkers({
     'isStructuredJsonEvidence',
     'validateArtifactRedaction',
     'validateArtifactIdentity',
-    'expectedArtifactId',
-    'must use artifactId',
     'validateArtifactProviderKeys',
-    'expectedProviderKeys',
-    'must include providerKey',
-    'must not include providerKey',
     'validateArtifactEnvConsistency',
     'validateArtifactFreshness',
     'validateArtifactLiteralRedaction',
@@ -196,6 +185,70 @@ export function validateRunnerImplementationMarkers({
   ]) {
     if (!runnerSource.includes(marker)) {
       violations.push(`${runnerFile}: runner must fail fast before executing unsafe job selections`);
+    }
+  }
+
+  // Moved duplicate-path checks must remain enforced at their actual module owner.
+  for (const marker of [
+    'evidencePathEnvForbidsDuplicatePaths',
+    'evidencePathDuplicateKey',
+    'must not duplicate another evidence artifact path in this run',
+  ]) {
+    if (!duplicatePathsPolicySource.includes(marker)) {
+      violations.push(`${duplicatePathsPolicyPath}: extracted duplicate evidence path policy must preserve "${marker}"`);
+    }
+  }
+
+  // Artifact identity and provider membership diagnostics now belong to the extracted policy.
+  for (const marker of [
+    'validateArtifactIdentity',
+    'expectedArtifactId',
+    'must use artifactId',
+    'validateArtifactProviderKeys',
+    'expectedProviderKeys',
+    'must include providerKey',
+    'must not include providerKey',
+  ]) {
+    if (!artifactShapePolicySource.includes(marker)) {
+      violations.push(`${artifactShapePolicyPath}: extracted artifact shape policy must preserve "${marker}"`);
+    }
+  }
+
+  // Imported names alone do not prove the runner actually validates generated artifacts.
+  const activeRunnerSource = runnerSource
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^[ \t]*\/\/.*$/gm, '');
+  // Import-only wiring cannot satisfy the security check: enforce live env and all entry points.
+  if (!/^\s*import \{ createExternalBetaDuplicateEvidencePaths \} from '\.\/lib\/external-beta-evidence-duplicate-paths\.mjs';/m.test(activeRunnerSource)
+    || !/^[ \t]*\}\s*=\s*createExternalBetaDuplicateEvidencePaths\(\{\s*contract,\s*env:\s*process\.env\s*\}\);[ \t]*$/m.test(activeRunnerSource)) {
+    violations.push(`${runnerFile}: runner must bind duplicate evidence path policy to live env`);
+  }
+  if ((activeRunnerSource.match(/^[ \t]*violations\.push\(\.\.\.duplicateEvidencePathViolations\(candidateJobs\)\);[ \t]*$/gm) ?? []).length !== 3
+    || !/^\s*duplicateEvidencePathViolationsByJob,\s*$/m.test(activeRunnerSource)) {
+    violations.push(`${runnerFile}: runner must enforce duplicate evidence path policy in plan, validation and execution`);
+  }
+  for (const validator of ['validateArtifactIdentity', 'validateArtifactProviderKeys']) {
+    const invocation = new RegExp(`^[ \\t]*${validator}\\s*\\(\\s*content\\s*,\\s*job\\s*,\\s*artifact\\s*,\\s*violations\\s*\\)\\s*;`, 'm');
+    if (!invocation.test(activeRunnerSource)) {
+      violations.push(`${runnerFile}: runner must invoke ${validator} for each generated artifact`);
+    }
+  }
+
+  // Existing fail-closed environment safety markers relocated to their actual implementation owner.
+  // Keep the original runner guards on the CLI, and independently enforce all moved invariants.
+  for (const marker of [
+    'satisfiedRequiredEnvAlternatives',
+    'coversEnv',
+    'hasSatisfiedCapturedArtifactAlternative',
+    'captured_artifact',
+    'blocked_missing_required_env',
+    'blocked_invalid_env',
+    'blocked_local_runtime_env',
+    'live_artifact_ready_for_validation',
+    'hasOnlyLocalRuntimeEnvViolations',
+  ]) {
+    if (!readinessPolicySource.includes(marker)) {
+      violations.push(`${readinessPolicyPath}: extracted env readiness must preserve "${marker}"`);
     }
   }
 
