@@ -2506,6 +2506,78 @@
         118
       ],
       "responsibility": "Isolate the immutable legacy OpenAI reader prompt corpus and coverage/policy interpolation from prompt release identity and daily-editorial routing; exact original strings preserved, no provider trust or schema changes"
+    },
+    {
+      "original": "gateway-llm/gateway-llm-failure.ts",
+      "owner": "gateway-llm/gateway-llm-failure-attempt-details.ts",
+      "originalPositions": [
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        87,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94
+      ],
+      "responsibility": "Gateway paid retry/effect, task identity, trace and execution reference provenance no longer coupled to public safe failure classification, local failures or schema rejection diagnostics; no raw provider output"
+    },
+    {
+      "original": "gateway-llm/gateway-llm-failure.ts",
+      "owner": "gateway-llm/gateway-llm-failure-taxonomy.ts",
+      "originalPositions": [
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50
+      ],
+      "responsibility": "Previously extracted sanitized gateway error taxonomy maps SDK codes into safe runtime failure categories without mixing trace/cost attempt metadata; retrospectively traced, zero new code"
+    },
+    {
+      "original": "gateway-llm/gateway-llm-failure.ts",
+      "owner": "gateway-llm/gateway-llm-failure-output-diagnostics.ts",
+      "originalPositions": [
+        77,
+        78,
+        79,
+        105,
+        106,
+        107
+      ],
+      "responsibility": "Previously extracted strict schema decode-path sanitizer; keeps rejected provider text out of safe diagnostics independently from failure taxonomy and attempt provenance; retrospectively traced, zero new code"
     }
   ]
 }

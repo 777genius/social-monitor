@@ -8,6 +8,7 @@ on:
     paths:
       - .github/workflows/model-665-gateway-dispatch-retry-focused.yml
       - libs/summary/adapters/model/gateway-llm/gateway-llm-failure*.ts
+      - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
 permissions:
   contents: read
 jobs:
@@ -39,6 +40,7 @@ jobs:
           npm run check:code-quality
           npm run check:source-line-cap
           npm run check:runtime-profile-guards
+          node scripts/audit-summary-model-original-files.mjs
       - name: Verify dispatch-free policy and gateway integration
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
