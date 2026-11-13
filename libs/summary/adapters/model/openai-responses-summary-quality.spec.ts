@@ -25,4 +25,13 @@ describe("OpenAI summary normalization boundaries", () => {
     expect(normalizeSafeStringArray([" Source ", "Source", { source: "Author", whyItMatters: "Detail" }]))
       .toEqual(["Source", "Author: Detail"]);
   });
+  it("rejects forged risk categories, malformed references and non-finite confidence", () => {
+    expect(() => normalizeRisks([{ description: "Synthetic", reason: "provider_override" }]))
+      .toThrow("Invalid summary risk reason");
+    expect(() => normalizeRisks([{ description: "Synthetic", citationIds: [1] }])).toThrow();
+    expect(() => normalizeConfidence({ level: "high", score: Number.POSITIVE_INFINITY,
+      rationale: "Synthetic" })).toThrow("confidence.score must be a finite number");
+    expect(normalizeNoSignalReason(undefined, [])).toBeUndefined();
+  });
+
 });
