@@ -9,6 +9,10 @@ on:
       - .github/workflows/model-665-openai-summary-projection-focused.yml
       - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
       - libs/summary/adapters/model/openai-responses-summary-quality.spec.ts
+      - libs/summary/adapters/model/openai-responses-summary-json-boundaries.spec.ts
+      - libs/summary/adapters/model/openai-responses-summary-required-json.ts
+      - libs/summary/adapters/model/openai-responses-summary-optional-json.ts
+      - libs/summary/adapters/model/openai-responses-summary-json.ts
 permissions:
   contents: read
 jobs:
@@ -45,4 +49,5 @@ jobs:
           npx jest --config jest.config.ts --runInBand --runTestsByPath
           libs/summary/adapters/model/openai-responses-summary-prompt.spec.ts
           libs/summary/adapters/model/openai-responses-summary-model.adapter.spec.ts
-          libs/summary/adapters/model/openai-responses-summary-quality.spec.ts
+          libs/summary/adapters/model/openai-responses-summary-quality.spec.ts \
+          libs/summary/adapters/model/openai-responses-summary-json-boundaries.spec.ts
