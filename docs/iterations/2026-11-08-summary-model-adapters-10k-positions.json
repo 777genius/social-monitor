@@ -3124,6 +3124,31 @@
         71
       ],
       "responsibility": "Pair-specific evidence ID lookup, source excerpt and author/retrieval signal binding owned by existing story evidence projector rather than JSON prompt assembly; missing evidence strict failure, exact field order and provider lane retained"
+    },
+    {
+      "original": "openai-responses-reader-summary-draft-normalizer.ts",
+      "owner": "openai-responses-reader-summary-draft-copy-policy.ts",
+      "originalPositions": [
+        61,
+        62,
+        64,
+        65,
+        66,
+        68,
+        69,
+        70,
+        100,
+        101,
+        102,
+        103,
+        105,
+        106,
+        107,
+        108,
+        109,
+        111
+      ],
+      "responsibility": "Reader summary headline/legacy text admission and no-signal/publication copy fallback precedence moved from multi-step JSON normalizer into pure presentation-copy policy; citation grounding, narrative assembly, and public normalization remain in their original owners; provisional provenance only, not independently accepted meaningful LOC"
     }
   ]
 }

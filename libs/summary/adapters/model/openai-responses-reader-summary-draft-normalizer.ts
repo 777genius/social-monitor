@@ -1,23 +1,25 @@
 import type {
   GeneratedReaderSummaryDraft,
 } from "../../domain";
-import { readerSummaryHeadline } from "../../domain";
 import { assembleOpenAiReaderSummaryDraft } from "./openai-responses-reader-summary-draft-assembly";
 export { assertOpenAiReaderSummaryDraftShape } from "./reader-summary-draft-shape-contract";
 import type {
   ReaderSummaryModelInput,
   ReaderSummaryModelRoute,
 } from "../../ports";
-import { normalizeRecordArray, optionalString, requiredString } from "./openai-responses-reader-summary-raw-values";
+import { normalizeRecordArray } from "./openai-responses-reader-summary-raw-values";
 import { normalizeTopStories } from "./openai-responses-reader-summary-story-normalizer";
 import {
   normalizeOpenAiReaderSummaryNarrative,
-  readerSummaryNarrativeMarkdown,
 } from "./openai-responses-reader-summary-narrative";
 import { buildReaderSummaryEvidenceCitationMap,
   readerSummaryCitableEvidence } from "./reader-summary-evidence-citation-map";
 import { buildReaderSummaryStoryNarrativeIndex } from "./openai-responses-reader-summary-story-narrative-index";
 import { normalizeOpenAiReaderSummaryOptionalContent } from "./openai-responses-reader-summary-draft-policy-projection";
+import {
+  normalizeOpenAiReaderSummaryLeadCopy,
+  resolveOpenAiReaderSummaryPublicationCopy,
+} from "./openai-responses-reader-summary-draft-copy-policy";
 
 export const normalizeOpenAiReaderSummaryDraft = (
   raw: Record<string, unknown>,
@@ -29,17 +31,7 @@ export const normalizeOpenAiReaderSummaryDraft = (
   const citationMap = buildReaderSummaryEvidenceCitationMap(
     readerSummaryCitableEvidence(input.evidence),
   );
-  const headline = readerSummaryHeadline(
-    requiredString(raw.headline, "reader summary headline"),
-  );
-  const legacyExecutiveSummary =
-    typeof raw.executiveSummary === "string" &&
-      raw.executiveSummary.trim().length === 0
-      ? ""
-      : requiredString(
-          raw.executiveSummary,
-          "reader summary executive summary",
-        );
+  const { headline, legacyExecutiveSummary } = normalizeOpenAiReaderSummaryLeadCopy(raw);
   const topStories = normalizeRecordArray(raw.topStories);
   const normalizedTopStories = normalizeTopStories(
     topStories,
@@ -56,18 +48,12 @@ export const normalizeOpenAiReaderSummaryDraft = (
     storySummariesByClusterId: storyIndex.storySummariesByClusterId,
     storySummariesByCitationId: storyIndex.storySummariesByCitationId,
   });
-  const noSignalReason =
-    normalizedTopStories.length === 0
-      ? (optionalString(raw.noSignalReason) ??
-        "OpenAI reader summary returned no domain-safe cited stories.")
-      : undefined;
-  const executiveSummary =
-    narrativeSections.length === 0
-      ? (optionalString(legacyExecutiveSummary) ??
-        optionalString(normalizedTopStories[0]?.summary) ??
-        noSignalReason ??
-        "")
-      : readerSummaryNarrativeMarkdown(narrativeSections);
+  const { noSignalReason, executiveSummary } = resolveOpenAiReaderSummaryPublicationCopy({
+    raw,
+    legacyExecutiveSummary,
+    normalizedTopStories,
+    narrativeSections,
+  });
   const {
     interestHighlights,
     repeatedSignals,
