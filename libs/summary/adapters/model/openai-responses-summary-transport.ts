@@ -48,7 +48,7 @@ export const createOpenAiSummaryResponse = async (params: Readonly<{
 
       return record;
     } catch (error) {
-      rethrowOpenAiSummaryTransportFailure(error);
+      return rethrowOpenAiSummaryTransportFailure(error);
     } finally {
       clearTimeout(timeout);
     }
