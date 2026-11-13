@@ -3075,6 +3075,28 @@
         200
       ],
       "responsibility": "Shared reader summary token and budget admission policy; retrospective frozen-text provenance only, not independently accepted meaningful LOC"
+    },
+    {
+      "original": "agent-runtime-reader-summary-topic-label-plan-normalizer.ts",
+      "owner": "agent-runtime-reader-summary-topic-group-policy.ts",
+      "originalPositions": [
+        59,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76
+      ],
+      "responsibility": "First-use frozen original semantic membership admission now co-located with supported-group ranking; parsing, recovery, projection and warning responsibilities remain separate; original confidence and group contracts unchanged"
     }
   ]
 }

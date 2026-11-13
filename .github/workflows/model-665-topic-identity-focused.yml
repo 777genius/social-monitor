@@ -12,6 +12,9 @@ on:
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-candidate-anchor-policy.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-recovery.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-anchor-keys.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-policy.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-label-plan-normalizer.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-assignment.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-anchor-keys.spec.ts
       - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
 permissions:
@@ -53,5 +56,7 @@ jobs:
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-candidate-anchor-policy.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-integrity.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-anchor-keys.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-assignment.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-topic-labeler.adapter.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-recovery.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-cohort-grouping.spec.ts

@@ -1,6 +1,8 @@
 import {
   READER_SUMMARY_TOPIC_MAP_MAX_SEMANTIC_GROUPS,
   READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID,
+  READER_SUMMARY_TOPIC_SEMANTIC_CONFIDENCE_MIN,
+  type ReaderSummaryTopicLabelPlan,
 } from "../../domain";
 import type { ReaderSummaryTopicLabelerInput } from "../../ports";
 import { readerSummaryTopicLabelFromSlug } from "../../domain/services/reader-summary-topic-map-text";
@@ -54,3 +56,35 @@ export const retainedSemanticGroupIds = (
   );
 };
 
+
+/** Semantic admission is independent of untrusted response decoding and recovery. */
+type ParsedTopicNodeLabel = Pick<
+  ReaderSummaryTopicLabelPlan["nodeLabels"][number],
+  "nodeId" | "topicId" | "label" | "semantic" | "keywords" | "rationale"
+> & { readonly groupId: string };
+
+export const projectInitialTopicGroupAssignments = (
+  parsedNodeLabels: readonly ParsedTopicNodeLabel[],
+  candidates: readonly ReaderSummaryTopicLabelerInput["candidates"][number][],
+) => {
+  const retainedGroupIds = retainedSemanticGroupIds(
+    parsedNodeLabels,
+    candidates,
+  );
+  const initialNodeLabels = parsedNodeLabels.map((label) => ({
+    nodeId: label.nodeId,
+    topicId: label.topicId,
+    label: label.label,
+    semantic: label.semantic,
+    originalGroupId: label.groupId,
+    groupId:
+      retainedGroupIds.has(label.groupId) &&
+      label.semantic.confidenceScore >=
+        READER_SUMMARY_TOPIC_SEMANTIC_CONFIDENCE_MIN
+        ? label.groupId
+        : READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID,
+    keywords: label.keywords,
+    rationale: label.rationale,
+  }));
+  return initialNodeLabels;
+};

@@ -1,13 +1,9 @@
-import { retainedSemanticGroupIds } from "./agent-runtime-reader-summary-topic-group-policy";
+import { projectInitialTopicGroupAssignments } from "./agent-runtime-reader-summary-topic-group-policy";
 import {
   readCompleteTopicNodeLabels,
   readUniqueTopicGroupRecords,
 } from "./agent-runtime-reader-summary-topic-untrusted-response";
-import {
-  READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID,
-  READER_SUMMARY_TOPIC_SEMANTIC_CONFIDENCE_MIN,
-  type ReaderSummaryTopicLabelPlan,
-} from "../../domain";
+import type { ReaderSummaryTopicLabelPlan } from "../../domain";
 import type { ReaderSummaryTopicLabelerInput } from "../../ports";
 
 
@@ -20,25 +16,10 @@ export const normalizeAgentRuntimeReaderSummaryTopicLabelPlan = (
   candidates: readonly ReaderSummaryTopicLabelerInput["candidates"][number][],
 ): ReaderSummaryTopicLabelPlan => {
   const parsedNodeLabels = readCompleteTopicNodeLabels(raw.nodeLabels, candidates);
-  const retainedGroupIds = retainedSemanticGroupIds(
+  const initialNodeLabels = projectInitialTopicGroupAssignments(
     parsedNodeLabels,
     candidates,
   );
-  const initialNodeLabels = parsedNodeLabels.map((label) => ({
-    nodeId: label.nodeId,
-    topicId: label.topicId,
-    label: label.label,
-    semantic: label.semantic,
-    originalGroupId: label.groupId,
-    groupId:
-      retainedGroupIds.has(label.groupId) &&
-      label.semantic.confidenceScore >=
-        READER_SUMMARY_TOPIC_SEMANTIC_CONFIDENCE_MIN
-        ? label.groupId
-        : READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID,
-    keywords: label.keywords,
-    rationale: label.rationale,
-  }));
   const groupRecords = readUniqueTopicGroupRecords(raw.groups);
   const recovery = completeRequiredGroundedTopicCohorts(
     initialNodeLabels,
