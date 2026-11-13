@@ -7,6 +7,8 @@ on:
       - refactor/summary-model-adapters-10k-20261108
     paths:
       - .github/workflows/model-665-agent-output-request-focused.yml
+      - libs/summary/adapters/model/agent-runtime-model-failure-usage.spec.ts
+      - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
 permissions:
   contents: read
 jobs:
@@ -42,5 +44,6 @@ jobs:
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
           libs/summary/adapters/model/agent-runtime-model-boundaries.spec.ts
+          libs/summary/adapters/model/agent-runtime-model-failure-usage.spec.ts
           libs/summary/adapters/model/agent-runtime-summary-model.adapter.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-model.adapter.spec.ts
