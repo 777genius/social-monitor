@@ -200,6 +200,7 @@ test('factory env binding and all three runner enforcement gates fail closed und
   for (const candidate of [
     sources.runnerSource.replace(binding, 'createExternalBetaDuplicateEvidencePaths({ contract, env: {} });'),
     sources.runnerSource.replace(binding, '/* ' + binding + ' */'),
+    sources.runnerSource.replace('} = ' + binding, '} = missingPolicy(); // } = ' + binding),
     sources.runnerSource.replace('import { createExternalBetaDuplicateEvidencePaths }',
       '// import { createExternalBetaDuplicateEvidencePaths }'),
   ]) {
@@ -209,6 +210,7 @@ test('factory env binding and all three runner enforcement gates fail closed und
   for (const candidate of [
     sources.runnerSource.replace(invocation, ''),
     sources.runnerSource.replace(invocation, '// ' + invocation),
+    sources.runnerSource.replace(invocation, 'void 0; // ' + invocation),
   ]) {
     assert.ok(validateRunnerImplementationMarkers({ ...sources, runnerSource: candidate })
       .includes(runnerFile + ': runner must enforce duplicate evidence path policy in plan, validation and execution'));

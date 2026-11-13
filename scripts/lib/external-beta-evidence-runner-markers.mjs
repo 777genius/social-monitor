@@ -220,10 +220,10 @@ export function validateRunnerImplementationMarkers({
     .replace(/^[ \t]*\/\/.*$/gm, '');
   // Import-only wiring cannot satisfy the security check: enforce live env and all entry points.
   if (!/^\s*import \{ createExternalBetaDuplicateEvidencePaths \} from '\.\/lib\/external-beta-evidence-duplicate-paths\.mjs';/m.test(activeRunnerSource)
-    || !/\}\s*=\s*createExternalBetaDuplicateEvidencePaths\(\{\s*contract,\s*env:\s*process\.env\s*\}\);/.test(activeRunnerSource)) {
+    || !/^[ \t]*\}\s*=\s*createExternalBetaDuplicateEvidencePaths\(\{\s*contract,\s*env:\s*process\.env\s*\}\);[ \t]*$/m.test(activeRunnerSource)) {
     violations.push(`${runnerFile}: runner must bind duplicate evidence path policy to live env`);
   }
-  if ((activeRunnerSource.match(/violations\.push\(\.\.\.duplicateEvidencePathViolations\(candidateJobs\)\);/g) ?? []).length !== 3
+  if ((activeRunnerSource.match(/^[ \t]*violations\.push\(\.\.\.duplicateEvidencePathViolations\(candidateJobs\)\);[ \t]*$/gm) ?? []).length !== 3
     || !/^\s*duplicateEvidencePathViolationsByJob,\s*$/m.test(activeRunnerSource)) {
     violations.push(`${runnerFile}: runner must enforce duplicate evidence path policy in plan, validation and execution`);
   }
