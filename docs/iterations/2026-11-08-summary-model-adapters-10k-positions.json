@@ -2780,6 +2780,100 @@
         37
       ],
       "responsibility": "Pure node-ID-to-candidate grounding, distinct evidence-dependent versus identity anchor maps, now owned alongside anchor-token policy instead of recovery/group assignment orchestration; original-line provenance only, not independently accepted meaningful LOC"
+    },
+    {
+      "original": "agent-runtime-reader-summary-topic-labeler.adapter.ts",
+      "owner": "agent-runtime-reader-summary-topic-label-command.ts",
+      "originalPositions": [
+        123,
+        124,
+        125,
+        126,
+        127,
+        128,
+        130,
+        131,
+        132,
+        133,
+        134,
+        135,
+        136,
+        137,
+        141,
+        142,
+        143,
+        148,
+        149,
+        150,
+        151,
+        152,
+        161,
+        162,
+        164,
+        165
+      ],
+      "responsibility": "Strict tenant/workspace-scoped topic labeling command identity, purpose, response schema, model-independent no-interaction controls and attempt metadata now owned by command construction rather than adapter orchestration; retrospective origin trace only"
+    },
+    {
+      "original": "agent-runtime-reader-summary-topic-labeler.adapter.ts",
+      "owner": "agent-runtime-reader-summary-topic-labeler-runtime-settings.ts",
+      "originalPositions": [
+        67,
+        68,
+        69,
+        70,
+        96,
+        97,
+        104,
+        105
+      ],
+      "responsibility": "Provider-independent pinned prompt release and bounded timeout/output/candidate configuration defaults owned by immutable runtime settings, not task dispatch; retrospective provenance only"
+    },
+    {
+      "original": "agent-runtime-reader-summary-topic-labeler.adapter.ts",
+      "owner": "agent-runtime-reader-summary-topic-labeler-options.ts",
+      "originalPositions": [
+        231,
+        232,
+        234,
+        235,
+        236,
+        238,
+        239,
+        240,
+        241,
+        242,
+        244,
+        245,
+        247,
+        248
+      ],
+      "responsibility": "Composition-only env to reader-topic labeler options: validated provider, model identity/effort and timeout/output/candidate admission, without hidden env access in executor; retrospective provenance only"
+    },
+    {
+      "original": "agent-runtime-reader-summary-topic-labeler.adapter.ts",
+      "owner": "agent-runtime-reader-summary-topic-label-schema.ts",
+      "originalPositions": [
+        71,
+        175,
+        176,
+        178,
+        179,
+        181,
+        208,
+        209,
+        210,
+        211,
+        212,
+        214,
+        215,
+        216,
+        218,
+        219,
+        220,
+        221
+      ],
+      "responsibility": "MiMo strict provider response contract: lazy schema validation and exact top-level/nested allowed-key rejection separate from task result decoding and execution attestation; retrospective provenance only"
     }
   ]
 }
