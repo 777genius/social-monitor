@@ -12,6 +12,8 @@ import {
   resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions,
 } from "./agent-runtime-reader-summary-story-relation-verifier.adapter";
 import { withTestExecutionAttestation, withTestGatewayExecutionAttestation } from "./reader-summary-execution-attestation.spec-support";
+import { buildAgentRuntimeStoryRelationEvidencePairs } from "./agent-runtime-reader-summary-story-evidence-prompt";
+import { buildAgentRuntimeReaderSummaryStoryRelationVerifierPrompt } from "./agent-runtime-reader-summary-story-relation-verifier-prompt";
 
 describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
   it("uses subscription runtime and decides every shortlisted pair", async () => {
@@ -428,6 +430,47 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
         targetStoryClusterId: "story:rss",
       }],
     })).rejects.toMatchObject({ failure: { kind: "invalid_schema", retryable: false } });
+  });
+  it("keeps evidence-pair bindings identical across projection and serialized prompt", () => {
+    const base = input();
+    const scoped = {
+      ...base,
+      evidence: base.evidence.map((item) => ({
+        ...item,
+        authorHandle: item.feedItemId === "feed:hn" ? "  AUTHOR-One " : "author-one",
+      })),
+    };
+    const pairs = buildAgentRuntimeStoryRelationEvidencePairs(scoped);
+    const prompt = JSON.parse(buildAgentRuntimeReaderSummaryStoryRelationVerifierPrompt(scoped));
+    expect(prompt.pairs).toEqual(pairs);
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0]).toMatchObject({
+      leftFeedItemId: "feed:hn",
+      rightFeedItemId: "feed:rss",
+      retrievalSignals: {
+        sameProvider: false,
+        sameAuthor: true,
+        sharedTopicTokens: ["compiler", "rewrite", "typescript"],
+      },
+      left: { providerKey: "hacker-news" },
+      right: { providerKey: "rss" },
+    });
+    expect(JSON.stringify(prompt.pairs)).toBe(JSON.stringify(pairs));
+    expect(pairs[0]?.left).toMatchObject({
+      sourceText: expect.stringContaining("bounded incident evidence"),
+    });
+  });
+
+  it("never substitutes another feed's evidence for a missing candidate identity", () => {
+    const scoped = input();
+    const candidate = scoped.candidates[0]!;
+    const missing = { ...scoped, candidates: [
+      { ...candidate, rightFeedItemId: "feed:unknown" },
+    ] };
+    expect(() => buildAgentRuntimeStoryRelationEvidencePairs(missing))
+      .toThrow("Unknown story relation evidence feed:unknown");
+    expect(() => buildAgentRuntimeReaderSummaryStoryRelationVerifierPrompt(missing))
+      .toThrow("Unknown story relation evidence feed:unknown");
   });
 });
 

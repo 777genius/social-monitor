@@ -1,10 +1,5 @@
 import type { ReaderSummaryStoryRelationVerifierInput } from "../../ports";
-import {
-  evidenceSample,
-  normalizedAuthor,
-  relationExcerptTerms,
-  requiredEvidence,
-} from "./agent-runtime-reader-summary-story-evidence-prompt";
+import { buildAgentRuntimeStoryRelationEvidencePairs } from "./agent-runtime-reader-summary-story-evidence-prompt";
 
 export {
   agentRuntimeReaderSummaryRelatedTopicVerifierInstructions,
@@ -20,10 +15,6 @@ export {
 export const buildAgentRuntimeReaderSummaryStoryRelationVerifierPrompt = (
   input: ReaderSummaryStoryRelationVerifierInput,
 ): string => {
-  const evidenceById = new Map(
-    input.evidence.map((item) => [item.feedItemId, item] as const),
-  );
-
   return JSON.stringify(
     {
       task: "Verify shortlisted story pairs.",
@@ -39,29 +30,7 @@ export const buildAgentRuntimeReaderSummaryStoryRelationVerifierPrompt = (
         releaseEmphasisAloneDoesNotSplitEvent: true,
         requireReleaseSubjectVersionStageDateConsistency: true,
       },
-      pairs: input.candidates.map((candidate) => {
-        const left = requiredEvidence(evidenceById, candidate.leftFeedItemId);
-        const right = requiredEvidence(evidenceById, candidate.rightFeedItemId);
-
-        return {
-          leftFeedItemId: candidate.leftFeedItemId,
-          rightFeedItemId: candidate.rightFeedItemId,
-          retrievalSignals: {
-            sameProvider: left.providerKey === right.providerKey,
-            sameAuthor:
-              normalizedAuthor(left.authorHandle) !== undefined &&
-              normalizedAuthor(left.authorHandle) ===
-                normalizedAuthor(right.authorHandle),
-            sharedTopicTokens: candidate.sharedTopicTokens,
-            sharedAnchorTokens: candidate.sharedAnchorTokens,
-            sharedEventTokens: candidate.sharedEventTokens,
-            sharedSpecificProductTokens: candidate.sharedSpecificProductTokens,
-            topicSimilarity: candidate.topicSimilarity,
-          },
-          left: evidenceSample(left, relationExcerptTerms(candidate)),
-          right: evidenceSample(right, relationExcerptTerms(candidate)),
-        };
-      }),
+      pairs: buildAgentRuntimeStoryRelationEvidencePairs(input),
     },
     null,
     2,

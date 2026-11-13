@@ -3097,6 +3097,33 @@
         76
       ],
       "responsibility": "First-use frozen original semantic membership admission now co-located with supported-group ranking; parsing, recovery, projection and warning responsibilities remain separate; original confidence and group contracts unchanged"
+    },
+    {
+      "original": "agent-runtime-reader-summary-story-relation-verifier-prompt.ts",
+      "owner": "agent-runtime-reader-summary-story-evidence-prompt.ts",
+      "originalPositions": [
+        32,
+        33,
+        52,
+        53,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        70,
+        71
+      ],
+      "responsibility": "Pair-specific evidence ID lookup, source excerpt and author/retrieval signal binding owned by existing story evidence projector rather than JSON prompt assembly; missing evidence strict failure, exact field order and provider lane retained"
     }
   ]
 }
