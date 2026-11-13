@@ -13,6 +13,10 @@ on:
       - libs/summary/adapters/model/openai-responses-summary-required-json.ts
       - libs/summary/adapters/model/openai-responses-summary-optional-json.ts
       - libs/summary/adapters/model/openai-responses-summary-json.ts
+      - libs/summary/adapters/model/openai-promotion-presentation-v3.builder.ts
+      - libs/summary/adapters/model/openai-promotion-presentation-v3-batch-admission.ts
+      - libs/summary/adapters/model/openai-promotion-presentation-v3-result-policy.ts
+      - libs/summary/adapters/model/openai-promotion-presentation-v3-boundaries.spec.ts
 permissions:
   contents: read
 jobs:
@@ -51,3 +55,5 @@ jobs:
           libs/summary/adapters/model/openai-responses-summary-model.adapter.spec.ts
           libs/summary/adapters/model/openai-responses-summary-quality.spec.ts
           libs/summary/adapters/model/openai-responses-summary-json-boundaries.spec.ts
+          libs/summary/adapters/model/openai-promotion-presentation-v3.builder.spec.ts
+          libs/summary/adapters/model/openai-promotion-presentation-v3-boundaries.spec.ts

@@ -1,16 +1,12 @@
 import {
-  READER_POST_PRESENTATION_V3_MAX_REQUEST_BYTES,
-  sealReaderPostPresentationV3,
   type PromotionPresentationBuilder,
   type ReaderPostPresentationV3Input,
   type ReaderPostPresentationV3Result,
 } from "../../domain/services/reader-post-presentation-v3";
 import type { OpenAiResponsesReaderSummaryModelAdapterOptions } from "./openai-responses-reader-summary-model.adapter";
-import { bindHeadline } from "./openai-promotion-presentation-v3-headline";
-import {
-  buildOpenAiPresentationV3RequestBody,
-  fetchOpenAiPresentationV3Proposals,
-} from "./openai-promotion-presentation-v3-transport";
+import { fetchOpenAiPresentationV3Proposals } from "./openai-promotion-presentation-v3-transport";
+import { dispatchOpenAiPromotionPresentationBatch } from "./openai-promotion-presentation-v3-batch-admission";
+import { sealOpenAiPromotionPresentationV3Proposals } from "./openai-promotion-presentation-v3-result-policy";
 
 type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
@@ -35,32 +31,20 @@ implements PromotionPresentationBuilder {
     if (inputs.length < 1 || inputs.length > 4 || !this.apiKey.trim()) {
       throw new Error("V3 presentation requires a configured batch of 1..4");
     }
-    const requestBody = buildOpenAiPresentationV3RequestBody(inputs, this.model);
-    if (Buffer.byteLength(requestBody, "utf8") >
-        READER_POST_PRESENTATION_V3_MAX_REQUEST_BYTES) {
-      if (inputs.length === 1) {
-        return [{ status: "unavailable", reason: "input_over_budget" }];
-      }
-      const split = Math.ceil(inputs.length / 2);
-      return [
-        ...await this.build(inputs.slice(0, split)),
-        ...await this.build(inputs.slice(split)),
-      ];
-    }
-    const proposals = await fetchOpenAiPresentationV3Proposals({
+    return dispatchOpenAiPromotionPresentationBatch({
       inputs,
-      requestBody,
-      apiKey: this.apiKey,
-      endpoint: this.endpoint,
-      fetchFn: this.fetchFn,
-    });
-    return inputs.map((input) => {
-      const proposal = proposals.get(input.candidateId)!;
-      if (proposal.status === "unavailable") {
-        return { status: "unavailable", reason: "insufficient_support" };
-      }
-      const headline = bindHeadline(input, proposal);
-      return sealReaderPostPresentationV3({ input, headline });
+      model: this.model,
+      buildSubset: (subset) => this.build(subset),
+      executeWithinBudget: async (subset, requestBody) => {
+        const proposals = await fetchOpenAiPresentationV3Proposals({
+          inputs: subset,
+          requestBody,
+          apiKey: this.apiKey,
+          endpoint: this.endpoint,
+          fetchFn: this.fetchFn,
+        });
+        return sealOpenAiPromotionPresentationV3Proposals(subset, proposals);
+      },
     });
   }
 }

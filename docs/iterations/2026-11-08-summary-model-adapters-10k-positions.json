@@ -2404,6 +2404,31 @@
         84
       ],
       "responsibility": "Missing/blank optional field and optional integer handling separated from mandatory provider output rejection"
+    },
+    {
+      "original": "openai-promotion-presentation-v3.builder.ts",
+      "owner": "openai-promotion-presentation-v3-batch-admission.ts",
+      "originalPositions": [
+        45,
+        46,
+        47,
+        48,
+        50
+      ],
+      "responsibility": "Encoded byte-budget and ordered split policy isolated from provider transport; original lines exact, provisional only."
+    },
+    {
+      "original": "openai-promotion-presentation-v3.builder.ts",
+      "owner": "openai-promotion-presentation-v3-result-policy.ts",
+      "originalPositions": [
+        68,
+        69,
+        70,
+        71,
+        73,
+        74
+      ],
+      "responsibility": "Candidate-ID-driven trusted domain seal and fail-closed presentation acceptance isolated from HTTP/budget; provisional origin only."
     }
   ]
 }
