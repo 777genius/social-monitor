@@ -23,8 +23,13 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: npm ci
-      - name: Strict TypeScript and source boundary guards
+      - name: Generate locked Prisma client (no migrations)
+        run: npm run prisma:generate
+      - name: Fetch frozen 2026-11-08 original source commit
+        run: git fetch --no-tags --depth=1 origin 3fa1b9e9ee5bd1302840d1164a975cde3f0eeaba
+      - name: Strict TypeScript, frozen original provenance and source boundary guards
         run: |
+          node scripts/audit-summary-model-original-files.mjs
           npx tsc --noEmit
           npm run check:architecture
           npm run check:code-quality
@@ -34,4 +39,6 @@ jobs:
         run: |
           npx jest --config jest.config.ts --runInBand --runTestsByPath \
             libs/summary/adapters/model/gateway-llm/gateway-llm-dispatch-retry-policy.spec.ts \
-            libs/summary/adapters/model/gateway-llm/gateway-llm-client.spec.ts
+            libs/summary/adapters/model/gateway-llm/gateway-llm-client.spec.ts \
+            libs/summary/adapters/model/openai-responses-reader-summary-adaptive-evidence.spec.ts \
+            libs/summary/adapters/model/openai-responses-reader-summary-source-content.spec.ts
