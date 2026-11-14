@@ -500,30 +500,36 @@
     },
     {
       "original": "openai-responses-reader-summary-weekly-response-parser.ts",
-      "owner": "openai-responses-reader-summary-weekly-expanded-normalization.ts",
+      "owner": "openai-responses-reader-summary-weekly-section-normalization.ts",
       "originalPositions": [
-        158,
-        162,
-        163,
-        165,
-        168,
         171,
         173,
         183,
-        188,
         194,
         195,
         196,
         201,
         202,
         203,
-        204,
+        204
+      ],
+      "responsibility": "Common untrusted weekly section shape/claim-type/citation chronology normalization shared without weakening either envelope"
+    },
+    {
+      "original": "openai-responses-reader-summary-weekly-response-parser.ts",
+      "owner": "openai-responses-reader-summary-weekly-sealed-compact-normalization.ts",
+      "originalPositions": [
+        158,
+        162,
+        163,
+        165,
+        168,
+        188,
         208,
         209,
         211,
         214,
         216,
-        219,
         222,
         226,
         228,
@@ -544,7 +550,15 @@
         254,
         255,
         256,
-        257,
+        257
+      ],
+      "responsibility": "Sealed-compact weekly wire envelope admission, story-to-section headline binding and model status normalization with existing rejection labels/order"
+    },
+    {
+      "original": "openai-responses-reader-summary-weekly-response-parser.ts",
+      "owner": "openai-responses-reader-summary-weekly-expanded-legacy-normalization.ts",
+      "originalPositions": [
+        219,
         263,
         267,
         268,
@@ -573,7 +587,7 @@
         349,
         350
       ],
-      "responsibility": "Sealed compact and expanded weekly envelopes own their strict story/section claim-type mapping and cited chronology, independently of flat legacy conversion and public weekly parser; 2026-11-13 consolidation removed 26 previously traceable duplicate/orphaned original coordinates, with no replacement credit."
+      "responsibility": "Expanded-legacy weekly wire envelope admission, exact story key/claim-type validation and grounded chronology with existing rejection labels/order"
     },
     {
       "original": "grpc-agent-runtime-client.ts",

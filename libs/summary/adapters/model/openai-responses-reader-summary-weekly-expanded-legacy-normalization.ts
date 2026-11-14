@@ -12,7 +12,7 @@ import {
 import { normalizeExpandedWeeklySection } from "./openai-responses-reader-summary-weekly-section-normalization";
 
 // Expanded legacy owns its own exact story keys and validation sequence.
-export const normalizeExpandedLegacyWeeklyModelOutput = (
+const normalizeExpandedLegacyWeeklyModelOutput = (
   input: ReaderSummaryWeeklyModelInput,
   value: Record<(typeof expandedLegacyOutputKeys)[number], unknown>,
 ): unknown => {
@@ -72,3 +72,4 @@ export const normalizeExpandedLegacyWeeklyModelOutput = (
   };
 };
 
+export { normalizeExpandedLegacyWeeklyModelOutput };

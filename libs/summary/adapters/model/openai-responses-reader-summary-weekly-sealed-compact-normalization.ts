@@ -13,7 +13,7 @@ import {
 import { normalizeExpandedWeeklySection } from "./openai-responses-reader-summary-weekly-section-normalization";
 
 // Sealed compact owns story-to-section headline reconciliation.
-export const normalizeSealedCompactWeeklyModelOutput = (
+const normalizeSealedCompactWeeklyModelOutput = (
   input: ReaderSummaryWeeklyModelInput,
   value: Record<(typeof sealedCompactOutputKeys)[number], unknown>,
 ): unknown => {
@@ -85,3 +85,4 @@ export const normalizeSealedCompactWeeklyModelOutput = (
   };
 };
 
+export { normalizeSealedCompactWeeklyModelOutput };
