@@ -72,6 +72,7 @@ COPY scripts/lib/clean-real-day-collection-report.ts \
   scripts/lib/reader-summary-quality-eval-support.ts \
   scripts/lib/targeted-provider-collection.ts \
   scripts/lib/x-collection-retry-policy.ts \
+  scripts/lib/x-late-window.ts \
   scripts/lib/yesterday-social-replay-support.ts ./scripts/lib/
 # Finite Telegram-only collection entrypoint and its reviewed script closure.
 COPY scripts/run-telegram-channel-collection.ts ./scripts/

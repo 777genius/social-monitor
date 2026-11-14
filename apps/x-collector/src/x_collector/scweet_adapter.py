@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
@@ -302,6 +303,16 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
         request: DailySearchRequest,
         observer: CanonicalSearchObserver | None = None,
     ) -> DailySearchResult:
+        if request.window_hours < 24 and request.window_end.microsecond:
+            raise XCollectorInvalidRequestError(
+                "A bounded search requires whole-second window boundaries",
+            )
+        if request.window_hours < 24 and re.search(
+            r"(?<![A-Za-z0-9_])(?:since|until):", request.query, re.IGNORECASE,
+        ):
+            raise XCollectorInvalidRequestError(
+                "A bounded search query must not override its time window",
+            )
         return CanonicalInvocation(CanonicalSearchServices(
             clock=self._clock,
             start_execution=self._scweet_factory,
@@ -461,6 +472,11 @@ def run_scweet_search_pass(
     since: str,
     until: str,
 ) -> list[Mapping[str, Any]]:
+    if request.window_hours < 24:
+        end = request.window_end.astimezone(UTC)
+        start = end - timedelta(hours=request.window_hours)
+        time_format = "%Y-%m-%d_%H:%M:%S_UTC"
+        since, until = start.strftime(time_format), end.strftime(time_format)
     records = scweet.search(
         request.query,
         since=since,

@@ -49,6 +49,7 @@ def adapter_payload(request, search_pass, split_window):
     """Execute verified actual adapter argument construction with an inert recorder."""
     import ast
     from typing import Any, Mapping
+    from datetime import UTC, timedelta
     from x_collector.canonical_graph_compiler import REPOSITORY_PINS
     from x_collector.domain import DailySearchRequest, SearchProduct
     from x_collector.search_plan import ScweetSearchPass
@@ -57,7 +58,7 @@ def adapter_payload(request, search_pass, split_window):
     assert hashlib.sha256(data).hexdigest() == REPOSITORY_PINS['scweet_adapter.py']
     nodes = [n for n in ast.parse(data).body if isinstance(n, ast.FunctionDef)
              and n.name in {'scweet_display_type', 'run_scweet_search_pass'}]
-    namespace = dict(Any=Any, Mapping=Mapping, DailySearchRequest=DailySearchRequest,
+    namespace = dict(Any=Any, Mapping=Mapping, UTC=UTC, timedelta=timedelta, DailySearchRequest=DailySearchRequest,
                      SearchProduct=SearchProduct, ScweetSearchPass=ScweetSearchPass)
     exec(compile(ast.Module(body=nodes, type_ignores=[]), '<actual-adapter-builder>', 'exec'), namespace)
     class Capture:
