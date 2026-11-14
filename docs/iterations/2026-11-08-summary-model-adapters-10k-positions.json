@@ -3512,6 +3512,59 @@
         163
       ],
       "responsibility": "Retrospective provenance of existing weekly child evidence story/section constraints and strict schema primitives, separate from weekly output envelope; not new code this run"
+    },
+    {
+      "original": "agent-runtime-reader-summary-topic-cohort-completion.ts",
+      "owner": "agent-runtime-reader-summary-topic-cohort-admission.ts",
+      "originalPositions": [
+        26,
+        27,
+        28
+      ],
+      "responsibility": "New single-purpose recovery admission owner collects already accepted groups without ungrouped, preserves full-cap existing-cohort admission and two-grounded-member quorum; distinct first-use frozen implementation statements"
+    },
+    {
+      "original": "agent-runtime-reader-summary-topic-cohort-completion.ts",
+      "owner": "agent-runtime-reader-summary-topic-cohort-grounding.ts",
+      "originalPositions": [
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        45,
+        48,
+        49,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        58,
+        59
+      ],
+      "responsibility": "Retrospective first-use source of existing independently tested node-identity/semantic-confidence grounding owner, not new implementation in this commit"
+    },
+    {
+      "original": "agent-runtime-reader-summary-topic-cohort-completion.ts",
+      "owner": "agent-runtime-reader-summary-topic-cohort-assignment.ts",
+      "originalPositions": [
+        67,
+        68,
+        69,
+        71,
+        72,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79
+      ],
+      "responsibility": "Retrospective first-use source of existing independently tested keyword-preserving group-assignment owner, not new implementation in this commit"
     }
   ]
 }

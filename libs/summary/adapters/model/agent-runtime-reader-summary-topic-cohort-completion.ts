@@ -1,12 +1,13 @@
-import {
-  READER_SUMMARY_TOPIC_MAP_MAX_SEMANTIC_GROUPS,
-  READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID,
-  type ReaderSummaryTopicLabelPlan,
-} from "../../domain";
+import type { ReaderSummaryTopicLabelPlan } from "../../domain";
 import type { ReaderSummaryTopicLabelCandidate } from "../../ports";
 import { buildGroundedTopicCohortsForCandidates } from "./agent-runtime-reader-summary-topic-grounded-cohorts";
 import { selectGroundedCohortDisplays } from "./agent-runtime-reader-summary-topic-cohort-grounding";
 import { applyGroundedCohortDisplays } from "./agent-runtime-reader-summary-topic-cohort-assignment";
+import {
+  collectExistingGroundedCohortIds,
+  hasGroundedCohortCapacity,
+  hasGroundedCohortMinimum,
+} from "./agent-runtime-reader-summary-topic-cohort-admission";
 
 export const completeRequiredGroundedTopicCohorts = (
   initialNodeLabels: ReaderSummaryTopicLabelPlan["nodeLabels"],
@@ -22,14 +23,10 @@ export const completeRequiredGroundedTopicCohorts = (
   const candidateById = new Map(candidates.map((item) => [item.nodeId, item]));
   const semanticAnchorsByGroup = new Map<string, readonly string[]>();
   const displayByGroup = new Map<string, string>();
-  const groupIds = new Set(nodeLabels.flatMap((label) =>
-    label.groupId && label.groupId !== READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID
-      ? [label.groupId] : [],
-  ));
+  const groupIds = collectExistingGroundedCohortIds(nodeLabels);
   let recoveredNodeCount = 0;
   for (const cohort of buildGroundedTopicCohortsForCandidates(candidates)) {
-    if (!groupIds.has(cohort.groupId) &&
-        groupIds.size >= READER_SUMMARY_TOPIC_MAP_MAX_SEMANTIC_GROUPS) {
+    if (!hasGroundedCohortCapacity(cohort.groupId, groupIds)) {
       continue;
     }
     const displayByNodeId = selectGroundedCohortDisplays({
@@ -39,7 +36,7 @@ export const completeRequiredGroundedTopicCohorts = (
       assignedGroupByNodeId,
     });
     // Existing eligible members of this exact cohort count toward the minimum.
-    if (displayByNodeId.size < 2) {
+    if (!hasGroundedCohortMinimum(displayByNodeId)) {
       continue;
     }
     const assignment = applyGroundedCohortDisplays(
