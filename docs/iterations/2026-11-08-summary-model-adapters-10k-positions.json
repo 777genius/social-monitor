@@ -3608,12 +3608,10 @@
         235,
         236,
         238,
-        255,
         258,
         259,
         260,
         261,
-        263,
         264,
         266,
         267,
@@ -3626,12 +3624,11 @@
         281,
         283,
         291,
-        292,
         293,
         294,
         298
       ],
-      "responsibility": "Grounded multi-node token support threshold, provider explicit-anchor filtering, and deterministic ranking of eligible ungrouped anchors are owned independently of recovered group admission and mutation; legacy consensus export preserved"
+      "responsibility": "Grounded multi-node token support threshold, provider explicit-anchor filtering, and deterministic ranking of eligible ungrouped anchors are owned independently of recovered group admission and mutation; legacy consensus export preserved; 2026-11-14 duplicate-node safety change invalidated former frozen exact-string credits 255,263,292 (removed, not transferred)"
     },
     {
       "original": "gateway-llm/gateway-llm-client.ts",
