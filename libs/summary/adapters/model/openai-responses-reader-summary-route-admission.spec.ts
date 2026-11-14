@@ -20,7 +20,8 @@ const routeWith = (
   input: ReaderSummaryModelInput,
   current: ReaderSummaryModelEstimate = usage,
   onEstimate?: (route: ReaderSummaryModelRoute) => void,
-) => admitOpenAiReaderSummaryRoute(input, "gpt-5.4-mini", policy, budget, (route) => {
+  currentBudget: ReaderSummaryModelBudget = budget,
+) => admitOpenAiReaderSummaryRoute(input, "gpt-5.4-mini", policy, currentBudget, (route) => {
   onEstimate?.(route);
   return current;
 });
@@ -49,13 +50,13 @@ describe("OpenAI reader summary route admission", () => {
       .toBe("reader_summary.prompt.2026-11-03.daily_editorial_v1");
   });
 
-  it.each([
+  const overBudgetCases: Array<[string, ReaderSummaryModelEstimate]> = [
     ["input cap", { inputTokens: 501, outputTokens: 10, estimatedCostUsd: 0.01 }],
     ["output cap", { inputTokens: 10, outputTokens: 501, estimatedCostUsd: 0.01 }],
     ["policy cost", { inputTokens: 10, outputTokens: 10, estimatedCostUsd: 1.01 }],
     ["remaining tokens", { inputTokens: 300, outputTokens: 201, estimatedCostUsd: 0.01 }],
-    ["remaining cost", { inputTokens: 10, outputTokens: 10, estimatedCostUsd: 1.01 }],
-  ])("rejects %s before returning a route", (_name, estimate) => {
+  ];
+  it.each(overBudgetCases)("rejects %s before returning a route", (_name, estimate) => {
     try {
       routeWith(legacyInput, estimate);
       throw new Error("budget must reject");
@@ -67,6 +68,13 @@ describe("OpenAI reader summary route admission", () => {
         message: "Reader summary model budget exceeded",
       });
     }
+  });
+
+  it("rejects cost within policy when the remaining workspace budget is smaller", () => {
+    expect(() => routeWith(legacyInput, {
+      inputTokens: 10, outputTokens: 10, estimatedCostUsd: 0.6,
+    }, undefined, { remainingTokens: 500, remainingCostUsd: 0.5 } as ReaderSummaryModelBudget))
+      .toThrow(ReaderSummaryModelProviderError);
   });
 
   it("allows exact equality at all existing admission thresholds", () => {
