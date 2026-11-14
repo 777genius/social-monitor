@@ -1025,12 +1025,6 @@
       "owner": "agent-runtime-promotion-presentation-v3-task-command.ts",
       "originalPositions": [
         124,
-        125,
-        126,
-        128,
-        132,
-        133,
-        134,
         135,
         136,
         137,
@@ -1052,6 +1046,19 @@
         172
       ],
       "responsibility": "Trusted tenant/workspace command and source-copy identities separated from effectful provider dispatch; stable JSON request and task inputs"
+    },
+    {
+      "original": "agent-runtime-promotion-presentation-v3.builder.ts",
+      "owner": "agent-runtime-promotion-presentation-v3-wire-contract.ts",
+      "originalPositions": [
+        125,
+        126,
+        128,
+        132,
+        133,
+        134
+      ],
+      "responsibility": "Provider-specific V3 prompt/schema wire contract separated from tenant/workspace-scoped request digest and execution command; original prompt bytes and schema decisions preserved"
     },
     {
       "original": "agent-runtime-promotion-presentation-v3.builder.ts",

@@ -1,6 +1,3 @@
-import { readerPostPresentationV3OutputSchema as baseSchema, readerPostPresentationCandidates } from "../../domain/services/reader-post-presentation-v3-proposal";
-import { readerPostCanonicalPresentationInstructions } from "./reader-post-canonical-presentation-instructions";
-import { mimoQualifiedHeadlineOutputSchema } from "../../domain/services/mimo-qualified-headline-codec";
 import {
   readerPostPresentationV3InputDigest,
   type ReaderPostPresentationV3Input,
@@ -9,6 +6,7 @@ import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 import { canonicalPromotionPayload, promotionPayloadDigest } from
   "../../domain/services/reader-post-promotion-attestation";
 import type { AgentRuntimeTaskCommand } from "../../ports";
+import { buildPromotionPresentationWireContract } from "./agent-runtime-promotion-presentation-v3-wire-contract";
 import { buildAgentRuntimeRequestId } from "./agent-runtime-model-support";
 import {
   type activeReaderSummaryProvider,
@@ -18,8 +16,6 @@ import {
   readerSummaryRouteControls,
   type ReaderSummaryGenerationBackend,
 } from "./active-reader-summary-generation-profile";
-import { usesSourceCopyOptions, mimoPresentationInstructions } from
-  "./agent-runtime-promotion-presentation-v3-request";
 
 export type PresentationTaskRoute = {
   readonly provider: typeof activeReaderSummaryProvider;
@@ -39,20 +35,12 @@ export const createPromotionPresentationTaskCommand = (
   route: PresentationTaskRoute,
 ): {
   readonly command: AgentRuntimeTaskCommand;
-  readonly catalogCandidates: ReturnType<typeof readerPostPresentationCandidates>;
+  readonly catalogCandidates: ReturnType<typeof buildPromotionPresentationWireContract>["catalogCandidates"];
   readonly sourceCopyWire: boolean;
 } => {
   const first = inputs[0]!;
-  const prompt = JSON.stringify({ candidates: inputs.map((input) => ({
-    candidateId: input.candidateId, title: input.title, sourceText: input.body,
-  })) });
-  const catalogCandidates = readerPostPresentationCandidates(prompt);
-  const sourceCopyWire = usesSourceCopyOptions(route.modelBackend);
-  // Keep Codex's provider-qualified wire schema; narrow copied references per
-  // item below, so one invalid sibling does not discard valid presentations.
-  const schema = sourceCopyWire ? mimoQualifiedHeadlineOutputSchema(catalogCandidates) : baseSchema;
-  const systemPrompt = sourceCopyWire ? mimoPresentationInstructions(catalogCandidates)
-    : readerPostCanonicalPresentationInstructions(catalogCandidates);
+  const { prompt, catalogCandidates, sourceCopyWire, schema, systemPrompt } =
+    buildPromotionPresentationWireContract(inputs, route.modelBackend);
   const requestDigest = promotionPayloadDigest(canonicalPromotionPayload({
     purpose: activeReaderSummaryPurposes.promotionPresentation,
     inputs: inputs.map(readerPostPresentationV3InputDigest),

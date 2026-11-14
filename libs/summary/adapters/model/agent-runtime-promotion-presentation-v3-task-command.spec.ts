@@ -76,4 +76,30 @@ describe("promotion presentation task wire materialization", () => {
     );
     expect(mimo.command.systemPrompt).toContain("SOURCE_REFERENCE_COPY_OPTIONS=");
   });
+
+  it("keeps ordered source candidates and route-specific sealed request identities", () => {
+    const first = fixture();
+    const second = { ...fixture(), candidateId: "00000000-0000-4000-8000-000000000007",
+      title: "Second source item", body: "Second trusted source copy." };
+    const before = [first, second];
+    const canonical = createPromotionPresentationTaskCommand(before, route);
+    const reordered = createPromotionPresentationTaskCommand([second, first], route);
+    const copied = createPromotionPresentationTaskCommand(before, {
+      ...route, model: mimoReaderSummaryModel, modelBackend: mimoReaderSummaryBackend,
+      reasoningEffort: mimoPresentationReasoningEffort,
+    });
+    const expectedCandidates = before.map(input => ({
+      candidateId: input.candidateId, title: input.title, sourceText: input.body,
+    }));
+    expect(JSON.parse(canonical.command.prompt)).toEqual({ candidates: expectedCandidates });
+    expect(copied.command.prompt).toBe(canonical.command.prompt);
+    expect(canonical.command.requestId).not.toBe(reordered.command.requestId);
+    expect(copied.command.requestId).not.toBe(canonical.command.requestId);
+    expect(copied.command.outputSchema).not.toEqual(canonical.command.outputSchema);
+    expect(copied.command.systemPrompt).toContain("SOURCE_REFERENCE_COPY_OPTIONS=");
+    expect(canonical.command.systemPrompt).not.toContain("SOURCE_REFERENCE_COPY_OPTIONS=");
+    expect(canonical.command.systemPrompt).not.toContain(first.trustedIntent);
+    expect(copied.command.systemPrompt).not.toContain(first.trustedIntent);
+    expect(before).toEqual([first, second]);
+  });
 });

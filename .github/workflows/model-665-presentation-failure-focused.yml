@@ -11,6 +11,9 @@ on:
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-run-wide-failure-policy.ts
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-run-wide-failure-policy.spec.ts
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3.builder.spec.ts
+      - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-task-command.ts
+      - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-wire-contract.ts
+      - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-task-command.spec.ts
       - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
 permissions:
   contents: read
@@ -51,3 +54,4 @@ jobs:
           npx jest --config jest.config.ts --runInBand --runTestsByPath
           libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-run-wide-failure-policy.spec.ts
           libs/summary/adapters/model/agent-runtime-promotion-presentation-v3.builder.spec.ts
+          libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-task-command.spec.ts
