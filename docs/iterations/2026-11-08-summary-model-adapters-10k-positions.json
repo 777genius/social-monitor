@@ -3757,6 +3757,187 @@
         149
       ],
       "responsibility": "Retrospective originally extracted identity-anchor policy owner: domain-grounded fallback token admission and explicit identity-neutral exclusion terms; source semantics unchanged"
+    },
+    {
+      "original": "openai-responses-reader-summary-model.adapter.ts",
+      "owner": "openai-responses-reader-summary-runtime-settings.ts",
+      "originalPositions": [
+        97,
+        98,
+        101,
+        102,
+        442,
+        443,
+        450,
+        451,
+        452,
+        458,
+        459,
+        460
+      ],
+      "responsibility": "Frozen provider option defaults and finite/positive numeric validation are independently owned by runtime settings instead of the model-port lifecycle"
+    },
+    {
+      "original": "openai-responses-reader-summary-model.adapter.ts",
+      "owner": "reader-summary-token-budget.ts",
+      "originalPositions": [
+        119,
+        120,
+        121,
+        122,
+        141,
+        142,
+        145,
+        147,
+        148,
+        150,
+        155
+      ],
+      "responsibility": "Shared reader-token and cost-budget calculations replace OpenAI-specific pricing enforcement and remain independent of HTTP/provider execution"
+    },
+    {
+      "original": "openai-responses-reader-summary-model.adapter.ts",
+      "owner": "openai-responses-reader-summary-response-policy.ts",
+      "originalPositions": [
+        214,
+        216,
+        218,
+        220,
+        224,
+        225,
+        226,
+        227,
+        230,
+        231,
+        234,
+        241,
+        249,
+        250,
+        251,
+        254,
+        257,
+        260,
+        261,
+        262,
+        265,
+        266,
+        267
+      ],
+      "responsibility": "Untrusted OpenAI output text/refusal, cited draft normalization and strict provider response validation no longer live inside transport/orchestration adapter"
+    },
+    {
+      "original": "openai-responses-reader-summary-model.adapter.ts",
+      "owner": "openai-responses-reader-summary-error-policy.ts",
+      "originalPositions": [
+        274,
+        275,
+        278,
+        282,
+        286,
+        289,
+        290,
+        294,
+        295,
+        296,
+        297,
+        298,
+        300,
+        301,
+        303,
+        304,
+        306,
+        307,
+        310
+      ],
+      "responsibility": "Error identity, timeout, schema, citation and budget classification isolated from provider selection and API request code"
+    },
+    {
+      "original": "openai-responses-reader-summary-model.adapter.ts",
+      "owner": "reader-summary-no-signal-attempt.ts",
+      "originalPositions": [
+        326,
+        327,
+        329,
+        330,
+        331,
+        332,
+        333,
+        334,
+        335,
+        336,
+        338,
+        339,
+        340,
+        343,
+        344,
+        345,
+        346,
+        347,
+        348,
+        350,
+        356,
+        357,
+        362,
+        363,
+        364,
+        366,
+        367,
+        368,
+        369
+      ],
+      "responsibility": "Deterministic evidence-empty publication/fallback copy, citation lineage and content projection are independent of paid model execution"
+    },
+    {
+      "original": "openai-responses-reader-summary-model.adapter.ts",
+      "owner": "openai-responses-reader-summary-transport.ts",
+      "originalPositions": [
+        378,
+        383,
+        386,
+        389,
+        391,
+        393,
+        394,
+        395,
+        399,
+        400,
+        402,
+        404,
+        408,
+        411,
+        412,
+        414,
+        419,
+        421,
+        422,
+        423,
+        426
+      ],
+      "responsibility": "Bounded HTTP POST/abort cleanup, strict response-object admission and retryable transport classification no longer live in the model-port adapter"
+    },
+    {
+      "original": "openai-responses-reader-summary-model.adapter.ts",
+      "owner": "openai-responses-reader-summary-generation.ts",
+      "originalPositions": [
+        200,
+        203,
+        210
+      ],
+      "responsibility": "Exact model request schema/instructions are assembled in a generation owner, with provider-client IO and response validation independent"
+    },
+    {
+      "original": "openai-responses-reader-summary-model.adapter.ts",
+      "owner": "openai-responses-reader-summary-route-admission.ts",
+      "originalPositions": [
+        53,
+        126,
+        128,
+        132,
+        315,
+        317,
+        318
+      ],
+      "responsibility": "Current slice extracts strict OpenAI model/provider/prompt/schema route identity plus application/remaining-budget admission before any response transport"
     }
   ]
 }
