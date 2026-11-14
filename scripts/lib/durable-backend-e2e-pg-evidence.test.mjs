@@ -28,7 +28,9 @@ function normalizedSql(sql) {
 }
 
 function assertSqlClauses(sql, clauses) {
-  const actual = normalizedSql(sql);
+  // SQL predicates in block/line comments must not satisfy executable contracts.
+  const executableSql = sql.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/--[^\r\n]*/g, " ");
+  const actual = normalizedSql(executableSql);
   for (const clause of clauses) {
     assert.ok(actual.includes(normalizedSql(clause)), "missing SQL contract: " + clause);
   }
@@ -87,6 +89,10 @@ test("counts retain tenant/workspace-scoped query, numbers and missing-row error
   });
   assert.deepEqual(db.calls[0].params, [ids.tenantId, ids.workspaceId]);
   assert.match(db.calls[0].sql, /where tenant_id = \$1 and workspace_id = \$2/);
+  assertSqlClauses(db.calls[0].sql, [
+    "topics", "scan_jobs", "feed_items", "summary_jobs",
+    "summary_artifacts", "summary_feedback", "digests", "delivery_attempts",
+  ].map(table => `from ${table} where tenant_id = $1 and workspace_id = $2`));
   assert.equal(db.released, 1);
   const missing = fakePool();
   await assert.rejects(durableCounts(missing.pool, ids.tenantId, ids.workspaceId),
@@ -170,6 +176,10 @@ test("SQL contracts reject missing cross-tenant filters, visibility and latest-r
     assert.notEqual(changed, sql, "mutation must remove a real clause: " + removed);
     assert.throws(() => assertSqlClauses(changed, clauses),
       /missing SQL contract/, "missing contract did not fail: " + removed);
+    const commented = sql.replace(removed, `/* ${removed} */`);
+    assert.notEqual(commented, sql, "comment guard must target a real clause: " + removed);
+    assert.throws(() => assertSqlClauses(commented, clauses),
+      /missing SQL contract/, "SQL comment bypass escaped detection: " + removed);
   }
   assert.equal(scheduled.released, 1);
   assert.equal(auto.released, 1);
