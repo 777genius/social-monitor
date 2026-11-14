@@ -1,10 +1,6 @@
 import type { MetricsRecorderPort } from "@social-monitor/platform-metrics";
-import {
-  recordReaderSummaryModelRequest,
-  recordReaderSummaryModelUsage,
-} from "./reader-summary-model-metrics";
-import { readFailedDailyEditorUsage } from "./reader-summary-failed-daily-editor-usage";
-import { meterReaderSummaryAttempt } from "./reader-summary-metered-attempt";
+import { meterReaderSummaryDailyPlanning } from "./metered-reader-summary-daily-planning";
+import { meterReaderSummaryGeneration } from "./metered-reader-summary-generation";
 
 import type {
   ReaderSummaryDailyEditorialAttempt,
@@ -44,20 +40,11 @@ export class MeteredReaderSummaryModelAdapter implements ReaderSummaryModelPort 
     input: ReaderSummaryModelInput,
     route: ReaderSummaryModelRoute,
   ): Promise<ReaderSummaryDailyEditorialAttempt> {
-    if (this.delegate.planDaily === undefined) {
-      throw new Error("Daily editorial planning adapter is unavailable");
-    }
-    const planDaily = this.delegate.planDaily.bind(this.delegate);
-    return meterReaderSummaryAttempt({
+    return meterReaderSummaryDailyPlanning({
+      delegate: this.delegate,
       metrics: this.metrics,
+      input,
       route,
-      execute: () => planDaily(input, route),
-      recordSuccess: (attempt) => {
-        recordReaderSummaryModelRequest(this.metrics, route, "succeeded");
-        recordReaderSummaryModelUsage(this.metrics, route, attempt.usage);
-      },
-      classifyFailure: (error) => this.delegate.classifyError(error).kind,
-      failedUsage: readFailedDailyEditorUsage,
     });
   }
 
@@ -66,16 +53,12 @@ export class MeteredReaderSummaryModelAdapter implements ReaderSummaryModelPort 
     route: ReaderSummaryModelRoute,
     budget?: ReaderSummaryModelBudget,
   ): Promise<ProviderReaderSummaryAttempt> {
-    return meterReaderSummaryAttempt({
+    return meterReaderSummaryGeneration({
+      delegate: this.delegate,
       metrics: this.metrics,
+      input,
       route,
-      execute: () => this.delegate.generate(input, route, budget),
-      recordSuccess: (attempt) => {
-        const usage = attempt.draft.usage;
-        recordReaderSummaryModelRequest(this.metrics, route, "succeeded");
-        recordReaderSummaryModelUsage(this.metrics, route, usage);
-      },
-      classifyFailure: (error) => this.delegate.classifyError(error).kind,
+      budget,
     });
   }
 
