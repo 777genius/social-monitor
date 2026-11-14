@@ -1,5 +1,10 @@
 # Pinned pre-refactor summary/model implementation inventory
 
+## 2026-11-14 — Duplicate-node recovery quorum defense (code SHA `d4e5e3ef0530f08d0407b38995a5a6e4eb9b3d75`)
+
+Existing bounded-context owner `agent-runtime-reader-summary-topic-anchor-support.ts` now evaluates support and scores against distinct `nodeId` values; `agent-runtime-reader-summary-topic-group-creation.ts` independently requires two **distinct** recovered members. Three additional negative/positive regressions are wired to the existing topic-identity focused workflow. **+0 newly credited pinned-original implementation positions**: this fixes already-extracted logic rather than transferring more original responsibility. Frozen source ledger remains **2,946** provisional distinct coordinates / **116** slices / **45** original files, not independently approved meaningful LOC; minimum **7,054** short before semantic discount. Baseline **84 original source files / 15,318 physical lines** remains only the size baseline. Exact code SHA checks and full Ready 20/20/PG18/security/image/E2E/reviews/merge remain pending. No #620/#663/#664 or deployment touched.
+
+
 ## 2026-11-14 — Distinct-grounding invariant and original-owner audit (single Draft #665)
 
 - **Production/test/ledger/workflow SHA:** [`fe8a12e2e6a07080ac8c2702deafb04048c9b7cb`](https://github.com/777genius/social-monitor/commit/fe8a12e2e6a07080ac8c2702deafb04048c9b7cb); fast-forward only in the original PR branch. The independently refactored cohort-grouping owner now deduplicates node IDs before counting support; a repeated ID must not fabricate a two-node cohort. Input with distinct node IDs preserves the original membership threshold, ordering, first-seen tie-break, slug, label and output shape. One negative + positive pure Jest regression was added to the existing cohort grouping spec; the existing topic-identity workflow now watches both grouping source and spec, executes frozen source, strict TS, architecture, code-quality, runtime-guards, 1000LOC and focused Jest. **Fresh exact-SHA terminal checks pending.**
