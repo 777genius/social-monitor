@@ -11,6 +11,7 @@ import {
   normalizeIntegrityFixture,
   topicIntegrityFixture,
 } from "./agent-runtime-reader-summary-topic-integrity.spec-support";
+import { buildGroundedTopicCohorts } from "./agent-runtime-reader-summary-cohort-grouping";
 
 describe("grounded topic cohort recovery admission", () => {
   it("counts only distinct admitted groups, excluding the reserved ungrouped bucket", () => {
@@ -43,6 +44,23 @@ describe("grounded topic cohort recovery admission", () => {
     expect(hasGroundedCohortCapacity("group:new", new Set([...ids].slice(1)))).toBe(true);
     expect(hasGroundedCohortCapacity("group:new", ids)).toBe(false);
     expect(hasGroundedCohortCapacity(firstExisting, ids)).toBe(true);
+  });
+
+  it("never promotes a derived cohort into the reserved ungrouped identity", () => {
+    const cohorts = buildGroundedTopicCohorts(
+      ["node:one", "node:two"],
+      new Map([
+        ["node:one", new Set(["ungrouped"])],
+        ["node:two", new Set(["ungrouped"])],
+      ]),
+    );
+    expect(cohorts).toHaveLength(1);
+    expect(cohorts[0]?.groupId).toBe(READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID);
+    expect(hasGroundedCohortCapacity(cohorts[0]!.groupId, new Set())).toBe(false);
+    expect(hasGroundedCohortCapacity(
+      READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID,
+      new Set([READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID]),
+    )).toBe(false);
   });
 
   it("never admits an empty or singleton grounded display, but counts existing eligible members", () => {

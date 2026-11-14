@@ -23,8 +23,9 @@ export const hasGroundedCohortCapacity = (
   groupId: string,
   groupIds: ReadonlySet<string>,
 ): boolean =>
-  groupIds.has(groupId) ||
-  groupIds.size < READER_SUMMARY_TOPIC_MAP_MAX_SEMANTIC_GROUPS;
+  groupId !== READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID &&
+  (groupIds.has(groupId) ||
+    groupIds.size < READER_SUMMARY_TOPIC_MAP_MAX_SEMANTIC_GROUPS);
 
 /**
  * Only two independently grounded node displays can justify a cohort.
