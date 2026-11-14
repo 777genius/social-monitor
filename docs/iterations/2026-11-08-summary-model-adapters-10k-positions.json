@@ -4886,6 +4886,50 @@
         217
       ],
       "responsibility": "Transport-independent validated draft shape and no-signal/confidence invariants instead of inline provider normalization check"
+    },
+    {
+      "original": "openai-responses-summary-model-error.ts",
+      "owner": "openai-responses-summary-http-failure.ts",
+      "originalPositions": [
+        10,
+        11,
+        12,
+        15,
+        16,
+        18,
+        20,
+        26,
+        28,
+        34,
+        42,
+        57,
+        58,
+        60,
+        62,
+        63,
+        66,
+        67,
+        68,
+        69,
+        73,
+        74,
+        75,
+        76,
+        78,
+        79,
+        80
+      ],
+      "responsibility": "Retrospective first-use provenance of previously separated provider HTTP status taxonomy, body decoding and fail-closed diagnostic extraction; no new HTTP behavior"
+    },
+    {
+      "original": "openai-responses-summary-model-error.ts",
+      "owner": "openai-responses-summary-provider-error.ts",
+      "originalPositions": [
+        4,
+        5,
+        6
+      ],
+      "responsibility": "Pre-classified provider failure identity owned separately from runtime error normalization and HTTP transport"
     }
   ]
 }
