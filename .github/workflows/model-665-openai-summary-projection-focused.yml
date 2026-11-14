@@ -20,6 +20,10 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-item-normalization.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-content-items.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-content-support.spec.ts
+      - libs/summary/adapters/model/openai-responses-summary-citations.ts
+      - libs/summary/adapters/model/openai-responses-summary-provider-citation-decoder.ts
+      - libs/summary/adapters/model/openai-responses-summary-provider-citation-decoder.spec.ts
+      - libs/summary/adapters/model/openai-responses-summary-citations.spec.ts
       - libs/summary/adapters/model/openai-responses-summary-quality.spec.ts
       - libs/summary/adapters/model/openai-responses-summary-json-boundaries.spec.ts
       - libs/summary/adapters/model/openai-responses-summary-required-json.ts
@@ -74,6 +78,8 @@ jobs:
           libs/summary/adapters/model/openai-responses-summary-prompt.spec.ts
           libs/summary/adapters/model/openai-responses-summary-model.adapter.spec.ts
           libs/summary/adapters/model/openai-responses-summary-transport.spec.ts
+          libs/summary/adapters/model/openai-responses-summary-provider-citation-decoder.spec.ts
+          libs/summary/adapters/model/openai-responses-summary-citations.spec.ts
           libs/summary/adapters/model/openai-responses-summary-quality.spec.ts
           libs/summary/adapters/model/openai-responses-summary-json-boundaries.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-item-normalization.spec.ts

@@ -3565,6 +3565,39 @@
         79
       ],
       "responsibility": "Retrospective first-use source of existing independently tested keyword-preserving group-assignment owner, not new implementation in this commit"
+    },
+    {
+      "original": "openai-responses-summary-citations.ts",
+      "owner": "openai-responses-summary-provider-citation-decoder.ts",
+      "originalPositions": [
+        14,
+        23,
+        24,
+        27,
+        29,
+        30,
+        31,
+        33,
+        34,
+        37,
+        38,
+        39,
+        40,
+        42,
+        43,
+        44,
+        46,
+        47,
+        48,
+        50,
+        51,
+        52,
+        54,
+        172,
+        173,
+        174
+      ],
+      "responsibility": "Provider raw citation-map JSON shape and optional reference decoding now a focused fail-closed boundary, isolated from trusted evidence citation rebinding and claim/risk admission; legacy exports retain identical function identities"
     }
   ]
 }
