@@ -4375,6 +4375,144 @@
         94
       ],
       "responsibility": "Isolated nonnegative input/output token and cost accounting following citation and reliability checks, with unchanged fail-closed error and numeric behavior."
+    },
+    {
+      "original": "metered-reader-summary-model.adapter.ts",
+      "owner": "reader-summary-model-metrics.ts",
+      "originalPositions": [
+        99,
+        101,
+        102,
+        104,
+        105,
+        106,
+        107,
+        111,
+        112,
+        115,
+        116,
+        117,
+        122,
+        123,
+        126,
+        127,
+        137,
+        138,
+        139,
+        140,
+        141,
+        142,
+        146,
+        147
+      ],
+      "responsibility": "Previously separated reader metrics taxonomy: stable token/cost counters and provider/model/failure labels; retrospective statement provenance."
+    },
+    {
+      "original": "metered-reader-summary-model.adapter.ts",
+      "owner": "metered-reader-summary-daily-planning.ts",
+      "originalPositions": [
+        46
+      ],
+      "responsibility": "Daily editor capability rejection before any counter; bounded new operation boundary."
+    },
+    {
+      "original": "metered-reader-summary-model.adapter.ts",
+      "owner": "metered-reader-summary-generation.ts",
+      "originalPositions": [
+        71
+      ],
+      "responsibility": "Successful generation usage ownership distinct from paid editor failure."
+    },
+    {
+      "original": "agent-runtime-reader-summary-topic-labeler-prompt.ts",
+      "owner": "agent-runtime-reader-summary-topic-evidence-prompt.ts",
+      "originalPositions": [
+        66,
+        67,
+        69,
+        70,
+        148,
+        149,
+        150,
+        151,
+        152,
+        153,
+        154,
+        155,
+        156,
+        157,
+        158,
+        159,
+        160,
+        161,
+        163,
+        164,
+        165,
+        166
+      ],
+      "responsibility": "Previously split grounded evidence/cluster identity and node projection; retrospective statements."
+    },
+    {
+      "original": "agent-runtime-reader-summary-topic-labeler-prompt.ts",
+      "owner": "agent-runtime-reader-summary-topic-labeler-policy.ts",
+      "originalPositions": [
+        72,
+        73,
+        79,
+        80,
+        83,
+        84,
+        85,
+        86,
+        92,
+        93,
+        94,
+        95,
+        96,
+        97,
+        98,
+        99,
+        100,
+        109,
+        127,
+        128,
+        129,
+        133,
+        134,
+        135,
+        136,
+        137
+      ],
+      "responsibility": "Previously separated trusted retry/cohort and taxonomy policy; retrospective statements."
+    },
+    {
+      "original": "agent-runtime-reader-summary-topic-labeler-prompt.ts",
+      "owner": "agent-runtime-reader-summary-topic-labeler-response-schema.ts",
+      "originalPositions": [
+        180,
+        185,
+        186,
+        187,
+        188,
+        191,
+        193,
+        194,
+        197,
+        199,
+        200,
+        214,
+        215,
+        216,
+        223,
+        225,
+        228,
+        229,
+        232,
+        233,
+        245,
+        247
+      ],
+      "responsibility": "Previously separated strict node/group response contract; no wire schema change; retrospective statements."
     }
   ]
 }
