@@ -19,7 +19,7 @@ import {
   clusterIdsFromCitations as clusterIdsOwner,
 } from "./openai-responses-reader-summary-cluster-citations";
 import {
-  completeClusterCitationCoverage as coverageOwner,
+  completeClusterCitationCoverage as citationCoverageOwner,
   providerKeysCoveredByCitations as providerKeysOwner,
 } from "./openai-responses-reader-summary-citation-coverage";
 import {
@@ -264,7 +264,7 @@ describe("trusted citation cluster and provider coverage owners", () => {
   it("retains the historical function objects after responsibility separation", () => {
     expect(clusterIdByFeedItemId).toBe(clusterIndexOwner);
     expect(clusterIdsFromCitations).toBe(clusterIdsOwner);
-    expect(completeClusterCitationCoverage).toBe(coverageOwner);
+    expect(completeClusterCitationCoverage).toBe(citationCoverageOwner);
     expect(providerKeysCoveredByCitations).toBe(providerKeysOwner);
   });
 
