@@ -4192,6 +4192,113 @@
         457
       ],
       "responsibility": "Coverage-pinned ranked cluster selection and identity deduplication separated from deterministic artifact projection and lifecycle"
+    },
+    {
+      "original": "agent-runtime-summary-model.adapter.ts",
+      "owner": "agent-runtime-summary-budget-policy.ts",
+      "originalPositions": [
+        118,
+        119,
+        120,
+        121,
+        122,
+        125,
+        127,
+        140,
+        143,
+        144,
+        148,
+        154
+      ],
+      "responsibility": "Pure pre-dispatch token/cost admission and no-evidence token reserve isolated from agent task orchestration"
+    },
+    {
+      "original": "agent-runtime-summary-model.adapter.ts",
+      "owner": "agent-runtime-summary-task-command.ts",
+      "originalPositions": [
+        167,
+        169,
+        170,
+        171,
+        172,
+        174,
+        175,
+        176,
+        177,
+        178,
+        179,
+        180,
+        181,
+        185,
+        186,
+        187,
+        188,
+        190,
+        191,
+        192,
+        199,
+        200,
+        359
+      ],
+      "responsibility": "Tenant/workspace/interest-bound immutable request identity and provider wire metadata isolated from execution"
+    },
+    {
+      "original": "agent-runtime-summary-model.adapter.ts",
+      "owner": "agent-runtime-summary-options.ts",
+      "originalPositions": [
+        313,
+        314,
+        315,
+        316,
+        317,
+        318,
+        319,
+        320,
+        322,
+        323,
+        328,
+        329,
+        330,
+        331,
+        333,
+        334,
+        335,
+        336,
+        338,
+        339,
+        345,
+        346,
+        348,
+        352
+      ],
+      "responsibility": "Explicit env/config parsing and gateway purpose/model/effort constraint admission isolated from model adapter"
+    },
+    {
+      "original": "agent-runtime-summary-model.adapter.ts",
+      "owner": "agent-runtime-summary-response-validation.ts",
+      "originalPositions": [
+        230,
+        231,
+        232,
+        235,
+        238,
+        246,
+        248
+      ],
+      "responsibility": "Post-normalization schema/provider route rejection isolated from request dispatch"
+    },
+    {
+      "original": "agent-runtime-summary-model.adapter.ts",
+      "owner": "agent-runtime-summary-runtime-settings.ts",
+      "originalPositions": [
+        60,
+        62,
+        63,
+        64,
+        65,
+        66
+      ],
+      "responsibility": "Default runtime limits, provider identity and prompt/evaluation version selection isolated from active use case"
     }
   ]
 }
