@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import {
   mkdirSync,
   mkdtempSync,
@@ -7,6 +8,9 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { runInNewContext } from "node:vm";
+
+import * as ts from "typescript";
 
 import type { CleanRealDayCollectionReport } from "./clean-real-day-collection-report";
 import {
@@ -397,8 +401,6 @@ function refreshableReport(): CleanRealDayCollectionReport {
 
 describe("bounded X recovery artifacts", () => {
   it("writes successful X-only scans as partial after final gate recomputation", () => {
-    const ts = require("typescript") as typeof import("typescript");
-    const vm = require("node:vm") as typeof import("node:vm");
     const source = readFileSync(join(process.cwd(), "scripts/run-reader-summary-clean-real-day-collection.ts"), "utf8");
     const ast = ts.createSourceFile("collection.ts", source, ts.ScriptTarget.Latest, true);
     const matches: import("typescript").PropertyAssignment[] = [];
@@ -409,7 +411,7 @@ describe("bounded X recovery artifacts", () => {
     visit(ast);
     expect(matches).toHaveLength(1);
     const expression = matches[0].initializer.getText(ast);
-    const evaluate = (xLateWindow: boolean, qualityGates: Record<string, boolean>): boolean => vm.runInNewContext(expression, { xLateWindow, qualityGates });
+    const evaluate = (xLateWindow: boolean, qualityGates: Record<string, boolean>): boolean => runInNewContext(expression, { xLateWindow, qualityGates });
     expect(evaluate(false, { source: true })).toBe(true);
     expect(evaluate(false, { source: false })).toBe(false);
     expect(evaluate(true, { source: true })).toBe(false);
@@ -425,9 +427,6 @@ describe("bounded X recovery artifacts", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
   it.each([true, false])("runs the real acquisition/report/write path for X gate=%s", async (sourcePassed) => {
-    const ts = require("typescript") as typeof import("typescript");
-    const vm = require("node:vm") as typeof import("node:vm");
-    const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
     const source = readFileSync(join(process.cwd(), "scripts/run-reader-summary-clean-real-day-collection.ts"), "utf8");
     const ast = ts.createSourceFile("collection.ts", source, ts.ScriptTarget.Latest, true);
     const names = ["main", "tryRunCollection"];
@@ -459,8 +458,8 @@ describe("bounded X recovery artifacts", () => {
       buildReport: () => syntheticReport, noRawSecretFragments: () => true, providerMeetsProductionBlockingPolicy: () => sourcePassed,
       isLocalDataSourceUnavailable: () => false, writeCollectionArtifactAtomically };
     try {
-      vm.runInNewContext(code, context);
-      await expect((context as any).main()).rejects.toThrow("collection gates failed");
+      const runMain = runInNewContext(`${code}\nmain`, context) as () => Promise<void>;
+      await expect(runMain()).rejects.toThrow("collection gates failed");
       const written = JSON.parse(readFileSync(outputPath, "utf8"));
       expect(written.blockingPassed).toBe(false);
       expect(written.qualityGates.source).toBe(sourcePassed);
