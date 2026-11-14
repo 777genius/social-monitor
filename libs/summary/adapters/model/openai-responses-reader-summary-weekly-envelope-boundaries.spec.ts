@@ -43,6 +43,7 @@ describe("weekly legacy envelope decoding boundaries", () => {
   it("rejects extra expanded story fields after checking rooted citation range", () => {
     expect(() => normalizeExpandedLegacyWeeklyModelOutput(input, {
       ...envelope(expandedLegacyOutputKeys),
+      claimType: "snapshot",
       stories: [{ storyId: "story:1", providerClaim: "untrusted" }],
       sections: [],
     })).toThrow("Expanded legacy weekly story 1 must contain exactly the supported fields");
