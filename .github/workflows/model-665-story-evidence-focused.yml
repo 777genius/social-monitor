@@ -23,6 +23,10 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-narrative-diagnostics.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-narrative-order.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-narrative-validation.spec.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-narrative-coverage-citation-index.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-narrative-coverage-plan.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-narrative-coverage.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-narrative-coverage.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-story-evidence-prompt.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-verifier-prompt.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-identity.ts
@@ -68,5 +72,6 @@ jobs:
           libs/summary/adapters/model/agent-runtime-reader-summary-story-evidence-prompt.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-story-normalizer.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-narrative-validation.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-narrative-coverage.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-contracts.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter.spec.ts

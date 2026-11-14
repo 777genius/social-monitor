@@ -5182,6 +5182,41 @@
         395
       ],
       "responsibility": "Previously implemented SRP boundary: Scoped duplicate-safe semantic anchors and two-node evidence threshold. Retrospective disjoint frozen-source provenance; not fresh production code or independently accepted meaningful-LOC approval."
+    },
+    {
+      "original": "openai-responses-reader-summary-narrative-coverage.ts",
+      "owner": "openai-responses-reader-summary-narrative-coverage-citation-index.ts",
+      "originalPositions": [
+        21,
+        22,
+        23,
+        27,
+        28,
+        29,
+        30,
+        31
+      ],
+      "responsibility": "Trusted citation-index construction and known feed-item ID lookup independent of daily/single-story plan policy; legacy direct exports preserved"
+    },
+    {
+      "original": "openai-responses-reader-summary-narrative-coverage.ts",
+      "owner": "openai-responses-reader-summary-narrative-coverage-plan.ts",
+      "originalPositions": [
+        33,
+        34,
+        35,
+        36,
+        37,
+        40,
+        41,
+        42,
+        49,
+        50,
+        51,
+        52,
+        53
+      ],
+      "responsibility": "Approved lead/secondary coverage-plan citation admission, daily versus single-story lead policy and deterministic missing-ID exclusion"
     }
   ]
 }
