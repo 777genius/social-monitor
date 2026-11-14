@@ -36,6 +36,10 @@ COPY scripts/lib/hn-archive-missing-policy.ts scripts/lib/hn-archive-missing-nor
   scripts/lib/hn-archive-comment-association.ts \
   scripts/lib/rss-archive-missing-policy.ts scripts/lib/rss-archive-missing-normalizer.ts \
   scripts/lib/github-archive-finite-journal.ts scripts/lib/github-archive-finite-role-policy.ts ./scripts/lib/
+# Bounded Reddit archive importer and its explicit typed closure.
+COPY scripts/import-reddit-archive-missing.ts ./scripts/
+COPY scripts/lib/reddit-archive-finite-policy.ts scripts/lib/reddit-archive-finite-dependencies.ts ./scripts/lib/
+COPY scripts/backfill/reddit-archive-write/plan.ts scripts/backfill/reddit-archive-write/internal-writer.ts ./scripts/backfill/reddit-archive-write/
 # Sep24 source entrypoints and their script closure. Publication grants no capture authority.
 COPY scripts/materialize-social-sep24-private-inputs.ts \
   scripts/export-reddit-sep24-public.ts scripts/export-rss-sep24-selected.ts \

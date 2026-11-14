@@ -43,6 +43,13 @@ const missingImportScripts = [
   'scripts/lib/github-archive-finite-journal.ts',
   'scripts/lib/github-archive-finite-role-policy.ts',
 ];
+const redditArchiveScripts = [
+  'scripts/import-reddit-archive-missing.ts',
+  'scripts/lib/reddit-archive-finite-policy.ts',
+  'scripts/lib/reddit-archive-finite-dependencies.ts',
+  'scripts/backfill/reddit-archive-write/plan.ts',
+  'scripts/backfill/reddit-archive-write/internal-writer.ts',
+];
 const selfhostScripts = [
   'scripts/quickstart/local-config.ts',
   'scripts/quickstart/setup.ts',
@@ -67,6 +74,7 @@ const telegramCollectionScripts = [
 const expectedScripts = [
   ...sep24Scripts,
   ...missingImportScripts,
+  ...redditArchiveScripts,
   ...selfhostScripts,
   ...telegramCollectionScripts,
   'scripts/check-feed-promotion-index-recovery.ts',
@@ -222,6 +230,13 @@ describe('migration image production compilation', () => {
   });
 
   it.each(missingImportScripts)('rejects a recipe missing approved missing-import source: %s', (source) => {
+    const dockerfile = readFileSync(resolve(root, 'Dockerfile'), 'utf8');
+    const mutated = dockerfile.replace(`${source} `, '');
+    expect(mutated).not.toBe(dockerfile);
+    expect(() => expectScriptSurface(scriptCopies(mutated))).toThrow();
+  });
+
+  it.each(redditArchiveScripts)('rejects a recipe missing approved Reddit archive source: %s', (source) => {
     const dockerfile = readFileSync(resolve(root, 'Dockerfile'), 'utf8');
     const mutated = dockerfile.replace(`${source} `, '');
     expect(mutated).not.toBe(dockerfile);
