@@ -29,7 +29,7 @@ const ignoredPathPatterns = [
 ];
 
 const legacyLineCapDebt = new Map([
-  ["scripts/capture-durable-backend-e2e-loop.ts", 1621],
+  ["scripts/capture-durable-backend-e2e-loop.ts", 1561],
   ["scripts/check-external-beta-evidence-runner.mjs", 1068],
   ["scripts/external-beta-evidence-runner.mjs", 1103],
 ]);

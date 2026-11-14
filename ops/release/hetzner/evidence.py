@@ -58,7 +58,7 @@ REVIEW_746_PATHS = frozenset((
 
 # These are the only .mjs sources copied by the pinned Dockerfile below.
 PACKAGE_COPIED_MJS = {'scripts/rewrite-build-aliases.mjs', 'scripts/run-with-timeout.mjs'}
-# These exact CI sources are absent from the pinned Dockerfile's COPY closure.
+# These CI sources are absent from the pinned Dockerfile's COPY closure.
 PACKAGE_CI_TS = {'scripts/check-source-provider-runtime-contract.ts',
                  'scripts/capture-durable-backend-e2e-loop.ts',
                  'scripts/lib/durable-backend-e2e-scan-targets.ts',
@@ -77,6 +77,7 @@ def package_check_key(key):
 
 def package_ci_path(path):
     return (path == 'package.json' or path in PACKAGE_CI_TS or path.startswith(('docs/', 'ops/release/')) or
+            re.fullmatch(r'scripts/lib/durable-backend-e2e-[a-z0-9-]+\.ts', path) is not None or
             path.startswith('scripts/') and path.endswith('.mjs') and path not in PACKAGE_COPIED_MJS or
             path.startswith(('scripts/ci/', 'ops/ci/')) and path.endswith('.mts'))
 
