@@ -7,6 +7,8 @@ on:
     paths:
       - .github/workflows/model-665-story-evidence-focused.yml
       - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
+      - docs/iterations/2026-11-08-summary-model-adapters-10k.md
+      - docs/iterations/2026-11-08-summary-model-adapters-10k-inventory.md
       - libs/summary/adapters/model/openai-responses-reader-summary-story-citations.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-cluster-citations.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-citation-coverage.ts
