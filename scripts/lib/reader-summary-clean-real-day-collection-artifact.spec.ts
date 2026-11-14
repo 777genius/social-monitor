@@ -403,8 +403,8 @@ describe("bounded X recovery artifacts", () => {
   it("writes successful X-only scans as partial after final gate recomputation", () => {
     const source = readFileSync(join(process.cwd(), "scripts/run-reader-summary-clean-real-day-collection.ts"), "utf8");
     const ast = ts.createSourceFile("collection.ts", source, ts.ScriptTarget.Latest, true);
-    const matches: import("typescript").PropertyAssignment[] = [];
-    const visit = (node: import("typescript").Node): void => {
+    const matches: ts.PropertyAssignment[] = [];
+    const visit = (node: ts.Node): void => {
       if (ts.isPropertyAssignment(node) && node.name.getText(ast) === "blockingPassed" && node.initializer.getText(ast).includes("Object.values(qualityGates)")) matches.push(node);
       ts.forEachChild(node, visit);
     };
@@ -430,9 +430,9 @@ describe("bounded X recovery artifacts", () => {
     const source = readFileSync(join(process.cwd(), "scripts/run-reader-summary-clean-real-day-collection.ts"), "utf8");
     const ast = ts.createSourceFile("collection.ts", source, ts.ScriptTarget.Latest, true);
     const names = ["main", "tryRunCollection"];
-    const functions = ast.statements.filter((n: import("typescript").Statement) => ts.isFunctionDeclaration(n) && n.name && names.includes(n.name.text));
+    const functions = ast.statements.filter((n: ts.Statement) => ts.isFunctionDeclaration(n) && n.name && names.includes(n.name.text));
     expect(functions).toHaveLength(2);
-    const code = ts.transpileModule(functions.map((n: import("typescript").Statement) => n.getText(ast)).join("\n"), { compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.None } }).outputText;
+    const code = ts.transpileModule(functions.map((n: ts.Statement) => n.getText(ast)).join("\n"), { compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.None } }).outputText;
     const directory = mkdtempSync(join(tmpdir(), "x-late-pipeline-"));
     const outputPath = readerSummaryDailyCollectionArtifactPath({ directory, collectionDate: "2026-11-07" });
     const baseline = refreshableReport();
