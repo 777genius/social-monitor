@@ -5,8 +5,8 @@ import type {
 } from "../../ports";
 import {
   selectDeterministicNarrativeCitations,
-  uniqueNarrativeCitationIds,
 } from "./deterministic-reader-summary-citation-selection";
+import { buildDeterministicReaderSecondarySections } from "./deterministic-reader-summary-secondary-sections";
 
 type ReaderSummaryDraftCitation =
   ProviderReaderSummaryAttempt["draft"]["citationMap"][number];
@@ -54,23 +54,10 @@ export const buildDeterministicReaderSummaryNarrative = (params: {
 
   return [
     leadSection,
-    ...params.input.coveragePlan.secondary.map(
-      (item, index): ReaderSummaryNarrativeSection => {
-        const story = topStoryByClusterId.get(item.clusterId);
-        return {
-          id: `narrative-deterministic-secondary-${index + 1}`,
-          kind: "secondary_signal",
-          title: story?.title ?? `Additional monitored signal ${index + 1}`,
-          text:
-            story?.summary ??
-            item.whyImportant[0] ??
-            "A distinct monitored signal also appeared in this window.",
-          citationIds: uniqueNarrativeCitationIds([
-            dailySynthesisCitations.get(item.clusterId)?.citationId,
-          ]),
-          storyClusterId: item.clusterId,
-        };
-      },
+    ...buildDeterministicReaderSecondarySections(
+      params.input.coveragePlan.secondary,
+      topStoryByClusterId,
+      dailySynthesisCitations,
     ),
   ];
 };

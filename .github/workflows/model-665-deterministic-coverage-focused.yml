@@ -9,6 +9,9 @@ on:
       - libs/summary/adapters/model/deterministic-reader-summary-model.adapter.ts
       - libs/summary/adapters/model/deterministic-reader-summary-coverage-selection.ts
       - libs/summary/adapters/model/deterministic-reader-summary-model.adapter.spec.ts
+      - libs/summary/adapters/model/deterministic-reader-summary-narrative.ts
+      - libs/summary/adapters/model/deterministic-reader-summary-secondary-sections.ts
+      - libs/summary/adapters/model/deterministic-reader-summary-narrative.spec.ts
       - libs/summary/adapters/model/deterministic-reader-summary-outcome-policy.ts
       - libs/summary/adapters/model/deterministic-reader-summary-outcome-policy.spec.ts
       - libs/summary/adapters/model/deterministic-summary-model.adapter.ts
@@ -53,6 +56,7 @@ jobs:
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
           libs/summary/adapters/model/deterministic-reader-summary-model.adapter.spec.ts
+          libs/summary/adapters/model/deterministic-reader-summary-narrative.spec.ts
           libs/summary/adapters/model/deterministic-reader-summary-evidence-selection.spec.ts
           libs/summary/adapters/model/deterministic-reader-summary-outcome-policy.spec.ts
           libs/summary/adapters/model/deterministic-summary-model.adapter.spec.ts
