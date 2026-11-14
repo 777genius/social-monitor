@@ -1,4 +1,3 @@
-import type { SummaryCitation } from '../../domain';
 import {
   normalizeCitationIds,
   normalizeCitationMap,
