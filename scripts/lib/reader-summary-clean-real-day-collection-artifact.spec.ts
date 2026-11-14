@@ -410,7 +410,9 @@ describe("bounded X recovery artifacts", () => {
     };
     visit(ast);
     expect(matches).toHaveLength(1);
-    const expression = matches[0].initializer.getText(ast);
+    const match = matches[0];
+    if (match === undefined) throw new Error("Final gate recomputation not found");
+    const expression = match.initializer.getText(ast);
     const evaluate = (xLateWindow: boolean, qualityGates: Record<string, boolean>): boolean => runInNewContext(expression, { xLateWindow, qualityGates });
     expect(evaluate(false, { source: true })).toBe(true);
     expect(evaluate(false, { source: false })).toBe(false);
