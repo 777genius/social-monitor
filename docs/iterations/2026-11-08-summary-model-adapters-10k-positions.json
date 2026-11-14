@@ -4341,6 +4341,40 @@
         468
       ],
       "responsibility": "Original daily-editorial plan admission, frozen selected-feed and citation binding, single-source model provenance and fail-closed rejection are now isolated from generic story reconciliation and fallback; no unplanned topics allowed"
+    },
+    {
+      "original": "openai-responses-summary-draft-shape.ts",
+      "owner": "openai-responses-summary-draft-quality-policy.ts",
+      "originalPositions": [
+        4,
+        5,
+        6,
+        7,
+        8,
+        65,
+        66,
+        67,
+        72,
+        73,
+        75,
+        79,
+        80,
+        82,
+        85,
+        86
+      ],
+      "responsibility": "Isolated provider draft quality flag set, no-signal evidence/reason admission and confidence range; preserves historical export and validation precedence after citation trust."
+    },
+    {
+      "original": "openai-responses-summary-draft-shape.ts",
+      "owner": "openai-responses-summary-draft-usage-policy.ts",
+      "originalPositions": [
+        90,
+        91,
+        92,
+        94
+      ],
+      "responsibility": "Isolated nonnegative input/output token and cost accounting following citation and reliability checks, with unchanged fail-closed error and numeric behavior."
     }
   ]
 }
