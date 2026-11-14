@@ -7,6 +7,8 @@ on:
       - refactor/summary-model-adapters-10k-20261108
     paths:
       - .github/workflows/model-665-topic-identity-focused.yml
+      - libs/summary/adapters/model/agent-runtime-reader-summary-cohort-grouping.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-cohort-grouping.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-grounded-cohorts.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-candidate-anchor-policy.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-candidate-anchor-policy.spec.ts

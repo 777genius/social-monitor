@@ -10,11 +10,13 @@ export const buildGroundedTopicCohorts = (
   orderedNodeIds: readonly string[],
   anchorsByNodeId: ReadonlyMap<string, ReadonlySet<string>>,
 ): readonly GroundedTopicCohort[] => {
+  // Repeated identities must never manufacture two grounded cohort members.
+  const distinctNodeIds = [...new Set(orderedNodeIds)];
   const indexByNodeId = new Map(
-    orderedNodeIds.map((nodeId, index) => [nodeId, index] as const),
+    distinctNodeIds.map((nodeId, index) => [nodeId, index] as const),
   );
   const nodesByAnchor = new Map<string, string[]>();
-  for (const nodeId of orderedNodeIds) {
+  for (const nodeId of distinctNodeIds) {
     for (const anchor of anchorsByNodeId.get(nodeId) ?? []) {
       nodesByAnchor.set(anchor, [...(nodesByAnchor.get(anchor) ?? []), nodeId]);
     }

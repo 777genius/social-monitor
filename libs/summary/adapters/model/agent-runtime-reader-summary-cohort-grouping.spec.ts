@@ -64,4 +64,17 @@ describe("grounded topic cohort assignment boundary", () => {
   it("does not create a group from missing or absent anchors", () => {
     expect(buildGroundedTopicCohorts(["n0", "n1"], new Map())).toEqual([]);
   });
+  it("does not mistake repeated node identities for independent grounding", () => {
+    const anchorByNode = new Map([
+      ["n0", new Set(["rust"])],
+      ["n1", new Set(["rust"])],
+    ]);
+    expect(buildGroundedTopicCohorts(["n0", "n0"], anchorByNode)).toEqual([]);
+    expect(buildGroundedTopicCohorts(["n0", "n0", "n1"], anchorByNode)).toEqual([
+      {
+        groupId: "group:rust", label: "Rust", sharedAnchor: "rust",
+        nodeIds: ["n0", "n1"], anchors: ["rust"],
+      },
+    ]);
+  });
 });
