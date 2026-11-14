@@ -1,7 +1,5 @@
-import { withReaderSummaryInputPromptVersion } from "./reader-summary-input-prompt-route";
 import {
   estimateReaderSummaryTokenUsage,
-  isReaderSummaryBudgetExceeded,
 } from "./reader-summary-token-budget";
 export { resolveOpenAiResponsesReaderSummaryModelOptions } from "./openai-responses-reader-summary-options";
 import { runOpenAiDailyEditor } from "./openai-responses-reader-summary-daily-editor";
@@ -21,10 +19,10 @@ import { primaryReaderSummaryEvidence } from "../../domain";
 import {
   validateOpenAiReaderSummaryResponse,
 } from "./openai-responses-reader-summary-response-policy";
-import { currentReaderSummaryPromptRelease } from "./openai-responses-reader-summary-prompt";
 import { classifyOpenAiReaderSummaryModelError } from "./openai-responses-reader-summary-error-policy";
 import { buildReaderSummaryNoSignalAttempt } from "./reader-summary-no-signal-attempt";
 import { runOpenAiReaderSummaryGeneration } from "./openai-responses-reader-summary-generation";
+import { admitOpenAiReaderSummaryRoute } from "./openai-responses-reader-summary-route-admission";
 
 import {
   ReaderSummaryModelProviderError,
@@ -38,7 +36,6 @@ import {
 } from "./openai-responses-reader-summary-runtime-settings";
 export type { OpenAiResponsesReaderSummaryModelAdapterOptions } from "./openai-responses-reader-summary-runtime-settings";
 
-const provider = "openai-responses";
 export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryModelPort {
   private readonly settings: OpenAiReaderSummarySettings;
 
@@ -51,17 +48,10 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
     policy: ReaderSummaryModelPolicy,
     budget: ReaderSummaryModelBudget,
   ): ReaderSummaryModelRoute {
-    const route = withReaderSummaryInputPromptVersion(this.buildRoute(), input);
-    const estimate = this.estimate(input, route);
-    if (isReaderSummaryBudgetExceeded(estimate, policy, budget)) {
-      throw new ReaderSummaryModelProviderError({
-        kind: "budget_exceeded",
-        retryable: false,
-        message: "Reader summary model budget exceeded",
-      });
-    }
-
-    return route;
+    return admitOpenAiReaderSummaryRoute(
+      input, this.settings.model, policy, budget,
+      (route) => this.estimate(input, route),
+    );
   }
 
   estimate(
@@ -130,15 +120,6 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
 
   classifyError(error: unknown): ReaderSummaryModelFailure {
     return classifyOpenAiReaderSummaryModelError(error);
-  }
-
-  private buildRoute(): ReaderSummaryModelRoute {
-    return {
-      provider,
-      model: this.settings.model,
-      promptVersion: currentReaderSummaryPromptRelease.id,
-      schemaVersion: "reader_summary.artifact.v1",
-    };
   }
 
   private buildNoSignalAttempt(
