@@ -59,7 +59,7 @@ export function releaseGateCiViolations(source, assets) {
     "test \"${GITHUB_ACTIONS:-}\" = true",
     "test \"${RUNNER_ENVIRONMENT:-}\" = \"$CI_NATIVE_ENVIRONMENT\"",
     "case \"$CI_NATIVE_RUNNER:$CI_NATIVE_ENVIRONMENT\" in",
-    "ubuntu-24.04:github-hosted|ubicloud-standard-4:self-hosted) ;;",
+    "ubuntu-24.04:github-hosted) ;;",
     "*) printf 'Unsupported native CI runner\\n' >&2; exit 1 ;;",
     "esac",
     "test \"$(id -u)\" -ne 0",
