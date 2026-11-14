@@ -6,6 +6,7 @@ import { test } from "node:test";
 const require = createRequire(import.meta.url);
 require("ts-node/register/transpile-only");
 require("tsconfig-paths/register");
+const ts = require("typescript");
 const { summaryMemoryContextQuery } = require("./durable-backend-e2e-summary-memory-query.ts");
 
 const scope = { tenantId:"tenant-fixture", workspaceId:"workspace-fixture", userId:"user-fixture", interestId:"interest-fixture" };
@@ -63,10 +64,66 @@ test("invalid/blank dates share fallback; missing required fields throw; items 1
   assert.equal(build([...Array.from({length:12},(_,i)=>item({id:"feed-"+i})),{id:12}]).evidence.items.length,12);
 });
 
-test("runner delegates live polling to exactly one query owner", () => {
-  const runner=readFileSync(new URL("../capture-durable-backend-e2e-loop.ts",import.meta.url),"utf8");
-  assert.match(runner,/import \{ summaryMemoryContextQuery \} from "\.\/lib\/durable-backend-e2e-summary-memory-query";/);
-  assert.match(runner,/memory\.buildContext\(summaryMemoryContextQuery\(params\)\)/);
-  assert.doesNotMatch(runner,/function summaryMemoryContextQuery\(/);
-  assert.doesNotMatch(runner,/function parseDateOrFallback\(/);
+// Parse the real TypeScript AST: comments and string literals cannot spoof delegation.
+function runnerDelegatesContextQuery(source) {
+  const tree = ts.createSourceFile("durable-backend-e2e-loop.ts", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const queryImports = tree.statements.filter((node) =>
+    ts.isImportDeclaration(node) &&
+    ts.isStringLiteral(node.moduleSpecifier) &&
+    node.moduleSpecifier.text === "./lib/durable-backend-e2e-summary-memory-query" &&
+    node.importClause?.namedBindings &&
+    ts.isNamedImports(node.importClause.namedBindings) &&
+    node.importClause.namedBindings.elements.some((part) =>
+      part.name.text === "summaryMemoryContextQuery" && part.propertyName === undefined,
+    ),
+  );
+  const pollFunctions = tree.statements.filter((node) =>
+    ts.isFunctionDeclaration(node) && node.name?.text === "pollSummaryMemoryEvidence",
+  );
+  const duplicateHelpers = tree.statements.some((node) =>
+    ts.isFunctionDeclaration(node) &&
+    ["summaryMemoryContextQuery", "parseDateOrFallback"].includes(node.name?.text),
+  );
+  let liveCalls = 0;
+  if (pollFunctions.length === 1 && pollFunctions[0].body) {
+    function visit(node) {
+      if (ts.isCallExpression(node) &&
+          ts.isPropertyAccessExpression(node.expression) &&
+          ts.isIdentifier(node.expression.expression) &&
+          node.expression.expression.text === "memory" &&
+          node.expression.name.text === "buildContext" &&
+          node.arguments.length === 1) {
+        const query = node.arguments[0];
+        if (ts.isCallExpression(query) &&
+            ts.isIdentifier(query.expression) &&
+            query.expression.text === "summaryMemoryContextQuery" &&
+            query.arguments.length === 1 &&
+            ts.isIdentifier(query.arguments[0]) &&
+            query.arguments[0].text === "params") {
+          liveCalls++;
+        }
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(pollFunctions[0].body);
+  }
+  return queryImports.length === 1 && pollFunctions.length === 1 &&
+    liveCalls === 1 && !duplicateHelpers;
+}
+
+test("runner delegates live polling to exactly one query owner (AST)", () => {
+  const runner = readFileSync(new URL("../capture-durable-backend-e2e-loop.ts", import.meta.url), "utf8");
+  assert.equal(runnerDelegatesContextQuery(runner), true);
+  // A code-shaped comment or string must not hide removal of the real call.
+  const noCall = runner.replace("memory.buildContext(summaryMemoryContextQuery(params))",
+    "memory.buildContext(params)") +
+    "\n// memory.buildContext(summaryMemoryContextQuery(params))";
+  assert.notEqual(noCall, runner);
+  assert.equal(runnerDelegatesContextQuery(noCall), false);
+  const noImport = runner.replace(
+    'import { summaryMemoryContextQuery } from "./lib/durable-backend-e2e-summary-memory-query";',
+    '// import { summaryMemoryContextQuery } from "./lib/durable-backend-e2e-summary-memory-query";',
+  );
+  assert.notEqual(noImport, runner);
+  assert.equal(runnerDelegatesContextQuery(noImport), false);
 });

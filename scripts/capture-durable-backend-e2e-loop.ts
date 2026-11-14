@@ -28,7 +28,6 @@ import {
 
 import {
   isRecord,
-  optionalString,
   readFirst,
   readNumber,
   readObjectArray,
