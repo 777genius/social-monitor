@@ -817,7 +817,7 @@
     },
     {
       "original": "openai-responses-reader-summary-narrative.ts",
-      "owner": "openai-responses-reader-summary-narrative-validation.ts",
+      "owner": "openai-responses-reader-summary-narrative-lead-admission.ts",
       "originalPositions": [
         359,
         360,
@@ -844,7 +844,14 @@
         388,
         389,
         390,
-        392,
+        392
+      ],
+      "responsibility": "Cited lead promotion and strict citation admission now owned by specialist instead of historical compatibility validation entrypoint"
+    },
+    {
+      "original": "openai-responses-reader-summary-narrative.ts",
+      "owner": "openai-responses-reader-summary-narrative-secondary-coverage.ts",
+      "originalPositions": [
         401,
         402,
         404,
@@ -862,7 +869,14 @@
         429,
         430,
         432,
-        434,
+        434
+      ],
+      "responsibility": "Secondary coverage and missing/duplicate cluster diagnostics owned by the planned coverage policy"
+    },
+    {
+      "original": "openai-responses-reader-summary-narrative.ts",
+      "owner": "openai-responses-reader-summary-narrative-diagnostics.ts",
+      "originalPositions": [
         440,
         441,
         442,
@@ -886,7 +900,14 @@
         464,
         469,
         470,
-        471,
+        471
+      ],
+      "responsibility": "Raw untrusted narrative section diagnostic counts and citation probe normalization owned by diagnostic policy"
+    },
+    {
+      "original": "openai-responses-reader-summary-narrative.ts",
+      "owner": "openai-responses-reader-summary-narrative-order.ts",
+      "originalPositions": [
         477,
         478,
         481,
@@ -899,7 +920,7 @@
         493,
         495
       ],
-      "responsibility": "Cited-lead recovery, stable section ordering, error diagnostics and planned-secondary coverage assertions isolated from provider fields. Retrospectively traced original positions, provenance only; not independently approved meaningful LOC or new implementation"
+      "responsibility": "Canonical stable narrative section ordering and seven-section cap owned by ordering policy"
     },
     {
       "original": "openai-responses-reader-summary-narrative.ts",
