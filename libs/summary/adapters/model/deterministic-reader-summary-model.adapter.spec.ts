@@ -269,6 +269,34 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
     }
   });
 
+  it("keeps the first cited feed identity in top stories, interest highlights and repeated signals", () => {
+    const input = dailySynthesisReaderSummaryInput();
+    const firstItem = input.evidence.selectedEvidence[0];
+    const firstCluster = input.evidence.clusters[0];
+    if (firstItem === undefined || firstCluster === undefined) {
+      throw new Error("Citation identity regression requires evidence and a cluster");
+    }
+    const repeatedCluster = {
+      ...firstCluster,
+      representativeFeedItemId: firstItem.feedItemId,
+      interestIds: ["interest-0", "interest-1"],
+    };
+    const projection = buildDeterministicReaderSummaryStoryProjection({
+      input: {
+        ...input,
+        evidence: { ...input.evidence, clusters: [repeatedCluster] },
+      },
+      citedEvidence: [firstItem, firstItem],
+      selectedEvidence: [firstItem],
+      topStoryClusters: [repeatedCluster],
+      firstItem,
+    });
+    expect(projection.citationMap.map((entry) => entry.citationId)).toEqual(["c1", "c2"]);
+    expect(projection.topStories[0]?.citationIds).toEqual(["c1"]);
+    expect(projection.interestHighlights[0]?.citationIds).toEqual(["c1"]);
+    expect(projection.repeatedSignals[0]?.citationIds).toEqual(["c1"]);
+  });
+
   it("preserves first-evidence fallbacks and repeated-interest policy on missing cluster representatives", () => {
     const input = dailySynthesisReaderSummaryInput();
     const firstItem = input.evidence.selectedEvidence[0];
