@@ -23,6 +23,34 @@ function fakePool(result = () => ({ rows: [] })) {
   return { pool, calls, get released() { return released; } };
 }
 
+function normalizedSql(sql) {
+  return sql.replace(/\s+/g, " ").trim();
+}
+
+function assertSqlClauses(sql, clauses) {
+  const actual = normalizedSql(sql);
+  for (const clause of clauses) {
+    assert.ok(actual.includes(normalizedSql(clause)), "missing SQL contract: " + clause);
+  }
+}
+
+const scheduledSqlContract = [
+  "array_agg(fi.id::text order by fi.observed_at desc)",
+  "left join feed_items fi on fi.tenant_id = j.tenant_id and fi.workspace_id = j.workspace_id and fi.source_binding_id = j.source_binding_id",
+  "where j.tenant_id = $1 and j.workspace_id = $2 and j.source_binding_id = $3 and j.scan_policy_id = $4",
+  "and j.idempotency_key like 'scheduled:%'",
+  "order by j.created_at desc limit 1",
+];
+const autoSummarySqlContract = [
+  "where j.tenant_id = $1 and j.workspace_id = $2 and j.topic_id = $3",
+  "and j.user_id is null and j.subscription_id is null and j.idempotency_key like 'auto-summary:%'",
+  "order by j.requested_at desc, j.id desc limit 1",
+  "on selected.tenant_id = previous.tenant_id and selected.workspace_id = previous.workspace_id and selected.topic_id = previous.topic_id",
+  "and previous.requested_at < selected.requested_at",
+  "on fi.tenant_id = selected.tenant_id and fi.workspace_id = selected.workspace_id and fi.topic_id = selected.topic_id and fi.status = 'VISIBLE'",
+  "where fi.observed_at <= selected.requested_at and (previous.requested_at is null or fi.observed_at > previous.requested_at)",
+];
+
 test("identity seed preserves SQL order, transaction, bindings and release", async () => {
   const db = fakePool();
   await seedDurableIdentity(db.pool, ids);
@@ -83,6 +111,7 @@ test("scheduled scan snapshot preserves scoped bindings, date mapping and nullab
   assert.deepEqual(db.calls[0].params,
     [ids.tenantId, ids.workspaceId, "binding-1", "policy-1"]);
   assert.match(db.calls[0].sql, /j\.idempotency_key like 'scheduled:%'/);
+  assertSqlClauses(db.calls[0].sql, scheduledSqlContract);
   assert.equal(db.released, 1);
 });
 
@@ -103,6 +132,7 @@ test("auto summary snapshot keeps scoped SQL, timestamp and empty-value fallback
   assert.match(db.calls[0].sql, /j\.idempotency_key like 'auto-summary:%'/);
   assert.match(db.calls[0].sql, /and j\.user_id is null/);
   assert.match(db.calls[0].sql, /and j\.subscription_id is null/);
+  assertSqlClauses(db.calls[0].sql, autoSummarySqlContract);
   assert.equal(db.released, 1);
   const absent = fakePool();
   assert.equal(await autoSummaryEvidenceSnapshot(absent.pool, args), undefined);
@@ -116,6 +146,33 @@ test("missing scheduled scan row returns undefined and always releases client", 
     sourceBindingId: "binding-1", scanPolicyId: "policy-1",
   }), undefined);
   assert.equal(db.released, 1);
+});
+
+
+test("SQL contracts reject missing cross-tenant filters, visibility and latest-row ordering", async () => {
+  const scheduled = fakePool();
+  await scheduledScanEvidenceSnapshot(scheduled.pool, {
+    tenantId: ids.tenantId, workspaceId: ids.workspaceId,
+    sourceBindingId: "binding-1", scanPolicyId: "policy-1",
+  });
+  const auto = fakePool();
+  await autoSummaryEvidenceSnapshot(auto.pool, {
+    tenantId: ids.tenantId, workspaceId: ids.workspaceId, interestId: "topic-1",
+  });
+  for (const [sql, clauses, removed] of [
+    [scheduled.calls[0].sql, scheduledSqlContract, "and fi.workspace_id = j.workspace_id"],
+    [scheduled.calls[0].sql, scheduledSqlContract, "order by j.created_at desc"],
+    [auto.calls[0].sql, autoSummarySqlContract, "and j.workspace_id = $2"],
+    [auto.calls[0].sql, autoSummarySqlContract, "and fi.status = 'VISIBLE'"],
+    [auto.calls[0].sql, autoSummarySqlContract, "order by j.requested_at desc, j.id desc"],
+  ]) {
+    const changed = sql.replace(removed, "/* mutation: removed */");
+    assert.notEqual(changed, sql, "mutation must remove a real clause: " + removed);
+    assert.throws(() => assertSqlClauses(changed, clauses),
+      /missing SQL contract/, "missing contract did not fail: " + removed);
+  }
+  assert.equal(scheduled.released, 1);
+  assert.equal(auto.released, 1);
 });
 
 test("orchestrator delegates through real TS imports/calls without duplicate SQL helpers", () => {
@@ -149,5 +206,26 @@ test("orchestrator delegates through real TS imports/calls without duplicate SQL
   for (const name of names) {
     assert.ok(imported.has(name), "missing imported helper: " + name);
     assert.ok(called.has(name), "missing real invocation: " + name);
+  }
+
+  for (const [owner, helper] of [
+    ["pollScheduledScanEvidence", "scheduledScanEvidenceSnapshot"],
+    ["pollAutoSummaryEvidence", "autoSummaryEvidenceSnapshot"],
+  ]) {
+    const declaration = tree.statements.find(node =>
+      ts.isFunctionDeclaration(node) && node.name?.text === owner);
+    assert.ok(declaration?.body, "missing poll owner: " + owner);
+    let delegated = false;
+    function check(node) {
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) &&
+        node.expression.text === helper && node.arguments.length === 2 &&
+        ts.isIdentifier(node.arguments[0]) && node.arguments[0].text === "pool" &&
+        ts.isIdentifier(node.arguments[1]) && node.arguments[1].text === "params") {
+        delegated = true;
+      }
+      ts.forEachChild(node, check);
+    }
+    check(declaration.body);
+    assert.ok(delegated, "missing direct " + helper + "(pool, params) in " + owner);
   }
 });
