@@ -1,6 +1,6 @@
 # Pinned pre-refactor summary/model implementation inventory
 
-**2026-11-14 latest source-provenance checkpoint:** 3068 unique first-use original positions / 124 single-owner responsibility slices / 45 pinned originals. New route-admission code on PR #665 plus 125 newly documented exact origin positions (mostly **retrospective**). Provisional source match is not independent semantic approval; ≥6932 still short even before discounts. No Ready 20/20, merge or deployment. 
+**2026-11-14 updated first-use trace:** 3,070 provisional distinct frozen original positions / 125 ownership slices / 45 frozen originals. +2 newly traced error identity constructor lines from the original reader adapter; independent semantic approval remains absent and ≥6,930 first-use positions are still required before mechanical-only discounts. Latest code SHA `1184d9d54e`.
 
 **Post-change exact-origin correction:** the new distinct-ID guard rewrote frozen source statements 255, 263 and 292 from the existing anchor-support ownership slice; the strict audit can no longer find those *exact* original lines in the specialist. Removed all three from the JSON trace rather than disguising the code change or preserving obsolete credit. Thus **2,946 → 2,943** provisional distinct original positions (**−3**, not new refactoring), **116** slices and **45** originals; minimum remaining **7,057** even before independent semantic/move-only discounts. CI must requalify the updated ledger.
 

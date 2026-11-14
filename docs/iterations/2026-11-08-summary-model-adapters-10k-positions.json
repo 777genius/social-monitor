@@ -3938,6 +3938,15 @@
         318
       ],
       "responsibility": "Current slice extracts strict OpenAI model/provider/prompt/schema route identity plus application/remaining-budget admission before any response transport"
+    },
+    {
+      "original": "openai-responses-reader-summary-model.adapter.ts",
+      "owner": "openai-responses-reader-summary-provider-error.ts",
+      "originalPositions": [
+        433,
+        434
+      ],
+      "responsibility": "The original provider error identity is independent of outbound HTTP, consumed directly by budget admission, response trust and error classification; legacy transport re-export preserves instanceof compatibility"
     }
   ]
 }
