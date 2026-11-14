@@ -21,6 +21,11 @@ def evidence(paths):
 
 
 class CohortEvidenceTests(unittest.TestCase):
+    def test_durable_ci_family_requires_reviewed_dockerfile(self):
+        # This exact reviewed Dockerfile copies only explicit script paths, none
+        # from the durable-backend-e2e family. A new build closure needs review.
+        self.assertEqual(PACKAGE_BUILD['files']['Dockerfile'], 'ec1487f1442ddd7a965f924bc3a3f889eb857239')
+
     def test_target_app_and_frontend_overlay_allowed_without_manual_review(self):
         value = evidence(['apps/intelligence-worker/src/reader-value-runtime-options.ts', 'apps/api-gateway/src/controller.ts',
                           'compose.frontend.yml', 'apps/frontend/app/lib/main.dart'])
@@ -151,6 +156,8 @@ class CohortEvidenceTests(unittest.TestCase):
                    'scripts/lib/durable-backend-e2e-citation-coverage.ts',
                    'scripts/lib/durable-backend-e2e-frontend-env.ts',
                    'scripts/lib/durable-backend-e2e-summary-memory-evidence.ts',
+                   'scripts/lib/durable-backend-e2e-auth.ts',
+                   'scripts/lib/durable-backend-e2e-future-check.ts',
                    'scripts/check-yesterday-reader-summary-artifact-quality.ts',
                    'scripts/lib/reader-summary-artifact-technical-leak-policy.ts')
         for paths in tuple((path,) for path in allowed) + (allowed,):
@@ -178,6 +185,9 @@ class CohortEvidenceTests(unittest.TestCase):
         unsafe = ('scripts/check-source-provider-runtime-contract.test.ts',
                   'scripts/lib/source-provider-github-issues-runtime-smoke.ts/child.ts',
                   'scripts/lib/other-runtime-smoke.ts', 'scripts/ci/new-smoke.ts',
+                  'scripts/lib/durable-backend-e2e-/child.ts',
+                  'scripts/lib/durable-backend-e2e-auth.ts/child.ts',
+                  'scripts/lib/durable-backend-e2e-auth.test.ts',
                   'scripts/quickstart/bootstrap.ts', 'scripts/run-reader-summary-clean-real-day-collection.ts',
                   'scripts/lib/clean-real-day-source-providers.ts',
                   'scripts/lib/reader-summary-publication-bootstrap-sql.ts')
