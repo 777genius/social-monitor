@@ -3598,6 +3598,40 @@
         174
       ],
       "responsibility": "Provider raw citation-map JSON shape and optional reference decoding now a focused fail-closed boundary, isolated from trusted evidence citation rebinding and claim/risk admission; legacy exports retain identical function identities"
+    },
+    {
+      "original": "agent-runtime-reader-summary-topic-group-recovery.ts",
+      "owner": "agent-runtime-reader-summary-topic-anchor-support.ts",
+      "originalPositions": [
+        232,
+        233,
+        235,
+        236,
+        238,
+        255,
+        258,
+        259,
+        260,
+        261,
+        263,
+        264,
+        266,
+        267,
+        270,
+        272,
+        273,
+        274,
+        275,
+        277,
+        281,
+        283,
+        291,
+        292,
+        293,
+        294,
+        298
+      ],
+      "responsibility": "Grounded multi-node token support threshold, provider explicit-anchor filtering, and deterministic ranking of eligible ungrouped anchors are owned independently of recovered group admission and mutation; legacy consensus export preserved"
     }
   ]
 }
