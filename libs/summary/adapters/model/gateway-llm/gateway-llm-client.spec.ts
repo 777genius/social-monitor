@@ -468,17 +468,19 @@ describe("GatewayLlmClient", () => {
     expect(result.executionAttestation?.gateway?.accountRef).toBe(secondPrepare!.accountRefs[0]);
   });
 
-  it("does not replay a terminal nondispatched refusal or allocate another attempt", async () => {
+  it("bounds repeated nondispatched admission failures to two safe replays", async () => {
     const fake = harness({ request: async () => {
+      // Even when the low-level failure says never, the SDK marks this
+      // admission refusal as dispatch-free and eligible for bounded replay.
       throw safe("not_dispatched", "admission_limited", { kind: "never" });
     } });
     const result = await fake.client.runTask(command());
 
     expect(result.status).toBe("failed");
     expect(result.executionAttestation).toBeUndefined();
-    expect(fake.prepares.map((prepare) => prepare.attemptRef)).toEqual(["a1"]);
-    expect(fake.requests()).toBe(1);
-    expect(fake.sleeps).toEqual([]);
+    expect(fake.prepares.map((prepare) => prepare.attemptRef)).toEqual(["a1", "a2", "a3"]);
+    expect(fake.requests()).toBe(3);
+    expect(fake.sleeps).toHaveLength(2);
   });
 
   it("preserves terminal paid-failure diagnostics without attestation or duplicate dispatch", async () => {
