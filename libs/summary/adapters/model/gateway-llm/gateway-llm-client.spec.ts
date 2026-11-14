@@ -468,6 +468,19 @@ describe("GatewayLlmClient", () => {
     expect(result.executionAttestation?.gateway?.accountRef).toBe(secondPrepare!.accountRefs[0]);
   });
 
+  it("does not replay a terminal nondispatched refusal or allocate another attempt", async () => {
+    const fake = harness({ request: async () => {
+      throw safe("not_dispatched", "admission_limited", { kind: "never" });
+    } });
+    const result = await fake.client.runTask(command());
+
+    expect(result.status).toBe("failed");
+    expect(result.executionAttestation).toBeUndefined();
+    expect(fake.prepares.map((prepare) => prepare.attemptRef)).toEqual(["a1"]);
+    expect(fake.requests()).toBe(1);
+    expect(fake.sleeps).toEqual([]);
+  });
+
   it("preserves terminal paid-failure diagnostics without attestation or duplicate dispatch", async () => {
     const fake = harness({ request: async () => {
       throw safe("dispatch_started", "upstream_failure");

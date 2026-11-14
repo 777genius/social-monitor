@@ -3632,6 +3632,34 @@
         298
       ],
       "responsibility": "Grounded multi-node token support threshold, provider explicit-anchor filtering, and deterministic ranking of eligible ungrouped anchors are owned independently of recovered group admission and mutation; legacy consensus export preserved"
+    },
+    {
+      "original": "gateway-llm/gateway-llm-client.ts",
+      "owner": "gateway-llm/gateway-llm-dispatch-loop.ts",
+      "originalPositions": [
+        95,
+        96,
+        97,
+        98,
+        99,
+        100,
+        101,
+        122,
+        123,
+        135,
+        215,
+        217,
+        218,
+        219,
+        220,
+        221,
+        274,
+        275,
+        276,
+        287,
+        288
+      ],
+      "responsibility": "Account-gateway SDK dispatch/retry lifecycle now owns task-attempt identity, account ordering/feedback, bounded replay and settlement; adapter retains route preflight, health and outer port composition; same SDK result/attestation/fail-closed behavior"
     }
   ]
 }

@@ -6,7 +6,7 @@ import type { GatewayLlmPrepared } from "./gateway-llm-task-preparation";
 import { gatewayLlmUsage } from "./gateway-llm-usage";
 
 /** Complete a terminal SDK failure without output or execution attestation.
- * Dispatch/retry admission and account observation remain in the client;
+ * Dispatch/retry admission and account observation remain in the dispatch owner;
  * this projection owns safe diagnostics and settled usage. */
 export const completeGatewayLlmFailedTask = (params: {
   readonly command: AgentRuntimeTaskCommand;
