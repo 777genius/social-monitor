@@ -96,8 +96,13 @@ describe("promotion presentation task wire materialization", () => {
     expect(canonical.command.requestId).not.toBe(reordered.command.requestId);
     expect(copied.command.requestId).not.toBe(canonical.command.requestId);
     expect(copied.command.outputSchema).not.toEqual(canonical.command.outputSchema);
+    // Both existing prompt contracts contain bounded copy options; only their
+    // output fields and instruction policies are backend-specific.
+    expect(canonical.command.systemPrompt).toContain("SOURCE_REFERENCE_COPY_OPTIONS=");
     expect(copied.command.systemPrompt).toContain("SOURCE_REFERENCE_COPY_OPTIONS=");
-    expect(canonical.command.systemPrompt).not.toContain("SOURCE_REFERENCE_COPY_OPTIONS=");
+    expect(canonical.command.systemPrompt).toContain("Keep the canonical response fields text and qualificationJudgment.");
+    expect(copied.command.systemPrompt).toContain("Return contractVersion mimo_qualified_headline.v1.");
+    expect(canonical.command.systemPrompt).not.toContain("Return contractVersion mimo_qualified_headline.v1.");
     expect(canonical.command.systemPrompt).not.toContain(first.trustedIntent);
     expect(copied.command.systemPrompt).not.toContain(first.trustedIntent);
     expect(before).toEqual([first, second]);
