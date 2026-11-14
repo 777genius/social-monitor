@@ -7,7 +7,21 @@ import {
 } from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
 import { normalizeTopStories } from "./openai-responses-reader-summary-story-normalizer";
-import { reconcileModelTopStoriesWithCitations } from "./openai-responses-reader-summary-story-citations";
+import {
+  reconcileModelTopStoriesWithCitations,
+  clusterIdByFeedItemId,
+  clusterIdsFromCitations,
+  completeClusterCitationCoverage,
+  providerKeysCoveredByCitations,
+} from "./openai-responses-reader-summary-story-citations";
+import {
+  clusterIdByFeedItemId as clusterIndexOwner,
+  clusterIdsFromCitations as clusterIdsOwner,
+} from "./openai-responses-reader-summary-cluster-citations";
+import {
+  completeClusterCitationCoverage as coverageOwner,
+  providerKeysCoveredByCitations as providerKeysOwner,
+} from "./openai-responses-reader-summary-citation-coverage";
 import {
   fallbackTopStories, immutableEditorialSlateTopStories,
   ensureCoveragePlanStories, topUpTopStories,
@@ -245,6 +259,61 @@ describe("normalizeTopStories coverage alignment", () => {
 
 });
 
+
+describe("trusted citation cluster and provider coverage owners", () => {
+  it("retains the historical function objects after responsibility separation", () => {
+    expect(clusterIdByFeedItemId).toBe(clusterIndexOwner);
+    expect(clusterIdsFromCitations).toBe(clusterIdsOwner);
+    expect(completeClusterCitationCoverage).toBe(coverageOwner);
+    expect(providerKeysCoveredByCitations).toBe(providerKeysOwner);
+  });
+
+  it("ignores unknown citations and preserves first-seen trusted cluster order", () => {
+    const input = modelInput(2);
+    const citationById = new Map(citationMap(2).map((citation) =>
+      [citation.citationId, citation] as const,
+    ));
+    expect(clusterIdsFromCitations(
+      ["c2", "not-trusted", "c1", "c2"],
+      citationById,
+      clusterIdByFeedItemId(input),
+    )).toEqual(["story:2", "story:1"]);
+  });
+
+  it("completes provider coverage from only the cited cluster", () => {
+    const input = modelInputWithCrossProviderDuplicate();
+    const cluster = input.evidence.clusters[0];
+    if (cluster === undefined) throw new Error("Missing synthetic cluster");
+    const citations: readonly ReaderSummaryCitation[] = [
+      ...citationMap(1),
+      {
+        citationId: "c2", feedItemId: "feed-1-hn",
+        sourceItemId: "source-1-hn", providerKey: "hacker-news",
+        field: "title", canonicalUrl: "https://news.ycombinator.com/item?id=1",
+      },
+      {
+        citationId: "foreign", feedItemId: "unrelated-feed",
+        sourceItemId: "unrelated-source", providerKey: "hacker-news",
+        field: "title", canonicalUrl: "https://example.com/other",
+      },
+    ];
+    const citationById = new Map(citations.map((citation) =>
+      [citation.citationId, citation] as const,
+    ));
+    const citationIds = completeClusterCitationCoverage({
+      citationIds: ["c1", "foreign", "unknown"],
+      providerKeys: ["hacker-news", "reddit"],
+      cluster,
+      citationById,
+    });
+    expect(citationIds).toEqual(["c2", "c1"]);
+    expect(providerKeysCoveredByCitations(
+      ["hacker-news", "rss", "reddit"],
+      citationIds,
+      citationById,
+    )).toEqual(["hacker-news", "reddit"]);
+  });
+});
 
 describe("story fallback ownership", () => {
   it("keeps the historical entrypoint as the exact specialist exports", () => {

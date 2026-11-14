@@ -1263,7 +1263,14 @@
         107,
         110,
         112,
-        115,
+        115
+      ],
+      "responsibility": "Reconcile untrusted model story claims against trusted cluster and citation IDs; reject unknown or cross-cluster assertions before projection"
+    },
+    {
+      "original": "openai-responses-reader-summary-story-normalizer.ts",
+      "owner": "openai-responses-reader-summary-cluster-citations.ts",
+      "originalPositions": [
         146,
         149,
         156,
@@ -1276,7 +1283,14 @@
         171,
         172,
         174,
-        176,
+        176
+      ],
+      "responsibility": "Trusted feed-item to cluster identity and stable unique citation-cluster membership separated from response interpretation"
+    },
+    {
+      "original": "openai-responses-reader-summary-story-normalizer.ts",
+      "owner": "openai-responses-reader-summary-citation-coverage.ts",
+      "originalPositions": [
         186,
         187,
         188,
@@ -1303,7 +1317,7 @@
         227,
         228
       ],
-      "responsibility": "Original strict citation-to-story cluster/source trust and provider coverage policy separated from model-field decoding"
+      "responsibility": "Provider-diverse same-cluster citation completion and bounded citation count without admitting unrelated evidence"
     },
     {
       "original": "openai-responses-reader-summary-story-normalizer.ts",
