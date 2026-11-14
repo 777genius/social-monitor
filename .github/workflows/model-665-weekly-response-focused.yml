@@ -7,6 +7,10 @@ on:
     paths:
       - .github/workflows/model-665-weekly-response-focused.yml
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-expanded-normalization.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-weekly-section-normalization.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-weekly-sealed-compact-normalization.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-weekly-expanded-legacy-normalization.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-weekly-envelope-boundaries.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-parser.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-contract.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-failure.ts
@@ -53,6 +57,7 @@ jobs:
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
           libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-parser.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-weekly-envelope-boundaries.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-weekly-legacy-normalization.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-contract.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-weekly-model.adapter.spec.ts
