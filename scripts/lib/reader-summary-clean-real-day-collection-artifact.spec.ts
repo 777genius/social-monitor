@@ -394,3 +394,99 @@ function refreshableReport(): CleanRealDayCollectionReport {
     blockingPassed: false,
   };
 }
+
+describe("bounded X recovery artifacts", () => {
+  it("writes successful X-only scans as partial after final gate recomputation", () => {
+    const ts = require("typescript") as typeof import("typescript");
+    const vm = require("node:vm") as typeof import("node:vm");
+    const source = readFileSync(join(process.cwd(), "scripts/run-reader-summary-clean-real-day-collection.ts"), "utf8");
+    const ast = ts.createSourceFile("collection.ts", source, ts.ScriptTarget.Latest, true);
+    const matches: import("typescript").PropertyAssignment[] = [];
+    const visit = (node: import("typescript").Node): void => {
+      if (ts.isPropertyAssignment(node) && node.name.getText(ast) === "blockingPassed" && node.initializer.getText(ast).includes("Object.values(qualityGates)")) matches.push(node);
+      ts.forEachChild(node, visit);
+    };
+    visit(ast);
+    expect(matches).toHaveLength(1);
+    const expression = matches[0].initializer.getText(ast);
+    const evaluate = (xLateWindow: boolean, qualityGates: Record<string, boolean>): boolean => vm.runInNewContext(expression, { xLateWindow, qualityGates });
+    expect(evaluate(false, { source: true })).toBe(true);
+    expect(evaluate(false, { source: false })).toBe(false);
+    expect(evaluate(true, { source: true })).toBe(false);
+    expect(evaluate(true, { source: false })).toBe(false);
+    const directory = mkdtempSync(join(tmpdir(), "x-late-success-"));
+    const path = readerSummaryDailyCollectionArtifactPath({ directory, collectionDate: "2026-11-07" });
+    const baseline = refreshableReport();
+    const partial: CleanRealDayCollectionReport = { ...baseline,
+      inputs: { ...baseline.inputs, coverage: "PARTIAL_PROVIDER_WINDOW", targetPublishedWindow: { startInclusive: "2026-11-07T22:00:00.000Z", endExclusive: "2026-11-08T00:00:00.000Z" } },
+      run: { ...baseline.run, collectionDate: "2026-11-07" }, blockingPassed: evaluate(true, { source: true }) };
+    try { writeCollectionArtifactAtomically({ path, report: partial, allowPartialProviderWindow: true });
+      expect(collectionArtifactPassesBlockingValidation(partial)).toBe(false);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+  it.each([true, false])("runs the real acquisition/report/write path for X gate=%s", async (sourcePassed) => {
+    const ts = require("typescript") as typeof import("typescript");
+    const vm = require("node:vm") as typeof import("node:vm");
+    const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
+    const source = readFileSync(join(process.cwd(), "scripts/run-reader-summary-clean-real-day-collection.ts"), "utf8");
+    const ast = ts.createSourceFile("collection.ts", source, ts.ScriptTarget.Latest, true);
+    const names = ["main", "tryRunCollection"];
+    const functions = ast.statements.filter((n: import("typescript").Statement) => ts.isFunctionDeclaration(n) && n.name && names.includes(n.name.text));
+    expect(functions).toHaveLength(2);
+    const code = ts.transpileModule(functions.map((n: import("typescript").Statement) => n.getText(ast)).join("\n"), { compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.None } }).outputText;
+    const directory = mkdtempSync(join(tmpdir(), "x-late-pipeline-"));
+    const outputPath = readerSummaryDailyCollectionArtifactPath({ directory, collectionDate: "2026-11-07" });
+    const baseline = refreshableReport();
+    const syntheticReport = { ...baseline,
+      inputs: { ...baseline.inputs, scope: { tenantId: "00000000-0000-7000-8000-000000006101", workspaceId: "00000000-0000-7000-8000-000000006102" }, coverage: "PARTIAL_PROVIDER_WINDOW", targetPublishedWindow: { startInclusive: "2026-11-07T22:00:00.000Z", endExclusive: "2026-11-08T00:00:00.000Z" } },
+      run: { ...baseline.run, collectionDate: "2026-11-07" }, qualityGates: { source: sourcePassed }, blockingPassed: false };
+    const xTarget = { providerKey: "x-twitter", config: {} };
+    const close = async () => undefined;
+    const context = { process: { env: {} }, console: { log() {}, warn() {} }, Date,
+      recalculateExisting: false, artifactOnly: false, update: true, xLateWindow: true, exactDateArtifact: true,
+      targetCollectionDate: "2026-11-07", targetPublishedWindow: syntheticReport.inputs.targetPublishedWindow,
+      outputPath, maintenanceScope: undefined, providerCatchUp: false, requestedProviderKeys: ["x-twitter"],
+      databaseUrl: "synthetic", collectionPolicyEvaluatedAt: new Date(), allowHistoricalProviderCollection: true,
+      allowUnprovenExistingRowsForExactFullCollection: false, waitForXReadiness: false,
+      loadDotenvIfPresent() {}, resolvePostgresRuntimePoolConfig: () => ({}), Pool: class { end = close; },
+      createTargetDiscoveryConnection: async () => ({ client: {}, close }), PrismaIngestionWorkerConnection: { create: async () => ({ close }) },
+      discoverUnboundedCleanRealDayTargets: async () => [xTarget], createTenantScopedPgQuery: () => ({}),
+      readTargetWindowProof: async () => ({ providerCounts: {}, newestItemAtByProvider: {} }),
+      planDailyProviderCatchUp: () => ({ barrierMessage: null, providerKeysToCollect: ["x-twitter"], requiredProviderKeys: ["x-twitter"] }),
+      xTargetWindowAlreadyMeetsProductionPolicy: () => false, configuredProviderCollectionTargetItemCount: () => 100,
+      executeCleanRealDayProviderAcquisition: async () => [{ status: sourcePassed ? "succeeded" : "failed" }],
+      PrismaGitHubTrendingDurableSnapshotReader: class {}, readFreshWindowProof: async () => ({}),
+      buildReport: () => syntheticReport, noRawSecretFragments: () => true, providerMeetsProductionBlockingPolicy: () => sourcePassed,
+      isLocalDataSourceUnavailable: () => false, writeCollectionArtifactAtomically };
+    try {
+      vm.runInNewContext(code, context);
+      await expect((context as any).main()).rejects.toThrow("collection gates failed");
+      const written = JSON.parse(readFileSync(outputPath, "utf8"));
+      expect(written.blockingPassed).toBe(false);
+      expect(written.qualityGates.source).toBe(sourcePassed);
+      execFileSync("bash", ["-c", 'source "$1"; x_late_partial_artifact "$2" 2026-11-07', "_", process.env.X_LATE_MODE_FIXTURE ?? join(process.cwd(), "ops/deploy/x-late-window/mode.sh"), outputPath]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("stores a partial segment without presenting it as a full-day artifact", () => {
+    const directory = mkdtempSync(join(tmpdir(), "x-late-window-"));
+    const path = readerSummaryDailyCollectionArtifactPath({ directory, collectionDate: "2026-11-07" });
+    const baseline = refreshableReport();
+    const partial: CleanRealDayCollectionReport = {
+      ...baseline,
+      inputs: { ...baseline.inputs, coverage: "PARTIAL_PROVIDER_WINDOW", targetPublishedWindow: {
+        startInclusive: "2026-11-07T22:00:00.000Z", endExclusive: "2026-11-08T00:00:00.000Z" } },
+      run: { ...baseline.run, collectionDate: "2026-11-07" },
+      blockingPassed: false,
+    };
+    try {
+      expect(() => writeCollectionArtifactAtomically({ path, report: partial })).toThrow();
+      writeCollectionArtifactAtomically({ path, report: partial, allowPartialProviderWindow: true });
+      expect(collectionArtifactPassesBlockingValidation(partial)).toBe(false);
+      expect(() => readExactDayCollectionArtifact({ path, collectionDate: "2026-11-07" })).toThrow();
+      expect(() => writeCollectionArtifactAtomically({ path, report: { ...partial, blockingPassed: true }, allowPartialProviderWindow: true })).toThrow();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});

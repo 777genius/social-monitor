@@ -111,6 +111,7 @@ const {
   requestedProviderKeys,
   outputPath,
   exactDateArtifact,
+  xLateWindow,
   targetPublishedWindow,
   targetPublishedWindowConfig,
   maintenanceScope,
@@ -156,6 +157,7 @@ async function main(): Promise<void> {
       path: outputPath,
       report,
       requireExactDatePath: exactDateArtifact,
+      allowPartialProviderWindow: xLateWindow,
       ...(maintenanceScope === undefined
         ? {}
         : { expectedScope: maintenanceScope }),
@@ -378,7 +380,7 @@ async function tryRunCollection(): Promise<
       report: {
         ...reportWithoutSecretGate,
         qualityGates,
-        blockingPassed: Object.values(qualityGates).every(Boolean),
+        blockingPassed: !xLateWindow && Object.values(qualityGates).every(Boolean),
       },
     };
   } catch (error) {
@@ -500,7 +502,8 @@ function configForTargetPublishedWindow(
   return {
     ...config,
     ...(providerKey === "x-twitter"
-      ? { windowEnd: targetPublishedWindow.endExclusive }
+      ? { windowEnd: targetPublishedWindow.endExclusive,
+          ...(xLateWindow ? { windowHours: targetCollectionDate === "2026-11-07" ? 2 : 3 } : {}) }
       : {}),
     targetPublishedWindow: targetPublishedWindowConfig,
   };
@@ -852,6 +855,7 @@ function buildReport(params: {
       providerKeys: requiredProviderKeys,
       xCollectorConfigured: xCollectorConfigured(),
       targetPublishedWindow,
+      ...(xLateWindow ? { coverage: "PARTIAL_PROVIDER_WINDOW" as const } : {}),
     },
     run: {
       startedAt: params.startedAt.toISOString(),
@@ -863,7 +867,7 @@ function buildReport(params: {
     freshWindow: params.freshWindow,
     targetWindow: params.targetWindow,
     qualityGates,
-    blockingPassed: allQualityGatesPassed(qualityGates),
+    blockingPassed: !xLateWindow && allQualityGatesPassed(qualityGates),
   };
 }
 
