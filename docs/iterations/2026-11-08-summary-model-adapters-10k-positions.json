@@ -4299,6 +4299,34 @@
         66
       ],
       "responsibility": "Default runtime limits, provider identity and prompt/evaluation version selection isolated from active use case"
+    },
+    {
+      "original": "openai-responses-reader-summary-story-normalizer.ts",
+      "owner": "openai-responses-reader-summary-daily-editorial-stories.ts",
+      "originalPositions": [
+        446,
+        447,
+        448,
+        449,
+        451,
+        452,
+        453,
+        454,
+        455,
+        456,
+        457,
+        458,
+        459,
+        460,
+        461,
+        462,
+        463,
+        465,
+        466,
+        467,
+        468
+      ],
+      "responsibility": "Original daily-editorial plan admission, frozen selected-feed and citation binding, single-source model provenance and fail-closed rejection are now isolated from generic story reconciliation and fallback; no unplanned topics allowed"
     }
   ]
 }
