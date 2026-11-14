@@ -6,6 +6,10 @@ Count source: physical, newline-normalized LOC fetched from GitHub at this exact
 
 **Total: 84 eligible source files, 15,318 physical source LOC.**
 
+## 2026-11-14 topic cohort admission and existing specialist original-position checkpoint
+
+**Implementation SHA `15c0c8996a9af9136fec721661bfb8b52560a2c3`**, same existing Draft PR #665. Recovery admission policy now owns distinct active group IDs, eight-group cap and two-grounded-member minimum while completion owns orchestration, grounding owns selected identity checks, and assignment owns keyword projection. Strict safety order and all prompts/model/provider/scope/schema/retry/attestation invariants preserved. **+3** newly extracted first-use original implementation coordinates (baseline original `agent-runtime-reader-summary-topic-cohort-completion.ts`: 26–28); **+29** retrospective, previously uncredited disjoint original positions (18 in existing identity grounding, 11 in existing assignment). JSON manifest maps each coordinate to its one specialist; tests/comments/blank/punctuation and duplicate owners excluded. **2,754 -> 2,786** provisional positions / **108 -> 111** slices / **43 -> 44** baseline originals; **0 independently accepted meaningful LOC**. At least **7,214** more positions even before discount. Three new direct negative regression cases; existing topic integrity/grouping suites added to exact-code [focused run #43541002842](https://github.com/777genius/social-monitor/actions/runs/43541002842) (queued at writing). No Ready 20/20, PG18 six shards, independent review or merge. Keep Draft and leave #620/#663/#664 and production untouched.
+
 ## Group sizes
 
 | Group | Files | Physical LOC |
