@@ -4615,6 +4615,62 @@
         270
       ],
       "responsibility": "Editorial source plurality, quality status, flags and warning decisions are independent of source/trend field decoding; same original public function objects and rejection order."
+    },
+    {
+      "original": "openai-responses-reader-summary-weekly-response-shapes.ts",
+      "owner": "openai-responses-reader-summary-weekly-shape-validation.ts",
+      "originalPositions": [
+        85,
+        86,
+        87,
+        88,
+        89,
+        92,
+        93,
+        94,
+        96,
+        98,
+        99,
+        101,
+        119,
+        120,
+        121,
+        122,
+        124,
+        126,
+        127,
+        128,
+        130,
+        132,
+        133,
+        135,
+        136,
+        138,
+        139,
+        140,
+        141,
+        142,
+        144,
+        147,
+        148,
+        151
+      ],
+      "responsibility": "Reject non-exact object keys, non-string or duplicated citation arrays, non-JSON/non-finite payloads, circular objects and sparse arrays independently of legacy wire vocabulary"
+    },
+    {
+      "original": "openai-responses-reader-summary-weekly-response-shapes.ts",
+      "owner": "openai-responses-reader-summary-weekly-legacy-compatibility.ts",
+      "originalPositions": [
+        76,
+        79,
+        105,
+        106,
+        107,
+        108,
+        109,
+        112
+      ],
+      "responsibility": "Map legacy weekly story status and section kind discriminants without weakening strict structured-output shape validation"
     }
   ]
 }

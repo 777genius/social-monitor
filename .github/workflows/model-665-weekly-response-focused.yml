@@ -11,6 +11,10 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-sealed-compact-normalization.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-expanded-legacy-normalization.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-envelope-boundaries.spec.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-weekly-shape-validation.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-weekly-legacy-compatibility.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-shapes.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-weekly-shape-validation.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-parser.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-contract.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-failure.ts
@@ -56,6 +60,7 @@ jobs:
       - name: Weekly response failures and public adapter behavior
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
+          libs/summary/adapters/model/openai-responses-reader-summary-weekly-shape-validation.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-parser.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-weekly-envelope-boundaries.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-weekly-legacy-normalization.spec.ts

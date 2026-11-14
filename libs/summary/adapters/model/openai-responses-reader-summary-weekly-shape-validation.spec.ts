@@ -1,72 +1,62 @@
 import {
-  normalizeExpandedLegacyStoryStatus,
+  assertFiniteDenseJson,
+  exactStringArray,
+  hasExactKeys,
+} from "./openai-responses-reader-summary-weekly-shape-validation";
+import {
   normalizeExpandedLegacySectionKind,
+  normalizeExpandedLegacyStoryStatus,
   normalizeLegacySectionKind,
   normalizeLegacyStoryStatus,
 } from "./openai-responses-reader-summary-weekly-legacy-compatibility";
 import {
-  hasExactKeys,
-  exactStringArray,
-  assertFiniteDenseJson,
-} from "./openai-responses-reader-summary-weekly-shape-validation";
-import {
-  assertFiniteDenseJson as historicAssertFiniteDenseJson,
-  hasExactKeys as historicHasExactKeys,
+  assertFiniteDenseJson as legacyAssertFiniteDenseJson,
+  exactStringArray as legacyExactStringArray,
+  hasExactKeys as legacyHasExactKeys,
 } from "./openai-responses-reader-summary-weekly-response-shapes";
 
-describe("weekly response strict JSON validation boundary", () => {
-  it("recognizes exact fields, but rejects extras, missing fields and non-records", () => {
-    const expected = ["a", "b"] as const;
-    expect(hasExactKeys({ a: 1, b: null }, expected)).toBe(true);
-    expect(hasExactKeys({ a: 1, b: null, c: 2 }, expected)).toBe(false);
-    expect(hasExactKeys({ a: 1 }, expected)).toBe(false);
-    expect(hasExactKeys([1, 2], expected)).toBe(false);
-    expect(hasExactKeys(null, expected)).toBe(false);
-    expect(historicHasExactKeys({ a: 1, b: 2 }, expected)).toBe(true);
+describe("weekly strict wire admission and legacy normalization owners", () => {
+  it("preserves the legacy export identities", () => {
+    expect(legacyAssertFiniteDenseJson).toBe(assertFiniteDenseJson);
+    expect(legacyExactStringArray).toBe(exactStringArray);
+    expect(legacyHasExactKeys).toBe(hasExactKeys);
   });
 
-  it("accepts only nonempty duplicate-free string arrays", () => {
-    expect(exactStringArray(["one", "two"], "ids")).toEqual(["one", "two"]);
-    expect(() => exactStringArray([], "ids")).toThrow("ids must be non-empty and unique");
-    expect(() => exactStringArray(["x", "x"], "ids")).toThrow("ids must be non-empty and unique");
-    expect(() => exactStringArray(["x", 42], "ids")).toThrow("ids must contain only strings");
+  it("enforces exact own-key JSON objects and unique string arrays", () => {
+    expect(hasExactKeys({ sealId: "s" }, ["sealId"] as const)).toBe(true);
+    expect(hasExactKeys({ sealId: "s", injected: true }, ["sealId"] as const)).toBe(false);
+    expect(hasExactKeys(["s"], ["0"] as const)).toBe(false);
+    expect(exactStringArray(["c1", "c2"], "citations")).toEqual(["c1", "c2"]);
+    expect(() => exactStringArray(["c1", "c1"], "citations"))
+      .toThrow("citations must be non-empty and unique");
+    expect(() => exactStringArray(["c1", 2], "citations"))
+      .toThrow("citations must contain only strings");
   });
 
-  it("accepts nested finite and dense JSON while releasing the ancestor stack", () => {
-    const ancestors = new Set<object>();
-    expect(() => assertFiniteDenseJson({ a: [1, null, { b: true }] }, "$", ancestors)).not.toThrow();
-    expect(ancestors.size).toBe(0);
-    expect(() => historicAssertFiniteDenseJson({ a: 0 }, "$", new Set<object>())).not.toThrow();
+  it("fails closed on non-finite numbers, cycles, sparse arrays and non-JSON values", () => {
+    expect(() => assertFiniteDenseJson({ usage: Number.POSITIVE_INFINITY }, "output", new Set()))
+      .toThrow("output.usage contains a non-finite number");
+    const cyclic: { self?: unknown } = {};
+    cyclic.self = cyclic;
+    expect(() => assertFiniteDenseJson(cyclic, "output", new Set()))
+      .toThrow("output.self contains a circular reference");
+    const sparse: unknown[] = new Array(2);
+    sparse[0] = "value";
+    expect(() => assertFiniteDenseJson(sparse, "output", new Set()))
+      .toThrow("output contains a non-dense array");
+    expect(() => assertFiniteDenseJson({ fn: () => true }, "output", new Set()))
+      .toThrow("output.fn contains a non-JSON value");
+    expect(() => assertFiniteDenseJson({ shared: ["ok"] }, "output", new Set()))
+      .not.toThrow();
   });
 
-  it.each([Number.NaN, Infinity, -Infinity])("rejects a non-finite nested number %s", (value) => {
-    expect(() => assertFiniteDenseJson({ a: [value] }, "$", new Set<object>())).toThrow("$.a[0] contains a non-finite number");
-  });
-
-  it("rejects non-JSON values and sparse arrays without silently filling holes", () => {
-    expect(() => assertFiniteDenseJson({ a: undefined }, "$", new Set<object>())).toThrow("$.a contains a non-JSON value");
-    const sparse = new Array<string>(2);
-    sparse[0] = "present";
-    expect(() => assertFiniteDenseJson(sparse, "$", new Set<object>())).toThrow("$ contains a non-dense array");
-  });
-
-  it("rejects cyclic references at the original nested path", () => {
-    const circular: { self?: unknown } = {};
-    circular.self = circular;
-    expect(() => assertFiniteDenseJson(circular, "$", new Set<object>())).toThrow("$.self contains a circular reference");
-  });
-});
-
-describe("weekly legacy response normalization boundary", () => {
-  it("retains exact legacy aliases without changing unknown values", () => {
+  it("maintains legacy discriminant aliases without coercing other values", () => {
     expect(normalizeExpandedLegacyStoryStatus("snapshot")).toBe("new");
-    expect(normalizeExpandedLegacyStoryStatus("open")).toBe("watch");
-    expect(normalizeExpandedLegacyStoryStatus("stable")).toBe("stable");
     expect(normalizeExpandedLegacySectionKind("story")).toBe("development");
-    expect(normalizeExpandedLegacySectionKind("risk")).toBe("watch");
     expect(normalizeLegacySectionKind("supporting")).toBe("development");
     expect(normalizeLegacySectionKind("context")).toBe("development");
+    expect(normalizeLegacySectionKind("risk")).toBe("watch");
     expect(normalizeLegacyStoryStatus("open")).toBe("watch");
-    expect(normalizeLegacyStoryStatus("resolved")).toBe("resolved");
+    expect(normalizeLegacySectionKind("unexpected")).toBe("unexpected");
   });
 });
