@@ -11,6 +11,9 @@ on:
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-candidate-anchor-policy.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-candidate-anchor-policy.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-recovery.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-consensus.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-anchor-support.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-anchor-support.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-completion.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-admission.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-admission.spec.ts
@@ -64,6 +67,7 @@ jobs:
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-grounding.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-assignment.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-anchor-keys.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-topic-anchor-support.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-assignment.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-labeler.adapter.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-recovery.spec.ts
