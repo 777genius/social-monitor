@@ -3367,7 +3367,7 @@
     },
     {
       "original": "openai-responses-summary-model.adapter.ts",
-      "owner": "openai-responses-summary-model-error.ts",
+      "owner": "openai-responses-summary-error-classification.ts",
       "originalPositions": [
         268,
         269,
@@ -3382,7 +3382,7 @@
         300,
         309
       ],
-      "responsibility": "Provider failure classification preserves budget, citation, schema, abort and unknown error priorities independently of dispatch"
+      "responsibility": "Classification and retry policy owns exact frozen-source statements, not the compatibility re-export"
     },
     {
       "original": "openai-responses-summary-model.adapter.ts",

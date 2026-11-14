@@ -11,6 +11,9 @@ on:
       - libs/summary/adapters/model/openai-responses-summary-transport.ts
       - libs/summary/adapters/model/openai-responses-summary-transport-failure.ts
       - libs/summary/adapters/model/openai-responses-summary-transport.spec.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-source-content.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-source-fragments.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-source-content.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-prompt.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-legacy-instructions.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-legacy-instructions.spec.ts
@@ -90,6 +93,7 @@ jobs:
       - name: Verify prompt policy and provider request/response parity
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
+          libs/summary/adapters/model/openai-responses-reader-summary-source-content.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-legacy-instructions.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-prompt-contract.spec.ts
           libs/summary/adapters/model/openai-responses-summary-prompt.spec.ts
