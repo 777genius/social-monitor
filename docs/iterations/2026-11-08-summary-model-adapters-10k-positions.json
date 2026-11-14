@@ -4539,12 +4539,6 @@
       "original": "openai-responses-reader-summary-content-support.ts",
       "owner": "openai-responses-reader-summary-content-provenance.ts",
       "originalPositions": [
-        15,
-        19,
-        21,
-        23,
-        24,
-        25,
         169,
         170,
         171,
@@ -4569,8 +4563,6 @@
       "original": "openai-responses-reader-summary-content-support.ts",
       "owner": "openai-responses-reader-summary-content-quality-state.ts",
       "originalPositions": [
-        16,
-        22,
         29,
         39,
         227,
