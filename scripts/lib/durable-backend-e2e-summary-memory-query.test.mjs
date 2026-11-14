@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { test } from "node:test";
 
 const require = createRequire(import.meta.url);
-require("ts-node/register/transpile-only");
+require("ts-node").register({ transpileOnly: true, project: "tsconfig.build.json" });
 require("tsconfig-paths/register");
 const ts = require("typescript");
 const { summaryMemoryContextQuery } = require("./durable-backend-e2e-summary-memory-query.ts");
