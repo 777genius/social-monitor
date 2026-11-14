@@ -13,7 +13,7 @@ import {
   parseOpenAiReaderSummaryJsonObject,
   resolveOpenAiReaderSummaryUsage,
 } from "./openai-responses-reader-summary-model-support";
-import { ReaderSummaryModelProviderError } from "./openai-responses-reader-summary-transport";
+import { ReaderSummaryModelProviderError } from "./openai-responses-reader-summary-provider-error";
 
 /**
  * Decodes untrusted OpenAI responses after transport completes.

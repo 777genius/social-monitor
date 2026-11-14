@@ -7,7 +7,8 @@ import type {
 } from "../../ports";
 import { currentReaderSummaryPromptRelease } from "./openai-responses-reader-summary-prompt";
 import { admitOpenAiReaderSummaryRoute } from "./openai-responses-reader-summary-route-admission";
-import { ReaderSummaryModelProviderError } from "./openai-responses-reader-summary-transport";
+import { ReaderSummaryModelProviderError } from "./openai-responses-reader-summary-provider-error";
+import { ReaderSummaryModelProviderError as LegacyReaderSummaryModelProviderError } from "./openai-responses-reader-summary-transport";
 
 const legacyInput = { evidence: { dailyGenerationInput: undefined } } as ReaderSummaryModelInput;
 const policy = {
@@ -27,6 +28,17 @@ const routeWith = (
 });
 
 describe("OpenAI reader summary route admission", () => {
+  it("preserves provider failure identity and message through the legacy transport re-export", () => {
+    expect(LegacyReaderSummaryModelProviderError).toBe(ReaderSummaryModelProviderError);
+    const failure = {
+      kind: "budget_exceeded" as const, retryable: false,
+      message: "Reader summary model budget exceeded",
+    };
+    const error = new ReaderSummaryModelProviderError(failure);
+    expect(error.message).toBe(failure.message);
+    expect(error.failure).toEqual(failure);
+  });
+
   it("keeps the exact provider/model/schema and compiled prompt identity", () => {
     let selected: ReaderSummaryModelRoute | undefined;
     const route = routeWith(legacyInput, usage, (value) => { selected = value; });

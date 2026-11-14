@@ -25,9 +25,9 @@ import { runOpenAiReaderSummaryGeneration } from "./openai-responses-reader-summ
 import { admitOpenAiReaderSummaryRoute } from "./openai-responses-reader-summary-route-admission";
 
 import {
-  ReaderSummaryModelProviderError,
   createOpenAiReaderSummaryResponse,
 } from "./openai-responses-reader-summary-transport";
+import { ReaderSummaryModelProviderError } from "./openai-responses-reader-summary-provider-error";
 
 import {
   resolveOpenAiReaderSummarySettings,

@@ -1,4 +1,5 @@
-import type { ReaderSummaryModelFailure } from "../../ports";
+import { ReaderSummaryModelProviderError } from "./openai-responses-reader-summary-provider-error";
+export { ReaderSummaryModelProviderError } from "./openai-responses-reader-summary-provider-error";
 import {
   asRecord,
   classifyOpenAiReaderSummaryHttpFailure,
@@ -6,12 +7,6 @@ import {
 } from "./openai-responses-reader-summary-model-support";
 
 export type OpenAiReaderSummaryFetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
-
-export class ReaderSummaryModelProviderError extends Error {
-  constructor(readonly failure: ReaderSummaryModelFailure) {
-    super(failure.message);
-  }
-}
 
 export const createOpenAiReaderSummaryResponse = async (params: Readonly<{
   request: Record<string, unknown>;

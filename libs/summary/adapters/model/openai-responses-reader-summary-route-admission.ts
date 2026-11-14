@@ -8,7 +8,7 @@ import type {
 import { withReaderSummaryInputPromptVersion } from "./reader-summary-input-prompt-route";
 import { isReaderSummaryBudgetExceeded } from "./reader-summary-token-budget";
 import { currentReaderSummaryPromptRelease } from "./openai-responses-reader-summary-prompt";
-import { ReaderSummaryModelProviderError } from "./openai-responses-reader-summary-transport";
+import { ReaderSummaryModelProviderError } from "./openai-responses-reader-summary-provider-error";
 
 const provider = "openai-responses";
 

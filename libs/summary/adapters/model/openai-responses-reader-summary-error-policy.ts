@@ -1,6 +1,6 @@
 import type { ReaderSummaryModelFailure } from "../../ports";
 import { OpenAiReaderSummaryOutputParseError } from "./openai-responses-reader-summary-model-support";
-import { ReaderSummaryModelProviderError } from "./openai-responses-reader-summary-transport";
+import { ReaderSummaryModelProviderError } from "./openai-responses-reader-summary-provider-error";
 
 export const classifyOpenAiReaderSummaryModelError = (error: unknown): ReaderSummaryModelFailure => {
     if (error instanceof ReaderSummaryModelProviderError) {

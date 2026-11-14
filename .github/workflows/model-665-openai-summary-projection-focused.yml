@@ -32,6 +32,7 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-output-text.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-model-support.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-route-admission.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-provider-error.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-route-admission.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-model.adapter.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-response-parser.spec.ts
