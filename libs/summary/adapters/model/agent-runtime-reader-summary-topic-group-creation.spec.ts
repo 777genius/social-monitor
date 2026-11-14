@@ -113,4 +113,21 @@ describe("assignNewGroundedTopicGroups", () => {
     expect([...result.recoveredNodeIds]).toEqual(["already"]);
     expect([...result.semanticAnchorsByGroup.keys()]).toEqual(["group:anthropic"]);
   });
+
+  it("does not create a recovered cohort from duplicate views of one node", () => {
+    const labels = [label("same"), label("same")];
+    const result = assignNewGroundedTopicGroups({
+      nodeLabels: labels,
+      identityAnchorsByNodeId: new Map([["same", new Set(["orion"])]]),
+      recoveryCandidates: [{ key: "orion", display: "Orion" }],
+      activeGroupIds: new Set(),
+      semanticAnchorsByGroup: new Map(),
+      recoveredNodeIds: new Set(),
+      availableGroupSlots: 1,
+    });
+    expect(result.nodeLabels.map((item) => item.groupId)).toEqual([ungrouped, ungrouped]);
+    expect(result.recoveredNodeIds.size).toBe(0);
+    expect(result.semanticAnchorsByGroup.size).toBe(0);
+    expect(labels.every((item) => item.groupId === ungrouped)).toBe(true);
+  });
 });

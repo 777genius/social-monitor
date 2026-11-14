@@ -35,7 +35,7 @@ export const sharedUngroupedAnchors = (
   readonly display: string;
   readonly score: number;
 }[] => {
-  const ungroupedIds = labels
+  const ungroupedIds = [...new Set(labels
     .filter(
       (label) =>
         label.groupId === READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID &&
@@ -43,7 +43,7 @@ export const sharedUngroupedAnchors = (
           label.semantic.confidenceScore >=
             READER_SUMMARY_TOPIC_SEMANTIC_CONFIDENCE_MIN),
     )
-    .map((label) => label.nodeId);
+    .map((label) => label.nodeId))];
   const support = anchorSupport(ungroupedIds, anchorsByNodeId);
 
   return [...support.entries()]
@@ -72,7 +72,7 @@ const anchorSupport = (
   anchorsByNodeId: ReadonlyMap<string, ReadonlySet<string>>,
 ): Map<string, number> => {
   const support = new Map<string, number>();
-  for (const nodeId of nodeIds) {
+  for (const nodeId of new Set(nodeIds)) {
     for (const anchor of anchorsByNodeId.get(nodeId) ?? []) {
       support.set(anchor, (support.get(anchor) ?? 0) + 1);
     }

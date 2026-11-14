@@ -41,14 +41,14 @@ export const assignNewGroundedTopicGroups = (params: {
           params.identityAnchorsByNodeId.get(label.nodeId)?.has(recovery.key) === true,
       )
       .map((label) => label.nodeId);
-    if (matchingNodeIds.length < 2) {
+    const matchingNodeIdSet = new Set(matchingNodeIds);
+    if (matchingNodeIdSet.size < 2) {
       continue;
     }
     const groupId = uniqueRecoveredGroupId(
       recovery.display,
       new Set([...activeGroupIds, ...semanticAnchorsByGroup.keys()]),
     );
-    const matchingNodeIdSet = new Set(matchingNodeIds);
     nodeLabels = nodeLabels.map((label) =>
       matchingNodeIdSet.has(label.nodeId) ? { ...label, groupId } : label,
     );
