@@ -15,6 +15,11 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-legacy-instructions.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-legacy-instructions.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-content-items.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-content-quality.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-content-provenance.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-content-quality-state.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-content-quality-boundaries.spec.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-content-quality.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-item-normalization.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-citation-binding.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-item-normalization.spec.ts
@@ -94,6 +99,8 @@ jobs:
           libs/summary/adapters/model/openai-responses-reader-summary-item-normalization.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-content-items.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-content-support.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-content-quality.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-content-quality-boundaries.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-response-parser.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-model.adapter.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-route-admission.spec.ts
