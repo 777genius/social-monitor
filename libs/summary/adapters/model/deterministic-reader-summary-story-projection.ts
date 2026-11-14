@@ -1,3 +1,7 @@
+import {
+  citationIdForDeterministicReaderEvidence,
+  indexDeterministicReaderSummaryCitations,
+} from "./deterministic-reader-summary-citation-index";
 import type { ProviderReaderSummaryAttempt, ReaderSummaryModelInput } from "../../ports";
 
 export const buildStorySummary = (
@@ -7,9 +11,9 @@ export const buildStorySummary = (
 ): string =>
   `${title} appeared across ${interestIds.length} interest(s) and ${providerKeys.length} provider(s).`;
 
-export const buildInterestHighlights = (
+const buildInterestHighlightsWithIndex = (
   selectedEvidence: ReaderSummaryModelInput["evidence"]["selectedEvidence"],
-  citationMap: ProviderReaderSummaryAttempt["draft"]["citationMap"],
+  citationIdsByFeedItemId: ReadonlyMap<string, string>,
 ) => {
   const firstByInterest = new Map<
     string,
@@ -28,11 +32,19 @@ export const buildInterestHighlights = (
       title: item.title,
       summary: item.whyImportant[0] ?? "Selected as a relevant summary signal.",
       citationIds: [
-        citationMap.find((citation) => citation.feedItemId === item.feedItemId)
-          ?.citationId ?? "c1",
+        citationIdForDeterministicReaderEvidence(citationIdsByFeedItemId, item.feedItemId),
       ],
     }));
 };
+
+// Preserve the original public helper contract for existing deterministic consumers.
+export const buildInterestHighlights = (
+  selectedEvidence: ReaderSummaryModelInput["evidence"]["selectedEvidence"],
+  citationMap: ProviderReaderSummaryAttempt["draft"]["citationMap"],
+) => buildInterestHighlightsWithIndex(
+  selectedEvidence,
+  indexDeterministicReaderSummaryCitations(citationMap),
+);
 
 /**
  * Project citation-bound reader stories without owning ranking, editorial-slate
@@ -60,6 +72,7 @@ export const buildDeterministicReaderSummaryStoryProjection = ({
     field: "title" as const,
     canonicalUrl: item.canonicalUrl,
   }));
+  const citationIdsByFeedItemId = indexDeterministicReaderSummaryCitations(citationMap);
   const topStories = topStoryClusters.map((cluster, index) => {
     const representative =
       selectedEvidence.find(
@@ -67,10 +80,9 @@ export const buildDeterministicReaderSummaryStoryProjection = ({
       ) ??
       selectedEvidence[index] ??
       firstItem;
-    const citationId =
-      citationMap.find(
-        (citation) => citation.feedItemId === representative.feedItemId,
-      )?.citationId ?? "c1";
+    const citationId = citationIdForDeterministicReaderEvidence(
+      citationIdsByFeedItemId, representative.feedItemId,
+    );
 
     return {
       storyClusterId: cluster.id,
@@ -86,7 +98,7 @@ export const buildDeterministicReaderSummaryStoryProjection = ({
     };
   });
   const interestHighlights = input.policy.includeInterestHighlights
-    ? buildInterestHighlights(selectedEvidence, citationMap)
+    ? buildInterestHighlightsWithIndex(selectedEvidence, citationIdsByFeedItemId)
     : [];
   const repeatedSignals = input.policy.includeRepeatedSignals
     ? input.evidence.clusters
@@ -97,10 +109,9 @@ export const buildDeterministicReaderSummaryStoryProjection = ({
             selectedEvidence.find(
               (item) => item.feedItemId === cluster.representativeFeedItemId,
             ) ?? firstItem;
-          const citationId =
-            citationMap.find(
-              (citation) => citation.feedItemId === representative.feedItemId,
-            )?.citationId ?? "c1";
+          const citationId = citationIdForDeterministicReaderEvidence(
+            citationIdsByFeedItemId, representative.feedItemId,
+          );
 
           return {
             storyClusterId: cluster.id,
