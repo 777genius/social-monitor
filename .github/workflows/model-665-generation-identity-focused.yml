@@ -10,6 +10,8 @@ on:
       - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
       - libs/summary/adapters/model/reader-summary-generation-identity-policy.ts
       - libs/summary/adapters/model/reader-summary-generation-identity-core.ts
+      - libs/summary/adapters/model/reader-summary-generation-effort-policy.ts
+      - libs/summary/adapters/model/reader-summary-generation-effort-policy.spec.ts
       - libs/summary/adapters/model/reader-summary-generation-env-resolution.ts
       - libs/summary/adapters/model/reader-summary-generation-identity-policy.spec.ts
 permissions:
@@ -50,6 +52,7 @@ jobs:
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
           libs/summary/adapters/model/reader-summary-generation-identity-policy.spec.ts
+          libs/summary/adapters/model/reader-summary-generation-effort-policy.spec.ts
           libs/summary/adapters/model/reader-summary-gateway-route-policy.spec.ts
           libs/summary/adapters/model/codex-reader-summary-gateway-route-policy.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-model.adapter.spec.ts

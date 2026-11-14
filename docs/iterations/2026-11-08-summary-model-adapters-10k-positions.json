@@ -1514,17 +1514,6 @@
       "original": "active-reader-summary-generation-profile.ts",
       "owner": "reader-summary-generation-identity-core.ts",
       "originalPositions": [
-        176,
-        177,
-        191,
-        192,
-        193,
-        194,
-        195,
-        196,
-        197,
-        198,
-        200,
         208,
         209,
         211,
@@ -1566,7 +1555,25 @@
         461,
         462
       ],
-      "responsibility": "Pure backend/model/reasoning-effort admission and exact provider identity, isolated from process environment translation; same frozen source positions moved from former identity-policy module, counted once"
+      "responsibility": "Pure provider/backend/model identity and exact provider admission, separate from environment mapping and gateway-versus-CLI effort policy; previous coordinates still counted once"
+    },
+    {
+      "original": "active-reader-summary-generation-profile.ts",
+      "owner": "reader-summary-generation-effort-policy.ts",
+      "originalPositions": [
+        176,
+        177,
+        191,
+        192,
+        193,
+        194,
+        195,
+        196,
+        197,
+        198,
+        200
+      ],
+      "responsibility": "Pure backend-specific effort admission and wire reasoning-control omission, isolated from model/provider identity and env resolution; existing 11 frozen source positions reassigned, zero new LOC credit"
     },
     {
       "original": "active-reader-summary-generation-profile.ts",
