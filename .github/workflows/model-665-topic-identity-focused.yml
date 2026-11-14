@@ -25,6 +25,8 @@ on:
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-assignment.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-anchor-keys.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-policy.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-support-policy.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-support-policy.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-label-plan-normalizer.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-assignment.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-anchor-keys.spec.ts
@@ -74,6 +76,7 @@ jobs:
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-anchor-support.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-creation.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-assignment.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-support-policy.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-labeler.adapter.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-recovery.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-cohort-grouping.spec.ts
