@@ -7,6 +7,11 @@ on:
     paths:
       - .github/workflows/model-665-story-evidence-focused.yml
       - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
+      - libs/summary/adapters/model/openai-responses-reader-summary-story-fallback.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-story-fallback-evidence.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-story-fallback-slate.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-story-fallback-coverage.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-story-normalizer.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-story-evidence-prompt.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-verifier-prompt.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-identity.ts
@@ -50,5 +55,6 @@ jobs:
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
           libs/summary/adapters/model/agent-runtime-reader-summary-story-evidence-prompt.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-story-normalizer.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-contracts.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter.spec.ts

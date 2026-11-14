@@ -8,6 +8,16 @@ import {
 import type { ReaderSummaryModelInput } from "../../ports";
 import { normalizeTopStories } from "./openai-responses-reader-summary-story-normalizer";
 import { reconcileModelTopStoriesWithCitations } from "./openai-responses-reader-summary-story-citations";
+import {
+  fallbackTopStories, immutableEditorialSlateTopStories,
+  ensureCoveragePlanStories, topUpTopStories,
+} from "./openai-responses-reader-summary-story-fallback";
+import { fallbackTopStories as fallbackEvidenceOwner } from "./openai-responses-reader-summary-story-fallback-evidence";
+import { immutableEditorialSlateTopStories as slateOwner } from "./openai-responses-reader-summary-story-fallback-slate";
+import {
+  ensureCoveragePlanStories as coverageOwner,
+  topUpTopStories as topUpOwner,
+} from "./openai-responses-reader-summary-story-fallback-coverage";
 
 describe("normalizeTopStories coverage alignment", () => {
   it("adds the approved coverage lead when the model returns eight other stories", () => {
@@ -233,6 +243,48 @@ describe("normalizeTopStories coverage alignment", () => {
     })]);
   });
 
+});
+
+
+describe("story fallback ownership", () => {
+  it("keeps the historical entrypoint as the exact specialist exports", () => {
+    expect(fallbackTopStories).toBe(fallbackEvidenceOwner);
+    expect(immutableEditorialSlateTopStories).toBe(slateOwner);
+    expect(ensureCoveragePlanStories).toBe(coverageOwner);
+    expect(topUpTopStories).toBe(topUpOwner);
+  });
+
+  it("preserves selected-evidence citations and planned coverage order", () => {
+    const input = modelInput(3);
+    const citations = citationMap(3);
+    const fallback = fallbackTopStories(input, citations);
+    expect(fallback.map((story) => story.citationIds)).toEqual([["c1"], ["c2"], ["c3"]]);
+    const covered = ensureCoveragePlanStories(fallback.slice(0, 2), input, citations);
+    expect(covered.map((story) => story.storyClusterId))
+      .toEqual(["story:3", "story:1", "story:2"]);
+    expect(topUpTopStories(covered, input, citations)).toBe(covered);
+    expect(topUpTopStories(fallback.slice(0, 1), input, citations)).toEqual(fallback);
+  });
+
+  it("rejects an immutable editorial Top without any trusted cited source", () => {
+    const base = modelInput(1);
+    const missing = slateEntry("missing-feed", "story:missing", "top", 1);
+    const input: ReaderSummaryModelInput = {
+      ...base,
+      evidence: {
+        ...base.evidence,
+        editorialSlate: {
+          policyVersion: READER_SUMMARY_EDITORIAL_SLATE_VERSION,
+          top: [missing], additional: [], excluded: [],
+          orderedCandidateIds: [missing.candidateId],
+          orderedCanonicalIdentities: [missing.canonicalIdentity],
+          digestInputs: [missing.digestInput], digestMaterial: "fixture-digest",
+        },
+      },
+    };
+    expect(() => immutableEditorialSlateTopStories([], input, citationMap(1)))
+      .toThrow("Editorial slate Top entry has no citable evidence: missing-feed");
+  });
 });
 
 const slateEntry = (
