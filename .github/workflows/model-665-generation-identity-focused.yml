@@ -8,6 +8,10 @@ on:
     paths:
       - .github/workflows/model-665-generation-identity-focused.yml
       - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
+      - libs/summary/adapters/model/reader-summary-gateway-route-policy.ts
+      - libs/summary/adapters/model/reader-summary-gateway-model-policy.ts
+      - libs/summary/adapters/model/reader-summary-gateway-execution-policy.ts
+      - libs/summary/adapters/model/reader-summary-gateway-route-policy.spec.ts
       - libs/summary/adapters/model/reader-summary-generation-identity-policy.ts
       - libs/summary/adapters/model/reader-summary-generation-identity-core.ts
       - libs/summary/adapters/model/reader-summary-generation-exact-settings.ts

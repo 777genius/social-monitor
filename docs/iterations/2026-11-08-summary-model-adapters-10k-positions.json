@@ -1495,24 +1495,6 @@
       "original": "active-reader-summary-generation-profile.ts",
       "owner": "reader-summary-gateway-route-policy.ts",
       "originalPositions": [
-        48,
-        49,
-        51,
-        52,
-        54,
-        73,
-        74,
-        75,
-        80,
-        87,
-        88,
-        91,
-        92,
-        105,
-        106,
-        107,
-        108,
-        109,
         119,
         120,
         121,
@@ -1534,7 +1516,39 @@
         152,
         154
       ],
-      "responsibility": "Gateway-only model/effort allowlists, explicit backend routing, untrusted attested gateway identity and purpose-specific model compatibility isolated from daily generation/legacy CLI identity; legacy profile exports preserved"
+      "responsibility": "Gateway backend environment routing, Kimi/OpenRouter explicit control admission and purpose model override; public facade preserved"
+    },
+    {
+      "original": "active-reader-summary-generation-profile.ts",
+      "owner": "reader-summary-gateway-model-policy.ts",
+      "originalPositions": [
+        48,
+        49,
+        51,
+        52,
+        54,
+        73,
+        74,
+        75,
+        80,
+        87,
+        88,
+        91,
+        92
+      ],
+      "responsibility": "Pure gateway-only backend/model/effort allowlists, independent of environment routing and attested execution"
+    },
+    {
+      "original": "active-reader-summary-generation-profile.ts",
+      "owner": "reader-summary-gateway-execution-policy.ts",
+      "originalPositions": [
+        105,
+        106,
+        107,
+        108,
+        109
+      ],
+      "responsibility": "Fail-closed attested gateway engine/model/effort admission with strict Codex model-effort pairing"
     },
     {
       "original": "active-reader-summary-generation-profile.ts",
