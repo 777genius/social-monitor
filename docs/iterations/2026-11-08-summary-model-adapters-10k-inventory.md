@@ -1,3 +1,8 @@
+## 2026-11-15 — gRPC attestation and accounting owner split (no newly credited original LOC)
+
+- Existing Draft #665 only. Pinned `grpc-agent-runtime-client.ts` source ownership: `43` old gRPC codec + `20` strict usage/duration decoder + `39` attestation identity decoder = `102` previously credited disjoint source coordinates; their source statement strings have been matched to the new owners without duplicates.
+- Exact baseline is still 84 eligible originals/15,318 PHYSICAL LOC. Ledger remains **3,969 provisional unique original implementation positions / 182 slices / 51 original files**; **+0 new**. New Jest covers strict untrusted amount/duration boundaries, request-attestation identity, unknown provider and unknown selected output kind, along with full gRPC client regression. Current branch requires exact-HEAD terminal CI, independent meaningful/move-only approval, main reconciliation, full 20/20 PG18/security/image/E2E and merge/postmerge before completion.
+
 ## 2026-11-15 — Split verified presentation and bounded conversation projection (zero new LOC credit)
 
 - Pinned frozen original `openai-responses-reader-summary-adaptive-evidence.ts`: existing 69 previously traced original implementation positions redistributed once (prompt evidence projection **36**, verified reader presentation admission **9**, bounded conversation context **24**). Machine ledger remains **3,969 provisional disjoint source positions / 180 responsibility slices / 51 pinned files**, frozen baseline **84 files / 15,318 PHYSICAL LOC**; no new credit for relocation or repaired TypeScript-only fixtures. Independent semantic/move-only review required.

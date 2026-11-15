@@ -617,6 +617,32 @@
         256,
         257,
         260,
+        372,
+        376,
+        378,
+        379,
+        380,
+        381,
+        382,
+        391,
+        393,
+        395,
+        396,
+        397,
+        403,
+        408,
+        409,
+        413,
+        415,
+        416,
+        419
+      ],
+      "responsibility": "Decode response schema/status/output/failure and health transport enums, then enforce cross-field attestation-output consistency without owning attestation admission or accounting validation. Previously counted frozen coordinates only."
+    },
+    {
+      "original": "grpc-agent-runtime-client.ts",
+      "owner": "grpc-agent-runtime-measurement-decoder.ts",
+      "originalPositions": [
         266,
         269,
         271,
@@ -636,7 +662,14 @@
         295,
         296,
         298,
-        299,
+        299
+      ],
+      "responsibility": "Validate untrusted gRPC token totals, nonnegative finite cost and bounded duration independently of wire envelope and attestation; previously credited positions relocated once, +0 new original LOC."
+    },
+    {
+      "original": "grpc-agent-runtime-client.ts",
+      "owner": "grpc-agent-runtime-attestation-decoder.ts",
+      "originalPositions": [
         301,
         305,
         306,
@@ -675,28 +708,9 @@
         364,
         366,
         367,
-        368,
-        372,
-        376,
-        378,
-        379,
-        380,
-        381,
-        382,
-        391,
-        393,
-        395,
-        396,
-        397,
-        403,
-        408,
-        409,
-        413,
-        415,
-        416,
-        419
+        368
       ],
-      "responsibility": "Previously implemented strict gRPC wire status/provider/usage/attestation/JSON decoding isolated from transport channel setup and unary deadline/metadata orchestration. First-of-kind exact frozen source positions only; no imported names or semantic 10k acceptance. Conservative filter excludes original function-signature/typed parameter coordinates even when exact text was relocated."
+      "responsibility": "Bind runtime engine/package, request/purpose/provider identity, hashes and output kind to a trusted task command before cross-field output comparison; previously credited positions relocated once, +0 new original LOC."
     },
     {
       "original": "openai-responses-reader-summary-narrative.ts",

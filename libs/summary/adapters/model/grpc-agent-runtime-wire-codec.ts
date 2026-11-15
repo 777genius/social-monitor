@@ -1,18 +1,15 @@
 import {
   AgentRuntimeHealthStatus as GrpcAgentRuntimeHealthStatus,
   AgentRuntimeProvider as GrpcAgentRuntimeProvider,
-  AgentRuntimeSelectedOutputKind as GrpcAgentRuntimeSelectedOutputKind,
   AgentRuntimeTaskStatus as GrpcAgentRuntimeTaskStatus,
   type AgentRuntimeTaskResponse,
 } from "@social-monitor/contracts/generated/grpc/agent_runtime/v1/agent_runtime";
 import {
   executionAttestationOutputMatches,
-  isConcreteRuntimePackageVersion,
-  isSha256Hex,
-  subscriptionRuntimeEngine,
 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
+import { readExecutionAttestation } from "./grpc-agent-runtime-attestation-decoder";
+import { readGrpcUsage, readOptionalDurationMs } from "./grpc-agent-runtime-measurement-decoder";
 import type {
-  AgentRuntimeExecutionAttestation,
   AgentRuntimeHealthStatus,
   AgentRuntimeProvider,
   AgentRuntimeTaskCommand,
@@ -83,112 +80,6 @@ export const fromGrpcTaskResponse = (
     );
   }
   return result;
-};
-
-const readGrpcUsage = (
-  value: AgentRuntimeTaskResponse["usage"],
-): AgentRuntimeTaskResult["usage"] => {
-  if (value === undefined) return undefined;
-  if (
-    !nonNegativeSafeInteger(value.inputTokens) ||
-    !nonNegativeSafeInteger(value.outputTokens) ||
-    !nonNegativeSafeInteger(value.totalTokens) ||
-    value.totalTokens !== value.inputTokens + value.outputTokens ||
-    !nonNegativeFiniteNumber(value.estimatedCostUsd)
-  ) {
-    throw new Error("Agent runtime usage is malformed");
-  }
-  return {
-    inputTokens: value.inputTokens,
-    outputTokens: value.outputTokens,
-    totalTokens: value.totalTokens,
-    estimatedCostUsd: value.estimatedCostUsd,
-  };
-};
-
-const readOptionalDurationMs = (value: number | undefined): number | undefined => {
-  if (value === undefined) return undefined;
-  if (!nonNegativeSafeInteger(value)) {
-    throw new Error("Agent runtime duration is malformed");
-  }
-  return value;
-};
-
-const nonNegativeSafeInteger = (value: unknown): value is number =>
-  Number.isSafeInteger(value) && (value as number) >= 0;
-
-const nonNegativeFiniteNumber = (value: unknown): value is number =>
-  typeof value === "number" && Number.isFinite(value) && value >= 0;
-
-const readExecutionAttestation = (
-  response: AgentRuntimeTaskResponse,
-  command: AgentRuntimeTaskCommand,
-): AgentRuntimeExecutionAttestation | undefined => {
-  const value = response.executionAttestation;
-  if (value === undefined) {
-    return undefined;
-  }
-  const provider = fromGrpcProvider(value.provider);
-  const selectedOutputKind = fromGrpcSelectedOutputKind(
-    value.selectedOutputKind,
-  );
-  if (
-    value.schemaVersion !== 1 ||
-    value.requestId !== command.requestId ||
-    value.purpose !== command.purpose ||
-    provider !== command.provider ||
-    value.model.trim().length === 0 ||
-    value.reasoningEffort.trim().length === 0 ||
-    value.runtimeEngine !== subscriptionRuntimeEngine ||
-    !isConcreteRuntimePackageVersion(value.runtimePackageVersion) ||
-    !isSha256Hex(value.canonicalRequestSha256) ||
-    !isSha256Hex(value.launcherSha256) ||
-    !isSha256Hex(value.selectedOutputSha256)
-  ) {
-    throw new Error("Agent runtime execution attestation is malformed");
-  }
-  return {
-    schemaVersion: 1,
-    requestId: value.requestId,
-    purpose: value.purpose,
-    canonicalRequestSha256: value.canonicalRequestSha256,
-    provider,
-    model: value.model,
-    reasoningEffort: value.reasoningEffort,
-    runtimeEngine: subscriptionRuntimeEngine,
-    runtimePackageVersion: value.runtimePackageVersion,
-    launcherSha256: value.launcherSha256,
-    selectedOutputKind,
-    selectedOutputSha256: value.selectedOutputSha256,
-  };
-};
-
-const fromGrpcProvider = (
-  provider: GrpcAgentRuntimeProvider,
-): AgentRuntimeProvider => {
-  switch (provider) {
-    case GrpcAgentRuntimeProvider.AGENT_RUNTIME_PROVIDER_CODEX:
-      return "codex";
-    case GrpcAgentRuntimeProvider.AGENT_RUNTIME_PROVIDER_CLAUDE:
-      return "claude";
-    case GrpcAgentRuntimeProvider.AGENT_RUNTIME_PROVIDER_UNSPECIFIED:
-    case GrpcAgentRuntimeProvider.UNRECOGNIZED:
-      throw new Error("Attested agent runtime provider is unspecified");
-  }
-};
-
-const fromGrpcSelectedOutputKind = (
-  kind: GrpcAgentRuntimeSelectedOutputKind,
-): AgentRuntimeExecutionAttestation["selectedOutputKind"] => {
-  switch (kind) {
-    case GrpcAgentRuntimeSelectedOutputKind.AGENT_RUNTIME_SELECTED_OUTPUT_KIND_STRUCTURED_OUTPUT:
-      return "structured_output";
-    case GrpcAgentRuntimeSelectedOutputKind.AGENT_RUNTIME_SELECTED_OUTPUT_KIND_OUTPUT_TEXT:
-      return "output_text";
-    case GrpcAgentRuntimeSelectedOutputKind.AGENT_RUNTIME_SELECTED_OUTPUT_KIND_UNSPECIFIED:
-    case GrpcAgentRuntimeSelectedOutputKind.UNRECOGNIZED:
-      throw new Error("Attested agent runtime output kind is unspecified");
-  }
 };
 
 const fromGrpcTaskStatus = (
