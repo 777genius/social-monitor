@@ -1,8 +1,5 @@
 import type { SummaryEvidenceSelection } from "../../domain";
-import {
-  buildReaderSummaryEvidenceCitationMap,
-  readerSummaryCitableEvidence,
-} from "./reader-summary-evidence-citation-map";
+import { constrainDailySynthesisCitations } from "./openai-responses-reader-summary-daily-synthesis-citation-policy";
 import {
   openAiReaderSummaryJsonSchema,
   stringSchema,
@@ -51,16 +48,8 @@ export function readerSummaryWriterSchema(input: {
 }) {
   if (input.dailyEditorialPlan === undefined) return openAiReaderSummaryJsonSchema;
   if (input.dailyEditorialPlan.version !== "reader_summary.daily_editorial.v2") return dailyEditorialReaderSummaryJsonSchema;
-  const assigned = new Set(input.dailyEditorialPlan.topics?.flatMap(topic => topic.feedItemIds) ?? []);
-  const stories = new Set(input.evidence?.dailyGenerationInput?.selected.filter(item => assigned.has(item.feedItemId)).map(item => item.storyId));
-  if (input.evidence === undefined) return dailySynthesisReaderSummaryJsonSchema;
-  const permitted = buildReaderSummaryEvidenceCitationMap(readerSummaryCitableEvidence(input.evidence))
-    .filter(citation => assigned.has(citation.feedItemId)).map(citation => citation.citationId);
-  const citationIds = dailySynthesisReaderSummaryJsonSchema.$defs.narrativeSection.properties.citationIds;
-  return {...dailySynthesisReaderSummaryJsonSchema,$defs:{...dailySynthesisReaderSummaryJsonSchema.$defs,narrativeSection:{
-    ...dailySynthesisReaderSummaryJsonSchema.$defs.narrativeSection,
-    properties:{...dailySynthesisReaderSummaryJsonSchema.$defs.narrativeSection.properties,
-      citationIds: {...citationIds, minItems: stories.size < 2 ? 1 : 2,
-        items: {...citationIds.items, enum: permitted}}},
-  }}};
+  return constrainDailySynthesisCitations({
+    dailyEditorialPlan: input.dailyEditorialPlan,
+    evidence: input.evidence,
+  }, dailySynthesisReaderSummaryJsonSchema);
 }
