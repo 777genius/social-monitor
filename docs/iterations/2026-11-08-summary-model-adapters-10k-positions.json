@@ -5606,6 +5606,59 @@
         116
       ],
       "responsibility": "Previously extracted provider-diverse ranked selection, counts and deterministic representative replacement separated from independently owned pinned/representative cluster selection; historical import surface preserved. Provisional original provenance, subject to move-only/semantic discount. Excludes declarations, parameter types, delimiters and lone continuation/arrow syntax."
+    },
+    {
+      "original": "openai-responses-reader-summary-json.ts",
+      "owner": "openai-responses-reader-summary-raw-values.ts",
+      "originalPositions": [
+        2,
+        3,
+        4,
+        7,
+        8,
+        11,
+        15,
+        16,
+        17,
+        20,
+        21,
+        24,
+        31,
+        32,
+        35,
+        42,
+        43,
+        50,
+        51,
+        52,
+        58,
+        59,
+        60,
+        63,
+        71,
+        72,
+        74,
+        75,
+        78,
+        82,
+        83,
+        84
+      ],
+      "responsibility": "Previously extracted strict provider JSON admission: object, required string/array/record, finite-number and enum failure decisions plus bounded optional numeric decode; historic mixed JSON entrypoint now export-only facade. Retrospective nonblank executable source coordinates; no implementation change or independent meaningful-LOC acceptance today."
+    },
+    {
+      "original": "openai-responses-reader-summary-json.ts",
+      "owner": "openai-responses-reader-summary-text-values.ts",
+      "originalPositions": [
+        91,
+        92,
+        100,
+        105,
+        106,
+        107,
+        111
+      ],
+      "responsibility": "Previously extracted separately tolerant presentation string identity, known subset and fallback selection, without importing the strict provider validation caller; same legacy function object reexports. Conservative first-use original executable coordinates only, subject to independent move-only/semantic discount."
     }
   ]
 }
