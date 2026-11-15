@@ -57,6 +57,10 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-model.adapter.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-response-parser.spec.ts
       - libs/summary/adapters/model/openai-responses-summary-json.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-json.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-raw-values.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-text-values.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-value-boundaries.spec.ts
       - libs/summary/adapters/model/openai-promotion-presentation-v3.builder.ts
       - libs/summary/adapters/model/openai-promotion-presentation-v3-batch-admission.ts
       - libs/summary/adapters/model/openai-promotion-presentation-v3-result-policy.ts
@@ -111,6 +115,7 @@ jobs:
           libs/summary/adapters/model/openai-responses-summary-draft-shape.spec.ts
           libs/summary/adapters/model/openai-responses-summary-quality.spec.ts
           libs/summary/adapters/model/openai-responses-summary-json-boundaries.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-value-boundaries.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-item-normalization.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-content-items.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-content-support.spec.ts
