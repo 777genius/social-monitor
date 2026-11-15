@@ -30,4 +30,31 @@ describe("Agent Runtime topic relation output contract", () => {
     ] }, relations)).toThrow("must decide every requested pair exactly once");
     expect(() => parseJsonObject("[]")).toThrow("must be an object");
   });
+  it("checks exact unordered pair coverage, not just response length", () => {
+    const requested: ReaderSummaryTopicRelationVerifierInput["relations"] = [
+      ...relations,
+      { sourceNodeId: "topic-b", targetNodeId: "topic-c", sharedTerms: ["synthetic"] },
+    ];
+    const first = {
+      sourceNodeId: "topic-a", targetNodeId: "topic-b",
+      sameTopic: true, confidenceScore: 0.75,
+    };
+    const second = {
+      sourceNodeId: "topic-b", targetNodeId: "topic-c",
+      sameTopic: false, confidenceScore: 0.25,
+    };
+    expect(() => normalizeDecisions({ decisions: [first, first] }, requested))
+      .toThrow("must decide every requested pair exactly once");
+    expect(() => normalizeDecisions({ decisions: [
+      first, { ...second, targetNodeId: "fabricated-node" },
+    ] }, requested)).toThrow("must decide every requested pair exactly once");
+    expect(normalizeDecisions({ decisions: [
+      { ...first, sourceNodeId: "topic-b", targetNodeId: "topic-a" },
+      second,
+    ] }, requested)).toEqual([
+      { ...first, sourceNodeId: "topic-b", targetNodeId: "topic-a", rationale: undefined },
+      { ...second, rationale: undefined },
+    ]);
+  });
+
 });

@@ -1,11 +1,12 @@
 import type { ReaderSummaryTopicRelationDecision } from "../../domain";
 import type { ReaderSummaryTopicRelationVerifierInput } from "../../ports";
+import { assertCompleteTopicRelationPairs, expectedTopicRelationPairs } from "./agent-runtime-reader-summary-topic-relation-pair-coverage";
 
 export const normalizeDecisions = (
   raw: Record<string, unknown>,
   relations: ReaderSummaryTopicRelationVerifierInput["relations"],
 ): readonly ReaderSummaryTopicRelationDecision[] => {
-  const expectedPairs = new Set(relations.map(relationPairKey));
+  const expectedPairs = expectedTopicRelationPairs(relations);
   const decisions = Array.isArray(raw.decisions)
     ? raw.decisions.flatMap((value) => {
         if (!isRecord(value)) {
@@ -37,24 +38,10 @@ export const normalizeDecisions = (
         ];
       })
     : [];
-  const returnedPairs = new Set(decisions.map(relationPairKey));
-  if (
-    decisions.length !== expectedPairs.size ||
-    returnedPairs.size !== expectedPairs.size ||
-    [...expectedPairs].some((pair) => !returnedPairs.has(pair))
-  ) {
-    throw new Error(
-      "Reader summary topic relation response must decide every requested pair exactly once",
-    );
-  }
+  assertCompleteTopicRelationPairs(expectedPairs, decisions);
 
   return decisions;
 };
-
-const relationPairKey = (pair: {
-  readonly sourceNodeId: string;
-  readonly targetNodeId: string;
-}): string => [pair.sourceNodeId, pair.targetNodeId].sort().join("\u0000");
 
 export const parseJsonObject = (value: string): Record<string, unknown> => {
   const parsed: unknown = JSON.parse(value);

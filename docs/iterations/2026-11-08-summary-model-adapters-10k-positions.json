@@ -5413,6 +5413,126 @@
         66
       ],
       "responsibility": "Provider request serialization, bounded HTTP dispatch and JSON output decoding separate from presentation attestation."
+    },
+    {
+      "original": "agent-runtime-reader-summary-topic-relation-verifier.adapter.ts",
+      "owner": "agent-runtime-reader-summary-topic-relation-options.ts",
+      "originalPositions": [
+        57,
+        58,
+        60,
+        181,
+        186,
+        188,
+        189,
+        190,
+        191,
+        192,
+        194,
+        195,
+        196,
+        197,
+        198,
+        199,
+        201,
+        202
+      ],
+      "responsibility": "Options and route identity admission separated from verifier orchestration"
+    },
+    {
+      "original": "agent-runtime-reader-summary-topic-relation-verifier.adapter.ts",
+      "owner": "agent-runtime-reader-summary-topic-relation-command.ts",
+      "originalPositions": [
+        105,
+        106,
+        107,
+        108,
+        109,
+        110,
+        111,
+        113,
+        114,
+        115,
+        116,
+        117,
+        118,
+        119,
+        120,
+        124,
+        125,
+        126,
+        127,
+        128,
+        129,
+        130,
+        131,
+        140,
+        141,
+        143,
+        144
+      ],
+      "responsibility": "Tenant/workspace-scoped command identity, prompt, schema and attempt controls separate from provider response handling"
+    },
+    {
+      "original": "agent-runtime-reader-summary-topic-relation-verifier.adapter.ts",
+      "owner": "agent-runtime-reader-summary-topic-relation-execution.ts",
+      "originalPositions": [
+        151,
+        159,
+        160
+      ],
+      "responsibility": "Strict output admission and execution attestation independent of option and command construction"
+    },
+    {
+      "original": "agent-runtime-reader-summary-topic-relation-verifier.adapter.ts",
+      "owner": "agent-runtime-reader-summary-topic-relation-decisions.ts",
+      "originalPositions": [
+        212,
+        213,
+        214,
+        217,
+        218,
+        219,
+        220,
+        221,
+        222,
+        223,
+        224,
+        225,
+        226,
+        227,
+        232,
+        234,
+        235,
+        236,
+        237,
+        238,
+        263,
+        264,
+        265,
+        268,
+        272,
+        273,
+        274,
+        277
+      ],
+      "responsibility": "Untrusted scalar decision decoding and strict JSON object admission separated from pair-coverage policy"
+    },
+    {
+      "original": "agent-runtime-reader-summary-topic-relation-verifier.adapter.ts",
+      "owner": "agent-runtime-reader-summary-topic-relation-pair-coverage.ts",
+      "originalPositions": [
+        211,
+        243,
+        244,
+        245,
+        246,
+        247,
+        249,
+        250,
+        260
+      ],
+      "responsibility": "Requested unordered pair identities and complete duplicate-free coverage before attestation"
     }
   ]
 }

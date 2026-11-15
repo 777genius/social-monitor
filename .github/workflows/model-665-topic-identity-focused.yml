@@ -28,6 +28,10 @@ on:
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-support-policy.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-support-policy.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-label-plan-normalizer.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-relation-decisions.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-relation-pair-coverage.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-relation-decisions.spec.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-relation-verifier.adapter.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-assignment.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-anchor-keys.spec.ts
       - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
@@ -80,3 +84,5 @@ jobs:
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-labeler.adapter.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-recovery.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-cohort-grouping.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-topic-relation-decisions.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-topic-relation-verifier.adapter.spec.ts
