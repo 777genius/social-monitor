@@ -9,6 +9,10 @@ on:
       - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
       - docs/iterations/2026-11-08-summary-model-adapters-10k.md
       - docs/iterations/2026-11-08-summary-model-adapters-10k-inventory.md
+      - libs/summary/adapters/model/openai-responses-reader-summary-evidence-relations.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-interest-highlights.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-repeated-signals.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-evidence-relations.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-story-citations.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-cluster-citations.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-citation-coverage.ts
@@ -76,6 +80,7 @@ jobs:
           npx jest --config jest.config.ts --runInBand --runTestsByPath
           libs/summary/adapters/model/agent-runtime-reader-summary-story-evidence-prompt.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-story-normalizer.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-evidence-relations.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-narrative-validation.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-narrative-evidence.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-narrative.spec.ts

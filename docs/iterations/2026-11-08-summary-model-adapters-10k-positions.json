@@ -4725,7 +4725,7 @@
     },
     {
       "original": "openai-responses-reader-summary-draft-normalizer.ts",
-      "owner": "openai-responses-reader-summary-evidence-relations.ts",
+      "owner": "openai-responses-reader-summary-interest-highlights.ts",
       "originalPositions": [
         225,
         226,
@@ -4764,7 +4764,14 @@
         276,
         281,
         282,
-        283,
+        283
+      ],
+      "responsibility": "Trusted citation-bound interest highlighting and interest inference from selected evidence; historical facade retains exact function identity"
+    },
+    {
+      "original": "openai-responses-reader-summary-draft-normalizer.ts",
+      "owner": "openai-responses-reader-summary-repeated-signals.ts",
+      "originalPositions": [
         292,
         293,
         294,
@@ -4798,7 +4805,7 @@
         340,
         341
       ],
-      "responsibility": "Source-bound interest and repeated-signal evidence/cluster citation trust, rejecting unknown evidence and unsupported relationships independently of publication and route policy"
+      "responsibility": "Independently validate repeated-signal cluster, known citations and multiple unique interests without allowing provider fabricated evidence"
     },
     {
       "original": "openai-responses-reader-summary-draft-normalizer.ts",
