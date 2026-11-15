@@ -104,6 +104,7 @@ const expectedScripts = [
   'scripts/lib/reader-summary-quality-eval-support.ts',
   'scripts/lib/targeted-provider-collection.ts',
   'scripts/lib/x-collection-retry-policy.ts',
+  'scripts/lib/x-late-window.ts',
   'scripts/lib/yesterday-social-replay-support.ts',
 ];
 type ScriptCopy = { source: string; destination: string };

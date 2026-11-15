@@ -1,3 +1,4 @@
+import { xLateWindowStart } from "./x-late-window";
 import {
   collectionDateOptionOrDefault,
   nextDate,
@@ -36,6 +37,7 @@ export type ReaderSummaryCleanRealDayCollectionCli = Readonly<{
   requestedProviderKeys: readonly CleanRealDayCollectionProviderKey[];
   outputPath: string;
   exactDateArtifact: boolean;
+  xLateWindow: boolean;
   targetPublishedWindow: Readonly<{
     startInclusive: string;
     endExclusive: string;
@@ -68,6 +70,7 @@ export const readReaderSummaryCleanRealDayCollectionCli = (params: {
   const { collectionDate: targetCollectionDate } =
     collectionDateOptionOrDefault(dateOnly(params.collectionPolicyEvaluatedAt));
   const requestedProviderKeys = readProviderKeys();
+  const xLateWindow = process.argv.includes("--x-late-window");
   const artifactDirectory = readOption("--artifact-directory");
   const exactDateArtifactDirectory = readOption(
     "--exact-date-artifact-directory",
@@ -214,8 +217,18 @@ export const readReaderSummaryCleanRealDayCollectionCli = (params: {
     }
   }
 
+  if (xLateWindow && (
+    xLateWindowStart(targetCollectionDate) === undefined || !update || artifactOnly ||
+    recalculateExisting || providerCatchUp || !allowHistoricalProviderCollection ||
+    !productionScheduledScope || exactDateArtifactDirectory === undefined ||
+    requestedProviderKeys.length !== 1 || requestedProviderKeys[0] !== "x-twitter"
+  )) {
+    throw new Error("--x-late-window requires an explicitly scoped X-only historical update");
+  }
   const targetPublishedWindow = {
-    startInclusive: `${targetCollectionDate}T00:00:00.000Z`,
+    startInclusive: xLateWindow
+      ? xLateWindowStart(targetCollectionDate)!
+      : `${targetCollectionDate}T00:00:00.000Z`,
     endExclusive: nextDate(targetCollectionDate),
   };
   return {
@@ -242,6 +255,7 @@ export const readReaderSummaryCleanRealDayCollectionCli = (params: {
               collectionDate: targetCollectionDate,
             }),
     exactDateArtifact: exactDateArtifactDirectory !== undefined,
+    xLateWindow,
     targetPublishedWindow,
     targetPublishedWindowConfig: {
       ...targetPublishedWindow,
