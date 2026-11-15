@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { validateRunnerImplementationMarkers, artifactShapePolicyPath, duplicatePathsPolicyPath, redactionPolicyPath, handoffPolicyPath, displayPolicyPath, consistencyPolicyPath, readinessPolicyPath } from '../lib/external-beta-evidence-runner-markers.mjs';
+import { validateRunnerImplementationMarkers, artifactShapePolicyPath, duplicatePathsPolicyPath, redactionPolicyPath, handoffPolicyPath, displayPolicyPath, consistencyPolicyPath, readinessPolicyPath, valuePolicyPath } from '../lib/external-beta-evidence-runner-markers.mjs';
 
 const runnerFile = 'scripts/external-beta-evidence-runner.mjs';
 const checkFile = 'scripts/check-external-beta-evidence-runner.mjs';
@@ -15,6 +15,7 @@ const sources = {
   readinessPolicySource: readFileSync(readinessPolicyPath, 'utf8'),
   artifactShapePolicySource: readFileSync(artifactShapePolicyPath, 'utf8'),
   duplicatePathsPolicySource: readFileSync(duplicatePathsPolicyPath, 'utf8'),
+  valuePolicySource: readFileSync(valuePolicyPath, 'utf8'),
   checkSource: readFileSync(checkFile, 'utf8'),
   selectionHelperSource: readFileSync(selectionHelperPath, 'utf8'),
   redactionPolicySource: readFileSync(redactionPolicyPath, 'utf8'),
@@ -235,4 +236,47 @@ test('runner still invokes both extracted validators, not merely imports them', 
 test('real checker reads the artifact shape policy for implementation marker enforcement', () => {
   const checkerSource = readFileSync(checkFile, 'utf8');
   assert.match(checkerSource, /artifactShapePolicySource:\s*readFileSync\(artifactShapePolicyPath,\s*'utf8'\)/);
+});
+
+test('moved typed input markers fail closed at actual policy source', () => {
+  for (const marker of [
+    'criticalEnvValuesMustBeTyped', 'immutable sha256 image digest',
+    'valid https URL', 'valid PostgreSQL URL', 'valid RabbitMQ URL',
+    'validateTypedUrlEnv', 'validateHttpsEvidenceUrlEnv',
+    'validateSecretTokenEnv', 'validateSecretReferenceEnv',
+    'isPlaceholderSecretValue', 'isRawSecretValueReference',
+    'realEvidenceIdentityEnvNames', 'isFixtureLikeEnvValue',
+  ]) {
+    const violations = validateRunnerImplementationMarkers({
+      ...sources,
+      valuePolicySource: sources.valuePolicySource.replaceAll(marker, 'removed-value-marker'),
+    });
+    assert.deepEqual(violations, [
+      valuePolicyPath + ': extracted typed input policy must preserve "' + marker + '"',
+    ]);
+  }
+  const checker = readFileSync(checkFile, 'utf8');
+  assert.match(checker, /valuePolicySource:\s*readFileSync\(valuePolicyPath,\s*'utf8'\)/);
+});
+
+test('typed value policy must be bound to live env and invoked in every safety path', () => {
+  const binding = 'createExternalBetaEvidenceValueValidator({ contract, env: process.env, jobInputEnvNames });';
+  const invocation = 'validateEvidenceValueEnv(job, missingEnvSet, violations);';
+  for (const candidate of [
+    sources.runnerSource.replace(binding, 'createExternalBetaEvidenceValueValidator({ contract, env: {}, jobInputEnvNames });'),
+    sources.runnerSource.replace(binding, '/* ' + binding + ' */'),
+    sources.runnerSource.replace("import { localRuntimeEnvNames, isLocalRuntimeEnvValue, createExternalBetaEvidenceValueValidator }",
+      "// import { localRuntimeEnvNames, isLocalRuntimeEnvValue, createExternalBetaEvidenceValueValidator }"),
+  ]) {
+    assert.ok(validateRunnerImplementationMarkers({ ...sources, runnerSource: candidate })
+      .includes(runnerFile + ': runner must bind typed evidence value policy to live env and original job names'));
+  }
+  for (const candidate of [
+    sources.runnerSource.replace(invocation, ''),
+    sources.runnerSource.replace(invocation, '// ' + invocation),
+    sources.runnerSource.replace(invocation, 'void 0; // ' + invocation),
+  ]) {
+    assert.ok(validateRunnerImplementationMarkers({ ...sources, runnerSource: candidate })
+      .includes(runnerFile + ': runner must enforce typed evidence value validation in all three paths'));
+  }
 });
