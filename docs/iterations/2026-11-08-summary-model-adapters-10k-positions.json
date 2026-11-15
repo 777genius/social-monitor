@@ -5880,6 +5880,20 @@
         210
       ],
       "responsibility": "Evidence-backed daily-synthesis citation and story-threshold admission separated from static JSON writer contract; preserve versioned schema identity and fail-closed assigned-source membership"
+    },
+    {
+      "original": "agent-runtime-reader-summary-model.adapter.ts",
+      "owner": "agent-runtime-reader-summary-route-admission.ts",
+      "originalPositions": [
+        175,
+        176,
+        177,
+        178,
+        182,
+        404,
+        405
+      ],
+      "responsibility": "One-policy owner for route identity, input-aware prompt version and fail-closed estimate/budget admission; adapter now delegates instead of mixing route decisions with task dispatch. Conservative source-exact trace, not independently approved semantic LOC."
     }
   ]
 }
