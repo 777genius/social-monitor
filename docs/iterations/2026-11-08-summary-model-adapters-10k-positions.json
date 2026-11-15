@@ -4117,19 +4117,14 @@
         194,
         197,
         198,
-        199,
-        200,
-        201,
-        202,
-        203,
-        204,
-        205,
-        211,
-        212,
-        213,
-        214,
-        215,
-        374,
+        374
+      ],
+      "responsibility": "Trust-preserving deterministic citation-to-story and interest signal projection, separate from selection, no-signal and publishing; newly indexed evidence identity in sibling specialist"
+    },
+    {
+      "original": "deterministic-reader-summary-model.adapter.ts",
+      "owner": "deterministic-reader-summary-interest-highlights.ts",
+      "originalPositions": [
         380,
         384,
         385,
@@ -4142,7 +4137,26 @@
         395,
         396
       ],
-      "responsibility": "Trust-preserving deterministic citation-to-story and interest signal projection, separate from selection, no-signal and publishing; newly indexed evidence identity in sibling specialist"
+      "responsibility": "First-occurrence interest highlights, source-identity citations and legacy export"
+    },
+    {
+      "original": "deterministic-reader-summary-model.adapter.ts",
+      "owner": "deterministic-reader-summary-repeated-signals.ts",
+      "originalPositions": [
+        199,
+        200,
+        201,
+        202,
+        203,
+        204,
+        205,
+        211,
+        212,
+        213,
+        214,
+        215
+      ],
+      "responsibility": "Cross-interest recurrence projection and missing-representative citation fallback"
     },
     {
       "original": "deterministic-reader-summary-model.adapter.ts",

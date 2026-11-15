@@ -18,7 +18,13 @@ import {
   selectProviderDiverseRankedEvidence,
 } from "./deterministic-reader-summary-evidence-selection";
 import { selectDeterministicReaderSummaryCoverage } from "./deterministic-reader-summary-coverage-selection";
-import { buildDeterministicReaderSummaryStoryProjection } from "./deterministic-reader-summary-story-projection";
+import {
+  buildDeterministicReaderSummaryStoryProjection,
+  buildInterestHighlights,
+} from "./deterministic-reader-summary-story-projection";
+import { buildInterestHighlights as ownedInterestHighlights } from "./deterministic-reader-summary-interest-highlights";
+import { projectRepeatedReaderSummarySignals } from "./deterministic-reader-summary-repeated-signals";
+import { indexDeterministicReaderSummaryCitations } from "./deterministic-reader-summary-citation-index";
 import { acceptedDeterministicFixtureHeadline } from "./deterministic-reader-summary-model.spec-support";
 import {
   composeReaderSummaryEditorialSlate,
@@ -437,6 +443,42 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
     );
     expect(new Set(selected.topStoryClusters.map((cluster) => cluster.id)).size)
       .toBe(selected.topStoryClusters.length);
+  });
+
+  it("preserves independent interest and repeated-signal owners and citation identity", () => {
+    const input = dailySynthesisReaderSummaryInput();
+    const firstItem = input.evidence.selectedEvidence[0];
+    const firstCluster = input.evidence.clusters[0];
+    if (firstItem === undefined || firstCluster === undefined) {
+      throw new Error("Projection regression requires selected evidence");
+    }
+    const repeatedCluster = {
+      ...firstCluster,
+      interestIds: ["interest-alpha", "interest-beta"],
+      representativeFeedItemId: "missing-representative",
+    };
+    const selectedEvidence = [firstItem];
+    const focusedInput: ReaderSummaryModelInput = {
+      ...input,
+      evidence: { ...input.evidence, clusters: [repeatedCluster] },
+    };
+    const projection = buildDeterministicReaderSummaryStoryProjection({
+      input: focusedInput,
+      citedEvidence: [firstItem, firstItem],
+      selectedEvidence,
+      topStoryClusters: [repeatedCluster],
+      firstItem,
+    });
+    const citationIndex = indexDeterministicReaderSummaryCitations(projection.citationMap);
+    expect(buildInterestHighlights).toBe(ownedInterestHighlights);
+    expect(buildInterestHighlights(selectedEvidence, projection.citationMap))
+      .toEqual(projection.interestHighlights);
+    expect(projectRepeatedReaderSummarySignals(
+      focusedInput.evidence.clusters, selectedEvidence, firstItem, citationIndex,
+    )).toEqual(projection.repeatedSignals);
+    expect(projection.interestHighlights[0]?.citationIds).toEqual(["c1"]);
+    expect(projection.repeatedSignals[0]?.citationIds).toEqual(["c1"]);
+    expect(focusedInput.evidence.clusters).toEqual([repeatedCluster]);
   });
 
 });
