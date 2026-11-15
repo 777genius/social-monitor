@@ -5848,6 +5848,17 @@
         97
       ],
       "responsibility": "Preexisting bounded window, collision-safe creation and immutable new-member assignment owner; disjoint historical first-use original implementation coordinates"
+    },
+    {
+      "original": "openai-responses-reader-summary-schema.ts",
+      "owner": "openai-responses-reader-summary-daily-synthesis-citation-policy.ts",
+      "originalPositions": [
+        206,
+        207,
+        209,
+        210
+      ],
+      "responsibility": "Evidence-backed daily-synthesis citation and story-threshold admission separated from static JSON writer contract; preserve versioned schema identity and fail-closed assigned-source membership"
     }
   ]
 }
