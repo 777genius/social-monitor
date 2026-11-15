@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { captureReaderBriefEvidence } from "./durable-backend-e2e-reader-brief.ts";
+import { createRequire } from "node:module";
 
-const headers = { authorization: "Bearer test", "x-tenant-id": "tenant-1" };
+const require = createRequire(import.meta.url);
+const { captureReaderBriefEvidence } = require("./durable-backend-e2e-reader-brief.ts");
+
+const headers = { authorization: "fixture-authorization", "x-tenant-id": "tenant-1" };
 const params = { headers, idempotencyKey: "reader-key", expectedProviderKeys: ["reddit", "rss", "hacker-news"] };
 function artifact(extra = {}) {
   return {
