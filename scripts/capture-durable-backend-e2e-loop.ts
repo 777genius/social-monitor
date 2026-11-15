@@ -27,6 +27,8 @@ import {
   type SummaryMemoryEvidence,
 } from "./lib/durable-backend-e2e-summary-memory-evidence";
 
+import { captureReaderBriefEvidence, type ReaderBriefEvidence } from "./lib/durable-backend-e2e-reader-brief";
+
 import {
   isRecord,
   readFirst,
@@ -88,18 +90,6 @@ type AutoSummaryEvidence = {
   readonly completedAt: string;
   readonly latestFeedItemObservedAt: string;
   readonly newFeedItemCount: number;
-};
-
-type ReaderBriefEvidence = {
-  readonly readerSummaryJobId: string;
-  readonly readerSummaryId: string;
-  readonly headline: string;
-  readonly topReadCount: number;
-  readonly topReadTitles: readonly string[];
-  readonly sourceMixProviderKeys: readonly string[];
-  readonly citationProviderKeys: readonly string[];
-  readonly citationCoverage: ProviderCitationCoverage;
-  readonly qualityStatus: string;
 };
 
 
@@ -501,7 +491,7 @@ async function executeBackendLoop(
     expectedProviderKeys: bindingsWithFeed.map(
       (binding) => binding.providerKey,
     ),
-  });
+  }, { requestJson, pollJson });
 
   const realtimeChannel = `interest:${interestId}:summary-status`;
   const realtime = await pollJson<JsonRecord>(
@@ -915,93 +905,6 @@ async function createScheduledSourceBindingAndWait(params: {
       label: `${params.target.providerKey} scheduled scan completion`,
     },
   );
-}
-
-async function captureReaderBriefEvidence(params: {
-  readonly headers: Readonly<Record<string, string>>;
-  readonly idempotencyKey: string;
-  readonly expectedProviderKeys: readonly DurableScanProviderKey[];
-}): Promise<ReaderBriefEvidence> {
-  const request = await requestJson<JsonRecord>("POST", "/reader-summary-requests", {
-    headers: withIdempotency(params.headers, params.idempotencyKey),
-    body: {
-      scope: {
-        type: "workspace",
-      },
-    },
-  });
-  const readerSummaryJobId = readString(request, "readerSummaryJobId");
-  const status = await pollJson<JsonRecord>(
-    `/reader-summary-jobs/${encodeURIComponent(readerSummaryJobId)}/status`,
-    params.headers,
-    (value) => {
-      const jobStatus = readString(value, "status");
-      if (jobStatus === "failed") {
-        throw new Error(
-          `readerSummary job ${readerSummaryJobId} failed: ${String(value.failureReason ?? "")}`,
-        );
-      }
-
-      return jobStatus === "completed" ? value : undefined;
-    },
-    { timeoutMs: 120_000, label: "reader readerSummary completion" },
-  );
-  const readerSummaryId = readString(status, "readerSummaryId");
-  const readerSummary = await requestJson<JsonRecord>(
-    "GET",
-    `/reader-summaries/${encodeURIComponent(readerSummaryId)}`,
-    {
-      headers: params.headers,
-    },
-  );
-  const readerBrief = readRecord(readerSummary, "readerBrief");
-  const topReads = readObjectArray(readerBrief, "topReads");
-  const sourceMix = readObjectArray(readerBrief, "sourceMix");
-  const citations = readObjectArray(readerSummary, "citations");
-  const qualityState = readRecord(readerBrief, "qualityState");
-  const sourceMixProviderKeys = [
-    ...new Set(sourceMix.map((entry) => readString(entry, "providerKey"))),
-  ].sort();
-  const citationProviderKeys = [
-    ...new Set(
-      citations.map((citation) => readString(citation, "providerKey")),
-    ),
-  ].sort();
-  const citationCoverage = providerCitationCoverage(
-    params.expectedProviderKeys,
-    citationProviderKeys,
-  );
-
-  if (topReads.length < 3) {
-    throw new Error(
-      `reader brief must expose at least three top reads, got ${topReads.length}`,
-    );
-  }
-  for (const providerKey of params.expectedProviderKeys) {
-    if (!sourceMixProviderKeys.includes(providerKey)) {
-      throw new Error(
-        `reader brief source mix must include ${providerKey}: ${JSON.stringify(sourceMixProviderKeys)}`,
-      );
-    }
-  }
-  assertProviderCitationCoverage("reader brief", citationCoverage, {
-    sourceMixProviderKeys,
-    citationCount: citations.length,
-  });
-
-  return {
-    readerSummaryJobId,
-    readerSummaryId,
-    headline: readString(readerSummary, "headline"),
-    topReadCount: topReads.length,
-    topReadTitles: topReads
-      .map((item) => readString(item, "title"))
-      .slice(0, 10),
-    sourceMixProviderKeys,
-    citationProviderKeys,
-    citationCoverage,
-    qualityStatus: readString(qualityState, "status"),
-  };
 }
 
 async function assertReady(): Promise<void> {
