@@ -82,7 +82,10 @@ async function fixture(root: string, scenario: string): Promise<number> {
             message.type === 'status' && 'status' in message && message.status === 0) {
           queueMicrotask(() => {
             assert.ok(child.pid);
-            fs.writeFileSync(join(root, 'status-received'), String(child.pid));
+            // Publish the observed PID atomically; concurrent readers must never see an empty file.
+            const markerPending = join(root, 'status-received.pending');
+            fs.writeFileSync(markerPending, String(child.pid));
+            fs.renameSync(markerPending, join(root, 'status-received'));
           });
         }
       });
