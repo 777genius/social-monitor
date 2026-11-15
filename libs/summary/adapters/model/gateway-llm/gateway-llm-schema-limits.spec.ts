@@ -86,4 +86,27 @@ describe("gateway schema limits / prompt boundary", () => {
     } };
     expect(collectGatewaySchemaLimits(schema)).toEqual({ lines: [], empty: [] });
   });
+
+  it("uses local definitions only and ignores external or unsupported references", () => {
+    const schema = {
+      type: "object",
+      definitions: { heading: { type: "string", maxLength: 40 } },
+      properties: {
+        allowed: { $ref: "#/definitions/heading" },
+        external: { $ref: "https://example.invalid/external-schema" },
+        unknown: { $ref: "#/properties/allowed" },
+        empty: { type: "array", maxItems: 0 },
+      },
+    };
+    expect(collectGatewaySchemaLimits(schema)).toEqual({
+      lines: ["- $.allowed: at most 34 characters"],
+      empty: ["$.empty"],
+    });
+    expect(gatewayOutputHardLimits(schema)).toBe([
+      "Hard limits. They override any longer length guidance above, and the response is rejected when any of them is exceeded. Stay inside them by writing complete, shorter sentences; never cut a sentence or word to fit.",
+      "- $.allowed: at most 34 characters",
+      "- always empty arrays: $.empty",
+    ].join("\n"));
+  });
+
 });
