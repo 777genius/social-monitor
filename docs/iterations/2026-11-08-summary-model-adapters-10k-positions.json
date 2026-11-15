@@ -4116,10 +4116,9 @@
         191,
         194,
         197,
-        198,
         374
       ],
-      "responsibility": "Trust-preserving deterministic citation-to-story and interest signal projection, separate from selection, no-signal and publishing; newly indexed evidence identity in sibling specialist"
+      "responsibility": "Trust-preserving deterministic citation-to-story and interest signal projection, separate from selection, no-signal and publishing; newly indexed evidence identity in sibling specialist Baseline line 198 is no longer verbatim in any responsible owner and is deliberately excluded."
     },
     {
       "original": "deterministic-reader-summary-model.adapter.ts",
@@ -4243,7 +4242,7 @@
     },
     {
       "original": "deterministic-reader-summary-model.adapter.ts",
-      "owner": "deterministic-reader-summary-evidence-selection.ts",
+      "owner": "deterministic-reader-summary-cluster-selection.ts",
       "originalPositions": [
         415,
         416,
@@ -4270,7 +4269,7 @@
         454,
         457
       ],
-      "responsibility": "Coverage-pinned ranked cluster selection and identity deduplication separated from deterministic artifact projection and lifecycle"
+      "responsibility": "Coverage-pinned representative/ID-cluster selection and deterministic fallback now owned by cluster-selection specialist, not the historical evidence-selection export-only facade. Same frozen source coordinates; no new credit."
     },
     {
       "original": "agent-runtime-summary-model.adapter.ts",
