@@ -1,8 +1,6 @@
 import type { AgentRuntimeTaskResult } from "../../ports";
-import {
-  AgentRuntimeModelProviderError,
-  mapAgentRuntimeFailure,
-} from "./agent-runtime-model-failure";
+import { AgentRuntimeModelProviderError } from "./agent-runtime-model-failure";
+import { mapAgentRuntimeFailure } from "./agent-runtime-model-task-failure";
 
 export const readAgentRuntimeObjectOutput = (
   result: AgentRuntimeTaskResult,

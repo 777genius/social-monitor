@@ -1,3 +1,4 @@
+import { mapAgentRuntimeFailure as mapTaskFailureDirectly } from "./agent-runtime-model-task-failure";
 import { classifyAgentRuntimeError, mapAgentRuntimeFailure } from "./agent-runtime-model-failure";
 import { usageFromAgentRuntime, sumReaderSummaryUsage, assertReaderSummaryRepairWithinBudget } from "./agent-runtime-model-usage";
 
@@ -63,5 +64,33 @@ describe("agent runtime trust-boundary regression cases", () => {
       { inputTokens: 0, outputTokens: 0, estimatedCostUsd: 0 },
       { remainingTokens: 100, remainingCostUsd: 0.2 },
     )).toThrow("Daily editorial writer cannot repair within the shared model budget");
+  });
+});
+
+describe("structured task failure admission isolation", () => {
+  it("keeps the legacy public function identity while exposing the pure owner", () => {
+    expect(mapAgentRuntimeFailure).toBe(mapTaskFailureDirectly);
+  });
+
+  it("preserves exact task classification and does not trust diagnostic path for category", () => {
+    const task = {
+      code: "provider_output_invalid",
+      causeCategory: "worker",
+      safeMessage: "schema normalization failed",
+      retryable: true,
+      reconnectRequired: false,
+      details: { outputValidationPath: "quota_rate_limit" },
+    };
+    expect(mapTaskFailureDirectly(task, "fallback")).toEqual({
+      kind: "invalid_schema",
+      retryable: false,
+      message: "schema normalization failed at quota_rate_limit",
+    });
+    expect(mapTaskFailureDirectly({ ...task, safeMessage: "", code: "execution_failed",
+      details: { outputValidationPath: "schema" } }, "task fallback")).toEqual({
+      kind: "unknown",
+      retryable: true,
+      message: "task fallback at schema",
+    });
   });
 });

@@ -2101,7 +2101,14 @@
         136,
         138,
         139,
-        142,
+        142
+      ],
+      "responsibility": "Typed provider error and transport-specific gRPC/unknown Error classification remain independent of task-failure admission"
+    },
+    {
+      "original": "agent-runtime-model-support.ts",
+      "owner": "agent-runtime-model-task-failure.ts",
+      "originalPositions": [
         186,
         187,
         188,
@@ -2150,7 +2157,7 @@
         249,
         250
       ],
-      "responsibility": "Provider failure classification and fail-closed gRPC/agent error translation isolated from runtime request IDs and usage/budget calculations"
+      "responsibility": "Pure attested Agent Runtime task failure category/retry mapping, with untrusted violation paths excluded from category markers"
     },
     {
       "original": "agent-runtime-model-support.ts",
