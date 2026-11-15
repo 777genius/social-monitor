@@ -15,6 +15,9 @@ on:
       - libs/summary/adapters/model/grpc-agent-runtime-wire-codec.spec.ts
       - libs/summary/adapters/model/grpc-agent-runtime-client.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-gateway-violations.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-route-admission.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-route-admission.spec.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-model.adapter.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-gateway-violations.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-model.gateway-repair.spec.ts
 permissions:
@@ -58,6 +61,7 @@ jobs:
           libs/summary/adapters/model/agent-runtime-model-failure-usage.spec.ts
           libs/summary/adapters/model/agent-runtime-summary-model.adapter.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-model.adapter.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-route-admission.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-gateway-violations.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-model.gateway-repair.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-generation.spec.ts

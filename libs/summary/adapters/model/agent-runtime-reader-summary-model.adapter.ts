@@ -1,12 +1,11 @@
-import { withReaderSummaryInputPromptVersion } from "./reader-summary-input-prompt-route";
 import type { AgentRuntimeReaderSummaryModelAdapterOptions } from "./agent-runtime-reader-summary-options";
 import { runAgentRuntimeReaderSummaryGeneration } from "./agent-runtime-reader-summary-generation";
+import {
+  admitAgentRuntimeReaderSummaryRoute,
+  estimateAgentRuntimeReaderSummaryUsage,
+} from "./agent-runtime-reader-summary-route-admission";
 export { resolveAgentRuntimeReaderSummaryModelOptions } from "./agent-runtime-reader-summary-options";
 export type { AgentRuntimeReaderSummaryModelAdapterOptions } from "./agent-runtime-reader-summary-options";
-import {
-  estimateReaderSummaryTokenUsage,
-  isReaderSummaryBudgetExceeded,
-} from "./reader-summary-token-budget";
 import { buildAgentRuntimeReaderSummaryTaskCommand } from "./agent-runtime-reader-summary-task-command";
 import { runAgentRuntimeDailyEditor } from "./agent-runtime-reader-summary-daily-editorial";
 import { primaryReaderSummaryEvidence } from "../../domain";
@@ -25,13 +24,9 @@ import type {
   ReaderSummaryModelValidationResult,
 } from "../../ports";
 import { validateAgentRuntimeReaderSummaryProviderResponse } from "./agent-runtime-reader-summary-response-validation";
-import {
-  currentReaderSummaryPromptRelease,
-} from "./openai-responses-reader-summary-prompt";
 import { buildReaderSummaryNoSignalAttempt } from "./reader-summary-no-signal-attempt";
 import type { VerifiedReaderSummaryExecutionAttestationSink } from "./reader-summary-execution-attestation";
 import {
-  AgentRuntimeModelProviderError,
   classifyAgentRuntimeError,
 } from "./agent-runtime-model-support";
 import {
@@ -39,7 +34,6 @@ import {
   type AgentRuntimeReaderSummaryRuntimeSettings,
 } from "./agent-runtime-reader-summary-runtime-settings";
 
-const provider = "agent-runtime";
 export { defaultTimeoutMs } from "./agent-runtime-reader-summary-runtime-settings";
 export { readerSummaryNarrativeAttempts } from "./agent-runtime-reader-summary-generation";
 
@@ -59,27 +53,17 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
     policy: ReaderSummaryModelPolicy,
     budget: ReaderSummaryModelBudget,
   ): ReaderSummaryModelRoute {
-    const route = withReaderSummaryInputPromptVersion(this.buildRoute(), input);
-    const estimate = this.estimate(input, route);
-    if (isReaderSummaryBudgetExceeded(estimate, policy, budget)) {
-      throw new AgentRuntimeModelProviderError({
-        kind: "budget_exceeded",
-        retryable: false,
-        message: "Reader summary model budget exceeded",
-      });
-    }
-
-    return route;
+    return admitAgentRuntimeReaderSummaryRoute({
+      input, policy, budget, settings: this.settings,
+    });
   }
 
   estimate(
     input: ReaderSummaryModelInput,
     selectedRoute: ReaderSummaryModelRoute,
   ): ReaderSummaryModelEstimate {
-    void selectedRoute;
-    return estimateReaderSummaryTokenUsage(input, {
-      inputTokenDivisor: this.settings.inputTokenDivisor,
-      maxOutputTokens: this.settings.maxOutputTokens,
+    return estimateAgentRuntimeReaderSummaryUsage({
+      input, selectedRoute, settings: this.settings,
     });
   }
 
@@ -154,15 +138,6 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
       error,
       "Unknown agent-runtime reader summary model error",
     );
-  }
-
-  private buildRoute(): ReaderSummaryModelRoute {
-    return {
-      provider,
-      model: `${this.settings.agentProvider}:${this.settings.model}:${this.settings.reasoningEffort}`,
-      promptVersion: currentReaderSummaryPromptRelease.id,
-      schemaVersion: "reader_summary.artifact.v1",
-    };
   }
 
   private buildNoSignalAttempt(
