@@ -8,6 +8,7 @@ import {
   readerSummaryCliRuntimeEnv,
   resolveCodexGatewayReaderSummaryRoute,
 } from "./codex-reader-summary-route";
+import { parseCodexGatewayReaderSummaryRoute } from "./codex-reader-summary-gateway-env-admission";
 import {
   codexGatewayReaderSummaryReasoningEffort,
   defaultCodexGatewayReaderSummaryRoute as catalogDefault,
@@ -79,4 +80,30 @@ describe("Codex reader summary gateway route policy", () => {
     });
     expect(original.AGENT_RUNTIME_TRANSPORT).toBe("gateway-llm");
   });
+
+  it("separates strict gateway value admission from transport selection", () => {
+    const gatewayEnv: NodeJS.ProcessEnv = {
+      AGENT_RUNTIME_TRANSPORT: "gateway-llm",
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
+      AGENT_RUNTIME_GATEWAY_LLM_MODEL: " gpt-5.6-sol ",
+      AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: " high ",
+    };
+    const original = { ...gatewayEnv };
+    expect(parseCodexGatewayReaderSummaryRoute(gatewayEnv)).toBe(codexGatewayReaderSummaryRoutes[1]);
+    expect(resolveCodexGatewayReaderSummaryRoute(gatewayEnv)).toBe(codexGatewayReaderSummaryRoutes[1]);
+    expect(gatewayEnv).toEqual(original);
+
+    expect(parseCodexGatewayReaderSummaryRoute({})).toBe(catalogDefault);
+    expect(resolveCodexGatewayReaderSummaryRoute({
+      ...gatewayEnv,
+      AGENT_RUNTIME_TRANSPORT: "agent-runtime",
+      AGENT_RUNTIME_GATEWAY_LLM_MODEL: "unknown",
+    })).toBeUndefined();
+
+    expect(() => parseCodexGatewayReaderSummaryRoute({
+      AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-5.6-sol",
+      AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "low",
+    })).toThrow("gpt-6.1-sol/low, gpt-5.6-sol/high for openai-chatgpt");
+  });
+
 });

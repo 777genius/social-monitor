@@ -14,6 +14,9 @@ on:
       - libs/summary/adapters/model/reader-summary-generation-effort-policy.spec.ts
       - libs/summary/adapters/model/reader-summary-generation-env-resolution.ts
       - libs/summary/adapters/model/reader-summary-generation-identity-policy.spec.ts
+      - libs/summary/adapters/model/codex-reader-summary-route.ts
+      - libs/summary/adapters/model/codex-reader-summary-gateway-env-admission.ts
+      - libs/summary/adapters/model/codex-reader-summary-gateway-route-policy.spec.ts
 permissions:
   contents: read
 jobs:
