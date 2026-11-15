@@ -1,59 +1,13 @@
 import {
-  independentEvidenceProviderKeys,
-  isReaderSummaryWatchEligibleEvidence,
   type ReaderSummaryCitation,
   type ReaderSummaryCoverageMode,
   type ReaderSummaryNarrativeSection,
 } from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
+
+// Keep original function-object identity for direct consumers.
+export { watchEligibleCitationIds } from "./openai-responses-reader-summary-watch-evidence-policy";
 import { optionalString, requiredString } from "./openai-responses-reader-summary-json";
-
-export const watchEligibleCitationIds = (
-  input: ReaderSummaryModelInput,
-  citationMap: readonly ReaderSummaryCitation[],
-): ReadonlySet<string> => {
-  const evidenceById = new Map(
-    input.evidence.selectedEvidence.map(
-      (evidence) => [evidence.feedItemId, evidence] as const,
-    ),
-  );
-  const crossProviderEvidenceIds = new Set<string>();
-
-  for (const cluster of input.evidence.clusters) {
-    const clusterEvidence = [
-      cluster.representativeFeedItemId,
-      ...cluster.duplicateFeedItemIds,
-    ].flatMap((feedItemId) => {
-      const evidence = evidenceById.get(feedItemId);
-
-      return evidence === undefined ? [] : [evidence];
-    });
-
-    if (independentEvidenceProviderKeys(clusterEvidence).length > 1) {
-      for (const evidence of clusterEvidence) {
-        crossProviderEvidenceIds.add(evidence.feedItemId);
-      }
-    }
-  }
-
-  return new Set(
-    citationMap
-      .filter((citation) => {
-        const evidence = evidenceById.get(citation.feedItemId);
-
-        return (
-          evidence !== undefined &&
-          isReaderSummaryWatchEligibleEvidence({
-            evidence,
-            crossProviderSupported: crossProviderEvidenceIds.has(
-              evidence.feedItemId,
-            ),
-          })
-        );
-      })
-      .map((citation) => citation.citationId),
-  );
-};
 
 export const narrativeSectionText = (params: {
   readonly value: Record<string, unknown>;

@@ -717,29 +717,6 @@
       "owner": "openai-responses-reader-summary-narrative-evidence.ts",
       "originalPositions": [
         114,
-        176,
-        177,
-        178,
-        181,
-        183,
-        184,
-        185,
-        186,
-        187,
-        188,
-        190,
-        193,
-        194,
-        195,
-        200,
-        201,
-        202,
-        203,
-        206,
-        207,
-        209,
-        210,
-        215,
         220,
         221,
         222,
@@ -801,7 +778,7 @@
         349,
         350
       ],
-      "responsibility": "Provider-diverse watch eligibility, evidence citation fallback and selected-source reconciliation separated from untrusted narrative orchestration. Retrospectively traced original positions, provenance only; not independently approved meaningful LOC or new implementation"
+      "responsibility": "Narrative text/title/evidence fallback, without provider-diverse watch-citation trust; previous owner lines redistributed with +0 new credit."
     },
     {
       "original": "openai-responses-reader-summary-narrative.ts",
@@ -5725,6 +5702,36 @@
         90
       ],
       "responsibility": "Bounded schema traversal, local-only ref recursion, copied-identifier text limits, numeric/array constraint admission separated from the prompt prose renderer; previously implemented in existing PR, now first-use traced without double count"
+    },
+    {
+      "original": "openai-responses-reader-summary-narrative.ts",
+      "owner": "openai-responses-reader-summary-watch-evidence-policy.ts",
+      "originalPositions": [
+        176,
+        177,
+        178,
+        181,
+        183,
+        184,
+        185,
+        186,
+        187,
+        188,
+        190,
+        193,
+        194,
+        195,
+        200,
+        201,
+        202,
+        203,
+        206,
+        207,
+        209,
+        210,
+        215
+      ],
+      "responsibility": "Trusted per-citation watch admission and cross-provider checks independently of narrative output; 23 already counted source positions reassigned."
     }
   ]
 }

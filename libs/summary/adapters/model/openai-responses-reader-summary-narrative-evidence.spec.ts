@@ -1,3 +1,4 @@
+import { watchEligibleCitationIds as directWatchEligibleCitationIds } from "./openai-responses-reader-summary-watch-evidence-policy";
 import { readerSummaryInput } from "./agent-runtime-reader-summary-model.spec-support";
 import {
   defaultNarrativeTitle,
@@ -7,6 +8,11 @@ import {
 } from "./openai-responses-reader-summary-narrative-evidence";
 
 describe("reader-summary narrative evidence boundaries", () => {
+  it("preserves historical direct watch policy identity", () => {
+    expect(watchEligibleCitationIds).toBe(directWatchEligibleCitationIds);
+    expect([...directWatchEligibleCitationIds(readerSummaryInput(), [])]).toEqual([]);
+  });
+
   it("has no watch-eligible citations without any citable records", () => {
     expect([...watchEligibleCitationIds(readerSummaryInput(), [])]).toEqual([]);
   });

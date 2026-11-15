@@ -1,7 +1,5 @@
-import {
-  watchEligibleCitationIds,
-  fallbackNarrative,
-} from "./openai-responses-reader-summary-narrative-evidence";
+import { fallbackNarrative } from "./openai-responses-reader-summary-narrative-evidence";
+import { watchEligibleCitationIds } from "./openai-responses-reader-summary-watch-evidence-policy";
 export { readerSummaryNarrativeMarkdown } from "./openai-responses-reader-summary-narrative-markdown";
 import {
   ensureCitedLead,

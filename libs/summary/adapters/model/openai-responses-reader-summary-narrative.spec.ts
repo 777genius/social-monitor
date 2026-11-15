@@ -1,3 +1,4 @@
+import { watchEligibleCitationIds } from "./openai-responses-reader-summary-watch-evidence-policy";
 import type { ReaderSummaryCitation } from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
 import { normalizeOpenAiReaderSummaryNarrative } from "./openai-responses-reader-summary-narrative";
@@ -237,6 +238,16 @@ describe("normalizeOpenAiReaderSummaryNarrative", () => {
         expect.objectContaining({ kind: "watch", citationIds: ["c4"] }),
       ]),
     );
+  });
+
+  it("does not trust false independent support from an RSS mirror", () => {
+    expect([...watchEligibleCitationIds(modelInput([strongWatchEvidence]), citations)]).toContain("c4");
+    const mirrored = watchEligibleCitationIds(
+      modelInput([lowEngagementWatchEvidence, rssMirrorWatchEvidence], [mirrorCluster]),
+      citations,
+    );
+    expect(mirrored.has("c4")).toBe(false);
+    expect(mirrored.has("c6")).toBe(false);
   });
 
   it("drops a watch when any cited evidence is ineligible", () => {

@@ -17,6 +17,11 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-story-fallback-slate.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-story-fallback-coverage.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-story-normalizer.spec.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-narrative-evidence.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-watch-evidence-policy.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-narrative.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-narrative-evidence.spec.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-narrative.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-narrative-validation.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-narrative-lead-admission.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-narrative-secondary-coverage.ts
@@ -72,6 +77,8 @@ jobs:
           libs/summary/adapters/model/agent-runtime-reader-summary-story-evidence-prompt.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-story-normalizer.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-narrative-validation.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-narrative-evidence.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-narrative.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-narrative-coverage.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-contracts.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter.spec.ts
