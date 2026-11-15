@@ -18,6 +18,7 @@ import {
   buildOpenAiReaderSummaryWeeklyPromptPayload,
 } from "./openai-responses-reader-summary-weekly-prompt";
 import { buildOpenAiReaderSummaryWeeklyResponseFormat } from "./openai-responses-reader-summary-weekly-schema";
+import { admitOpenAiReaderSummaryWeeklyOutput } from "./openai-responses-reader-summary-weekly-output-admission";
 import {
   OpenAiReaderSummaryWeeklyModelError,
   OpenAiResponsesReaderSummaryWeeklyModelAdapter,
@@ -43,6 +44,27 @@ describe("OpenAiResponsesReaderSummaryWeeklyModelAdapter", () => {
     if (keyDirectory !== undefined) {
       rmSync(keyDirectory, { recursive: true, force: true });
       keyDirectory = undefined;
+    }
+  });
+
+  it("preserves the sealed weekly artifact through output admission", () => {
+    const input = weeklyInput();
+    const output = weeklyOutput(input);
+    expect(admitOpenAiReaderSummaryWeeklyOutput(input, JSON.stringify(output))).toEqual(output);
+  });
+
+  it.each(["{", "{}"])("rejects malformed weekly output %s without retry", (value) => {
+    const input = weeklyInput();
+    try {
+      admitOpenAiReaderSummaryWeeklyOutput(input, value);
+      throw new Error("expected malformed output rejection");
+    } catch (error) {
+      expect(error).toBeInstanceOf(OpenAiReaderSummaryWeeklyModelError);
+      expect((error as OpenAiReaderSummaryWeeklyModelError).failure).toMatchObject({
+        kind: "output_validation",
+        retryable: false,
+      });
+      expect((error as Error).message).toContain("OpenAI reader summary weekly output is invalid");
     }
   });
 

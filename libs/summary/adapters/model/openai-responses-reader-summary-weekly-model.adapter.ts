@@ -24,7 +24,7 @@ import { postOpenAiReaderSummaryWeeklyResponse } from "./openai-responses-reader
 import { normalizeOpenAiReaderSummaryWeeklyOptions, type OpenAiReaderSummaryWeeklyFetchLike, type OpenAiResponsesReaderSummaryWeeklyModelAdapterOptions } from "./openai-responses-reader-summary-weekly-options";
 export { resolveOpenAiResponsesReaderSummaryWeeklyModelOptions } from "./openai-responses-reader-summary-weekly-options";
 export type { OpenAiResponsesReaderSummaryWeeklyModelAdapterOptions } from "./openai-responses-reader-summary-weekly-options";
-import { parseOpenAiReaderSummaryWeeklyResponse } from "./openai-responses-reader-summary-weekly-response-parser";
+import { admitOpenAiReaderSummaryWeeklyOutput } from "./openai-responses-reader-summary-weekly-output-admission";
 
 export class OpenAiResponsesReaderSummaryWeeklyModelAdapter
 implements ReaderSummaryWeeklyModelPort {
@@ -72,17 +72,7 @@ implements ReaderSummaryWeeklyModelPort {
     const responseJson = await readCompletedResponse(response);
     const outputText = extractSingleOutputText(responseJson);
 
-    try {
-      return parseOpenAiReaderSummaryWeeklyResponse(input, outputText);
-    } catch (error) {
-      throw modelError(
-        "output_validation",
-        false,
-        error instanceof Error
-          ? error.message
-          : "OpenAI reader summary weekly output validation failed",
-      );
-    }
+    return admitOpenAiReaderSummaryWeeklyOutput(input, outputText);
   }
 
   classifyError(error: unknown): OpenAiReaderSummaryWeeklyModelFailure {
