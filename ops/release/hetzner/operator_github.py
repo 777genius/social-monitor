@@ -262,7 +262,10 @@ def backend_release(config, runner, binding):
                 reviewed = {'base': base, 'head': sha, 'delta_sha256': checksum,
                             'review_delta_sha256': reviewed_digest, 'continuation': continuation}
                 review_field = field
-            package = gh.package_scripts(base, sha, checksum, reviewed_767=review_field == 'reviewed_767') if 'package.json' in paths else None
+            package = None
+            if 'package.json' in paths:
+                package = (gh.package_scripts(base, sha, checksum, reviewed_767=True) if review_field == 'reviewed_767'
+                           else gh.package_scripts(base, sha, checksum))
             observed[base] = (paths, checksum, package, reviewed, review_field)
         paths, checksum, package, reviewed, review_field = observed[base]
         deltas[service] = {'base': base, 'head': sha, 'complete_delta': True,
