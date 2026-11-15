@@ -14,6 +14,7 @@ on:
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-candidate-anchor-policy.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-recovery.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-consensus.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-existing-admission.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-anchor-support.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-anchor-support.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-creation.ts

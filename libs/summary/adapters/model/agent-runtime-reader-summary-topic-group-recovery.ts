@@ -8,10 +8,9 @@ import { buildGroundedTopicRecoveryAnchorMaps } from "./agent-runtime-reader-sum
 import { assignNewGroundedTopicGroups } from "./agent-runtime-reader-summary-topic-group-creation";
 import {
   recoverIntoExistingGroups,
-  normalizeExistingGroups,
-  supportedAnchorsForActiveGroups,
   sharedUngroupedAnchors,
 } from "./agent-runtime-reader-summary-topic-group-consensus";
+import { normalizeExistingGroups, supportedAnchorsForActiveGroups } from "./agent-runtime-reader-summary-topic-group-existing-admission";
 
 export type RecoveredTopicGroups = {
   readonly nodeLabels: readonly ReaderSummaryTopicNodeLabel[];
