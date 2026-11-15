@@ -10,6 +10,7 @@ on:
       - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
       - libs/summary/adapters/model/reader-summary-generation-identity-policy.ts
       - libs/summary/adapters/model/reader-summary-generation-identity-core.ts
+      - libs/summary/adapters/model/reader-summary-generation-exact-settings.ts
       - libs/summary/adapters/model/reader-summary-generation-effort-policy.ts
       - libs/summary/adapters/model/reader-summary-generation-effort-policy.spec.ts
       - libs/summary/adapters/model/reader-summary-generation-env-resolution.ts

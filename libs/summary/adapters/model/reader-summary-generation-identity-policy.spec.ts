@@ -1,13 +1,51 @@
 import {
+  parseActiveReaderSummaryModel as directModel,
+  parseActiveReaderSummaryReasoningEffort as directEffort,
+  assertActiveReaderSummaryProvider as directProvider,
+} from "./reader-summary-generation-exact-settings";
+import {
+  parseActiveReaderSummaryModel as coreModel,
+  parseActiveReaderSummaryReasoningEffort as coreEffort,
+  assertActiveReaderSummaryProvider as coreProvider,
+} from "./reader-summary-generation-identity-core";
+import {
   resolveReaderSummaryDailyTaskIdentityFromEnv,
   resolveReaderSummaryGenerationIdentityFromEnv,
   parseActiveReaderSummaryModel,
+  parseActiveReaderSummaryReasoningEffort,
   assertActiveReaderSummaryProvider,
   resolveReaderSummaryGenerationIdentity,
   resolveReaderSummaryReasoningEffortFromEnv,
 } from "./active-reader-summary-generation-profile";
 
 describe("reader-summary generation identity policy", () => {
+  it("keeps exact-value admission as single function objects through core and legacy profile", () => {
+    expect(parseActiveReaderSummaryModel).toBe(directModel);
+    expect(parseActiveReaderSummaryReasoningEffort).toBe(directEffort);
+    expect(assertActiveReaderSummaryProvider).toBe(directProvider);
+    expect(coreModel).toBe(directModel);
+    expect(coreEffort).toBe(directEffort);
+    expect(coreProvider).toBe(directProvider);
+  });
+
+  it("preserves strict admission, whitespace-only defaults and exact rejection diagnostics", () => {
+    expect(directModel("  gpt-5.6-sol  ")).toBe("gpt-5.6-sol");
+    expect(directEffort(" high ")).toBe("high");
+    expect(directProvider(" codex ")).toBe("codex");
+    expect(directModel("   ")).toBeUndefined();
+    expect(directEffort(undefined)).toBeUndefined();
+    expect(directProvider("")).toBeUndefined();
+    expect(() => directModel("gpt-6.1-sol")).toThrow(
+      "AGENT_RUNTIME_READER_SUMMARY_MODEL must be gpt-5.6-sol",
+    );
+    expect(() => directEffort("low")).toThrow(
+      "AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT must be high",
+    );
+    expect(() => directProvider("openai")).toThrow(
+      'AGENT_RUNTIME_PROVIDER must be "codex" for active reader summaries',
+    );
+  });
+
   it("keeps the canonical local Codex profile and model", () => {
     expect(resolveReaderSummaryGenerationIdentityFromEnv({})).toMatchObject({
       provider: "codex",

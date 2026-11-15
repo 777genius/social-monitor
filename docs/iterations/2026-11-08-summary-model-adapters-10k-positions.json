@@ -1561,25 +1561,7 @@
         242,
         243,
         244,
-        246,
-        431,
-        432,
-        434,
-        435,
-        440,
-        441,
-        443,
-        444,
-        449,
-        450,
-        452,
-        453,
-        455,
-        457,
-        458,
-        460,
-        461,
-        462
+        246
       ],
       "responsibility": "Pure provider/backend/model identity and exact provider admission, separate from environment mapping and gateway-versus-CLI effort policy; previous coordinates still counted once"
     },
@@ -5732,6 +5714,31 @@
         215
       ],
       "responsibility": "Trusted per-citation watch admission and cross-provider checks independently of narrative output; 23 already counted source positions reassigned."
+    },
+    {
+      "original": "active-reader-summary-generation-profile.ts",
+      "owner": "reader-summary-generation-exact-settings.ts",
+      "originalPositions": [
+        431,
+        432,
+        434,
+        435,
+        440,
+        441,
+        443,
+        444,
+        449,
+        450,
+        452,
+        453,
+        455,
+        457,
+        458,
+        460,
+        461,
+        462
+      ],
+      "responsibility": "Strict exact model/effort/provider environment-value admission and stable diagnostics, independent of pure provider/backend route identity; historical direct-export function identities unchanged; preexisting frozen coordinates reassigned once, zero new LOC credit"
     }
   ]
 }
