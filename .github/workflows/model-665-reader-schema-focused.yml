@@ -8,6 +8,11 @@ on:
       - .github/workflows/model-665-reader-schema-focused.yml
       - libs/summary/adapters/model/openai-responses-reader-summary-json-schema.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-json-schema.spec.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-base-schema.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-daily-writer-schema.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-daily-writer-schema.spec.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-daily-synthesis-citation-policy.ts
+      - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
       - libs/summary/adapters/model/openai-responses-reader-summary-editorial-schema.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-next-action-schema.ts
 permissions:
@@ -36,6 +41,7 @@ jobs:
       - name: Verify strict types and architecture hard gates
         run: |
           set -euo pipefail
+          node scripts/audit-summary-model-original-files.mjs
           npx tsc --noEmit
           npm run check:architecture
           npm run check:code-quality
@@ -45,4 +51,5 @@ jobs:
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
           libs/summary/adapters/model/openai-responses-reader-summary-json-schema.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-daily-writer-schema.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-model.adapter.spec.ts
