@@ -1,3 +1,7 @@
+## 2026-11-15 — Deterministic story owners reallocated, zero new baseline credit
+
+Production/test SHA `c3344dac5765db0d43f42bf6a565012d6a0fe63f` in existing Draft #665: frozen source `deterministic-reader-summary-model.adapter.ts` existing 50 disjoint implementation positions reassigned to current top-story projection **27**, interest-highlight specialist **11**, repeated-signal specialist **12**. Traced original statements exactly in their current owners; no duplicated ledger positions. **4,240 provisional original implementation positions / 195 slices / 53 originals**, **+0** net new original-coordinate credit for this post-baseline refactor. 84 frozen files / 15,318 PHYSICAL LOC. New regression covers facade identity, two independent policies, repeated-source first citation and missing representative; exact-head focused CI/independent reviews/full Ready 20/20 remain pending. No merge/deploy/unrelated PR touches.
+
 ## 2026-11-15 — Deterministic provider diversity provenance
 
 The pinned 84-file / 15,318 PHYSICAL original inventory is immutable; 53 newly traced original implementation coordinates in `deterministic-reader-summary-evidence-selection.ts` belong to the already-separated provider-diversity policy (see JSON ledger). The new cluster-selector owner contains post-baseline code and contributes zero additional original coordinates. Provisional 4240/10,000 positions; **not accepted semantic LOC**, subject to move-only discounts. Same Draft PR #665; no change to the original file-level inventory.
