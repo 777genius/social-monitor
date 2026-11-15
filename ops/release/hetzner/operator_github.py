@@ -145,13 +145,15 @@ class GitHub:
         require('package.json' in paths and observed_delta == delta, 'operator-package-delta')
         records, documents = [], []
         require(not reviewed_767 or base == core_policies.REVIEW_767_BASE, 'operator-package-build-contract')
-        for index, tree in enumerate((self.tree(base), self.tree(head))):
+        trees = (self.tree(base), self.tree(head))
+        stable_767 = not reviewed_767 and trees[0].get('Dockerfile', {}).get('sha') == core_policies.REVIEW_767_DOCKERFILE
+        for index, tree in enumerate(trees):
             # No copied source may redirect through a link to an otherwise un-copied CI file.
             require(all(entry['type'] == 'blob' and entry['mode'] in ('100644', '100755')
                         for entry in tree.values()), 'operator-package-build-contract')
             require('binding.gyp' not in tree, 'operator-package-build-contract')
             for path, sha in core_policies.PACKAGE_BUILD['files'].items():
-                if reviewed_767 and index == 1 and path == 'Dockerfile':
+                if path == 'Dockerfile' and (stable_767 or reviewed_767 and index == 1):
                     sha = core_policies.REVIEW_767_DOCKERFILE
                 require(tree.get(path) == {'mode': '100644', 'type': 'blob', 'sha': sha},
                         'operator-package-build-contract')
@@ -186,7 +188,7 @@ class GitHub:
         return {'base': base, 'head': head, 'delta_sha256': delta, 'changed_scripts': changed,
                 'before_blob': records[0]['blob'], 'after_blob': records[1]['blob'],
                 'before_sha256': records[0]['sha256'], 'after_sha256': records[1]['sha256'],
-                'build_contract_sha256': digest(core_policies.package_build_contract(reviewed_767))}
+                'build_contract_sha256': digest(core_policies.package_build_contract(reviewed_767, stable_767))}
 
 
 def scope(paths):

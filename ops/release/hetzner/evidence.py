@@ -130,10 +130,12 @@ PACKAGE_BUILD = {
 }
 
 
-def package_build_contract(reviewed_767=False):
-    if not reviewed_767:
-        return PACKAGE_BUILD
-    return {**PACKAGE_BUILD, 'reviewed_dockerfile_after': REVIEW_767_DOCKERFILE}
+def package_build_contract(reviewed_767=False, stable_767=False):
+    if reviewed_767:
+        return {**PACKAGE_BUILD, 'reviewed_dockerfile_after': REVIEW_767_DOCKERFILE}
+    if stable_767:
+        return {**PACKAGE_BUILD, 'files': {**PACKAGE_BUILD['files'], 'Dockerfile': REVIEW_767_DOCKERFILE}}
+    return PACKAGE_BUILD
 
 
 def package_script_proof(proof, base, head, delta, reviewed_767=False):
@@ -143,7 +145,8 @@ def package_script_proof(proof, base, head, delta, reviewed_767=False):
             and isinstance(proof['changed_scripts'], list) and proof['changed_scripts']
             and all(package_check_key(key) for key in proof['changed_scripts'])
             and proof['changed_scripts'] == sorted(set(proof['changed_scripts']))
-            and proof['build_contract_sha256'] == digest(package_build_contract(reviewed_767)), 'backend-sensitive-files')
+            and proof['build_contract_sha256'] in ({digest(package_build_contract(True))} if reviewed_767 else
+                {digest(package_build_contract()), digest(package_build_contract(stable_767=True))}), 'backend-sensitive-files')
     require(all(isinstance(proof[k], str) and re.fullmatch(r'[0-9a-f]{40}', proof[k])
                 for k in ('before_blob', 'after_blob')) and
             all(isinstance(proof[k], str) and re.fullmatch(DIGEST, proof[k])

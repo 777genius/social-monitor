@@ -14,8 +14,10 @@ COPY list. Its Git blob changes from `ec1487f1442ddd7a965f924bc3a3f889eb857239`
 to `cba26666aced8bc63f5f69a1a60cb5bb4990742c`. The package change adjusts an
 architecture-check script. The release operator independently compares the
 package documents, validates the unchanged build commands and hooks, and binds
-this exact Dockerfile pair to the reviewed delta. It still rejects unreviewed
-runtime or build changes in any continuation.
+this exact Dockerfile pair to the reviewed delta. After the transition, a
+CI-only package change may use the unchanged new Dockerfile on both sides;
+the old unchanged pair remains valid for existing releases. Unreviewed
+transitions and any other build changes are still rejected.
 
 A separate reviewer found no migration, public API, frontend, or API/worker
 runtime-module change in this delta. A read-only production check observed 112
