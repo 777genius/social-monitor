@@ -135,10 +135,28 @@ describe("OpenAI reader summary daily writer schema boundary", () => {
         Object.freeze({ feedItemId: "feed-outside", sourceItemId: "source-outside", providerKey: "rss", canonicalUrl: "" }),
       ]),
       dailyGenerationInput: Object.freeze({
+        policyVersion: "reader_summary.daily_input.native_likes.v1",
+        manifestSha256: "a".repeat(64),
+        periodKey: "2026-11-15",
+        cutoffAt: "2026-11-15T00:00:00.000Z",
+        candidateCount: 2,
         selected: Object.freeze([
-          Object.freeze({ feedItemId: "feed-one", storyId: "story-one" }),
-          Object.freeze({ feedItemId: "feed-two", storyId: "story-two" }),
+          Object.freeze({
+            feedItemId: "feed-one", sourceItemId: "source-one", interestId: "interest-one",
+            publishedAt: "2026-11-14T20:00:00.000Z", observedAt: "2026-11-15T00:00:00.000Z",
+            assessmentId: "assessment-one", sourceSnapshotSha256: "b".repeat(64),
+            inputSha256: "c".repeat(64), storyId: "story-one", providerKey: "reddit",
+            nativeCount: 3, engagementObservedAt: null,
+          }),
+          Object.freeze({
+            feedItemId: "feed-two", sourceItemId: "source-two", interestId: "interest-two",
+            publishedAt: "2026-11-14T21:00:00.000Z", observedAt: "2026-11-15T00:00:00.000Z",
+            assessmentId: "assessment-two", sourceSnapshotSha256: "d".repeat(64),
+            inputSha256: "e".repeat(64), storyId: "story-two", providerKey: "rss",
+            nativeCount: 2, engagementObservedAt: null,
+          }),
         ]),
+        excluded: Object.freeze([]),
       }),
     }) as unknown as SummaryEvidenceSelection;
     const dailyEditorialPlan = {
