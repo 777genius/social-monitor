@@ -6,6 +6,7 @@ import {
   readerSummaryWriterSchema,
 } from "./openai-responses-reader-summary-schema";
 import { openAiReaderSummaryJsonSchema as baseSchema } from "./openai-responses-reader-summary-base-schema";
+import { constrainDailySynthesisCitations } from "./openai-responses-reader-summary-daily-synthesis-citation-policy";
 import {
   dailyEditorialReaderSummaryJsonSchema as editorialSchema,
   dailySynthesisReaderSummaryJsonSchema as synthesisSchema,
@@ -115,4 +116,47 @@ describe("OpenAI reader summary daily writer schema boundary", () => {
       dailyEditorialPlan: { version: "reader_summary.daily_editorial.v2" },
     })).toBe(synthesisSchema);
   });
+  it("keeps the static v2 schema immutable when there is no evidence to bind", () => {
+    const plan = { version: "reader_summary.daily_editorial.v2", topics: [{ feedItemIds: ["missing"] }] };
+    const schema = constrainDailySynthesisCitations(
+      { dailyEditorialPlan: plan }, synthesisSchema,
+    );
+    expect(schema).toBe(synthesisSchema);
+    expect(readerSummaryWriterSchema({ dailyEditorialPlan: plan })).toBe(synthesisSchema);
+    expect(synthesisSchema.$defs.narrativeSection.properties.citationIds.items)
+      .not.toHaveProperty("enum");
+  });
+
+  it("binds only assigned citations and demands two citations for distinct selected stories", () => {
+    const evidence = Object.freeze({
+      selectedEvidence: Object.freeze([
+        Object.freeze({ feedItemId: "feed-one", sourceItemId: "source-one", providerKey: "reddit", canonicalUrl: "" }),
+        Object.freeze({ feedItemId: "feed-two", sourceItemId: "source-two", providerKey: "rss", canonicalUrl: "" }),
+        Object.freeze({ feedItemId: "feed-outside", sourceItemId: "source-outside", providerKey: "rss", canonicalUrl: "" }),
+      ]),
+      dailyGenerationInput: Object.freeze({
+        selected: Object.freeze([
+          Object.freeze({ feedItemId: "feed-one", storyId: "story-one" }),
+          Object.freeze({ feedItemId: "feed-two", storyId: "story-two" }),
+        ]),
+      }),
+    }) as unknown as SummaryEvidenceSelection;
+    const dailyEditorialPlan = {
+      version: "reader_summary.daily_editorial.v2",
+      topics: [{ feedItemIds: ["feed-one", "feed-two"] }],
+    };
+    const input = { dailyEditorialPlan, evidence };
+    const selected = constrainDailySynthesisCitations(input, synthesisSchema);
+    expect(readerSummaryWriterSchema(input)).toEqual(selected);
+    expect(selected.$defs.narrativeSection.properties.citationIds).toMatchObject({
+      minItems: 2,
+      maxItems: 3,
+      items: { enum: ["c1", "c2"] },
+    });
+    expect(synthesisSchema.$defs.narrativeSection.properties.citationIds.items)
+      .not.toHaveProperty("enum");
+    expect(evidence.selectedEvidence).toHaveLength(3);
+    expect(dailyEditorialPlan.topics).toEqual([{ feedItemIds: ["feed-one", "feed-two"] }]);
+  });
+
 });
