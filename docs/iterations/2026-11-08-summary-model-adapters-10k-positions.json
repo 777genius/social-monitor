@@ -1974,42 +1974,9 @@
         139,
         140,
         142,
-        306,
-        307,
-        308,
-        310,
-        311,
-        312,
-        313,
-        314,
-        315,
-        322,
-        323,
-        324,
-        325,
-        326,
-        327,
-        328,
-        329,
-        330,
-        331,
-        332,
-        333,
-        334,
-        335,
-        336,
-        337,
-        338,
-        339,
-        340,
-        341,
-        342,
-        343,
-        344,
-        345,
         355
       ],
-      "responsibility": "Retrospective frozen-source mapping: bounded provider prompt data projection, source-citation identity, verified V3 presentation and conversation context mapping, independent of expanded-evidence selection and lexical source handling"
+      "responsibility": "Bounded provider prompt evidence projection, source/citation identity and content quality fields; verified-headline admission and conversation compaction delegated to independent specialists"
     },
     {
       "original": "openai-responses-reader-summary-adaptive-evidence.ts",
@@ -5217,6 +5184,53 @@
         53
       ],
       "responsibility": "Approved lead/secondary coverage-plan citation admission, daily versus single-story lead policy and deterministic missing-ID exclusion"
+    },
+    {
+      "original": "openai-responses-reader-summary-adaptive-evidence.ts",
+      "owner": "openai-responses-reader-summary-verified-presentation.ts",
+      "originalPositions": [
+        306,
+        307,
+        308,
+        310,
+        311,
+        312,
+        313,
+        314,
+        315
+      ],
+      "responsibility": "Verified V3 reader-headline admission and candidate identity trust boundary, independent of prompt-field composition"
+    },
+    {
+      "original": "openai-responses-reader-summary-adaptive-evidence.ts",
+      "owner": "openai-responses-reader-summary-conversation-context.ts",
+      "originalPositions": [
+        322,
+        323,
+        324,
+        325,
+        326,
+        327,
+        328,
+        329,
+        330,
+        331,
+        332,
+        333,
+        334,
+        335,
+        336,
+        337,
+        338,
+        339,
+        340,
+        341,
+        342,
+        343,
+        344,
+        345
+      ],
+      "responsibility": "Bounded conversation unit and ancestor projection with per-level text limits and exact historical export identity"
     }
   ]
 }

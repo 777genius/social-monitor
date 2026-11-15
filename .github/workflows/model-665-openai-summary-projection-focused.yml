@@ -14,6 +14,10 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-source-content.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-source-fragments.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-source-content.spec.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-evidence-projection.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-verified-presentation.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-conversation-context.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-adaptive-evidence.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-prompt.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-legacy-instructions.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-legacy-instructions.spec.ts
@@ -94,6 +98,7 @@ jobs:
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
           libs/summary/adapters/model/openai-responses-reader-summary-source-content.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-adaptive-evidence.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-legacy-instructions.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-prompt-contract.spec.ts
           libs/summary/adapters/model/openai-responses-summary-prompt.spec.ts

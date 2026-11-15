@@ -9,6 +9,20 @@ import {
   relevantSourceFragments,
 } from "./openai-responses-reader-summary-source-fragments";
 
+const evidenceItem = (
+  values: Pick<SummaryEvidenceItem, "providerKey" | "sourceText" | "title" | "whyImportant">,
+): SummaryEvidenceItem => ({
+  feedItemId: "source-content-test-feed",
+  sourceItemId: "source-content-test-source",
+  sourceBindingId: "source-content-test-binding",
+  interestId: "source-content-test-interest",
+  canonicalUrl: "https://example.invalid/source",
+  publishedAt: new Date("2026-07-09T00:00:00.000Z"),
+  observedAt: new Date("2026-07-09T00:01:00.000Z"),
+  score: 1,
+  ...values,
+});
+
 describe("reader-summary source-content privacy and bounds", () => {
   it("keeps the existing lexical URL, markup and Markdown link normalization", () => {
     const text = "[label](https://example.invalid/a) Next <b>detail</b> https://example.invalid/other";
@@ -26,12 +40,12 @@ describe("reader-summary source-content privacy and bounds", () => {
 
   it("selects bounded relevant source fragments deterministically from RSS text", () => {
     const source = `${"General market background. ".repeat(180)}Ultra preview capability has a tighter usage limit. ${"Additional general background. ".repeat(45)}`;
-    const item = {
+    const item = evidenceItem({
       providerKey: "rss",
       sourceText: source,
       title: "Ultra preview usage limit",
       whyImportant: ["Ultra preview capability"],
-    } as SummaryEvidenceItem;
+    });
     const content = adaptiveSourceContent(item, source.length) as {
       readonly mode: string;
       readonly originalCharacterCount: number;
@@ -47,12 +61,12 @@ describe("reader-summary source-content privacy and bounds", () => {
   });
 
   it("keeps short social posts whole after the existing source privacy normalization", () => {
-    const item = {
+    const item = evidenceItem({
       providerKey: "reddit",
       sourceText: "An   original <b>post</b> with https://example.invalid/private",
       title: "Source trust",
       whyImportant: [],
-    } as SummaryEvidenceItem;
+    });
     const text = "An original post with";
     expect(adaptiveSourceContent(item, 10_000)).toEqual({
       mode: "full_social_post",
@@ -64,12 +78,12 @@ describe("reader-summary source-content privacy and bounds", () => {
 
   it("routes oversized social content through bounded deterministic fragments", () => {
     const source = "Long social discussion context. ".repeat(150);
-    const item = {
+    const item = evidenceItem({
       providerKey: "x-twitter",
       sourceText: source,
       title: "Social discussion",
       whyImportant: ["context"],
-    } as SummaryEvidenceItem;
+    });
     const content = adaptiveSourceContent(item, 10_000) as {
       readonly mode: string;
       readonly originalCharacterCount: number;

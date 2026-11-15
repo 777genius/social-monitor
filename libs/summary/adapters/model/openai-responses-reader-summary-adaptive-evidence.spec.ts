@@ -10,7 +10,13 @@ import {
 import type { ReaderSummaryModelInput } from "../../ports";
 import { buildAdaptiveReaderSummaryEvidence } from "./openai-responses-reader-summary-adaptive-evidence";
 import { sourceHydrationLimitForSelection } from "./openai-responses-reader-summary-expansion-policy";
-import { projectReaderSummaryPromptEvidenceItem } from "./openai-responses-reader-summary-evidence-projection";
+import {
+  acceptedReaderPresentation,
+  compactConversationContext,
+  projectReaderSummaryPromptEvidenceItem,
+} from "./openai-responses-reader-summary-evidence-projection";
+import { acceptedReaderPresentation as directAcceptedReaderPresentation } from "./openai-responses-reader-summary-verified-presentation";
+import { compactConversationContext as directCompactConversationContext } from "./openai-responses-reader-summary-conversation-context";
 import {
   buildOpenAiReaderSummaryInstructions,
   buildOpenAiReaderSummaryPromptPayload,
@@ -156,6 +162,8 @@ describe("adaptive reader summary evidence", () => {
     expect(accepted.qualifications[0]?.phrase).toBe(qualification);
     expect(accepted.qualifications[0]?.evidence[0]?.quote).toBe(qualification);
     expect(accepted.reviewedBodyLength).toBeGreaterThan(60_000);
+    expect(acceptedReaderPresentation(item)).toMatchObject({ headline: accepted.headline });
+    expect(acceptedReaderPresentation({ ...item, feedItemId: "unrelated-feed" })).toBeUndefined();
     const input = modelInput(selection);
     Object.assign(input, { coveragePlan: plan });
     const payload = buildOpenAiReaderSummaryPromptPayload(input);
@@ -200,6 +208,56 @@ describe("adaptive reader summary evidence", () => {
       selection.selectedEvidence[0]!, 0, true, "c1", 50_000, false,
     ));
     expect(sourceHydrationLimitForSelection(selection)).toBe(50_000);
+  });
+
+  it("keeps verified presentation as a dedicated fail-closed trust boundary", () => {
+    const item = evidenceItem(3);
+    expect(acceptedReaderPresentation).toBe(directAcceptedReaderPresentation);
+    expect(acceptedReaderPresentation(item)).toBeUndefined();
+    expect(projectReaderSummaryPromptEvidenceItem(
+      item, 3, true, "c4", 500, true,
+    ).acceptedReaderPresentation).toBeUndefined();
+  });
+
+  it("keeps conversation projection bounded and its historic export identical", () => {
+    const unit = {
+      conversationUnitId: "comment-1",
+      providerUnitId: "provider-comment-1",
+      threadExternalId: "thread-1",
+      canonicalUrl: "https://example.invalid/comment",
+      body: "word ".repeat(95),
+      score: 4,
+      replyCount: 2,
+      signalBand: "high",
+      depth: 0,
+      role: "top_level_comment" as const,
+      selectionReason: "ranked" as const,
+      publishedAt: "2026-07-09T00:00:00.000Z",
+    };
+    const ancestor = {
+      ...unit,
+      role: "reply" as const,
+      selectionReason: "ancestor_context" as const,
+      body: "ancestor ".repeat(80),
+    };
+    const context = {
+      rankingBasis: "cohort_baseline_v1" as const,
+      bundleScore: 15,
+      units: Array.from({ length: 7 }, (_, index) => ({
+        ...unit,
+        providerUnitId: `provider-comment-${index}`,
+        ancestry: [ancestor, ancestor, ancestor],
+      })),
+    };
+
+    expect(compactConversationContext).toBe(directCompactConversationContext);
+    const projected = compactConversationContext(context);
+    expect(projected.rankingBasis).toBe("cohort_baseline_v1");
+    expect(projected.bundleScore).toBe(15);
+    expect(projected.units).toHaveLength(5);
+    expect(projected.units[0]?.body.length).toBeLessThanOrEqual(320);
+    expect(projected.units[0]?.ancestry).toHaveLength(2);
+    expect(projected.units[0]?.ancestry?.[0]?.body.length).toBeLessThanOrEqual(220);
   });
 
 });
