@@ -11,6 +11,10 @@ on:
       - libs/summary/adapters/model/deterministic-reader-summary-citation-index.ts
       - libs/summary/adapters/model/deterministic-reader-summary-citation-index.spec.ts
       - libs/summary/adapters/model/deterministic-reader-summary-coverage-selection.ts
+      - libs/summary/adapters/model/deterministic-reader-summary-evidence-selection.ts
+      - libs/summary/adapters/model/deterministic-reader-summary-cluster-selection.ts
+      - libs/summary/adapters/model/deterministic-reader-summary-provider-diversity.ts
+      - libs/summary/adapters/model/deterministic-reader-summary-evidence-selection.spec.ts
       - libs/summary/adapters/model/deterministic-reader-summary-model.adapter.spec.ts
       - libs/summary/adapters/model/deterministic-reader-summary-narrative.ts
       - libs/summary/adapters/model/deterministic-reader-summary-secondary-sections.ts

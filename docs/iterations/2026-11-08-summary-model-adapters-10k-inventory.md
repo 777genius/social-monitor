@@ -1,3 +1,7 @@
+## 2026-11-15 — Deterministic provider diversity provenance
+
+The pinned 84-file / 15,318 PHYSICAL original inventory is immutable; 68 newly traced original implementation coordinates in `deterministic-reader-summary-evidence-selection.ts` belong to the already-separated provider-diversity policy (see JSON ledger). The new cluster-selector owner contains post-baseline code and contributes zero additional original coordinates. Provisional 4255/10,000 positions; **not accepted semantic LOC**, subject to move-only discounts. Same Draft PR #665; no change to the original file-level inventory.
+
 ## 2026-11-15 — Weekly output admission and independent original owner provenance
 
 - Existing single Draft PR #665: extracted provider-facing weekly artifact admission from the adapter to `openai-responses-reader-summary-weekly-output-admission.ts`. The parser still validates strict artifact/citation/source bindings; the dedicated adapter boundary keeps the exact previous non-retryable `output_validation` classification and messages. No alteration to weekly prompts, schema, model IDs, credentials, provider route, scope, deadlines, attestation or deterministic fallback.
