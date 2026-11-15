@@ -18,7 +18,9 @@ import {
 } from './openai-responses-summary-draft-shape';
 
 import { normalizeKeyPoints } from './openai-responses-summary-key-points';
-import { normalizeRisks, normalizeQualityFlags, normalizeNoSignalReason, normalizeConfidence } from './openai-responses-summary-quality';
+import { normalizeRisks } from './openai-responses-summary-risks';
+import { normalizeConfidence } from './openai-responses-summary-confidence';
+import { normalizeQualityFlags, normalizeNoSignalReason } from './openai-responses-summary-quality';
 import { normalizeSafeStringArray, fallbackHeadline, fallbackExecutiveSummary, stringOrFallback } from './openai-responses-summary-text';
 
 export { assertOpenAiSummaryDraftShape } from './openai-responses-summary-draft-shape';

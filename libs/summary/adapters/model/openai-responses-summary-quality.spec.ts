@@ -1,9 +1,33 @@
 import type { SummaryCitation } from "../../domain";
 import { normalizeConfidence, normalizeQualityFlags, normalizeNoSignalReason, normalizeRisks } from "./openai-responses-summary-quality";
+import { normalizeRisks as normalizeRisksDirect } from "./openai-responses-summary-risks";
+import { normalizeConfidence as normalizeConfidenceDirect } from "./openai-responses-summary-confidence";
 import { normalizeKeyPoints } from "./openai-responses-summary-key-points";
 import { normalizeSafeStringArray } from "./openai-responses-summary-text";
 
 describe("OpenAI summary normalization boundaries", () => {
+  it("preserves historical risk and confidence export identities", () => {
+    expect(normalizeRisks).toBe(normalizeRisksDirect);
+    expect(normalizeConfidence).toBe(normalizeConfidenceDirect);
+  });
+  it("keeps provider risk admission deterministic without mutating evidence", () => {
+    const citationIds = Object.freeze(["c1"]);
+    const risk = Object.freeze({
+      description: "Synthetic source uncertainty",
+      reason: "source_limit",
+      citationIds,
+    });
+    expect(normalizeRisks([risk])).toEqual([{
+      description: "Synthetic source uncertainty",
+      reason: "source_limit",
+      citationIds: ["c1"],
+    }]);
+    expect(risk.citationIds).toEqual(["c1"]);
+    expect(() => normalizeRisks([{ description: "Synthetic", reason: "forged" }]))
+      .toThrow("Invalid summary risk reason at risksAndUnknowns[0].reason");
+    expect(normalizeConfidence({ level: "low", score: 0, rationale: "Synthetic evidence" }))
+      .toEqual({ level: "low", score: 0, rationale: "Synthetic evidence" });
+  });
   it("retains confidence fallbacks and strict invalid levels", () => {
     expect(normalizeConfidence(undefined)).toMatchObject({ level: "medium", score: 0.62 });
     expect(() => normalizeConfidence({ level: "unknown", score: 0, rationale: "synthetic" }))

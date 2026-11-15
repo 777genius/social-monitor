@@ -44,6 +44,10 @@ on:
       - libs/summary/adapters/model/openai-responses-summary-draft-quality-policy.ts
       - libs/summary/adapters/model/openai-responses-summary-draft-usage-policy.ts
       - libs/summary/adapters/model/openai-responses-summary-draft-shape.spec.ts
+      - libs/summary/adapters/model/openai-responses-summary-quality.ts
+      - libs/summary/adapters/model/openai-responses-summary-risks.ts
+      - libs/summary/adapters/model/openai-responses-summary-confidence.ts
+      - libs/summary/adapters/model/openai-responses-summary-draft-normalizer.ts
       - libs/summary/adapters/model/openai-responses-summary-quality.spec.ts
       - libs/summary/adapters/model/openai-responses-summary-json-boundaries.spec.ts
       - libs/summary/adapters/model/openai-responses-summary-required-json.ts
