@@ -6395,6 +6395,21 @@
         65
       ],
       "responsibility": "Task-local retry/timeout code admission and irreversible gateway effect/cleanup no-replay are isolated from run-wide capacity/account/validation failure veto. Exact original coordinate trace only; independently discount mechanical moves."
+    },
+    {
+      "original": "openai-responses-reader-summary-prompt.ts",
+      "owner": "reader-summary-prompt-release-policy.ts",
+      "originalPositions": [
+        25,
+        26,
+        27,
+        28,
+        29,
+        36,
+        37,
+        38
+      ],
+      "responsibility": "Compiled provider-neutral release identity and fail-closed override refusal are owned independently from OpenAI legacy/daily prompt rendering; exact public export object/function identity and historical error semantics retained"
     }
   ]
 }

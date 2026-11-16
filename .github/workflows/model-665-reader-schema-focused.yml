@@ -12,6 +12,9 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-daily-writer-schema.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-daily-writer-schema.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-daily-synthesis-citation-policy.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-prompt.ts
+      - libs/summary/adapters/model/reader-summary-prompt-release-policy.ts
+      - libs/summary/adapters/model/reader-summary-prompt-release-policy.spec.ts
       - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
       - libs/summary/adapters/model/openai-responses-reader-summary-editorial-schema.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-next-action-schema.ts
@@ -54,3 +57,6 @@ jobs:
           libs/summary/adapters/model/openai-responses-reader-summary-json-schema.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-daily-writer-schema.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-model.adapter.spec.ts
+          libs/summary/adapters/model/reader-summary-prompt-release-policy.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-prompt-boundaries.spec.ts
+          libs/summary/adapters/model/reader-summary-prompt-release-options.spec.ts
