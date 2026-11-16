@@ -1622,24 +1622,7 @@
         283,
         289,
         290,
-        292,
-        305,
-        306,
-        307,
-        308,
-        310,
-        313,
-        314,
-        315,
-        318,
-        319,
-        320,
-        322,
-        323,
-        325,
-        326,
-        328,
-        332
+        292
       ],
       "responsibility": "Generation/daily-task environment route selection and transport-specific defaults/strict override checks; same frozen source positions reassigned from former identity-policy module, counted once"
     },
@@ -5901,6 +5884,30 @@
         405
       ],
       "responsibility": "One-policy owner for route identity, input-aware prompt version and fail-closed estimate/budget admission; adapter now delegates instead of mixing route decisions with task dispatch. Conservative source-exact trace, not independently approved semantic LOC."
+    },
+    {
+      "original": "active-reader-summary-generation-profile.ts",
+      "owner": "reader-summary-daily-task-env-resolution.ts",
+      "originalPositions": [
+        305,
+        306,
+        307,
+        308,
+        310,
+        313,
+        314,
+        315,
+        318,
+        319,
+        320,
+        322,
+        323,
+        325,
+        326,
+        328,
+        332
+      ],
+      "responsibility": "Purpose-specific daily-task model identity and strict Kimi/OpenRouter/MiMo backend admission independent of generation identity and effort; diagnostic shared without changing rejection semantics"
     }
   ]
 }

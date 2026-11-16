@@ -1,3 +1,5 @@
+import { resolveReaderSummaryDailyTaskIdentityFromEnv as directDailyTask } from "./reader-summary-daily-task-env-resolution";
+import { resolveReaderSummaryDailyTaskIdentityFromEnv as envDailyTask } from "./reader-summary-generation-env-resolution";
 import {
   parseActiveReaderSummaryModel as directModel,
   parseActiveReaderSummaryReasoningEffort as directEffort,
@@ -131,6 +133,32 @@ describe("reader-summary generation identity policy", () => {
       AGENT_RUNTIME_TRANSPORT: "gateway-llm",
       AGENT_RUNTIME_READER_SUMMARY_GENERATION_MODEL: "gpt-5.6-sol",
     })).toThrow("Gateway reader summary model conflicts with purpose policy");
+  });
+  it("delegates daily model selection to one immutable backend-specific owner", () => {
+    expect(resolveReaderSummaryDailyTaskIdentityFromEnv).toBe(directDailyTask);
+    expect(envDailyTask).toBe(directDailyTask);
+    const configuredGateway = Object.freeze({
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openrouter",
+      AGENT_RUNTIME_GATEWAY_LLM_MODEL: "test/model-v2",
+    });
+    expect(directDailyTask(configuredGateway, "test/model-v2")).toEqual({
+      model: "test/model-v2",
+      modelBackend: "openrouter",
+    });
+    expect(configuredGateway.AGENT_RUNTIME_GATEWAY_LLM_MODEL).toBe("test/model-v2");
+    expect(() => directDailyTask(configuredGateway, "forged/model")).toThrow(
+      "Gateway reader summary model conflicts with purpose policy",
+    );
+    const mimo = Object.freeze({
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "xiaomi-mimo-token-plan",
+    });
+    expect(directDailyTask(mimo, undefined)).toEqual({
+      model: "mimo-v2.6-pro",
+      modelBackend: "xiaomi-mimo-token-plan",
+    });
+    expect(() => directDailyTask(mimo, "gpt-5.6-sol")).toThrow(
+      "MiMo reader summary model conflicts with purpose policy",
+    );
   });
 
 });
