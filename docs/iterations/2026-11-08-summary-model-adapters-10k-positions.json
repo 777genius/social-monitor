@@ -5929,6 +5929,74 @@
         332
       ],
       "responsibility": "Purpose-specific daily-task model identity and strict Kimi/OpenRouter/MiMo backend admission independent of generation identity and effort; diagnostic shared without changing rejection semantics"
+    },
+    {
+      "original": "openai-responses-reader-summary-weekly-model.adapter.ts",
+      "owner": "openai-responses-reader-summary-weekly-generation.ts",
+      "originalPositions": [
+        90
+      ],
+      "responsibility": "Execution order/input admission now owned by the purpose-specific task lifecycle rather than adapter composition"
+    },
+    {
+      "original": "openai-responses-reader-summary-weekly-model.adapter.ts",
+      "owner": "openai-responses-reader-summary-weekly-options.ts",
+      "originalPositions": [
+        183,
+        190,
+        192,
+        193,
+        194,
+        195,
+        196,
+        198,
+        199
+      ],
+      "responsibility": "Pinned model and provider environment resolution owned by config policy, not task execution"
+    },
+    {
+      "original": "openai-responses-reader-summary-weekly-model.adapter.ts",
+      "owner": "openai-responses-reader-summary-weekly-request.ts",
+      "originalPositions": [
+        101,
+        103,
+        104,
+        106
+      ],
+      "responsibility": "Exact provider prompt/schema and store-disabled request projection independent of HTTP dispatch"
+    },
+    {
+      "original": "openai-responses-reader-summary-weekly-model.adapter.ts",
+      "owner": "openai-responses-reader-summary-weekly-output-admission.ts",
+      "originalPositions": [
+        113,
+        120
+      ],
+      "responsibility": "Sealed output decoding and non-retryable error translation independent of transport"
+    },
+    {
+      "original": "openai-responses-reader-summary-weekly-model.adapter.ts",
+      "owner": "openai-responses-reader-summary-weekly-transport.ts",
+      "originalPositions": [
+        154,
+        157,
+        167,
+        172
+      ],
+      "responsibility": "Bounded HTTP dispatch and preserved transport/timeouts error mapping"
+    },
+    {
+      "original": "openai-responses-reader-summary-weekly-model.adapter.ts",
+      "owner": "openai-responses-reader-summary-weekly-failure-policy.ts",
+      "originalPositions": [
+        127,
+        129,
+        131,
+        133,
+        137,
+        145
+      ],
+      "responsibility": "Provider failure taxonomy independent of runtime task and wire response"
     }
   ]
 }

@@ -1,11 +1,8 @@
 import {
-  extractSingleOutputText,
-  modelError,
-  readCompletedResponse,
   type OpenAiReaderSummaryWeeklyModelFailure,
 } from "./openai-responses-reader-summary-weekly-response-contract";
 import { classifyOpenAiReaderSummaryWeeklyError } from "./openai-responses-reader-summary-weekly-failure-policy";
-import { buildOpenAiReaderSummaryWeeklyRequest } from "./openai-responses-reader-summary-weekly-request";
+import { executeOpenAiReaderSummaryWeeklyGeneration } from "./openai-responses-reader-summary-weekly-generation";
 
 export {
   OpenAiReaderSummaryWeeklyModelError,
@@ -18,61 +15,24 @@ import {
   type ReaderSummaryWeeklyModelOutput,
   type ReaderSummaryWeeklyModelPort,
 } from "../../ports/reader-summary-weekly-model.port";
-import { openAiApiKeySourceDescription } from "./openai-api-key-source";
-import { assertValidWeeklyInput } from "./openai-responses-reader-summary-weekly-input-admission";
-import { postOpenAiReaderSummaryWeeklyResponse } from "./openai-responses-reader-summary-weekly-transport";
-import { normalizeOpenAiReaderSummaryWeeklyOptions, type OpenAiReaderSummaryWeeklyFetchLike, type OpenAiResponsesReaderSummaryWeeklyModelAdapterOptions } from "./openai-responses-reader-summary-weekly-options";
+import { normalizeOpenAiReaderSummaryWeeklyOptions, type NormalizedOpenAiReaderSummaryWeeklyOptions, type OpenAiResponsesReaderSummaryWeeklyModelAdapterOptions } from "./openai-responses-reader-summary-weekly-options";
 export { resolveOpenAiResponsesReaderSummaryWeeklyModelOptions } from "./openai-responses-reader-summary-weekly-options";
 export type { OpenAiResponsesReaderSummaryWeeklyModelAdapterOptions } from "./openai-responses-reader-summary-weekly-options";
-import { admitOpenAiReaderSummaryWeeklyOutput } from "./openai-responses-reader-summary-weekly-output-admission";
 
 export class OpenAiResponsesReaderSummaryWeeklyModelAdapter
 implements ReaderSummaryWeeklyModelPort {
-  private readonly apiKey: string;
-  private readonly endpointUrl: string;
-  private readonly model: string;
-  private readonly timeoutMs: number;
-  private readonly maxOutputTokens: number;
-  private readonly fetchFn: OpenAiReaderSummaryWeeklyFetchLike;
+  private readonly settings: NormalizedOpenAiReaderSummaryWeeklyOptions;
 
   constructor(
     options: OpenAiResponsesReaderSummaryWeeklyModelAdapterOptions = {},
   ) {
-    const resolved = normalizeOpenAiReaderSummaryWeeklyOptions(options);
-    this.apiKey = resolved.apiKey;
-    this.endpointUrl = resolved.endpointUrl;
-    this.model = resolved.model;
-    this.timeoutMs = resolved.timeoutMs;
-    this.maxOutputTokens = resolved.maxOutputTokens;
-    this.fetchFn = resolved.fetchFn;
+    this.settings = normalizeOpenAiReaderSummaryWeeklyOptions(options);
   }
 
   async generate(
     input: ReaderSummaryWeeklyModelInput,
   ): Promise<ReaderSummaryWeeklyModelOutput> {
-    assertValidWeeklyInput(input);
-    if (this.apiKey.length === 0) {
-      throw modelError(
-        "configuration",
-        false,
-        `OpenAI reader summary weekly model requires ${openAiApiKeySourceDescription}`,
-      );
-    }
-
-    const response = await postOpenAiReaderSummaryWeeklyResponse({
-      apiKey: this.apiKey,
-      endpointUrl: this.endpointUrl,
-      timeoutMs: this.timeoutMs,
-      fetchFn: this.fetchFn,
-      request: buildOpenAiReaderSummaryWeeklyRequest(input, {
-        model: this.model,
-        maxOutputTokens: this.maxOutputTokens,
-      }),
-    });
-    const responseJson = await readCompletedResponse(response);
-    const outputText = extractSingleOutputText(responseJson);
-
-    return admitOpenAiReaderSummaryWeeklyOutput(input, outputText);
+    return executeOpenAiReaderSummaryWeeklyGeneration(input, this.settings);
   }
 
   classifyError(error: unknown): OpenAiReaderSummaryWeeklyModelFailure {

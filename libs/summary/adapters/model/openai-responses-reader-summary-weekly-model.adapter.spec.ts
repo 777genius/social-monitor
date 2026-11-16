@@ -19,6 +19,8 @@ import {
 } from "./openai-responses-reader-summary-weekly-prompt";
 import { buildOpenAiReaderSummaryWeeklyResponseFormat } from "./openai-responses-reader-summary-weekly-schema";
 import { admitOpenAiReaderSummaryWeeklyOutput } from "./openai-responses-reader-summary-weekly-output-admission";
+import { executeOpenAiReaderSummaryWeeklyGeneration } from "./openai-responses-reader-summary-weekly-generation";
+import { normalizeOpenAiReaderSummaryWeeklyOptions } from "./openai-responses-reader-summary-weekly-options";
 import {
   OpenAiReaderSummaryWeeklyModelError,
   OpenAiResponsesReaderSummaryWeeklyModelAdapter,
@@ -122,6 +124,56 @@ describe("OpenAiResponsesReaderSummaryWeeklyModelAdapter", () => {
     expect(fetchFn.mock.calls[0]?.[0]).toBe(
       "https://api.openai.com/v1/responses",
     );
+  });
+
+  it("has identical direct and adapter execution for an immutable sealed weekly input", async () => {
+    const input = Object.freeze(weeklyInput());
+    const snapshot = JSON.stringify(input);
+    const expected = weeklyOutput(input);
+    const fetchFn = jest.fn(
+      async (_url: string | URL, _init?: RequestInit): Promise<Response> =>
+        response({
+          status: "completed",
+          output: [outputMessage(JSON.stringify(expected))],
+        }),
+    );
+    const settings = normalizeOpenAiReaderSummaryWeeklyOptions({
+      apiKey: fakeDirectKey,
+      model: "weekly-model-test",
+      fetchFn,
+    });
+    const direct = await executeOpenAiReaderSummaryWeeklyGeneration(input, settings);
+    const adapter = new OpenAiResponsesReaderSummaryWeeklyModelAdapter({
+      apiKey: fakeDirectKey,
+      model: "weekly-model-test",
+      fetchFn,
+    });
+    const delegated = await adapter.generate(input);
+    expect(direct).toEqual(expected);
+    expect(delegated).toEqual(direct);
+    expect(Object.isFrozen(direct)).toBe(true);
+    expect(JSON.stringify(input)).toBe(snapshot);
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects malformed input before missing credentials in the direct execution owner", async () => {
+    const fetchFn = jest.fn(async (): Promise<Response> => {
+      throw new Error("unexpected network dispatch");
+    });
+    const settings = normalizeOpenAiReaderSummaryWeeklyOptions({ fetchFn });
+    const malformed = {
+      ...weeklyInput(),
+      sealSha: "0".repeat(64),
+    } as ReaderSummaryWeeklyModelInput;
+    await expect(executeOpenAiReaderSummaryWeeklyGeneration(malformed, settings))
+      .rejects.toMatchObject({
+        failure: { kind: "invalid_input", retryable: false },
+      });
+    await expect(executeOpenAiReaderSummaryWeeklyGeneration(weeklyInput(), settings))
+      .rejects.toMatchObject({
+        failure: { kind: "configuration", retryable: false },
+      });
+    expect(fetchFn).not.toHaveBeenCalled();
   });
 
   it("rejects zero-evidence input before network I/O", async () => {
