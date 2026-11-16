@@ -454,6 +454,25 @@
         89,
         90,
         92,
+        142,
+        144,
+        145,
+        146,
+        147,
+        148,
+        149,
+        150,
+        151,
+        152,
+        153,
+        154
+      ],
+      "responsibility": "Flat legacy envelope routing, exact root citation chronology and sealed output assembly; section admission moved to specialist"
+    },
+    {
+      "original": "openai-responses-reader-summary-weekly-response-parser.ts",
+      "owner": "openai-responses-reader-summary-weekly-flat-section-normalization.ts",
+      "originalPositions": [
         94,
         95,
         97,
@@ -482,21 +501,9 @@
         133,
         137,
         138,
-        139,
-        142,
-        144,
-        145,
-        146,
-        147,
-        148,
-        149,
-        150,
-        151,
-        152,
-        153,
-        154
+        139
       ],
-      "responsibility": "Flat legacy weekly envelope conversion owns exact section/takeaway shape and chronology; sealed/expanded weekly formats have distinct strict decoders"
+      "responsibility": "Exact flat legacy section keys, optional takeaway, section/story projections, citation cloning and duplicate story identity rejection separate from root chronology"
     },
     {
       "original": "openai-responses-reader-summary-weekly-response-parser.ts",

@@ -6,6 +6,9 @@ on:
       - refactor/summary-model-adapters-10k-20261108
     paths:
       - .github/workflows/model-665-weekly-response-focused.yml
+      - libs/summary/adapters/model/openai-responses-reader-summary-weekly-flat-section-normalization.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-weekly-legacy-normalization.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-weekly-legacy-normalization.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-expanded-normalization.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-section-normalization.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-sealed-compact-normalization.ts
