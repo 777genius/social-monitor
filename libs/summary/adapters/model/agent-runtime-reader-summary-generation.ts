@@ -8,21 +8,15 @@ import type {
   ReaderSummaryModelRoute,
 } from "../../ports";
 import { extractReaderSummaryGatewaySchemaViolations } from "./agent-runtime-reader-summary-gateway-violations";
-import { frozenLegacyReaderSummaryRecoveryContract } from "./active-reader-summary-generation-profile";
 import {
   assertReaderSummaryRepairWithinBudget,
-  readAgentRuntimeObjectOutput,
   sumReaderSummaryUsage,
   usageFromAgentRuntime,
 } from "./agent-runtime-model-support";
-import { normalizeOpenAiReaderSummaryDraft } from "./openai-responses-reader-summary-draft-normalizer";
-import { parseOpenAiReaderSummaryJsonObject } from "./openai-responses-reader-summary-response-parser";
+import { readAttestedAgentRuntimeReaderSummaryDraft } from "./agent-runtime-reader-summary-attested-draft";
 import { isRepairableNarrativeError } from "./reader-summary-narrative-repair-contract";
 import { readerSummaryDailyInputReceipt } from "./reader-summary-daily-input-receipt";
-import {
-  verifyAndRecordReaderSummaryExecution,
-  type VerifiedReaderSummaryExecutionAttestationSink,
-} from "./reader-summary-execution-attestation";
+import type { VerifiedReaderSummaryExecutionAttestationSink } from "./reader-summary-execution-attestation";
 
 export const readerSummaryNarrativeAttempts = ["primary", "repair"] as const;
 
@@ -60,27 +54,15 @@ export const runAgentRuntimeReaderSummaryGeneration = async (params: Readonly<{
       }
     }
     try {
-      const rawDraft = readAgentRuntimeObjectOutput(
+      const draft = await readAttestedAgentRuntimeReaderSummaryDraft({
+        command,
         result,
-        parseOpenAiReaderSummaryJsonObject,
-        "Reader summary",
-      );
-      const draft = normalizeOpenAiReaderSummaryDraft(
-        rawDraft,
         input,
         selectedRoute,
         logicalRunUsage,
-        params.evalDatasetVersion,
-      );
-      await verifyAndRecordReaderSummaryExecution({
-        command,
-        result,
-        taskRole: "summary",
+        evalDatasetVersion: params.evalDatasetVersion,
+        legacyRecovery: params.legacyRecovery,
         attempt,
-        normalizedOutput: draft,
-        legacyRecoveryContract: params.legacyRecovery
-          ? frozenLegacyReaderSummaryRecoveryContract
-          : undefined,
         sink: params.verifiedAttestationSink,
       });
 

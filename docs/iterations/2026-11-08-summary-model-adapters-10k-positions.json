@@ -2975,16 +2975,6 @@
         237,
         238,
         240,
-        246,
-        248,
-        249,
-        251,
-        255,
-        258,
-        261,
-        263,
-        265,
-        266,
         272,
         276,
         280
@@ -6365,6 +6355,23 @@
         154
       ],
       "responsibility": "Dedicated unary task lifecycle owns exactly-once completion, cancellation-before-handle, post-dispatch abort and callback error settling; scoped request/deadline and fail-closed attestation stay outside it. Provisional exact-origin trace only; mechanical moves are not accepted meaningful LOC."
+    },
+    {
+      "original": "agent-runtime-reader-summary-model.adapter.ts",
+      "owner": "agent-runtime-reader-summary-attested-draft.ts",
+      "originalPositions": [
+        246,
+        248,
+        249,
+        251,
+        255,
+        258,
+        261,
+        263,
+        265,
+        266
+      ],
+      "responsibility": "Untrusted runtime output normalization and attested summary-draft acceptance are an independent fail-closed boundary; primary/repair scheduling and usage budget remain in the coordinator. Reassigned already traced originals, no new claimed LOC or approval."
     }
   ]
 }
