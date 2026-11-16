@@ -1,11 +1,12 @@
 """The release client may publish only listed constant host reasons; keep that list complete."""
 import ast
+import json
 from pathlib import Path
 import re
 import unittest
 
 HERE = Path(__file__).resolve().parent
-PUBLISHED = HERE.parents[2] / 'scripts' / 'ci' / 'hetzner-release-host-denials.mts'
+PUBLISHED = HERE / 'host_denial_codes.json'
 REASON = re.compile(r'[a-z][a-z0-9-]{0,127}')
 
 
@@ -28,8 +29,7 @@ def host_reasons():
 
 
 def published_codes():
-    body = PUBLISHED.read_text().split('HOST_DENIAL_CODES', 1)[1].split('= [', 1)[1].split('];', 1)[0]
-    return re.findall(r"'([^']+)'", body)
+    return json.loads(PUBLISHED.read_text())
 
 
 class HostDenialCodeTests(unittest.TestCase):
