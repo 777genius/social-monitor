@@ -15,6 +15,7 @@ import {
   agentRuntimeTaskDeadlineTimeoutMs,
   GrpcAgentRuntimeClient,
 } from "./grpc-agent-runtime-client";
+import { buildGrpcAgentRuntimeTaskRequest } from "./grpc-agent-runtime-task-request";
 
 describe("gRPC agent runtime client", () => {
   it("sends the configured host cwd only when a command omits cwd", async () => {
@@ -50,6 +51,46 @@ describe("gRPC agent runtime client", () => {
       )).toThrow(/cwd/u);
     },
   );
+
+  it("projects immutable tenant-scoped command fields to the typed gRPC request", () => {
+    const original = Object.freeze({
+      ...command(),
+      outputSchema: Object.freeze({}),
+      controls: Object.freeze({}),
+      metadata: Object.freeze({ trace: "synthetic" }),
+    });
+    const built = buildGrpcAgentRuntimeTaskRequest(original, "/srv/default");
+
+    expect(AgentRuntimeTaskRequest.decode(AgentRuntimeTaskRequest.encode(built).finish())).toMatchObject({
+      schemaVersion: 1,
+      requestId: original.requestId,
+      tenantId: String(original.tenantId),
+      workspaceId: String(original.workspaceId),
+      correlationId: original.correlationId,
+      provider: AgentRuntimeProvider.AGENT_RUNTIME_PROVIDER_CODEX,
+      purpose: original.purpose,
+      systemPrompt: original.systemPrompt,
+      prompt: original.prompt,
+      outputSchemaJson: "{}",
+      controlsJson: "{}",
+      timeoutMs: original.timeoutMs,
+      cwd: "/srv/default",
+      metadata: { trace: "synthetic" },
+    });
+    expect(original.metadata).toEqual({ trace: "synthetic" });
+    expect(original.outputSchema).toEqual({});
+    expect(original.controls).toEqual({});
+  });
+
+  it("keeps an explicit empty cwd and Claude provider without applying host defaults", () => {
+    const original = Object.freeze({ ...command(), provider: "claude" as const, cwd: "" });
+    const built = buildGrpcAgentRuntimeTaskRequest(original, "/srv/host");
+    expect(built.provider).toBe(AgentRuntimeProvider.AGENT_RUNTIME_PROVIDER_CLAUDE);
+    expect(built.cwd).toBe("");
+    expect(built.providerInstanceId).toBe("");
+    expect(built.metadata).toEqual({});
+    expect(original.cwd).toBe("");
+  });
 
   it("keeps transport open long enough to receive a typed task timeout", () => {
     expect(agentRuntimeTaskDeadlineTimeoutMs(600_000)).toBe(605_000);

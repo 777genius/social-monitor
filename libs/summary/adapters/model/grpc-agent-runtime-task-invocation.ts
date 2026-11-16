@@ -6,11 +6,8 @@ import {
 } from "@social-monitor/platform-grpc";
 import type { Clock } from "@social-monitor/shared-kernel";
 import type { AgentRuntimeTaskCommand, AgentRuntimeTaskResult } from "../../ports";
-import {
-  agentRuntimeWireSchemaVersion,
-  fromGrpcTaskResponse,
-  toGrpcProvider,
-} from "./grpc-agent-runtime-wire-codec";
+import { fromGrpcTaskResponse } from "./grpc-agent-runtime-wire-codec";
+import { buildGrpcAgentRuntimeTaskRequest } from "./grpc-agent-runtime-task-request";
 
 const taskTransportGraceMs = 5_000;
 
@@ -79,23 +76,7 @@ export const invokeGrpcAgentRuntimeTask = (params: {
 
     try {
       call = params.client.runAgentTask(
-        {
-          schemaVersion: agentRuntimeWireSchemaVersion,
-          requestId: command.requestId,
-          tenantId: String(command.tenantId),
-          workspaceId: String(command.workspaceId),
-          correlationId: command.correlationId,
-          provider: toGrpcProvider(command.provider),
-          providerInstanceId: command.providerInstanceId ?? "",
-          purpose: command.purpose,
-          systemPrompt: command.systemPrompt,
-          prompt: command.prompt,
-          outputSchemaJson: JSON.stringify(command.outputSchema),
-          controlsJson: JSON.stringify(command.controls),
-          timeoutMs: command.timeoutMs,
-          cwd: command.cwd ?? params.defaultCwd ?? "",
-          metadata: command.metadata ?? {},
-        },
+        buildGrpcAgentRuntimeTaskRequest(command, params.defaultCwd),
         metadata,
         { deadline },
         (error, response) => {

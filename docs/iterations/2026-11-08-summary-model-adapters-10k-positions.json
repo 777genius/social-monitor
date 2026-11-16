@@ -6326,6 +6326,26 @@
         265
       ],
       "responsibility": "Pure evidence-to-publication generation coordinates lineage/no-signal admission, trusted editorial coverage, citation-bound story projection and document assembly separate from the adapter's port route/budget/error translation"
+    },
+    {
+      "original": "grpc-agent-runtime-client.ts",
+      "owner": "grpc-agent-runtime-task-request.ts",
+      "originalPositions": [
+        127,
+        128,
+        129,
+        130,
+        131,
+        132,
+        133,
+        134,
+        135,
+        136,
+        137,
+        138,
+        140
+      ],
+      "responsibility": "The pure scoped gRPC task request projection owns provider mapping, tenant/workspace/request identity, prompts, controls and metadata independent of the unary transport lifecycle, cancellation and output admission. Provenance trace only, pending independent meaningful LOC review."
     }
   ]
 }
