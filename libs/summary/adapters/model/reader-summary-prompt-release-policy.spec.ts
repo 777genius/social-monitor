@@ -19,7 +19,7 @@ describe("reader-summary provider-neutral prompt release", () => {
     });
   });
 
-  it.each([undefined, "", " ", "\\n\\t"])(
+  it.each([undefined, "", " ", "\n\t"])(
     "admits an absent or whitespace-only override without mutation (%s)",
     (value) => {
       const options = { environmentName: "OPENAI_READER_SUMMARY_PROMPT_VERSION", value };
@@ -28,7 +28,7 @@ describe("reader-summary provider-neutral prompt release", () => {
     },
   );
 
-  it.each(["other.release", " other.release ", "\\nunsupported\\n"])(
+  it.each(["other.release", " other.release ", "\nunsupported\n"])(
     "rejects a non-empty release override with the same fail-closed diagnostic (%s)",
     (value) => {
       expect(() =>
