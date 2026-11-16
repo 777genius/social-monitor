@@ -2,10 +2,8 @@ import type { ReaderSummaryCitation, ReaderSummaryTopStory } from "../../domain"
 import type { ReaderSummaryModelInput } from "../../ports";
 import { knownStringSubset, uniqueNonEmptyStrings } from "./openai-responses-reader-summary-json";
 import { normalizeTopStory } from "./openai-responses-reader-summary-story-input";
-import {
-  clusterIdByFeedItemId,
-  clusterIdsFromCitations,
-} from "./openai-responses-reader-summary-cluster-citations";
+import { clusterIdByFeedItemId } from "./openai-responses-reader-summary-cluster-citations";
+import { admitCitedStoryClusterId } from "./openai-responses-reader-summary-story-cluster-admission";
 import {
   completeClusterCitationCoverage,
   providerKeysCoveredByCitations,
@@ -52,28 +50,13 @@ export const reconcileModelTopStoriesWithCitations = (
         return [];
       }
 
-      const citedClusterIds = clusterIdsFromCitations(
+      const storyClusterId = admitCitedStoryClusterId(
+        story,
         citationIds,
+        knownClusterIds,
         citationById,
         clusterByFeedItemId,
       );
-      if (citedClusterIds.length > 1) {
-        return [];
-      }
-
-      const declaredClusterId = knownClusterIds.has(story.storyClusterId)
-        ? story.storyClusterId
-        : undefined;
-      const citedClusterId = citedClusterIds[0];
-      if (
-        declaredClusterId !== undefined &&
-        citedClusterId !== undefined &&
-        declaredClusterId !== citedClusterId
-      ) {
-        return [];
-      }
-
-      const storyClusterId = declaredClusterId ?? citedClusterId;
       if (storyClusterId === undefined) {
         return [];
       }
