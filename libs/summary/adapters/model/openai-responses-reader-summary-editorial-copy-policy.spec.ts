@@ -1,4 +1,6 @@
-import type { ReaderSummaryCitation } from "../../domain";
+import { validateDailyEditorialPlan, type ReaderSummaryCitation } from "../../domain";
+import { dailyDigestFixture } from "./reader-summary-daily-digest.fixture";
+import { normalizeLegacyDailyEditorialNarrative } from "./openai-responses-reader-summary-legacy-editorial-narrative";
 import { readDailyEditorialNarrativeCopy } from "./openai-responses-reader-summary-editorial-copy-policy";
 import { projectDailyEditorialSynthesisSection } from "./openai-responses-reader-summary-editorial-section";
 
@@ -53,6 +55,43 @@ describe("daily editorial copy admission shared across versioned section policie
     })).toThrow("Daily editorial narrative has unplanned or duplicate citations");
     expect(() => projectDailyEditorialSynthesisSection({
       ...settings, raw: { ...raw, text: "No final punctuation" },
+    })).toThrow("Daily editorial narrative text is unfinished or too long");
+  });
+
+
+  it("preserves legacy v1 story-anchored admission before shared text rejection", async () => {
+    const { input, evidence } = await dailyDigestFixture();
+    const frozen = evidence.dailyGenerationInput;
+    if (frozen === undefined) throw new Error("Missing frozen evidence fixture");
+    const anchor = frozen.selected[0]!;
+    const plan = validateDailyEditorialPlan({
+      version: "reader_summary.daily_editorial.v1",
+      topics: [{
+        title: "Source-backed topic", why: "Specific anchor", depth: "detailed",
+        feedItemIds: [anchor.feedItemId],
+      }],
+    }, frozen);
+    const citation: ReaderSummaryCitation = {
+      citationId: "c1", feedItemId: anchor.feedItemId, sourceItemId: anchor.sourceItemId,
+      providerKey: anchor.providerKey, field: "title",
+      canonicalUrl: "https://example.com/anchor",
+    };
+    const settings = { input: { ...input, dailyEditorialPlan: plan }, citationMap: [citation] };
+    const raw = Object.freeze({
+      kind: "lead", storyClusterId: anchor.storyId, citationIds: Object.freeze(["c1"]),
+      title: "  Legacy headline  ", text: "  Legacy text completed.  ",
+    });
+    expect(normalizeLegacyDailyEditorialNarrative({
+      ...settings, rawSections: [raw],
+    })).toEqual([{
+      id: "narrative-1", kind: "lead", storyClusterId: anchor.storyId,
+      title: "Legacy headline", text: "Legacy text completed.", citationIds: ["c1"],
+    }]);
+    expect(() => normalizeLegacyDailyEditorialNarrative({
+      ...settings, rawSections: [{ ...raw, citationIds: ["forged"], text: "Unfinished" }],
+    })).toThrow("Daily editorial narrative has unplanned citations or order");
+    expect(() => normalizeLegacyDailyEditorialNarrative({
+      ...settings, rawSections: [{ ...raw, text: "Unfinished" }],
     })).toThrow("Daily editorial narrative text is unfinished or too long");
   });
 });
