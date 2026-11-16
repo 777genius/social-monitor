@@ -1,6 +1,10 @@
 import type { AgentRuntimeTaskResult } from "../../ports";
 import { presentationRuntimeFailureDisposition } from "./agent-runtime-promotion-presentation-v3-runtime-failure";
 import { isRunWidePresentationFailure } from "./agent-runtime-promotion-presentation-v3-run-wide-failure-policy";
+import {
+  presentationTaskLocalCodeDisposition,
+  presentationAmbiguousEffectDisposition,
+} from "./agent-runtime-promotion-presentation-v3-local-failure-policy";
 
 const failed = (
   details: Readonly<Record<string, string>> = {},
@@ -56,5 +60,36 @@ describe("presentation runtime run-wide failure veto", () => {
 
   it("keeps reconnect-required terminal and never retries", () => {
     expect(presentationRuntimeFailureDisposition(failed({}, { reconnectRequired: true }))).toBeUndefined();
+  });
+});
+
+describe("presentation task-local failure admission", () => {
+  it.each([
+    ["task_cancelled", "retry"],
+    ["provider_failed", "retry"],
+    ["provider_effect_unknown", "retry"],
+    ["task_timeout", "skip"],
+    ["agent_runtime.cli_timeout", "skip"],
+    ["unrecognized_failure", undefined],
+  ] as const)("classifies %s without a run-wide policy decision", (code, disposition) => {
+    expect(presentationTaskLocalCodeDisposition(code)).toBe(disposition);
+  });
+
+  it("keeps unknown gateway effects and pending cleanup non-replayable", () => {
+    const unknown = Object.freeze({ gatewayEffect: "effect_unknown" });
+    expect(presentationAmbiguousEffectDisposition(unknown)).toBe("skip");
+    expect(presentationAmbiguousEffectDisposition({ gatewayCleanup: "pending" })).toBe("skip");
+    expect(presentationAmbiguousEffectDisposition({ gatewayCleanup: "closed" })).toBeUndefined();
+    expect(unknown.gatewayEffect).toBe("effect_unknown");
+  });
+
+  it("never uses effect diagnostics to promote an unrecognized or run-wide failure", () => {
+    expect(presentationRuntimeFailureDisposition(failed({
+      gatewayEffect: "effect_unknown",
+    }, { code: "unrecognized_failure" }))).toBeUndefined();
+    expect(presentationRuntimeFailureDisposition(failed({
+      gatewayEffect: "effect_unknown",
+      reason: "account_unavailable",
+    }))).toBeUndefined();
   });
 });

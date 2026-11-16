@@ -8,6 +8,7 @@ on:
     paths:
       - .github/workflows/model-665-presentation-failure-focused.yml
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-runtime-failure.ts
+      - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-local-failure-policy.ts
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-run-wide-failure-policy.ts
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-run-wide-failure-policy.spec.ts
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3.builder.spec.ts
