@@ -1,3 +1,4 @@
+import { projectDeterministicReaderSummaryAttempt } from "./deterministic-reader-summary-generation";
 import type {
   ReaderSummaryModelBudget,
   ReaderSummaryModelEstimate,
@@ -9,15 +10,10 @@ import type {
   ReaderSummaryModelValidationResult,
   ProviderReaderSummaryAttempt,
 } from "../../ports";
-import { primaryReaderSummaryEvidence } from "../../domain";
 import {
   assertDeterministicReaderSummaryBudget,
   estimateDeterministicReaderSummaryTokens,
 } from "./deterministic-reader-summary-budget-policy";
-import { buildDeterministicNoSignalReaderSummaryAttempt } from "./deterministic-reader-summary-no-signal";
-import { selectDeterministicReaderSummaryCoverage } from "./deterministic-reader-summary-coverage-selection";
-import { buildDeterministicReaderSummaryStoryProjection } from "./deterministic-reader-summary-story-projection";
-import { buildDeterministicReaderSummaryDocument } from "./deterministic-reader-summary-document";
 import {
   classifyDeterministicReaderSummaryError,
   validateDeterministicReaderSummaryProviderResponse,
@@ -55,50 +51,11 @@ export class DeterministicReaderSummaryModelAdapter implements ReaderSummaryMode
     input: ReaderSummaryModelInput,
     selectedRoute: ReaderSummaryModelRoute,
   ): Promise<ProviderReaderSummaryAttempt> {
-    const usage = this.estimate(input, selectedRoute);
-    const lineage = {
-      promptVersion: selectedRoute.promptVersion,
-      schemaVersion: selectedRoute.schemaVersion,
-      modelVersion: selectedRoute.model,
-      providerVersion: selectedRoute.provider,
-      rulesVersion: input.policy.rulesVersion,
-      evalDatasetVersion: "reader_summary.eval.mvp.v1",
-      rankingPolicyVersion: input.evidence.rankingPolicyVersion,
-    } as const;
-    const primaryEvidence = primaryReaderSummaryEvidence(input.evidence);
-    const firstItem = primaryEvidence.selectedEvidence[0];
-
-    if (firstItem === undefined) {
-      return buildDeterministicNoSignalReaderSummaryAttempt({
-        input,
-        selectedRoute,
-        lineage,
-        usage,
-      });
-    }
-
-    const citedEvidence = input.evidence.selectedEvidence;
-    const { selectedEvidence, topStoryClusters } =
-      selectDeterministicReaderSummaryCoverage(input, primaryEvidence);
-    const projection =
-      buildDeterministicReaderSummaryStoryProjection({
-        input,
-        citedEvidence,
-        selectedEvidence,
-        topStoryClusters,
-        firstItem,
-      });
-
-    return buildDeterministicReaderSummaryDocument({
-      input,
-      selectedRoute,
-      selectedEvidence,
-      citedEvidence,
-      projection,
-      lineage,
-      usage,
+    return projectDeterministicReaderSummaryAttempt({
+      input, selectedRoute, usage: this.estimate(input, selectedRoute),
     });
   }
+
 
   validateRawProviderResponse(
     attempt: ProviderReaderSummaryAttempt,

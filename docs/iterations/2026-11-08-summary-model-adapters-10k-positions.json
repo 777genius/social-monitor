@@ -6293,6 +6293,32 @@
         112
       ],
       "responsibility": "Separated strict summary quality flags, confidence bounds and nullable no-signal contract from evidence schema and root composition"
+    },
+    {
+      "original": "deterministic-reader-summary-model.adapter.ts",
+      "owner": "deterministic-reader-summary-generation.ts",
+      "originalPositions": [
+        84,
+        85,
+        86,
+        87,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94,
+        96,
+        120,
+        121,
+        141,
+        159,
+        233,
+        264,
+        265
+      ],
+      "responsibility": "Pure evidence-to-publication generation coordinates lineage/no-signal admission, trusted editorial coverage, citation-bound story projection and document assembly separate from the adapter's port route/budget/error translation"
     }
   ]
 }

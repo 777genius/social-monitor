@@ -13,6 +13,7 @@ import type {
   ReaderSummaryModelRoute,
 } from "../../ports";
 import { DeterministicReaderSummaryModelAdapter } from "./deterministic-reader-summary-model.adapter";
+import { projectDeterministicReaderSummaryAttempt } from "./deterministic-reader-summary-generation";
 import {
   selectClustersForEvidence,
   selectProviderDiverseRankedEvidence,
@@ -32,6 +33,28 @@ import {
 } from "../evidence/reader-summary-editorial-slate";
 
 describe("DeterministicReaderSummaryModelAdapter", () => {
+  it.each(["no_signal", "daily_synthesis"] as const)(
+    "keeps direct and public deterministic generation identical for %s",
+    async (kind) => {
+      const adapter = new DeterministicReaderSummaryModelAdapter();
+      const input = kind === "no_signal"
+        ? readerSummaryInputForEvidence(readerSummaryEvidence([]))
+        : dailySynthesisReaderSummaryInput();
+      const selectedRoute = adapter.route(input, {
+        preferredProvider: "deterministic-local",
+        maxInputTokens: 24_000,
+        maxOutputTokens: 2_500,
+        maxEstimatedCostUsd: 1,
+      }, { remainingTokens: 32_000, remainingCostUsd: 2 });
+      const inputBefore = JSON.stringify(input);
+      const direct = projectDeterministicReaderSummaryAttempt({
+        input, selectedRoute, usage: adapter.estimate(input, selectedRoute),
+      });
+      expect(await adapter.generate(input, selectedRoute)).toEqual(direct);
+      expect(JSON.stringify(input)).toBe(inputBefore);
+    },
+  );
+
   it("preserves the deterministic no-primary-evidence contract", async () => {
     const adapter = new DeterministicReaderSummaryModelAdapter();
     const input = readerSummaryInputForEvidence(readerSummaryEvidence([]));
