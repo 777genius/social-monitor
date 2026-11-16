@@ -1,5 +1,6 @@
 import type { AgentRuntimeTaskResult } from "../../ports";
 import { runtimePresentationValidationRejection } from "./agent-runtime-promotion-presentation-v3-result-policy";
+import { runtimePresentationValidationRejection as directRuntimePresentationValidationRejection } from "./agent-runtime-promotion-presentation-v3-runtime-output-rejection";
 
 const failed = (code: string, details: Record<string, string>): AgentRuntimeTaskResult => ({
   status: "failed",
@@ -15,6 +16,18 @@ const failed = (code: string, details: Record<string, string>): AgentRuntimeTask
 });
 
 describe("promotion presentation runtime output trust policy", () => {
+  it("preserves the historical export identity and rejects partial runtime validator attestations", () => {
+    expect(runtimePresentationValidationRejection).toBe(directRuntimePresentationValidationRejection);
+    const untrusted = failed("provider_output_invalid", {
+      presentationValidationStage: "product_contract_rejected",
+      presentationOutputValidatorCalled: "true",
+      presentationOutputValidatorAccepted: "not_returned",
+    });
+    expect(directRuntimePresentationValidationRejection(
+      untrusted, "xiaomi-mimo-token-plan",
+    )).toBeUndefined();
+  });
+
   it.each(["unknown_runtime_failure", "provider_output_invalid"])(
     "absorbs explicit schema-normalization evidence from %s", code => {
       expect(runtimePresentationValidationRejection(failed(code, {

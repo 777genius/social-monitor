@@ -1118,6 +1118,24 @@
       "original": "agent-runtime-promotion-presentation-v3.builder.ts",
       "owner": "agent-runtime-promotion-presentation-v3-result-policy.ts",
       "originalPositions": [
+        220,
+        221,
+        222,
+        223,
+        224,
+        225,
+        227,
+        229,
+        232,
+        233,
+        236
+      ],
+      "responsibility": "Completed presentation batch candidate binding and source-copy evidence admission, isolated from runtime output rejection"
+    },
+    {
+      "original": "agent-runtime-promotion-presentation-v3.builder.ts",
+      "owner": "agent-runtime-promotion-presentation-v3-runtime-output-rejection.ts",
+      "originalPositions": [
         192,
         193,
         194,
@@ -1132,20 +1150,9 @@
         204,
         205,
         206,
-        207,
-        220,
-        221,
-        222,
-        223,
-        224,
-        225,
-        227,
-        229,
-        232,
-        233,
-        236
+        207
       ],
-      "responsibility": "Fail-closed provider rejection and transient error semantics separated from immutable result binding and dispatch"
+      "responsibility": "Fail-closed attested runtime validation rejection, independent of completed candidate presentation binding"
     },
     {
       "original": "agent-runtime-promotion-presentation-v3.builder.ts",

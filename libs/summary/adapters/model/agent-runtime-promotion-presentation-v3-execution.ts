@@ -14,10 +14,8 @@ import { presentationRuntimeFailureDisposition } from "./agent-runtime-promotion
 import { presentationRuntimeFailureIdentity } from "./agent-runtime-promotion-presentation-v3-runtime-failure-identity";
 import { parseObject } from "./agent-runtime-promotion-presentation-v3-output-object";
 import type { createPromotionPresentationTaskCommand } from "./agent-runtime-promotion-presentation-v3-task-command";
-import {
-  runtimePresentationValidationRejection,
-  completedPromotionPresentationResults,
-} from "./agent-runtime-promotion-presentation-v3-result-policy";
+import { runtimePresentationValidationRejection } from "./agent-runtime-promotion-presentation-v3-runtime-output-rejection";
+import { completedPromotionPresentationResults } from "./agent-runtime-promotion-presentation-v3-result-policy";
 
 type PresentationExecutionInput = ReturnType<typeof createPromotionPresentationTaskCommand> & {
   readonly client: AgentRuntimeClientPort;
