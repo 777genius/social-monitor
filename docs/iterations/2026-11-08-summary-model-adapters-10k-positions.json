@@ -1518,6 +1518,17 @@
         120,
         121,
         122,
+        150,
+        151,
+        152,
+        154
+      ],
+      "responsibility": "Gateway backend environment routing/normalization and purpose-model override, distinct from pure Kimi/OpenRouter admission; public facade preserved"
+    },
+    {
+      "original": "active-reader-summary-generation-profile.ts",
+      "owner": "reader-summary-gateway-route-admission.ts",
+      "originalPositions": [
         123,
         124,
         125,
@@ -1529,13 +1540,9 @@
         136,
         138,
         139,
-        141,
-        150,
-        151,
-        152,
-        154
+        141
       ],
-      "responsibility": "Gateway backend environment routing, Kimi/OpenRouter explicit control admission and purpose model override; public facade preserved"
+      "responsibility": "Exact Kimi/OpenRouter model and reasoning-effort fail-closed admission isolated from process-environment normalization; original refusal precedence preserved"
     },
     {
       "original": "active-reader-summary-generation-profile.ts",
