@@ -285,6 +285,27 @@ describe("gRPC agent runtime client", () => {
     await expect(valid.runTask(command())).resolves.toMatchObject({ durationMs: 25 });
   });
 
+  it("does not cancel a synchronous success if abort fires before the handle is returned", async () => {
+    const controller = new AbortController();
+    let cancelCount = 0;
+    const grpcClient = {
+      runAgentTask(_request: unknown, _metadata: unknown, _options: unknown,
+        callback: (error: ServiceError | null, value: AgentRuntimeTaskResponse) => void): ClientUnaryCall {
+        callback(null, response());
+        controller.abort();
+        return { cancel: () => { cancelCount += 1; } } as ClientUnaryCall;
+      },
+    } as unknown as AgentRuntimeServiceClient;
+    const client = new GrpcAgentRuntimeClient(
+      grpcClient, { now: () => new Date("2026-07-17T00:00:00.000Z") },
+      { timeoutMs: 1_000 },
+    );
+
+    await expect(client.runTask(command(), { signal: controller.signal }))
+      .resolves.toMatchObject({ durationMs: 25 });
+    expect(cancelCount).toBe(0);
+  });
+
 });
 
 const command = (): AgentRuntimeTaskCommand => ({

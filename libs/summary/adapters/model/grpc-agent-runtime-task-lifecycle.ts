@@ -62,7 +62,7 @@ export const runGrpcAgentRuntimeTaskLifecycle = (params: {
         }
       });
       // A synchronous abort during dispatch still cancels the returned handle.
-      if (cancellationRequested || hasAborted()) {
+      if (cancellationRequested || (!settled && hasAborted())) {
         if (!cancellationRequested) abort();
         else cancelTransport();
       }
