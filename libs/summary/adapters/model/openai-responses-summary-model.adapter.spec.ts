@@ -12,6 +12,8 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import type { SummaryModelInput } from '../../ports';
 import { buildInstructions, buildPromptPayload } from './openai-responses-summary-prompt';
 import { openAiSummaryJsonSchema } from './openai-responses-summary-schema';
+import { runOpenAiResponsesSummaryGeneration } from './openai-responses-summary-generation';
+import { resolveOpenAiSummaryRuntimeSettings } from './openai-responses-summary-runtime-settings';
 import { buildOpenAiSummaryRequest } from './openai-responses-summary-request-contract';
 import {
   completeOpenAiSummaryAttempt,
@@ -628,6 +630,72 @@ describe('OpenAiResponsesSummaryModelAdapter', () => {
     });
 
     await expect(adapter.summarize(input, route)).rejects.toThrow('No-signal summary must include no_signal quality flag');
+  });
+
+  it('keeps direct task execution and adapter dispatch identical for frozen evidence', async () => {
+    const requests: string[] = [];
+    const options = {
+      apiKey: fakeOpenAiApiKey,
+      fetchFn: async (_url: string | URL, init?: RequestInit) => {
+        requests.push(String(init?.body));
+        return jsonResponse(200, {
+          output_text: JSON.stringify(validProviderDraft()),
+          usage: { input_tokens: 321, output_tokens: 123 },
+        });
+      },
+    };
+    const adapter = new OpenAiResponsesSummaryModelAdapter(options);
+    const input = buildInput();
+    const route = adapter.route(input, {
+      preferredProvider: 'openai-responses',
+      maxInputTokens: 12_000,
+      maxOutputTokens: 4_000,
+      maxEstimatedCostUsd: 1,
+    }, {
+      remainingTokens: 20_000,
+      remainingCostUsd: 1,
+    });
+
+    const directly = await runOpenAiResponsesSummaryGeneration({
+      input,
+      selectedRoute: route,
+      settings: resolveOpenAiSummaryRuntimeSettings(options),
+      estimateUsage: () => adapter.estimate(input, route),
+    });
+    const viaPort = await adapter.summarize(input, route);
+
+    expect(viaPort).toEqual(directly);
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toEqual(requests[0]);
+    expect(viaPort.draft.citationMap[0]?.feedItemId).toBe('feed-1');
+  });
+
+  it('rejects a missing provider key before dispatch, but keeps no-signal offline', async () => {
+    const fetchFn = jest.fn(async () => jsonResponse(200, { output: [] }));
+    const adapter = new OpenAiResponsesSummaryModelAdapter({ fetchFn });
+    const policy = {
+      preferredProvider: 'openai-responses' as const,
+      maxInputTokens: 12_000,
+      maxOutputTokens: 4_000,
+      maxEstimatedCostUsd: 1,
+    };
+    const budget = { remainingTokens: 20_000, remainingCostUsd: 1 };
+    const input = buildInput();
+    const route = adapter.route(input, policy, budget);
+
+    await expect(runOpenAiResponsesSummaryGeneration({
+      input,
+      selectedRoute: route,
+      settings: resolveOpenAiSummaryRuntimeSettings({ fetchFn }),
+      estimateUsage: () => adapter.estimate(input, route),
+    })).rejects.toThrow('SUMMARY_MODEL_PROVIDER=openai-responses requires OPENAI_API_KEY');
+    expect(fetchFn).not.toHaveBeenCalled();
+
+    const noSignalInput = buildInput({ evidenceItems: [] });
+    const noSignalRoute = adapter.route(noSignalInput, policy, budget);
+    const attempt = await adapter.summarize(noSignalInput, noSignalRoute);
+    expect(attempt.draft.qualityFlags).toContain('no_signal');
+    expect(fetchFn).not.toHaveBeenCalled();
   });
 
   it('requires an OpenAI API key when openai-responses mode is selected', () => {

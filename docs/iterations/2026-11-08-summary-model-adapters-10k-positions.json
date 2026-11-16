@@ -6072,6 +6072,18 @@
         236
       ],
       "responsibility": "Trusted backend-approved coverage plan projected to model citation IDs separately from prompt serialization, retaining order, duplicates and filter-only unknown IDs"
+    },
+    {
+      "original": "openai-responses-summary-model.adapter.ts",
+      "owner": "openai-responses-summary-generation.ts",
+      "originalPositions": [
+        183,
+        184,
+        185,
+        186,
+        187
+      ],
+      "responsibility": "Paid ordinary-summary generation owns missing-key admission, one bounded transport request and response completion; model-port facade retains no-signal ordering, routing and estimates; direct-vs-adapter parity tested (first-use disjoint baseline statements, provisional only)"
     }
   ]
 }

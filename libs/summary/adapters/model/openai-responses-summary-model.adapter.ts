@@ -1,8 +1,4 @@
-import { buildOpenAiSummaryRequest } from "./openai-responses-summary-request-contract";
-import {
-  completeOpenAiSummaryAttempt,
-  validateOpenAiSummaryResponse,
-} from "./openai-responses-summary-response-policy";
+import { validateOpenAiSummaryResponse } from "./openai-responses-summary-response-policy";
 import { buildSummaryNoSignalAttempt } from "./summary-no-signal-attempt";
 import type {
   ProviderSummaryAttempt,
@@ -15,10 +11,7 @@ import type {
   SummaryModelRoute,
   SummaryModelValidationResult,
 } from '../../ports';
-import {
-  SummaryModelProviderError,
-  classifyOpenAiSummaryError,
-} from './openai-responses-summary-model-error';
+import { classifyOpenAiSummaryError } from './openai-responses-summary-model-error';
 import {
   assertOpenAiSummaryWithinBudget,
   estimateOpenAiSummaryUsage,
@@ -28,7 +21,7 @@ import {
   type OpenAiSummaryRuntimeSettings,
 } from './openai-responses-summary-runtime-settings';
 
-import { createOpenAiSummaryResponse } from './openai-responses-summary-transport';
+import { runOpenAiResponsesSummaryGeneration } from './openai-responses-summary-generation';
 import type { OpenAiResponsesSummaryModelAdapterOptions } from './openai-responses-summary-options';
 export type { OpenAiResponsesSummaryModelAdapterOptions } from './openai-responses-summary-options';
 export { resolveOpenAiResponsesSummaryModelOptions } from './openai-responses-summary-options';
@@ -74,29 +67,11 @@ export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
       return this.buildNoSignalAttempt(input, selectedRoute);
     }
 
-    if (this.settings.apiKey.length === 0) {
-      throw new SummaryModelProviderError({
-        kind: 'provider_unavailable',
-        retryable: false,
-        message:
-          'SUMMARY_MODEL_PROVIDER=openai-responses requires OPENAI_API_KEY',
-      });
-    }
-
-    const request = buildOpenAiSummaryRequest(input, selectedRoute.model, this.settings.maxOutputTokens);
-    const responseJson = await createOpenAiSummaryResponse({
-      request,
-      endpointUrl: this.settings.endpointUrl,
-      apiKey: this.settings.apiKey,
-      timeoutMs: this.settings.timeoutMs,
-      fetchFn: this.settings.fetchFn,
-    });
-    return completeOpenAiSummaryAttempt({
-      responseJson,
+    return runOpenAiResponsesSummaryGeneration({
       input,
       selectedRoute,
+      settings: this.settings,
       estimateUsage: () => this.estimate(input, selectedRoute),
-      evalDatasetVersion: this.settings.evalDatasetVersion,
     });
   }
 

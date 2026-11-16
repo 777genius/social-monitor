@@ -36,6 +36,9 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-content-items.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-content-support.spec.ts
       - libs/summary/adapters/model/openai-responses-summary-model-error.ts
+      - libs/summary/adapters/model/openai-responses-summary-model.adapter.ts
+      - libs/summary/adapters/model/openai-responses-summary-model.adapter.spec.ts
+      - libs/summary/adapters/model/openai-responses-summary-generation.ts
       - libs/summary/adapters/model/openai-responses-summary-provider-error.ts
       - libs/summary/adapters/model/openai-responses-summary-error-classification.ts
       - libs/summary/adapters/model/openai-responses-summary-model-error.spec.ts
