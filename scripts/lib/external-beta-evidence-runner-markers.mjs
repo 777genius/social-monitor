@@ -244,10 +244,10 @@ export function validateRunnerImplementationMarkers({
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^[ \t]*\/\/.*$/gm, '');
   // Retain the real CLI delegation, not merely an import or commented-out call.
-  if (!/^[ \\t]*import \\{ createExternalBetaPlanPrinter \\} from '\\.\\/lib\\/external-beta-evidence-plan-printer\\.mjs';[ \\t]*$/m.test(activeRunnerSource)
-    || !/^[ \\t]*const \\{ printPlan \\} = createExternalBetaPlanPrinter\\(\\{ contract, formatRequiredEnvAlternatives, formatOutputArtifacts \\}\\);[ \\t]*$/m.test(activeRunnerSource)
-    || !/^[ \\t]*printPlan\\(plan\\);[ \\t]*$/m.test(activeRunnerSource)) {
-    violations.push(`${runnerFile}: runner must bind and invoke extracted plan printer`);
+  if (!/^[ \t]*import \{ createExternalBetaPlanPrinter \} from '\.\/lib\/external-beta-evidence-plan-printer\.mjs';[ \t]*$/m.test(activeRunnerSource)
+    || !/^[ \t]*const \{ printPlan \} = createExternalBetaPlanPrinter\(\{ contract, formatRequiredEnvAlternatives, formatOutputArtifacts \}\);[ \t]*$/m.test(activeRunnerSource)
+    || !/^[ \t]*printPlan\(plan\);[ \t]*$/m.test(activeRunnerSource)) {
+    violations.push(runnerFile + ': runner must bind and invoke extracted plan printer');
   }
   // A marker in an import or comment is insufficient: the runtime must bind the live env
   // and invoke typed policy on all three existing execution/preflight/artifact paths.

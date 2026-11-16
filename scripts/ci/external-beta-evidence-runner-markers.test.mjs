@@ -320,5 +320,5 @@ test('runner must bind and invoke extracted plan printer, not just import it', (
 });
 
 test('real checker reads the extracted plan printer before accepting runner markers', () => {
-  assert.match(sources.checkSource, /planPrinterSource:\\s*readFileSync\\(planPrinterPath,\\s*'utf8'\\)/);
+  assert.match(sources.checkSource, /planPrinterSource:\s*readFileSync\(planPrinterPath,\s*'utf8'\)/);
 });
