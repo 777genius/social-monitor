@@ -3,11 +3,11 @@ import {
   buildSummaryEvidenceProfile,
   additionalReaderSummaryEvidence,
   primaryReaderSummaryEvidence,
-  type ReaderSummaryCoveragePlanItem,
 } from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
 import { buildAdaptiveReaderSummaryEvidence } from "./openai-responses-reader-summary-adaptive-evidence";
 import { readerSummaryCitableEvidence } from "./reader-summary-evidence-citation-map";
+import { buildReaderSummaryCoveragePlanPromptPayload } from "./openai-responses-reader-summary-coverage-plan-payload";
 
 export const buildOpenAiReaderSummaryPromptPayload = (
   input: ReaderSummaryModelInput,
@@ -28,16 +28,7 @@ export const buildOpenAiReaderSummaryPromptPayload = (
     evidenceProfile: buildSummaryEvidenceProfile(primaryEvidence),
     evidencePack: input.evidence.dailyGenerationInput === undefined ? buildSummaryEvidencePack(primaryEvidence) : undefined,
     dailyEditorialPlan: input.dailyEditorialPlan,
-    coveragePlan: {
-      mode: coveragePlan.mode,
-      lead:
-        coveragePlan.lead === undefined
-          ? null
-          : promptCoverageItem(coveragePlan.lead, citationIdByFeedItemId),
-      secondary: coveragePlan.secondary.map((item) =>
-        promptCoverageItem(item, citationIdByFeedItemId),
-      ),
-    },
+    coveragePlan: buildReaderSummaryCoveragePlanPromptPayload(coveragePlan, citationIdByFeedItemId),
     sourceWindow: {
       windowId: input.evidence.sourceWindow.windowId,
       startedAt: input.evidence.sourceWindow.startedAt.toISOString(),
@@ -87,19 +78,4 @@ export const buildOpenAiReaderSummaryPromptPayload = (
     ),
   });
 };
-
-const promptCoverageItem = (
-  item: ReaderSummaryCoveragePlanItem,
-  citationIdByFeedItemId: ReadonlyMap<string, string>,
-) => ({
-  role: item.role,
-  storyClusterId: item.clusterId,
-  score: item.score,
-  citationIds: item.feedItemIds
-    .map((feedItemId) => citationIdByFeedItemId.get(feedItemId))
-    .filter((id): id is string => id !== undefined),
-  providerKeys: item.providerKeys,
-  interestIds: item.interestIds,
-  whyImportant: item.whyImportant,
-});
 

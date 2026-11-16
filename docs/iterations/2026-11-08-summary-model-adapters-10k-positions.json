@@ -6050,6 +6050,28 @@
         43
       ],
       "responsibility": "Identical title/text trimming, required values, Unicode code-point size and final punctuation for both versioned narrative formats, with one fail-closed owner"
+    },
+    {
+      "original": "openai-responses-reader-summary-prompt.ts",
+      "owner": "openai-responses-reader-summary-coverage-plan-payload.ts",
+      "originalPositions": [
+        165,
+        167,
+        168,
+        169,
+        170,
+        171,
+        228,
+        229,
+        230,
+        231,
+        232,
+        233,
+        234,
+        235,
+        236
+      ],
+      "responsibility": "Trusted backend-approved coverage plan projected to model citation IDs separately from prompt serialization, retaining order, duplicates and filter-only unknown IDs"
     }
   ]
 }
