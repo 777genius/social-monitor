@@ -1,12 +1,13 @@
 import type { LlmTask } from "@agent-teams/account-gateway/llm";
 
 import type { AgentRuntimeFailure, AgentRuntimeTaskCommand } from "../../../ports";
-import { codexReaderSummaryBackend, gatewayDefaultReasoningEffort } from "../active-reader-summary-generation-profile";
+import { gatewayDefaultReasoningEffort } from "../active-reader-summary-generation-profile";
 import type { GatewayLlmClientOptions, GatewayLlmRoute } from "./gateway-llm-client";
-import { gatewayLlmLocalFailure, type GatewayLlmOutputViolations } from "./gateway-llm-failure";
+import type { GatewayLlmOutputViolations } from "./gateway-llm-failure";
 import { prepareGatewayLlmOutput } from "./gateway-llm-structured-output";
 import { gatewayLlmDeadline } from "./gateway-llm-deadline";
 import { gatewayLlmOutputBytes } from "./gateway-llm-output-budget";
+import { admitGatewayLlmTaskRoute } from "./gateway-llm-task-route-admission";
 
 type PreparedTask = Omit<LlmTask<Record<string, unknown>>, "taskId" | "attempt" | "accountRefs">;
 export type GatewayLlmPrepared = {
@@ -27,21 +28,9 @@ export const prepareGatewayLlmTask = (
   options: Pick<GatewayLlmClientOptions, "route" | "policy">,
 ): GatewayLlmPrepared | { readonly failure: AgentRuntimeFailure } => {
   const route = options.route;
+  const admission = admitGatewayLlmTaskRoute(command, route);
+  if (admission !== null) return admission;
   const controls = command.controls;
-  // Codex tasks name no modelBackend; every other backend names itself.
-  if (controls.model !== route.model ||
-      (controls.modelBackend ?? codexReaderSummaryBackend) !== route.modelBackend) {
-    return { failure: gatewayLlmLocalFailure("unsupported_route",
-      "Gateway has no route for the requested model") };
-  }
-  if (controls.reasoningEffort !== route.reasoningEffort) {
-    return { failure: gatewayLlmLocalFailure("invalid_request",
-      "Gateway task reasoning effort conflicts with the route policy") };
-  }
-  if (command.systemPrompt.trim().length === 0 || !(command.timeoutMs > 0)) {
-    return { failure: gatewayLlmLocalFailure("invalid_request",
-      "Gateway task requires instructions and a positive timeout") };
-  }
   const preparedOutput = prepareGatewayLlmOutput(command.outputSchema);
   if ("failure" in preparedOutput) return preparedOutput;
   const requested = controls.maxOutputTokens;
