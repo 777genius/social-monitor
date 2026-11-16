@@ -17,6 +17,13 @@ def host_reasons():
         if path.name.endswith('_test.py') or path.name.startswith('test_'):
             continue
         for node in ast.walk(ast.parse(path.read_text(), filename=path.name)):
+            if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'reason'
+                                                    for t in node.targets):
+                # Fallback payload reasons, e.g. reason = str(error) if ... else 'archive-invalid'.
+                for part in ast.walk(node.value):
+                    if (isinstance(part, ast.Constant) and isinstance(part.value, str)
+                            and REASON.fullmatch(part.value)):
+                        found.setdefault(part.value, path.name)
             if not isinstance(node, ast.Call):
                 continue
             name = node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, 'attr', None)

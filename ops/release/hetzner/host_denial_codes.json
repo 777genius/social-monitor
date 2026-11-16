@@ -19,6 +19,7 @@
 "archive-digest",
 "archive-extra-members",
 "archive-image-count",
+"archive-invalid",
 "archive-json-size",
 "archive-layers",
 "archive-logical-member-size",
