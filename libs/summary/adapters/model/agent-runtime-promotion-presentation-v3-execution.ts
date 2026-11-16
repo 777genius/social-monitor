@@ -12,7 +12,7 @@ import {
 } from "./active-reader-summary-generation-profile";
 import { presentationRuntimeFailureDisposition } from "./agent-runtime-promotion-presentation-v3-runtime-failure";
 import { presentationRuntimeFailureIdentity } from "./agent-runtime-promotion-presentation-v3-runtime-failure-identity";
-import { parseObject } from "./agent-runtime-promotion-presentation-v3-request";
+import { parseObject } from "./agent-runtime-promotion-presentation-v3-output-object";
 import type { createPromotionPresentationTaskCommand } from "./agent-runtime-promotion-presentation-v3-task-command";
 import {
   runtimePresentationValidationRejection,

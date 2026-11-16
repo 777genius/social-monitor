@@ -7,7 +7,7 @@ import {
   mimoReaderSummaryBackend,
   type ReaderSummaryGenerationBackend,
 } from "./active-reader-summary-generation-profile";
-import { requestBytes } from "./agent-runtime-promotion-presentation-v3-request";
+import { requestBytes } from "./agent-runtime-promotion-presentation-v3-request-bytes";
 
 /**
  * Keep batch admission and splitting separate from provider command creation.

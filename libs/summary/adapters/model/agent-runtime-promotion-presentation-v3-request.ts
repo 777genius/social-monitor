@@ -1,6 +1,5 @@
 import type { ReaderPostPresentationCandidate } from "../../domain/services/reader-post-presentation-v3-proposal";
 import { readerPostPresentationReferenceCatalog } from "../../domain/services/reader-post-presentation-reference-catalog";
-import type { ReaderPostPresentationV3Input } from "../../domain/services/reader-post-presentation-v3";
 import {
   mimoReaderSummaryBackend,
   isGatewayReaderSummaryBackend,
@@ -34,16 +33,7 @@ export const mimoPresentationInstructions = (inputs: readonly ReaderPostPresenta
     references: readerPostPresentationReferenceCatalog(input),
   })))}`;
 
-export const requestBytes = (inputs: readonly ReaderPostPresentationV3Input[]): number =>
-  Buffer.byteLength(JSON.stringify({ candidates: inputs.map((input) => ({
-    candidateId: input.candidateId, title: input.title, sourceText: input.body,
-  })) }), "utf8");
-
-export const parseObject = (value: string): Record<string, unknown> => {
-  const parsed: unknown = JSON.parse(value);
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("Reader promotion presentation output is invalid");
-  }
-  return parsed as Record<string, unknown>;
-};
+// Historical exports remain identical while consumers use single-purpose modules.
+export { requestBytes } from "./agent-runtime-promotion-presentation-v3-request-bytes";
+export { parseObject } from "./agent-runtime-promotion-presentation-v3-output-object";
 

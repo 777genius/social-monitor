@@ -14,6 +14,14 @@ on:
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-task-command.ts
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-wire-contract.ts
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-task-command.spec.ts
+      - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-request.ts
+      - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-request-bytes.ts
+      - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-output-object.ts
+      - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-execution.ts
+      - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-batching.ts
+      - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-execution.spec.ts
+      - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-batching.spec.ts
+      - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-request-boundaries.spec.ts
       - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
 permissions:
   contents: read
@@ -55,3 +63,6 @@ jobs:
           libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-run-wide-failure-policy.spec.ts
           libs/summary/adapters/model/agent-runtime-promotion-presentation-v3.builder.spec.ts
           libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-task-command.spec.ts
+          libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-execution.spec.ts
+          libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-batching.spec.ts
+          libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-request-boundaries.spec.ts
