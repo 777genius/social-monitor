@@ -88,7 +88,7 @@ describe("structured task failure admission isolation", () => {
     });
     expect(mapTaskFailureDirectly({ ...task, safeMessage: "", code: "execution_failed",
       details: { outputValidationPath: "schema" } }, "task fallback")).toEqual({
-      kind: "unknown",
+      kind: "provider_unavailable",
       retryable: true,
       message: "task fallback at schema",
     });
