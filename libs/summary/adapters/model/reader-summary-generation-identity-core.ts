@@ -56,13 +56,14 @@ export const resolveReaderSummaryGenerationIdentity = (input: {
     return { provider, model: mimoReaderSummaryModel, backend: mimoReaderSummaryBackend };
   }
   if (isGatewayReaderSummaryBackend(input.backend)) {
-    if (input.legacyRecovery || !isGatewayReaderSummaryModel(input.model) ||
-      isCodexGatewayOnlyReaderSummaryModel(input.model) ||
+    const gatewayModel = input.model;
+    if (input.legacyRecovery || !isGatewayReaderSummaryModel(gatewayModel) ||
+      isCodexGatewayOnlyReaderSummaryModel(gatewayModel) ||
       (input.backend === kimiCodeReaderSummaryBackend &&
-        input.model !== kimiCodeReaderSummaryModel)) {
+        gatewayModel !== kimiCodeReaderSummaryModel)) {
       throw new Error("Gateway reader summary model conflicts with purpose policy");
     }
-    return { provider, model: input.model, backend: input.backend };
+    return { provider, model: gatewayModel, backend: input.backend };
   }
   // A gateway-only Codex model never serves the frozen legacy recovery.
   if (isCodexGatewayOnlyReaderSummaryModel(input.model)) {

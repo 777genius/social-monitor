@@ -1,4 +1,5 @@
 import type { AgentRuntimeTaskCommand } from "../../../ports";
+import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 import { codexReaderSummaryBackend } from "../active-reader-summary-generation-profile";
 import type { GatewayLlmRoute } from "./gateway-llm-client";
 import { prepareGatewayLlmTask } from "./gateway-llm-task-preparation";
@@ -12,10 +13,16 @@ const command = (
   controls: Partial<AgentRuntimeTaskCommand["controls"]> = {},
   fields: Partial<Pick<AgentRuntimeTaskCommand, "systemPrompt" | "timeoutMs">> = {},
 ): AgentRuntimeTaskCommand => ({
+  requestId: "fixture-gateway-route-request",
+  tenantId: tenantId("00000000-0000-7000-8000-000000000a01"),
+  workspaceId: workspaceId("00000000-0000-7000-8000-000000000a02"),
+  correlationId: "fixture-gateway-route-correlation",
+  provider: "codex",
+  purpose: "social_monitor.reader_summary.topic_map.label.v2",
   controls: { model: route.model, modelBackend: route.modelBackend, ...controls },
   systemPrompt: "Explain only the fixture evidence", prompt: "fixture",
   outputSchema: {}, timeoutMs: 1000, ...fields,
-} as AgentRuntimeTaskCommand);
+});
 
 describe("gateway LLM task route admission", () => {
   it("accepts exact configured inputs without mutation", () => {

@@ -5,6 +5,7 @@ import {
   kimiCodeReaderSummaryBackend,
   openRouterReaderSummaryBackend,
   isGatewayReaderSummaryBackend,
+  type GatewayReaderSummaryBackend,
 } from "./reader-summary-gateway-model-policy";
 
 export {
@@ -19,9 +20,7 @@ export {
 } from "./reader-summary-gateway-model-policy";
 export { isGatewayReaderSummaryExecution } from "./reader-summary-gateway-execution-policy";
 
-export type GatewayReaderSummaryBackend =
-  | typeof kimiCodeReaderSummaryBackend
-  | typeof openRouterReaderSummaryBackend;
+export type { GatewayReaderSummaryBackend } from "./reader-summary-gateway-model-policy";
 
 export type ReaderSummaryGenerationBackend =
   | typeof codexReaderSummaryBackend

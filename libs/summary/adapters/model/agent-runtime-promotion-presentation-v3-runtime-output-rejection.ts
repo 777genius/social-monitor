@@ -1,4 +1,5 @@
 import type { AgentRuntimeTaskResult } from "../../ports";
+import type { ReaderPostPresentationV3Result } from "../../domain/services/reader-post-presentation-v3";
 import {
   mimoReaderSummaryBackend,
   type ReaderSummaryGenerationBackend,

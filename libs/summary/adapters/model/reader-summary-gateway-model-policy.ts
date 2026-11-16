@@ -9,6 +9,9 @@ import { mimoReaderSummaryModel } from "./reader-summary-runtime-contract";
  */
 export const kimiCodeReaderSummaryBackend = "kimi-code" as const;
 export const openRouterReaderSummaryBackend = "openrouter" as const;
+export type GatewayReaderSummaryBackend =
+  | typeof kimiCodeReaderSummaryBackend
+  | typeof openRouterReaderSummaryBackend;
 /** Kimi Code serves exactly this model, always reasons and rejects any reasoning control. */
 export const kimiCodeReaderSummaryModel = "k3-256k" as const;
 export const defaultOpenRouterReaderSummaryModel = "openai/gpt-oss-120b" as const;
