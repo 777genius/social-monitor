@@ -1,5 +1,6 @@
 import type { ReaderSummaryCitation, ReaderSummaryNarrativeSection } from "../../domain";
-import { asRecord, optionalString } from "./openai-responses-reader-summary-json";
+import { asRecord } from "./openai-responses-reader-summary-json";
+import { readDailyEditorialNarrativeCopy } from "./openai-responses-reader-summary-editorial-copy-policy";
 
 /** Strict v2 provider section decoding; synthesis evidence binding stays in the caller. */
 export const projectDailyEditorialSynthesisSection = (params: {
@@ -25,14 +26,7 @@ export const projectDailyEditorialSynthesisSection = (params: {
         !plan.topics.some(topic => topic.feedItemIds.includes(byCitation.get(id)?.feedItemId ?? "")))) {
     throw new Error("Daily editorial narrative has unplanned or duplicate citations");
   }
-  const title = optionalString(item.title);
-  const text = optionalString(item.text);
-  if (title === undefined || text === undefined) {
-    throw new Error("Daily editorial narrative text is missing");
-  }
-  if (Array.from(text).length > 1_600 || !/[.!?…。！？]["'’”)]*$/u.test(text)) {
-    throw new Error("Daily editorial narrative text is unfinished or too long");
-  }
+  const { title, text } = readDailyEditorialNarrativeCopy(item);
   return {
     id: `narrative-${index + 1}`, kind: expectedKind, title, text,
     citationIds: [...citations] as string[],

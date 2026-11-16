@@ -5997,6 +5997,59 @@
         145
       ],
       "responsibility": "Provider failure taxonomy independent of runtime task and wire response"
+    },
+    {
+      "original": "openai-responses-reader-summary-editorial-narrative.ts",
+      "owner": "openai-responses-reader-summary-editorial-section.ts",
+      "originalPositions": [
+        22,
+        23,
+        24,
+        25,
+        26,
+        28,
+        29,
+        31,
+        32,
+        33,
+        34,
+        35,
+        46,
+        47
+      ],
+      "responsibility": "Strict v2 per-section order, synthesis-only cluster veto and plan-bounded citation admission, separated from whole-plan frozen evidence attestation"
+    },
+    {
+      "original": "openai-responses-reader-summary-editorial-narrative.ts",
+      "owner": "openai-responses-reader-summary-legacy-editorial-narrative.ts",
+      "originalPositions": [
+        61,
+        62,
+        67,
+        69,
+        71,
+        74,
+        75,
+        76,
+        78,
+        79,
+        81,
+        92
+      ],
+      "responsibility": "Legacy v1 frozen anchor and topic-order admission, independent of citation-only daily synthesis"
+    },
+    {
+      "original": "openai-responses-reader-summary-editorial-narrative.ts",
+      "owner": "openai-responses-reader-summary-editorial-copy-policy.ts",
+      "originalPositions": [
+        37,
+        38,
+        39,
+        40,
+        42,
+        43
+      ],
+      "responsibility": "Identical title/text trimming, required values, Unicode code-point size and final punctuation for both versioned narrative formats, with one fail-closed owner"
     }
   ]
 }

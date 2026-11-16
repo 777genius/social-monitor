@@ -24,6 +24,11 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-narrative-evidence.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-watch-evidence-policy.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-narrative.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-editorial-narrative.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-editorial-section.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-legacy-editorial-narrative.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-editorial-copy-policy.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-editorial-copy-policy.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-narrative-evidence.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-narrative.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-narrative-validation.ts
@@ -82,6 +87,7 @@ jobs:
           libs/summary/adapters/model/openai-responses-reader-summary-story-normalizer.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-evidence-relations.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-narrative-validation.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-editorial-copy-policy.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-narrative-evidence.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-narrative.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-narrative-coverage.spec.ts
