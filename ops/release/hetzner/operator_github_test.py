@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 from contract import Denied, canonical, digest
 from operator_github import GitHub, backend_release, REPO
+from evidence import REVIEW_767_DOCKERFILE, package_build_contract, package_script_proof
 
 BASE, HEAD = 'a' * 40, 'b' * 40
 CHECK = 'check:source-live-certification-evidence'
@@ -141,6 +142,33 @@ class PackageScriptTests(unittest.TestCase):
         def truncated(endpoint, value):
             if endpoint.startswith('git/trees/'): value['truncated'] = True
         with self.assertRaises(Denied): Fixture(mutate=truncated).proof()
+
+    def test_post_767_stable_dockerfile_accepts_ci_only_package_changes(self):
+        def stable(endpoint, value):
+            if endpoint.startswith('git/trees/'):
+                next(e for e in value['tree'] if e['path'] == 'Dockerfile')['sha'] = REVIEW_767_DOCKERFILE
+        proof = Fixture(mutate=stable).proof()
+        self.assertEqual(proof['build_contract_sha256'], digest(package_build_contract(stable_767=True)))
+        package_script_proof(proof, BASE, HEAD, proof['delta_sha256'])
+
+    def test_unreviewed_dockerfile_transitions_and_hooks_are_rejected(self):
+        for before, after in ((FILES['Dockerfile'], REVIEW_767_DOCKERFILE),
+                              (REVIEW_767_DOCKERFILE, FILES['Dockerfile']),
+                              (REVIEW_767_DOCKERFILE, 'e' * 40)):
+            def changed(endpoint, value):
+                if endpoint.startswith('git/trees/'):
+                    old = 'c' * 40 in endpoint
+                    next(e for e in value['tree'] if e['path'] == 'Dockerfile')['sha'] = before if old else after
+            with self.subTest(before=before, after=after), self.assertRaises(Denied):
+                Fixture(mutate=changed).proof()
+        updated = package()
+        updated['scripts'][CHECK] = 'new'
+        updated['scripts']['build'] = 'node unreviewed.mjs'
+        def stable(endpoint, value):
+            if endpoint.startswith('git/trees/'):
+                next(e for e in value['tree'] if e['path'] == 'Dockerfile')['sha'] = REVIEW_767_DOCKERFILE
+        with self.assertRaises(Denied):
+            Fixture(new=canonical(updated), mutate=stable).proof()
 
     def test_build_closure_drift_and_default_install_hook_refuse(self):
         for path in FILES:

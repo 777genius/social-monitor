@@ -70,6 +70,39 @@ PACKAGE_CI_TS = {'scripts/check-source-provider-runtime-contract.ts',
                  'scripts/lib/source-provider-github-issues-runtime-smoke.ts',
                  'scripts/lib/source-provider-github-trending-runtime-smoke.ts'}
 
+# Narrow reviewed full delta; continuation remains limited to CI-only paths.
+REVIEW_767_BASE = '5370589edec58f00826d7e0f532d27783143c8d2'
+REVIEW_767_HEAD = 'a9d5ab1115f10a93f4b6e56030e4fed5dc2f02a8'
+REVIEW_767_DIGEST = 'sha256:72be6e61b147b72c6bfd338992fa0811a32795b5a913afb8113a48a37a899cc1'
+REVIEW_767_PATHS = frozenset((
+    'Dockerfile',
+    'apps/x-collector/src/x_collector/canonical_graph_compiler.py',
+    'apps/x-collector/src/x_collector/scweet_adapter.py',
+    'apps/x-collector/tests/support/canonical_graph_support.py',
+    'apps/x-collector/tests/test_scweet_bounded_window.py',
+    'docs/iterations/2026-11-14-durable-backend-e2e-pg-evidence.md',
+    'libs/platform/persistence/src/postgres-runtime-pool-budget.spec.ts',
+    'ops/deploy/x-late-window/README.md',
+    'ops/deploy/x-late-window/ledger_admission.py',
+    'ops/deploy/x-late-window/mode.sh',
+    'ops/deploy/x-late-window/test_ledger_admission.py',
+    'ops/deploy/x-late-window/test_mode.py',
+    'package.json',
+    'scripts/capture-durable-backend-e2e-loop.ts',
+    'scripts/check-source-line-cap.mjs',
+    'scripts/lib/clean-real-day-collection-report.ts',
+    'scripts/lib/durable-backend-e2e-pg-evidence.test.mjs',
+    'scripts/lib/durable-backend-e2e-pg-evidence.ts',
+    'scripts/lib/reader-summary-clean-real-day-collection-artifact.spec.ts',
+    'scripts/lib/reader-summary-clean-real-day-collection-artifact.ts',
+    'scripts/lib/reader-summary-clean-real-day-collection-cli.spec.ts',
+    'scripts/lib/reader-summary-clean-real-day-collection-cli.ts',
+    'scripts/lib/x-late-window.ts',
+    'scripts/migration-build-source-surface.spec.ts',
+    'scripts/run-reader-summary-clean-real-day-collection.ts',
+))
+REVIEW_767_DOCKERFILE = 'cba26666aced8bc63f5f69a1a60cb5bb4990742c'
+
 
 def package_check_key(key):
     return isinstance(key, str) and re.fullmatch(r'check:[a-zA-Z0-9][a-zA-Z0-9:._-]{0,127}', key) is not None
@@ -97,14 +130,23 @@ PACKAGE_BUILD = {
 }
 
 
-def package_script_proof(proof, base, head, delta):
+def package_build_contract(reviewed_767=False, stable_767=False):
+    if reviewed_767:
+        return {**PACKAGE_BUILD, 'reviewed_dockerfile_after': REVIEW_767_DOCKERFILE}
+    if stable_767:
+        return {**PACKAGE_BUILD, 'files': {**PACKAGE_BUILD['files'], 'Dockerfile': REVIEW_767_DOCKERFILE}}
+    return PACKAGE_BUILD
+
+
+def package_script_proof(proof, base, head, delta, reviewed_767=False):
     require(isinstance(proof, dict) and set(proof) == {'base', 'head', 'delta_sha256', 'changed_scripts',
             'before_blob', 'after_blob', 'before_sha256', 'after_sha256', 'build_contract_sha256'}
             and proof['base'] == base and proof['head'] == head and proof['delta_sha256'] == delta
             and isinstance(proof['changed_scripts'], list) and proof['changed_scripts']
             and all(package_check_key(key) for key in proof['changed_scripts'])
             and proof['changed_scripts'] == sorted(set(proof['changed_scripts']))
-            and proof['build_contract_sha256'] == digest(PACKAGE_BUILD), 'backend-sensitive-files')
+            and proof['build_contract_sha256'] in ({digest(package_build_contract(True))} if reviewed_767 else
+                {digest(package_build_contract()), digest(package_build_contract(stable_767=True))}), 'backend-sensitive-files')
     require(all(isinstance(proof[k], str) and re.fullmatch(r'[0-9a-f]{40}', proof[k])
                 for k in ('before_blob', 'after_blob')) and
             all(isinstance(proof[k], str) and re.fullmatch(DIGEST, proof[k])
@@ -135,7 +177,8 @@ def backend_compatibility(evidence, revisions, candidate, snapshot):
         reviewed = None
         review_paths = frozenset()
         reviews = (('reviewed_231421', REVIEW_BASE, REVIEW_DIGEST, REVIEW_PATHS),
-                   ('reviewed_746', REVIEW_746_BASE, REVIEW_746_DIGEST, REVIEW_746_PATHS))
+                   ('reviewed_746', REVIEW_746_BASE, REVIEW_746_DIGEST, REVIEW_746_PATHS),
+                   ('reviewed_767', REVIEW_767_BASE, REVIEW_767_DIGEST, REVIEW_767_PATHS))
         for field, expected_base, expected_digest, expected_paths in reviews:
             proof = delta.get(field)
             if proof is None:
@@ -155,7 +198,8 @@ def backend_compatibility(evidence, revisions, candidate, snapshot):
         if 'package.json' in paths:
             require(all(allowed(p) for p in paths),
                     'backend-sensitive-files')
-            package_script_proof(delta.get('package_scripts'), base, candidate, delta['delta_sha256'])
+            package_script_proof(delta.get('package_scripts'), base, candidate, delta['delta_sha256'],
+                                 reviewed is not None and review_paths == REVIEW_767_PATHS)
         # Shared libs also run in retained consumers (including summary via delivery
         # composition). Current-version CI does not prove mixed-version compatibility.
         # This limited lane refuses all shared-library changes; it is not an all-backend
