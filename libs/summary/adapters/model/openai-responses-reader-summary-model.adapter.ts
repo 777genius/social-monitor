@@ -15,7 +15,7 @@ import type {
   ProviderReaderSummaryAttempt,
   ReaderSummaryDailyEditorialAttempt,
 } from "../../ports";
-import { primaryReaderSummaryEvidence } from "../../domain";
+import { admitOpenAiReaderSummaryGeneration } from "./openai-responses-reader-summary-generation-admission";
 import {
   validateOpenAiReaderSummaryResponse,
 } from "./openai-responses-reader-summary-response-policy";
@@ -27,7 +27,7 @@ import { admitOpenAiReaderSummaryRoute } from "./openai-responses-reader-summary
 import {
   createOpenAiReaderSummaryResponse,
 } from "./openai-responses-reader-summary-transport";
-import { ReaderSummaryModelProviderError } from "./openai-responses-reader-summary-provider-error";
+
 
 import {
   resolveOpenAiReaderSummarySettings,
@@ -87,19 +87,8 @@ export class OpenAiResponsesReaderSummaryModelAdapter implements ReaderSummaryMo
     input: ReaderSummaryModelInput,
     selectedRoute: ReaderSummaryModelRoute,
   ): Promise<ProviderReaderSummaryAttempt> {
-    if (
-      primaryReaderSummaryEvidence(input.evidence).selectedEvidence.length === 0
-    ) {
+    if (admitOpenAiReaderSummaryGeneration(input, this.settings.apiKey) === "no_signal") {
       return this.buildNoSignalAttempt(input, selectedRoute);
-    }
-
-    if (this.settings.apiKey.length === 0) {
-      throw new ReaderSummaryModelProviderError({
-        kind: "provider_unavailable",
-        retryable: false,
-        message:
-          "READER_SUMMARY_MODEL_PROVIDER=openai-responses requires OPENAI_API_KEY",
-      });
     }
 
     return runOpenAiReaderSummaryGeneration({

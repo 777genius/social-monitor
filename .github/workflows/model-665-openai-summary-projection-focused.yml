@@ -65,6 +65,8 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-provider-error.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-route-admission.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-model.adapter.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-generation-admission.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-generation-admission.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-response-parser.spec.ts
       - libs/summary/adapters/model/openai-responses-summary-response-parser.ts
       - libs/summary/adapters/model/openai-responses-summary-output-text.ts
@@ -139,6 +141,7 @@ jobs:
           libs/summary/adapters/model/openai-responses-reader-summary-content-quality-boundaries.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-response-parser.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-model.adapter.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-generation-admission.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-route-admission.spec.ts
           libs/summary/adapters/model/openai-promotion-presentation-v3.builder.spec.ts
           libs/summary/adapters/model/openai-promotion-presentation-v3-boundaries.spec.ts
