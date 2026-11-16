@@ -5,7 +5,6 @@ import { createExternalBetaJobReadiness } from './lib/external-beta-evidence-job
 import { execFileSync } from 'node:child_process';
 import { accessSync, constants, existsSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, relative } from 'node:path';
-import { URL } from 'node:url';
 import { parse as parseDotenv } from 'dotenv';
 import { readEnvFileSelection, readSelectedJobSelection } from './lib/external-beta-evidence-selections.mjs';
 import { buildExternalBetaPlan } from './lib/external-beta-evidence-plan.mjs';
@@ -18,19 +17,7 @@ import {
   isStructuredJsonEvidence,
 } from './lib/external-beta-evidence-artifact-redaction.mjs';
 
-import {
-  postgresUrlEnvNames,
-  rabbitmqUrlEnvNames,
-  localRuntimeEnvNames,
-  isLocalRuntimeEnvValue,
-  httpsEvidenceUrlEnvNames,
-  tokenEvidenceEnvNames,
-  secretReferenceEnvNames,
-  realEvidenceIdentityEnvNames,
-  isFixtureLikeEnvValue,
-  isPlaceholderSecretValue,
-  isRawSecretValueReference
-} from './lib/external-beta-evidence-input-value-policy.mjs';
+import { localRuntimeEnvNames, isLocalRuntimeEnvValue, createExternalBetaEvidenceValueValidator } from './lib/external-beta-evidence-input-value-policy.mjs';
 
 const contractPath = 'ops/release/external-beta-evidence-runner.json';
 const inputMatrixPath = 'ops/release/external-beta-evidence-input-matrix.json';
@@ -45,6 +32,7 @@ const {
   missingRequiredEnv, missingOptionalEnvNames, requiredEnvAlternativeCoveredEnvNames,
   jobInputEnvNames, hasEnv, jobExecutionReadiness, formatMissingRequiredEnvViolation,
 } = createExternalBetaJobReadiness({ process, localRuntimeEnvNames, isLocalRuntimeEnvValue });
+const { validateEvidenceValueEnv } = createExternalBetaEvidenceValueValidator({ contract, env: process.env, jobInputEnvNames });
 const {
   formatOutputArtifacts, formatRequiredEnvAlternatives, formatHandoffArtifacts,
   handoffAction, handoffRunner, artifactExamplePathByFormat, inputMetadataByEnv,
@@ -594,79 +582,6 @@ function validateExecutableOutputArtifactPathEnv(job, missingEnvSet, violations)
   }
 }
 
-function validateEvidenceValueEnv(job, missingEnvSet, violations, options = {}) {
-  const enabled = options.enabled ?? contract.executionSafety?.criticalEnvValuesMustBeTyped === true;
-  if (!enabled) {
-    return;
-  }
-
-  const envNames = new Set(jobInputEnvNames(job));
-  for (const envName of envNames) {
-    if (missingEnvSet.has(envName) || envName.endsWith('_PATH')) {
-      continue;
-    }
-
-    const value = process.env[envName]?.trim();
-    if (value === undefined || value === '') {
-      continue;
-    }
-
-    if (envName === 'BACKEND_IMAGE_DIGEST' && !/^sha256:[0-9a-f]{64}$/.test(value)) {
-      violations.push(`${job.jobId}: env ${envName} must be an immutable sha256 image digest`);
-      continue;
-    }
-    if (envName === 'BACKEND_GIT_COMMIT_SHA' && !/^[0-9a-f]{40}$/.test(value)) {
-      violations.push(`${job.jobId}: env ${envName} must be a full 40-character lowercase git commit SHA`);
-      continue;
-    }
-    if (envName === 'API_BASE_URL') {
-      validateHttpsEvidenceUrlEnv(job, envName, value, violations);
-      continue;
-    }
-    if (postgresUrlEnvNames().has(envName)) {
-      validateTypedUrlEnv(job, envName, value, {
-        expectedDescription: 'valid PostgreSQL URL',
-        protocols: ['postgres:', 'postgresql:'],
-      }, violations);
-      continue;
-    }
-    if (rabbitmqUrlEnvNames().has(envName)) {
-      validateTypedUrlEnv(job, envName, value, {
-        expectedDescription: 'valid RabbitMQ URL',
-        protocols: ['amqp:', 'amqps:'],
-      }, violations);
-      continue;
-    }
-    if (httpsEvidenceUrlEnvNames().has(envName)) {
-      validateHttpsEvidenceUrlEnv(job, envName, value, violations);
-      continue;
-    }
-    if (tokenEvidenceEnvNames().has(envName)) {
-      validateSecretTokenEnv(job, envName, value, violations);
-      continue;
-    }
-    if (secretReferenceEnvNames().has(envName)) {
-      validateSecretReferenceEnv(job, envName, value, violations);
-      continue;
-    }
-    if (realEvidenceIdentityEnvNames().has(envName) && isFixtureLikeEnvValue(value)) {
-      violations.push(`${job.jobId}: env ${envName} must not use local, fixture, example, mock or test identifiers`);
-    }
-  }
-}
-
-function validateSecretTokenEnv(job, envName, value, violations) {
-  if (isPlaceholderSecretValue(value) || value.length < 20 || /\s/.test(value)) {
-    violations.push(`${job.jobId}: env ${envName} must be a non-placeholder secret value`);
-  }
-}
-
-function validateSecretReferenceEnv(job, envName, value, violations) {
-  if (isPlaceholderSecretValue(value) || value.length < 8 || isRawSecretValueReference(value)) {
-    violations.push(`${job.jobId}: env ${envName} must be a non-placeholder secret reference, not a raw secret value`);
-  }
-}
-
 function validatePlannedEvidencePathEnv(job, missingEnvSet, violations) {
   if (contract.executionSafety?.preflightRequiresEvidencePathValidation !== true) {
     return;
@@ -752,30 +667,6 @@ function validatePlannedEvidencePathEnv(job, missingEnvSet, violations) {
     if (isGitTrackedPath(realPath)) {
       violations.push(`${job.jobId}: evidence path env ${envName} realpath must not point to a git-tracked file before preflight`);
     }
-  }
-}
-
-function validateHttpsEvidenceUrlEnv(job, envName, value, violations) {
-  validateTypedUrlEnv(job, envName, value, {
-    expectedDescription: 'valid https URL',
-    protocols: ['https:'],
-  }, violations);
-}
-
-function validateTypedUrlEnv(job, envName, value, options, violations) {
-  let parsed;
-  try {
-    parsed = new URL(value);
-  } catch {
-    violations.push(`${job.jobId}: env ${envName} must be a ${options.expectedDescription}`);
-    return;
-  }
-  if (!options.protocols.includes(parsed.protocol)) {
-    violations.push(`${job.jobId}: env ${envName} must be a ${options.expectedDescription}`);
-    return;
-  }
-  if (isFixtureLikeEnvValue(parsed.hostname)) {
-    violations.push(`${job.jobId}: env ${envName} must not use local, fixture, example, mock or test hostnames`);
   }
 }
 

@@ -5,6 +5,7 @@ export const consistencyPolicyPath = 'scripts/lib/external-beta-artifact-consist
 export const readinessPolicyPath = 'scripts/lib/external-beta-evidence-job-readiness.mjs';
 export const artifactShapePolicyPath = 'scripts/lib/external-beta-evidence-artifact-shape-policy.mjs';
 export const duplicatePathsPolicyPath = 'scripts/lib/external-beta-evidence-duplicate-paths.mjs';
+export const valuePolicyPath = 'scripts/lib/external-beta-evidence-input-value-policy.mjs';
 
 export function validateRunnerImplementationMarkers({
   runnerSource,
@@ -14,6 +15,7 @@ export function validateRunnerImplementationMarkers({
   readinessPolicySource,
   artifactShapePolicySource,
   duplicatePathsPolicySource,
+  valuePolicySource,
   checkSource,
   selectionHelperSource,
   redactionPolicySource,
@@ -90,28 +92,6 @@ export function validateRunnerImplementationMarkers({
     'liveExecutionValidatesOutputPathsBeforeRun',
     'before live execution',
     'validateEvidenceValueEnv',
-    'criticalEnvValuesMustBeTyped',
-    'immutable sha256 image digest',
-    'valid https URL',
-    'valid PostgreSQL URL',
-    'valid RabbitMQ URL',
-    'validateTypedUrlEnv',
-    'validateHttpsEvidenceUrlEnv',
-    'validateSecretTokenEnv',
-    'validateSecretReferenceEnv',
-    'postgresUrlEnvNames',
-    'rabbitmqUrlEnvNames',
-    'httpsEvidenceUrlEnvNames',
-    'tokenEvidenceEnvNames',
-    'secretReferenceEnvNames',
-    'isPlaceholderSecretValue',
-    'isRawSecretValueReference',
-    'non-placeholder secret value',
-    'non-placeholder secret reference',
-    'postgresql:',
-    'amqps:',
-    'realEvidenceIdentityEnvNames',
-    'isFixtureLikeEnvValue',
     'output artifact env',
     'readJsonArtifact',
     'valid JSON artifact',
@@ -188,6 +168,36 @@ export function validateRunnerImplementationMarkers({
     }
   }
 
+  // Typed env values now belong to the existing input-value policy, not to CLI orchestration.
+  for (const marker of [
+    'criticalEnvValuesMustBeTyped',
+    'immutable sha256 image digest',
+    'valid https URL',
+    'valid PostgreSQL URL',
+    'valid RabbitMQ URL',
+    'validateTypedUrlEnv',
+    'validateHttpsEvidenceUrlEnv',
+    'validateSecretTokenEnv',
+    'validateSecretReferenceEnv',
+    'postgresUrlEnvNames',
+    'rabbitmqUrlEnvNames',
+    'httpsEvidenceUrlEnvNames',
+    'tokenEvidenceEnvNames',
+    'secretReferenceEnvNames',
+    'isPlaceholderSecretValue',
+    'isRawSecretValueReference',
+    'non-placeholder secret value',
+    'non-placeholder secret reference',
+    'postgresql:',
+    'amqps:',
+    'realEvidenceIdentityEnvNames',
+    'isFixtureLikeEnvValue',
+  ]) {
+    if (!valuePolicySource.includes(marker)) {
+      violations.push(`${valuePolicyPath}: extracted typed input policy must preserve "${marker}"`);
+    }
+  }
+
   // Moved duplicate-path checks must remain enforced at their actual module owner.
   for (const marker of [
     'evidencePathEnvForbidsDuplicatePaths',
@@ -218,6 +228,15 @@ export function validateRunnerImplementationMarkers({
   const activeRunnerSource = runnerSource
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^[ \t]*\/\/.*$/gm, '');
+  // A marker in an import or comment is insufficient: the runtime must bind the live env
+  // and invoke typed policy on all three existing execution/preflight/artifact paths.
+  if (!/^[ \t]*import \{[^\n]*\bcreateExternalBetaEvidenceValueValidator\b[^\n]*\} from '\.\/lib\/external-beta-evidence-input-value-policy\.mjs';[ \t]*$/m.test(activeRunnerSource)
+    || !/^[ \t]*const \{ validateEvidenceValueEnv \} = createExternalBetaEvidenceValueValidator\(\{ contract, env: process\.env, jobInputEnvNames \}\);[ \t]*$/m.test(activeRunnerSource)) {
+    violations.push(`${runnerFile}: runner must bind typed evidence value policy to live env and original job names`);
+  }
+  if ((activeRunnerSource.match(/^[ \t]*validateEvidenceValueEnv\(job\s*,/gm) ?? []).length !== 3) {
+    violations.push(`${runnerFile}: runner must enforce typed evidence value validation in all three paths`);
+  }
   // Import-only wiring cannot satisfy the security check: enforce live env and all entry points.
   if (!/^\s*import \{ createExternalBetaDuplicateEvidencePaths \} from '\.\/lib\/external-beta-evidence-duplicate-paths\.mjs';/m.test(activeRunnerSource)
     || !/^[ \t]*\}\s*=\s*createExternalBetaDuplicateEvidencePaths\(\{\s*contract,\s*env:\s*process\.env\s*\}\);[ \t]*$/m.test(activeRunnerSource)) {
