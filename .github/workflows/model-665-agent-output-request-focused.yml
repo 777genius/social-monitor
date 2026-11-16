@@ -19,6 +19,7 @@ on:
       - libs/summary/adapters/model/grpc-agent-runtime-wire-codec.spec.ts
       - libs/summary/adapters/model/grpc-agent-runtime-task-request.ts
       - libs/summary/adapters/model/grpc-agent-runtime-task-invocation.ts
+      - libs/summary/adapters/model/grpc-agent-runtime-task-lifecycle.ts
       - libs/summary/adapters/model/grpc-agent-runtime-client.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-gateway-violations.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-route-admission.ts

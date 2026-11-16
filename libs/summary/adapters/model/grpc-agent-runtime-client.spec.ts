@@ -229,6 +229,62 @@ describe("gRPC agent runtime client", () => {
     await expect(pending).rejects.toThrow(/cancelled/u);
     expect(cancelled).toBe(true);
   });
+  it("ignores a late attested success after a caller has cancelled the unary task", async () => {
+    const controller = new AbortController();
+    let cancelCount = 0;
+    let deliverLate = (_value: AgentRuntimeTaskResponse): void => {
+      throw new Error("Unary callback not installed");
+    };
+    const grpcClient = {
+      runAgentTask(_request: unknown, _metadata: unknown, _options: unknown,
+        callback: (error: ServiceError | null, value: AgentRuntimeTaskResponse) => void): ClientUnaryCall {
+        deliverLate = (value) => callback(null, value);
+        return { cancel: () => { cancelCount += 1; } } as ClientUnaryCall;
+      },
+    } as unknown as AgentRuntimeServiceClient;
+    const client = new GrpcAgentRuntimeClient(
+      grpcClient, { now: () => new Date("2026-07-17T00:00:00.000Z") },
+      { timeoutMs: 1_000 },
+    );
+    const pending = client.runTask(command(), { signal: controller.signal });
+    controller.abort();
+    deliverLate(response());
+    controller.abort();
+
+    await expect(pending).rejects.toThrow(/cancelled/u);
+    expect(cancelCount).toBe(1);
+  });
+
+  it("does not dispatch a pre-aborted request or decode a duplicate callback", async () => {
+    const cancelled = new AbortController();
+    cancelled.abort();
+    const runAgentTask = jest.fn();
+    const client = new GrpcAgentRuntimeClient(
+      { runAgentTask } as unknown as AgentRuntimeServiceClient,
+      { now: () => new Date("2026-07-17T00:00:00.000Z") },
+      { timeoutMs: 1_000 },
+    );
+    await expect(client.runTask(command(), { signal: cancelled.signal }))
+      .rejects.toThrow(/cancelled/u);
+    expect(runAgentTask).not.toHaveBeenCalled();
+
+    const grpcClient = {
+      runAgentTask(_request: unknown, _metadata: unknown, _options: unknown,
+        callback: (error: ServiceError | null, value: AgentRuntimeTaskResponse) => void): ClientUnaryCall {
+        callback(null, response());
+        const invalid = response();
+        invalid.executionAttestation!.requestId = "forged-late-request";
+        callback(null, invalid);
+        return {} as ClientUnaryCall;
+      },
+    } as unknown as AgentRuntimeServiceClient;
+    const valid = new GrpcAgentRuntimeClient(
+      grpcClient, { now: () => new Date("2026-07-17T00:00:00.000Z") },
+      { timeoutMs: 1_000 },
+    );
+    await expect(valid.runTask(command())).resolves.toMatchObject({ durationMs: 25 });
+  });
+
 });
 
 const command = (): AgentRuntimeTaskCommand => ({

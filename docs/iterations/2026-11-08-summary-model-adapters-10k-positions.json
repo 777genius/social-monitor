@@ -6346,6 +6346,25 @@
         140
       ],
       "responsibility": "The pure scoped gRPC task request projection owns provider mapping, tenant/workspace/request identity, prompts, controls and metadata independent of the unary transport lifecycle, cancellation and output admission. Provenance trace only, pending independent meaningful LOC review."
+    },
+    {
+      "original": "grpc-agent-runtime-client.ts",
+      "owner": "grpc-agent-runtime-task-lifecycle.ts",
+      "originalPositions": [
+        110,
+        111,
+        112,
+        113,
+        117,
+        119,
+        121,
+        145,
+        146,
+        152,
+        153,
+        154
+      ],
+      "responsibility": "Dedicated unary task lifecycle owns exactly-once completion, cancellation-before-handle, post-dispatch abort and callback error settling; scoped request/deadline and fail-closed attestation stay outside it. Provisional exact-origin trace only; mechanical moves are not accepted meaningful LOC."
     }
   ]
 }
