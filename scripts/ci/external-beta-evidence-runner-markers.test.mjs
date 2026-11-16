@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { validateRunnerImplementationMarkers, artifactShapePolicyPath, duplicatePathsPolicyPath, redactionPolicyPath, handoffPolicyPath, displayPolicyPath, consistencyPolicyPath, readinessPolicyPath, valuePolicyPath } from '../lib/external-beta-evidence-runner-markers.mjs';
+import {
+  validateRunnerImplementationMarkers, artifactShapePolicyPath, duplicatePathsPolicyPath,
+  redactionPolicyPath, handoffPolicyPath, displayPolicyPath, consistencyPolicyPath,
+  readinessPolicyPath, valuePolicyPath, planPrinterPath,
+} from '../lib/external-beta-evidence-runner-markers.mjs';
 
 const runnerFile = 'scripts/external-beta-evidence-runner.mjs';
 const checkFile = 'scripts/check-external-beta-evidence-runner.mjs';
@@ -16,6 +20,7 @@ const sources = {
   artifactShapePolicySource: readFileSync(artifactShapePolicyPath, 'utf8'),
   duplicatePathsPolicySource: readFileSync(duplicatePathsPolicyPath, 'utf8'),
   valuePolicySource: readFileSync(valuePolicyPath, 'utf8'),
+  planPrinterSource: readFileSync(planPrinterPath, 'utf8'),
   checkSource: readFileSync(checkFile, 'utf8'),
   selectionHelperSource: readFileSync(selectionHelperPath, 'utf8'),
   redactionPolicySource: readFileSync(redactionPolicyPath, 'utf8'),
@@ -279,4 +284,41 @@ test('typed value policy must be bound to live env and invoked in every safety p
     assert.ok(validateRunnerImplementationMarkers({ ...sources, runnerSource: candidate })
       .includes(runnerFile + ': runner must enforce typed evidence value validation in all three paths'));
   }
+});
+
+test('relocated plan printer markers fail closed at the actual formatter owner', () => {
+  for (const name of [
+    'function printPlan(plan)',
+    'requiredEnvAlternatives:',
+    'formatRequiredEnvAlternatives(job)',
+    'formatOutputArtifacts(job)',
+    'Missing required env count:',
+    'Missing optional env count:',
+  ]) {
+    const violations = validateRunnerImplementationMarkers({
+      ...sources,
+      planPrinterSource: sources.planPrinterSource.replaceAll(name, 'removed-plan-printer-marker'),
+    });
+    assert.deepEqual(violations, [
+      `${planPrinterPath}: extracted plan printer must preserve "${name}"`,
+    ]);
+  }
+});
+
+test('runner must bind and invoke extracted plan printer, not just import it', () => {
+  const binding = 'const { printPlan } = createExternalBetaPlanPrinter({ contract, formatRequiredEnvAlternatives, formatOutputArtifacts });';
+  const invocation = 'printPlan(plan);';
+  for (const mutatedRunner of [
+    sources.runnerSource.replace(binding, '// ' + binding),
+    sources.runnerSource.replace(binding, 'const { printPlan } = createExternalBetaPlanPrinter({ contract, formatRequiredEnvAlternatives: () => "none", formatOutputArtifacts });'),
+    sources.runnerSource.replace(invocation, '// ' + invocation),
+    sources.runnerSource.replace("import { createExternalBetaPlanPrinter }", "// import { createExternalBetaPlanPrinter }"),
+  ]) {
+    assert.ok(validateRunnerImplementationMarkers({ ...sources, runnerSource: mutatedRunner })
+      .includes(`${runnerFile}: runner must bind and invoke extracted plan printer`));
+  }
+});
+
+test('real checker reads the extracted plan printer before accepting runner markers', () => {
+  assert.match(sources.checkSource, /planPrinterSource:\\s*readFileSync\\(planPrinterPath,\\s*'utf8'\\)/);
 });

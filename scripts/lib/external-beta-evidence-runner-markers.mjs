@@ -6,6 +6,7 @@ export const readinessPolicyPath = 'scripts/lib/external-beta-evidence-job-readi
 export const artifactShapePolicyPath = 'scripts/lib/external-beta-evidence-artifact-shape-policy.mjs';
 export const duplicatePathsPolicyPath = 'scripts/lib/external-beta-evidence-duplicate-paths.mjs';
 export const valuePolicyPath = 'scripts/lib/external-beta-evidence-input-value-policy.mjs';
+export const planPrinterPath = 'scripts/lib/external-beta-evidence-plan-printer.mjs';
 
 export function validateRunnerImplementationMarkers({
   runnerSource,
@@ -16,6 +17,7 @@ export function validateRunnerImplementationMarkers({
   artifactShapePolicySource,
   duplicatePathsPolicySource,
   valuePolicySource,
+  planPrinterSource,
   checkSource,
   selectionHelperSource,
   redactionPolicySource,
@@ -64,7 +66,6 @@ export function validateRunnerImplementationMarkers({
     'Load env files: append --env-file',
     'missingOptionalEnvCount',
     'uniqueMissingOptionalEnv',
-    'requiredEnvAlternatives',
     'requiredEnvAlternativeCoveredEnvNames',
     'jobInputEnvNames',
     'allowCapturedArtifactAlternatives',
@@ -168,6 +169,20 @@ export function validateRunnerImplementationMarkers({
     }
   }
 
+  // The human-readable plan fields moved with printPlan; guard the implementation owner.
+  for (const name of [
+    'function printPlan(plan)',
+    'requiredEnvAlternatives:',
+    'formatRequiredEnvAlternatives(job)',
+    'formatOutputArtifacts(job)',
+    'Missing required env count:',
+    'Missing optional env count:',
+  ]) {
+    if (!planPrinterSource.includes(name)) {
+      violations.push(`${planPrinterPath}: extracted plan printer must preserve "${name}"`);
+    }
+  }
+
   // Typed env values now belong to the existing input-value policy, not to CLI orchestration.
   for (const marker of [
     'criticalEnvValuesMustBeTyped',
@@ -228,6 +243,12 @@ export function validateRunnerImplementationMarkers({
   const activeRunnerSource = runnerSource
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^[ \t]*\/\/.*$/gm, '');
+  // Retain the real CLI delegation, not merely an import or commented-out call.
+  if (!/^[ \\t]*import \\{ createExternalBetaPlanPrinter \\} from '\\.\\/lib\\/external-beta-evidence-plan-printer\\.mjs';[ \\t]*$/m.test(activeRunnerSource)
+    || !/^[ \\t]*const \\{ printPlan \\} = createExternalBetaPlanPrinter\\(\\{ contract, formatRequiredEnvAlternatives, formatOutputArtifacts \\}\\);[ \\t]*$/m.test(activeRunnerSource)
+    || !/^[ \\t]*printPlan\\(plan\\);[ \\t]*$/m.test(activeRunnerSource)) {
+    violations.push(`${runnerFile}: runner must bind and invoke extracted plan printer`);
+  }
   // A marker in an import or comment is insufficient: the runtime must bind the live env
   // and invoke typed policy on all three existing execution/preflight/artifact paths.
   if (!/^[ \t]*import \{[^\n]*\bcreateExternalBetaEvidenceValueValidator\b[^\n]*\} from '\.\/lib\/external-beta-evidence-input-value-policy\.mjs';[ \t]*$/m.test(activeRunnerSource)
