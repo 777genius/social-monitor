@@ -1212,20 +1212,34 @@
     },
     {
       "original": "agent-runtime-promotion-presentation-v3.builder.ts",
-      "owner": "agent-runtime-promotion-presentation-v3-request.ts",
+      "owner": "agent-runtime-promotion-presentation-v3-request-bytes.ts",
       "originalPositions": [
-        279,
-        300,
-        301,
-        302,
         306,
-        307,
+        307
+      ],
+      "responsibility": "Exact UTF-8 serialized request byte measurement, independently of batching and provider JSON output admission"
+    },
+    {
+      "original": "agent-runtime-promotion-presentation-v3.builder.ts",
+      "owner": "agent-runtime-promotion-presentation-v3-output-object.ts",
+      "originalPositions": [
         311,
         312,
         313,
         315
       ],
-      "responsibility": "Provider-specific sealed request encoding and strict output shape decoding separated from candidate-binding policy"
+      "responsibility": "Strict untrusted JSON object-envelope rejection before trusted proposal interpretation"
+    },
+    {
+      "original": "agent-runtime-promotion-presentation-v3.builder.ts",
+      "owner": "agent-runtime-promotion-presentation-v3-request.ts",
+      "originalPositions": [
+        279,
+        300,
+        301,
+        302
+      ],
+      "responsibility": "Provider-specific source-copy request instructions and machine-computed evidence offsets; backward-compatible exports for separated size and output policies"
     },
     {
       "original": "agent-runtime-reader-summary-topic-labeler.adapter.ts",
