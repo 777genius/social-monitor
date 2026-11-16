@@ -6172,6 +6172,64 @@
         160
       ],
       "responsibility": "Exact route/model/effort and pre-dispatch prompt/deadline admission isolated from SDK task projection; disjoint frozen source positions, not independent meaningful-LOC certification."
+    },
+    {
+      "original": "gateway-llm/gateway-llm-client.ts",
+      "owner": "gateway-llm/gateway-llm-task-preparation.ts",
+      "originalPositions": [
+        191,
+        196,
+        198,
+        199,
+        201,
+        202,
+        204,
+        205,
+        206,
+        207,
+        208
+      ],
+      "responsibility": "Previously extracted SDK task projection: route-pinned model/effort, source instructions and input, bounded output-token floor, byte budget and existing deadline; retrospective disjoint original-coordinate provenance only."
+    },
+    {
+      "original": "gateway-llm/gateway-llm-client.ts",
+      "owner": "gateway-llm/gateway-llm-task-completion.ts",
+      "originalPositions": [
+        229,
+        230,
+        233,
+        234,
+        235,
+        241,
+        242,
+        243,
+        244,
+        251,
+        253,
+        254,
+        255,
+        256,
+        257,
+        258,
+        263,
+        264,
+        265,
+        266,
+        268,
+        269
+      ],
+      "responsibility": "Previously extracted completed SDK result: observed-model veto, settlement/cleanup warnings and integrity-bound execution attestation; retrospective disjoint original-coordinate provenance only."
+    },
+    {
+      "original": "gateway-llm/gateway-llm-client.ts",
+      "owner": "gateway-llm/gateway-llm-health.ts",
+      "originalPositions": [
+        129,
+        133,
+        136,
+        137
+      ],
+      "responsibility": "Previously extracted health probe fallback and runtime identity, independent of dispatch; retrospective disjoint original-coordinate provenance only."
     }
   ]
 }
