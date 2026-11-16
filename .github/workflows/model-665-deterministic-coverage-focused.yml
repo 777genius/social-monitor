@@ -18,6 +18,9 @@ on:
       - libs/summary/adapters/model/deterministic-reader-summary-provider-diversity.ts
       - libs/summary/adapters/model/deterministic-reader-summary-evidence-selection.spec.ts
       - libs/summary/adapters/model/deterministic-reader-summary-model.adapter.spec.ts
+      - libs/summary/adapters/model/deterministic-reader-summary-citation-selection.ts
+      - libs/summary/adapters/model/deterministic-reader-summary-provider-citation-policy.ts
+      - libs/summary/adapters/model/deterministic-reader-summary-provider-citation-policy.spec.ts
       - libs/summary/adapters/model/deterministic-reader-summary-narrative.ts
       - libs/summary/adapters/model/deterministic-reader-summary-secondary-sections.ts
       - libs/summary/adapters/model/deterministic-reader-summary-narrative.spec.ts
@@ -67,6 +70,7 @@ jobs:
           libs/summary/adapters/model/deterministic-reader-summary-model.adapter.spec.ts
           libs/summary/adapters/model/deterministic-reader-summary-citation-index.spec.ts
           libs/summary/adapters/model/deterministic-reader-summary-narrative.spec.ts
+          libs/summary/adapters/model/deterministic-reader-summary-provider-citation-policy.spec.ts
           libs/summary/adapters/model/deterministic-reader-summary-evidence-selection.spec.ts
           libs/summary/adapters/model/deterministic-reader-summary-outcome-policy.spec.ts
           libs/summary/adapters/model/deterministic-summary-model.adapter.spec.ts
