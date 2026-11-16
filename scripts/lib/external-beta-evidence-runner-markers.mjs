@@ -230,11 +230,11 @@ export function validateRunnerImplementationMarkers({
     .replace(/^[ \t]*\/\/.*$/gm, '');
   // A marker in an import or comment is insufficient: the runtime must bind the live env
   // and invoke typed policy on all three existing execution/preflight/artifact paths.
-  if (!/^[ 	]*import \{[^\n]*\bcreateExternalBetaEvidenceValueValidator\b[^\n]*\} from '\.\/lib\/external-beta-evidence-input-value-policy\.mjs';[ 	]*$/m.test(activeRunnerSource)
-    || !/^[ 	]*const \{ validateEvidenceValueEnv \} = createExternalBetaEvidenceValueValidator\(\{ contract, env: process\.env, jobInputEnvNames \}\);[ 	]*$/m.test(activeRunnerSource)) {
+  if (!/^[ \t]*import \{[^\n]*\bcreateExternalBetaEvidenceValueValidator\b[^\n]*\} from '\.\/lib\/external-beta-evidence-input-value-policy\.mjs';[ \t]*$/m.test(activeRunnerSource)
+    || !/^[ \t]*const \{ validateEvidenceValueEnv \} = createExternalBetaEvidenceValueValidator\(\{ contract, env: process\.env, jobInputEnvNames \}\);[ \t]*$/m.test(activeRunnerSource)) {
     violations.push(`${runnerFile}: runner must bind typed evidence value policy to live env and original job names`);
   }
-  if ((activeRunnerSource.match(/^[ 	]*validateEvidenceValueEnv\(job\s*,/gm) ?? []).length !== 3) {
+  if ((activeRunnerSource.match(/^[ \t]*validateEvidenceValueEnv\(job\s*,/gm) ?? []).length !== 3) {
     violations.push(`${runnerFile}: runner must enforce typed evidence value validation in all three paths`);
   }
   // Import-only wiring cannot satisfy the security check: enforce live env and all entry points.
