@@ -1,7 +1,7 @@
 import type { OpenAiResponsesReaderSummaryModelAdapterOptions } from "./openai-responses-reader-summary-runtime-settings";
 import { openAiApiKeySourceDescription, resolveOpenAiApiKey } from "./openai-api-key-source";
 import { projectOpenAiReaderSummaryEnvironment } from "./openai-responses-reader-summary-env-options";
-import { assertNoReaderSummaryPromptReleaseOverride } from "./openai-responses-reader-summary-prompt";
+import { assertNoReaderSummaryPromptReleaseOverride } from "./reader-summary-prompt-release-policy";
 
 /** Validate the prompt release and credentials before projecting nonsecret options. */
 export const resolveOpenAiResponsesReaderSummaryModelOptions = (

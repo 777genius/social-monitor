@@ -15,6 +15,8 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-prompt.ts
       - libs/summary/adapters/model/reader-summary-prompt-release-policy.ts
       - libs/summary/adapters/model/reader-summary-prompt-release-policy.spec.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-options.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-options.ts
       - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
       - libs/summary/adapters/model/openai-responses-reader-summary-editorial-schema.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-next-action-schema.ts

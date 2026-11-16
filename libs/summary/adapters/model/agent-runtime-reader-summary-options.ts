@@ -6,7 +6,7 @@ import {
   type ReaderSummaryGenerationBackend,
   type FrozenLegacyReaderSummaryRecoveryContract,
 } from "./active-reader-summary-generation-profile";
-import { assertNoReaderSummaryPromptReleaseOverride } from "./openai-responses-reader-summary-prompt";
+import { assertNoReaderSummaryPromptReleaseOverride } from "./reader-summary-prompt-release-policy";
 import type { VerifiedReaderSummaryExecutionAttestationSink } from "./reader-summary-execution-attestation";
 
 export type AgentRuntimeReaderSummaryModelAdapterOptions = {
