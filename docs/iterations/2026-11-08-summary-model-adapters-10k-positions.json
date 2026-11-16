@@ -6230,6 +6230,69 @@
         137
       ],
       "responsibility": "Previously extracted health probe fallback and runtime identity, independent of dispatch; retrospective disjoint original-coordinate provenance only."
+    },
+    {
+      "original": "openai-responses-summary-schema.ts",
+      "owner": "openai-responses-summary-evidence-schema.ts",
+      "originalPositions": [
+        18,
+        21,
+        24,
+        26,
+        27,
+        29,
+        30,
+        35,
+        38,
+        41,
+        43,
+        44,
+        45,
+        46,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        65,
+        67,
+        68,
+        72,
+        73,
+        74,
+        75,
+        76,
+        79,
+        80,
+        81,
+        82,
+        83,
+        84,
+        85
+      ],
+      "responsibility": "Already implemented evidence-backed claims, risk citations and source reference schema: retrospective first-use original statement tracing only"
+    },
+    {
+      "original": "openai-responses-summary-schema.ts",
+      "owner": "openai-responses-summary-quality-schema.ts",
+      "originalPositions": [
+        90,
+        92,
+        93,
+        94,
+        95,
+        96,
+        97,
+        98,
+        102,
+        105,
+        107,
+        108,
+        109,
+        112
+      ],
+      "responsibility": "Separated strict summary quality flags, confidence bounds and nullable no-signal contract from evidence schema and root composition"
     }
   ]
 }

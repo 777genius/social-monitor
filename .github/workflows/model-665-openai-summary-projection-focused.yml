@@ -37,6 +37,10 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-content-support.spec.ts
       - libs/summary/adapters/model/openai-responses-summary-model-error.ts
       - libs/summary/adapters/model/openai-responses-summary-model.adapter.ts
+      - libs/summary/adapters/model/openai-responses-summary-schema.ts
+      - libs/summary/adapters/model/openai-responses-summary-evidence-schema.ts
+      - libs/summary/adapters/model/openai-responses-summary-quality-schema.ts
+      - libs/summary/adapters/model/openai-responses-summary-schema-boundaries.spec.ts
       - libs/summary/adapters/model/openai-responses-summary-model.adapter.spec.ts
       - libs/summary/adapters/model/openai-responses-summary-generation.ts
       - libs/summary/adapters/model/openai-responses-summary-provider-error.ts
@@ -123,6 +127,7 @@ jobs:
           libs/summary/adapters/model/openai-responses-reader-summary-prompt-contract.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-coverage-plan-payload.spec.ts
           libs/summary/adapters/model/openai-responses-summary-prompt.spec.ts
+          libs/summary/adapters/model/openai-responses-summary-schema-boundaries.spec.ts
           libs/summary/adapters/model/openai-responses-summary-model-error.spec.ts
           libs/summary/adapters/model/openai-responses-summary-http-failure.spec.ts
           libs/summary/adapters/model/openai-responses-summary-model.adapter.spec.ts
