@@ -6134,6 +6134,19 @@
         76
       ],
       "responsibility": "Provider structured-output text extraction: prioritize nonblank direct output, then walk nested content in wire order while ignoring untrusted non-object/text nodes"
+    },
+    {
+      "original": "openai-responses-reader-summary-model.adapter.ts",
+      "owner": "openai-responses-reader-summary-generation-admission.ts",
+      "originalPositions": [
+        183,
+        189,
+        190,
+        191,
+        192,
+        193
+      ],
+      "responsibility": "OpenAI reader summary no-signal-before-key and provider-unavailable admission isolated from the paid generation adapter; unchanged fail-closed error identity and no paid dispatch on insufficient evidence"
     }
   ]
 }
