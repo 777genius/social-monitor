@@ -6091,6 +6091,49 @@
         79
       ],
       "responsibility": "Pure cited feed-item cluster trust decision, rejecting forged/mismatched/multi-cluster story identity before citation coverage enrichment and deterministic fallback"
+    },
+    {
+      "original": "openai-responses-summary-response-parser.ts",
+      "owner": "openai-responses-summary-usage.ts",
+      "originalPositions": [
+        16,
+        18,
+        19,
+        23,
+        24,
+        25,
+        26,
+        27
+      ],
+      "responsibility": "Provider usage metering admission: retain estimate identity when usage absent, accept only nonnegative integer token counts and keep estimate-based cost"
+    },
+    {
+      "original": "openai-responses-summary-response-parser.ts",
+      "owner": "openai-responses-summary-output-text.ts",
+      "originalPositions": [
+        35,
+        36,
+        38,
+        41,
+        43,
+        44,
+        47,
+        48,
+        50,
+        51,
+        54,
+        56,
+        57,
+        60,
+        61,
+        63,
+        64,
+        68,
+        69,
+        71,
+        76
+      ],
+      "responsibility": "Provider structured-output text extraction: prioritize nonblank direct output, then walk nested content in wire order while ignoring untrusted non-object/text nodes"
     }
   ]
 }
