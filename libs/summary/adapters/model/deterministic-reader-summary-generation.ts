@@ -20,46 +20,46 @@ export const projectDeterministicReaderSummaryAttempt = ({
   readonly selectedRoute: ReaderSummaryModelRoute;
   readonly usage: ReaderSummaryModelEstimate;
 }): ProviderReaderSummaryAttempt => {
-    const lineage = {
-      promptVersion: selectedRoute.promptVersion,
-      schemaVersion: selectedRoute.schemaVersion,
-      modelVersion: selectedRoute.model,
-      providerVersion: selectedRoute.provider,
-      rulesVersion: input.policy.rulesVersion,
-      evalDatasetVersion: "reader_summary.eval.mvp.v1",
-      rankingPolicyVersion: input.evidence.rankingPolicyVersion,
-    } as const;
-    const primaryEvidence = primaryReaderSummaryEvidence(input.evidence);
-    const firstItem = primaryEvidence.selectedEvidence[0];
+  const lineage = {
+    promptVersion: selectedRoute.promptVersion,
+    schemaVersion: selectedRoute.schemaVersion,
+    modelVersion: selectedRoute.model,
+    providerVersion: selectedRoute.provider,
+    rulesVersion: input.policy.rulesVersion,
+    evalDatasetVersion: "reader_summary.eval.mvp.v1",
+    rankingPolicyVersion: input.evidence.rankingPolicyVersion,
+  } as const;
+  const primaryEvidence = primaryReaderSummaryEvidence(input.evidence);
+  const firstItem = primaryEvidence.selectedEvidence[0];
 
-    if (firstItem === undefined) {
-      return buildDeterministicNoSignalReaderSummaryAttempt({
-        input,
-        selectedRoute,
-        lineage,
-        usage,
-      });
-    }
-
-    const citedEvidence = input.evidence.selectedEvidence;
-    const { selectedEvidence, topStoryClusters } =
-      selectDeterministicReaderSummaryCoverage(input, primaryEvidence);
-    const projection =
-      buildDeterministicReaderSummaryStoryProjection({
-        input,
-        citedEvidence,
-        selectedEvidence,
-        topStoryClusters,
-        firstItem,
-      });
-
-    return buildDeterministicReaderSummaryDocument({
+  if (firstItem === undefined) {
+    return buildDeterministicNoSignalReaderSummaryAttempt({
       input,
       selectedRoute,
-      selectedEvidence,
-      citedEvidence,
-      projection,
       lineage,
       usage,
     });
+  }
+
+  const citedEvidence = input.evidence.selectedEvidence;
+  const { selectedEvidence, topStoryClusters } =
+    selectDeterministicReaderSummaryCoverage(input, primaryEvidence);
+  const projection =
+    buildDeterministicReaderSummaryStoryProjection({
+      input,
+      citedEvidence,
+      selectedEvidence,
+      topStoryClusters,
+      firstItem,
+    });
+
+  return buildDeterministicReaderSummaryDocument({
+    input,
+    selectedRoute,
+    selectedEvidence,
+    citedEvidence,
+    projection,
+    lineage,
+    usage,
+  });
 };
