@@ -42,6 +42,19 @@ describe("OpenAI Promotion V3 presentation builder", () => {
       size <= READER_POST_PRESENTATION_V3_MAX_REQUEST_BYTES)).toBe(true);
   });
 
+  it("fails closed on a mixed-scope batch before HTTP dispatch", async () => {
+    const fetchFn = jest.fn(async () => presentationResponse([]));
+    const builder = new OpenAiPromotionPresentationV3Builder({ apiKey: "fixture", fetchFn });
+    for (const second of [
+      { ...input(2), tenantId: "other-tenant" },
+      { ...input(2), workspaceId: "other-workspace" },
+    ]) {
+      await expect(builder.build([input(1), second]))
+        .rejects.toThrow("V3 presentation batch mixes tenant or workspace scopes");
+    }
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
   it("rejects an oversized response body", async () => {
     const builder = new OpenAiPromotionPresentationV3Builder({ apiKey: "fixture",
       fetchFn: async () => new Response("x".repeat(256 * 1024 + 1)) });

@@ -8,6 +8,7 @@ import {
   type ReaderSummaryGenerationBackend,
 } from "./active-reader-summary-generation-profile";
 import { requestBytes } from "./agent-runtime-promotion-presentation-v3-request-bytes";
+import { assertPromotionPresentationBatchScope } from "./promotion-presentation-batch-scope";
 
 /**
  * Keep batch admission and splitting separate from provider command creation.
@@ -24,6 +25,7 @@ export const runAgentRuntimePromotionPresentationBatches = async (
   if (inputs.length < 1 || inputs.length > 4) {
     throw new Error("V3 presentation requires a configured batch of 1..4");
   }
+  assertPromotionPresentationBatchScope(inputs);
   // MiMo attests each item separately, even if one sibling fails.
   if (modelBackend === mimoReaderSummaryBackend && inputs.length > 1) {
     const results: ReaderPostPresentationV3Result[] = [];

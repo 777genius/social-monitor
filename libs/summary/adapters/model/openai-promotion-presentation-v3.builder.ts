@@ -7,6 +7,7 @@ import type { OpenAiResponsesReaderSummaryModelAdapterOptions } from "./openai-r
 import { fetchOpenAiPresentationV3Proposals } from "./openai-promotion-presentation-v3-transport";
 import { dispatchOpenAiPromotionPresentationBatch } from "./openai-promotion-presentation-v3-batch-admission";
 import { sealOpenAiPromotionPresentationV3Proposals } from "./openai-promotion-presentation-v3-result-policy";
+import { assertPromotionPresentationBatchScope } from "./promotion-presentation-batch-scope";
 
 type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
@@ -31,6 +32,7 @@ implements PromotionPresentationBuilder {
     if (inputs.length < 1 || inputs.length > 4 || !this.apiKey.trim()) {
       throw new Error("V3 presentation requires a configured batch of 1..4");
     }
+    assertPromotionPresentationBatchScope(inputs);
     return dispatchOpenAiPromotionPresentationBatch({
       inputs,
       model: this.model,

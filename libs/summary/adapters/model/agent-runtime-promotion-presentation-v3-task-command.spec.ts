@@ -58,6 +58,18 @@ describe("promotion presentation task wire materialization", () => {
     expect(first.sourceCopyWire).toBe(false);
   });
 
+  it("rejects a direct cross-scope command before composing the model payload", () => {
+    const first = fixture();
+    const second = { ...fixture(), candidateId: "other-candidate" };
+    for (const mixed of [
+      { ...second, tenantId: "other-tenant" },
+      { ...second, workspaceId: "other-workspace" },
+    ]) {
+      expect(() => createPromotionPresentationTaskCommand([first, mixed], route))
+        .toThrow("V3 presentation batch mixes tenant or workspace scopes");
+    }
+  });
+
   it("uses source-copy schema and effort policy only for attested MiMo route", () => {
     const input = fixture();
     const mimo = createPromotionPresentationTaskCommand([input], {

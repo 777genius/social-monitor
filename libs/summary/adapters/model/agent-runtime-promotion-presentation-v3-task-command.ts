@@ -7,6 +7,7 @@ import { canonicalPromotionPayload, promotionPayloadDigest } from
   "../../domain/services/reader-post-promotion-attestation";
 import type { AgentRuntimeTaskCommand } from "../../ports";
 import { buildPromotionPresentationWireContract } from "./agent-runtime-promotion-presentation-v3-wire-contract";
+import { assertPromotionPresentationBatchScope } from "./promotion-presentation-batch-scope";
 import { buildAgentRuntimeRequestId } from "./agent-runtime-model-support";
 import {
   type activeReaderSummaryProvider,
@@ -38,6 +39,7 @@ export const createPromotionPresentationTaskCommand = (
   readonly catalogCandidates: ReturnType<typeof buildPromotionPresentationWireContract>["catalogCandidates"];
   readonly sourceCopyWire: boolean;
 } => {
+  assertPromotionPresentationBatchScope(inputs);
   const first = inputs[0]!;
   const { prompt, catalogCandidates, sourceCopyWire, schema, systemPrompt } =
     buildPromotionPresentationWireContract(inputs, route.modelBackend);

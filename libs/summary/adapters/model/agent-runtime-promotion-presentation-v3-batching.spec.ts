@@ -38,6 +38,22 @@ describe("agent-runtime promotion presentation batch admission", () => {
     expect(dispatch).not.toHaveBeenCalled();
   });
 
+  it.each([codexReaderSummaryBackend, mimoReaderSummaryBackend])(
+    "refuses mixed tenant/workspace input before any %s dispatch",
+    async (backend) => {
+      const dispatch = executor();
+      for (const second of [
+        { ...input("second"), tenantId: "other-tenant" },
+        { ...input("second"), workspaceId: "other-workspace" },
+      ]) {
+        await expect(runAgentRuntimePromotionPresentationBatches(
+          [input("first"), second], backend, dispatch,
+        )).rejects.toThrow("V3 presentation batch mixes tenant or workspace scopes");
+      }
+      expect(dispatch).not.toHaveBeenCalled();
+    },
+  );
+
   it("keeps a normal Codex batch together and in original order", async () => {
     const items = [input("first"), input("second"), input("third")];
     const dispatch = executor();
