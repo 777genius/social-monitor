@@ -26,6 +26,9 @@ export const isAdmissibleGroundedNarrativeSection = (params: {
     coverage,
     citationsAllowed,
   } = params;
+  if (citationIds.length === 0) {
+    return false;
+  }
   if (
     kind === "lead" &&
     coverage.mode === "single_story" &&
