@@ -58,11 +58,11 @@ export function createDurableBackendEvidencePollers(deps: {
   ): Promise<ScheduledScanEvidence> {
     const deadline = Date.now() + options.timeoutMs;
     let lastValue: JsonRecord | undefined;
-  
+
     while (Date.now() < deadline) {
       const value = await scheduledScanEvidenceSnapshot(pool, params);
       lastValue = value;
-  
+
       if (value !== undefined) {
         const status = readString(value, "status");
         if (status === "FAILED" || status === "CANCELLED") {
@@ -70,7 +70,7 @@ export function createDurableBackendEvidencePollers(deps: {
             `${options.label} ended with ${status}: ${String(value.failureReason ?? "")}`,
           );
         }
-  
+
         const feedItemCount = readNumber(value, "feedItemCount");
         if (status === "SUCCEEDED" && feedItemCount > 0) {
           return {
@@ -87,15 +87,15 @@ export function createDurableBackendEvidencePollers(deps: {
           };
         }
       }
-  
+
       await delay(1_000);
     }
-  
+
     throw new Error(
       `${options.label} did not complete before timeout; last=${JSON.stringify(lastValue ?? {})}`,
     );
   }
-  
+
   async function pollAutoSummaryEvidence(
     params: {
       readonly tenantId: string;
@@ -107,11 +107,11 @@ export function createDurableBackendEvidencePollers(deps: {
   ): Promise<AutoSummaryEvidence> {
     const deadline = Date.now() + options.timeoutMs;
     let lastValue: JsonRecord | undefined;
-  
+
     while (Date.now() < deadline) {
       const value = await autoSummaryEvidenceSnapshot(pool, params);
       lastValue = value;
-  
+
       if (value !== undefined) {
         const status = readString(value, "status");
         if (status === "failed" || status === "rejected") {
@@ -119,7 +119,7 @@ export function createDurableBackendEvidencePollers(deps: {
             `${options.label} ended with ${status}: ${String(value.failureReason ?? "")}`,
           );
         }
-  
+
         if (
           (status === "completed" || status === "no_signal") &&
           readString(value, "summaryId").trim().length > 0
@@ -140,10 +140,10 @@ export function createDurableBackendEvidencePollers(deps: {
           };
         }
       }
-  
+
       await delay(1_000);
     }
-  
+
     throw new Error(
       `${options.label} did not complete before timeout; last=${JSON.stringify(lastValue ?? {})}`,
     );

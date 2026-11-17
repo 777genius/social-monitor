@@ -215,16 +215,62 @@ test("orchestrator delegates through real TS imports/calls without duplicate SQL
   visit(tree);
   for (const name of names) {
     assert.ok(imported.has(name), "missing imported helper: " + name);
+  }
+  for (const name of ["seedDurableIdentity", "durableCounts"]) {
     assert.ok(called.has(name), "missing real invocation: " + name);
   }
+
+  // The two snapshot functions are now passed by identity to the extracted
+  // polling owner instead of being invoked directly by the orchestrator.
+  const factoryImported = tree.statements.some(statement =>
+    ts.isImportDeclaration(statement) &&
+    ts.isStringLiteral(statement.moduleSpecifier) &&
+    statement.moduleSpecifier.text === "./lib/durable-backend-e2e-evidence-pollers" &&
+    statement.importClause?.namedBindings &&
+    ts.isNamedImports(statement.importClause.namedBindings) &&
+    statement.importClause.namedBindings.elements.some(element =>
+      element.propertyName === undefined && element.name.text === "createDurableBackendEvidencePollers"));
+  assert.ok(factoryImported, "runner must import the real poller factory");
+
+  const factoryCalls = [];
+  function findFactoryCalls(node) {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) &&
+      node.expression.text === "createDurableBackendEvidencePollers") {
+      factoryCalls.push(node);
+    }
+    ts.forEachChild(node, findFactoryCalls);
+  }
+  findFactoryCalls(tree);
+  assert.equal(factoryCalls.length, 1, "runner must create one live polling owner");
+  const wired = factoryCalls[0].arguments[0];
+  assert.ok(wired && ts.isObjectLiteralExpression(wired), "poller factory needs live dependencies");
+  for (const name of [
+    "pool", "scheduledScanEvidenceSnapshot", "autoSummaryEvidenceSnapshot",
+    "readString", "readNumber", "readStringArray", "delay",
+  ]) {
+    assert.ok(wired.properties.some(prop =>
+      ts.isShorthandPropertyAssignment(prop) && prop.name.text === name),
+    "missing real factory dependency: " + name);
+  }
+
+  const pollerSource = readFileSync("scripts/lib/durable-backend-e2e-evidence-pollers.ts", "utf8");
+  const pollerTree = ts.createSourceFile("durable-backend-e2e-evidence-pollers.ts",
+    pollerSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const factory = pollerTree.statements.find(statement =>
+    ts.isFunctionDeclaration(statement) &&
+    statement.name?.text === "createDurableBackendEvidencePollers");
+  assert.ok(factory?.body, "missing real extracted polling factory");
 
   for (const [owner, helper] of [
     ["pollScheduledScanEvidence", "scheduledScanEvidenceSnapshot"],
     ["pollAutoSummaryEvidence", "autoSummaryEvidenceSnapshot"],
   ]) {
-    const declaration = tree.statements.find(node =>
+    assert.ok(!tree.statements.some(node =>
+      ts.isFunctionDeclaration(node) && node.name?.text === owner),
+    "duplicate poll owner in runner: " + owner);
+    const declaration = factory.body.statements.find(node =>
       ts.isFunctionDeclaration(node) && node.name?.text === owner);
-    assert.ok(declaration?.body, "missing poll owner: " + owner);
+    assert.ok(declaration?.body, "missing extracted poll owner: " + owner);
     let delegated = false;
     function check(node) {
       if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) &&

@@ -13,7 +13,7 @@ export function createDurableScanPolicyCadence({ minimumScanIntervalSecondsForPr
     readonly freshnessSeconds: number;
   } {
     const intervalSeconds = minimumScanIntervalSecondsForProvider(providerKey);
-  
+
     return {
       intervalSeconds,
       freshnessSeconds: Math.max(intervalSeconds, 300),
