@@ -331,6 +331,7 @@ test('relocated private env admission markers fail closed at their actual owner'
     "parseDotenv(readFileSync(path, 'utf8'))",
     'EXTERNAL_BETA_EVIDENCE_CONFIRM must be set explicitly in the operator shell',
     'const existingValue = env[name]?.trim()',
+    'conflicts with',
     'refusing to merge evidence from different runs',
     'env[name] = value',
   ]) {
