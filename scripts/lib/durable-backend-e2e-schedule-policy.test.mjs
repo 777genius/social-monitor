@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { test } from "node:test";
+
+const ts = createRequire(import.meta.url)("typescript");
 import {
   createDurableScanPolicyCadence, durableDeliveryDigestScheduleWindow,
   scheduledInterestIdempotencyKey, bindingIdempotencyKey, policyIdempotencyKey,
@@ -47,13 +50,66 @@ test("idempotency strings remain byte-for-byte compatible for every key family",
   assert.equal(scheduledPolicyIdempotencyKey(runId), "scheduled-policy-rss-" + runId);
 });
 
-test("runner delegates all key families and scan cadence to extracted policy", () => {
+const POLICY_MODULE = "./lib/durable-backend-e2e-schedule-policy";
+const POLICY_FUNCTIONS = [
+  "createDurableScanPolicyCadence", "durableDeliveryDigestScheduleWindow",
+  "scheduledInterestIdempotencyKey", "bindingIdempotencyKey", "policyIdempotencyKey",
+  "scanIdempotencyKey", "scheduledBindingIdempotencyKey", "scheduledPolicyIdempotencyKey",
+];
+
+function inspectSchedulePolicyWiring(source) {
+  const tree = ts.createSourceFile("durable-backend-e2e-loop.ts", source,
+    ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const imported = new Set();
+  const called = new Set();
+  const declared = new Set();
+  for (const statement of tree.statements) {
+    if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier) &&
+      statement.moduleSpecifier.text === POLICY_MODULE && statement.importClause?.namedBindings &&
+      ts.isNamedImports(statement.importClause.namedBindings)) {
+      for (const element of statement.importClause.namedBindings.elements) {
+        if (!element.propertyName) imported.add(element.name.text);
+      }
+    }
+  }
+  function visit(node) {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) called.add(node.expression.text);
+    if (ts.isFunctionDeclaration(node) && node.name) declared.add(node.name.text);
+    ts.forEachChild(node, visit);
+  }
+  visit(tree);
+  return { imported, called, declared };
+}
+
+test("runner delegates actual imported policy calls rather than comment or name markers", () => {
   const source = readFileSync(new URL("../capture-durable-backend-e2e-loop.ts", import.meta.url), "utf8");
   assert.match(source, /createDurableScanPolicyCadence\(\{ minimumScanIntervalSecondsForProvider \}\)/);
-  for (const name of ["durableDeliveryDigestScheduleWindow", "scheduledInterestIdempotencyKey",
-    "bindingIdempotencyKey", "policyIdempotencyKey", "scanIdempotencyKey",
-    "scheduledBindingIdempotencyKey", "scheduledPolicyIdempotencyKey"]) {
-    assert.ok(source.includes(name + "("), name);
-    assert.ok(!source.includes("function " + name + "("), name + " must have one owner");
+  const wiring = inspectSchedulePolicyWiring(source);
+  for (const name of POLICY_FUNCTIONS) {
+    assert.ok(wiring.imported.has(name), name + " must import the extracted policy owner");
+    assert.ok(wiring.called.has(name), name + " must be a real AST call");
+    assert.ok(!wiring.declared.has(name), name + " must not be redefined in the runner");
   }
+  assert.ok(wiring.called.has("durableScanPolicyCadence"), "runner must invoke injected scan cadence");
+});
+
+test("commented-out call and wrong import owner cannot satisfy policy wiring", () => {
+  const source = readFileSync(new URL("../capture-durable-backend-e2e-loop.ts", import.meta.url), "utf8");
+  const forgedCall = source.replace(
+    "durableDeliveryDigestScheduleWindow({",
+    "identity(/* durableDeliveryDigestScheduleWindow({ */ {",
+  );
+  assert.notEqual(forgedCall, source, "mutation must replace the real call");
+  assert.ok(forgedCall.includes("durableDeliveryDigestScheduleWindow("),
+    "legacy substring assertion would accept a comment-only call");
+  assert.ok(!inspectSchedulePolicyWiring(forgedCall).called.has("durableDeliveryDigestScheduleWindow"),
+    "real call must disappear despite its marker remaining in a comment");
+
+  const wrongOwner = source.replace(
+    'from "./lib/durable-backend-e2e-schedule-policy";',
+    'from "./lib/unrelated-policy";',
+  );
+  assert.notEqual(wrongOwner, source, "mutation must replace the real owner");
+  assert.ok(!inspectSchedulePolicyWiring(wrongOwner).imported.has("scheduledInterestIdempotencyKey"),
+    "renamed import owner must not pass the structural assertion");
 });
