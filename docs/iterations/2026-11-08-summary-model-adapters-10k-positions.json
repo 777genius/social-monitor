@@ -2178,7 +2178,14 @@
         268,
         269,
         270,
-        271,
+        271
+      ],
+      "responsibility": "Physical usage reconciliation and paid repair budget guard independently owned from transport output and failure classification"
+    },
+    {
+      "original": "agent-runtime-model-support.ts",
+      "owner": "agent-runtime-reader-summary-repair-budget-policy.ts",
+      "originalPositions": [
         280,
         281,
         282,
@@ -2188,7 +2195,7 @@
         286,
         287
       ],
-      "responsibility": "Physical usage reconciliation and paid repair budget guard independently owned from transport output and failure classification"
+      "responsibility": "Paid daily editorial repair budget admission separated from physical usage normalization and accumulation; exact legacy function reexport"
     },
     {
       "original": "gateway-llm/gateway-llm-account-selector.ts",
@@ -2387,8 +2394,7 @@
         15,
         18,
         20,
-        60,
-        84
+        60
       ],
       "responsibility": "Missing/blank optional field and optional integer handling separated from mandatory provider output rejection"
     },

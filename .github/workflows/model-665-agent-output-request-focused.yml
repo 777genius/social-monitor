@@ -10,6 +10,7 @@ on:
       - libs/summary/adapters/model/agent-runtime-model-failure-usage.spec.ts
       - libs/summary/adapters/model/agent-runtime-model-failure.ts
       - libs/summary/adapters/model/agent-runtime-model-usage.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-repair-budget-policy.ts
       - libs/summary/adapters/model/agent-runtime-model-task-failure.ts
       - libs/summary/adapters/model/agent-runtime-model-output.ts
       - libs/summary/adapters/model/agent-runtime-model-boundaries.spec.ts

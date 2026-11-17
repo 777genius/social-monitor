@@ -1,6 +1,7 @@
 import { mapAgentRuntimeFailure as mapTaskFailureDirectly } from "./agent-runtime-model-task-failure";
 import { classifyAgentRuntimeError, mapAgentRuntimeFailure } from "./agent-runtime-model-failure";
 import { usageFromAgentRuntime, sumReaderSummaryUsage, assertReaderSummaryRepairWithinBudget } from "./agent-runtime-model-usage";
+import { assertReaderSummaryRepairWithinBudget as admitPaidRepair } from "./agent-runtime-reader-summary-repair-budget-policy";
 
 describe("Agent Runtime failure and usage policies", () => {
   it("keeps missing runtime failure fail-closed and retryable", () => {
@@ -100,5 +101,30 @@ describe("structured task failure admission isolation", () => {
       retryable: true,
       message: "task fallback at schema",
     });
+  });
+});
+
+
+describe("independent paid-repair admission policy", () => {
+  it("retains the exact legacy function object and does not mutate budget or usage", () => {
+    expect(assertReaderSummaryRepairWithinBudget).toBe(admitPaidRepair);
+    const spent = Object.freeze({ inputTokens: 40, outputTokens: 10, estimatedCostUsd: 1 });
+    const next = Object.freeze({ inputTokens: 5, outputTokens: 5, estimatedCostUsd: 2 });
+    const budget = Object.freeze({ remainingTokens: 60, remainingCostUsd: 3 });
+    expect(() => admitPaidRepair(spent, next, budget)).not.toThrow();
+    expect(spent).toEqual({ inputTokens: 40, outputTokens: 10, estimatedCostUsd: 1 });
+    expect(next).toEqual({ inputTokens: 5, outputTokens: 5, estimatedCostUsd: 2 });
+    expect(budget).toEqual({ remainingTokens: 60, remainingCostUsd: 3 });
+  });
+
+  it("admits token equality but rejects a single-token overflow before paid repair", () => {
+    const spent = { inputTokens: 40, outputTokens: 10, estimatedCostUsd: 1 };
+    const next = { inputTokens: 5, outputTokens: 5, estimatedCostUsd: 2 };
+    expect(() => admitPaidRepair(spent, next, {
+      remainingTokens: 60, remainingCostUsd: 3,
+    })).not.toThrow();
+    expect(() => admitPaidRepair(spent, next, {
+      remainingTokens: 59, remainingCostUsd: 3,
+    })).toThrow("Daily editorial writer cannot repair within the shared model budget");
   });
 });
