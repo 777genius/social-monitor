@@ -6653,6 +6653,34 @@
         135
       ],
       "responsibility": "Undispatched invalid request/route/schema failures are an independent fail-closed preflight outcome, never confused with a paid provider result; original function identity reexport preserved"
+    },
+    {
+      "original": "agent-runtime-reader-summary-topic-relation-verifier-prompt.ts",
+      "owner": "agent-runtime-reader-summary-topic-relation-node-evidence.ts",
+      "originalPositions": [
+        24,
+        25,
+        27,
+        28,
+        31,
+        32,
+        33,
+        34,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50
+      ],
+      "responsibility": "Grounded relation-node evidence and semantic identity projection isolated from prompt serialization and schema; ambiguous requested candidate/label identity now independently rejected by the new predispatch index policy (which itself receives no baseline LOC credit)"
     }
   ]
 }
