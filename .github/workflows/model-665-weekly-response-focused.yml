@@ -21,6 +21,8 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-parser.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-output-admission.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-model.adapter.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-weekly-schema.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-weekly-document-schema.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-generation.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-options.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-request.ts
