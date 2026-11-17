@@ -5,7 +5,7 @@ import type {
   SummaryModelRoute,
 } from '../../ports';
 import { buildOpenAiSummaryRequest } from './openai-responses-summary-request-contract';
-import { completeOpenAiSummaryAttempt } from './openai-responses-summary-response-policy';
+import { completeOpenAiSummaryAttempt } from './openai-responses-summary-attempt-completion';
 import { SummaryModelProviderError } from './openai-responses-summary-model-error';
 import { createOpenAiSummaryResponse } from './openai-responses-summary-transport';
 import type { OpenAiSummaryRuntimeSettings } from './openai-responses-summary-runtime-settings';
