@@ -6709,6 +6709,32 @@
         68
       ],
       "responsibility": "Stable editorial request projection bound to frozen manifest, source order and trusted story/provider metadata; separate from prompt instructions, schema, model transport and facade; retrospective source provenance only"
+    },
+    {
+      "original": "reader-summary-evidence-citation-map.ts",
+      "owner": "reader-summary-citable-evidence.ts",
+      "originalPositions": [
+        10,
+        11,
+        12,
+        13,
+        14
+      ],
+      "responsibility": "Daily narrative-first evidence selection preserves trusted ordering independently from public citation wire projection"
+    },
+    {
+      "original": "reader-summary-evidence-citation-map.ts",
+      "owner": "reader-summary-citation-map-projection.ts",
+      "originalPositions": [
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26
+      ],
+      "responsibility": "Provider-neutral source-bound citation IDs and field choice independent from evidence order/admission"
     }
   ]
 }
