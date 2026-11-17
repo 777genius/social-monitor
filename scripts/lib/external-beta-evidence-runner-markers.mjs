@@ -7,6 +7,7 @@ export const artifactShapePolicyPath = 'scripts/lib/external-beta-evidence-artif
 export const duplicatePathsPolicyPath = 'scripts/lib/external-beta-evidence-duplicate-paths.mjs';
 export const valuePolicyPath = 'scripts/lib/external-beta-evidence-input-value-policy.mjs';
 export const planPrinterPath = 'scripts/lib/external-beta-evidence-plan-printer.mjs';
+export const envFileLoaderPath = 'scripts/lib/external-beta-evidence-env-file-loader.mjs';
 
 export function validateRunnerImplementationMarkers({
   runnerSource,
@@ -18,6 +19,7 @@ export function validateRunnerImplementationMarkers({
   duplicatePathsPolicySource,
   valuePolicySource,
   planPrinterSource,
+  envFileLoaderSource,
   checkSource,
   selectionHelperSource,
   redactionPolicySource,
@@ -60,9 +62,6 @@ export function validateRunnerImplementationMarkers({
     'Invalid external beta evidence env file selection:',
     'loadExternalBetaEnvFiles',
     'parseDotenv',
-    'EXTERNAL_BETA_EVIDENCE_CONFIRM must be set explicitly in the operator shell',
-    'conflicts with',
-    'refusing to merge evidence from different runs',
     'Load env files: append --env-file',
     'missingOptionalEnvCount',
     'uniqueMissingOptionalEnv',
@@ -243,6 +242,29 @@ export function validateRunnerImplementationMarkers({
   const activeRunnerSource = runnerSource
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^[ \t]*\/\/.*$/gm, '');
+  // Relocated private file admission is independently guarded at the actual owner.
+  const activeEnvFileLoaderSource = envFileLoaderSource
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^[ \t]*\/\/.*$/gm, '');
+  for (const name of [
+    'function loadExternalBetaEnvFiles(paths)',
+    'validateExternalBetaEnvFilePath(path, label, violations)',
+    "parseDotenv(readFileSync(path, 'utf8'))",
+    'EXTERNAL_BETA_EVIDENCE_CONFIRM must be set explicitly in the operator shell',
+    'const existingValue = env[name]?.trim()',
+    'refusing to merge evidence from different runs',
+    'env[name] = value',
+  ]) {
+    if (!activeEnvFileLoaderSource.includes(name)) {
+      violations.push(envFileLoaderPath + ': extracted private env-file admission must preserve "' + name + '"');
+    }
+  }
+  if (!/^[ \t]*import \{ createExternalBetaEnvFileLoader \} from '\.\/lib\/external-beta-evidence-env-file-loader\.mjs';[ \t]*$/m.test(activeRunnerSource)
+    || !/^[ \t]*const \{ loadExternalBetaEnvFiles \} = createExternalBetaEnvFileLoader\(\{ parseDotenv, readFileSync, validateExternalBetaEnvFilePath, env: process\.env \}\);[ \t]*$/m.test(activeRunnerSource)
+    || !/^[ \t]*const envFileViolations = loadExternalBetaEnvFiles\(envFileSelection\.paths\);[ \t]*$/m.test(activeRunnerSource)) {
+    violations.push(runnerFile + ': runner must bind and invoke private env-file admission against live env');
+  }
+
   // Retain the real CLI delegation, not merely an import or commented-out call.
   if (!/^[ \t]*import \{ createExternalBetaPlanPrinter \} from '\.\/lib\/external-beta-evidence-plan-printer\.mjs';[ \t]*$/m.test(activeRunnerSource)
     || !/^[ \t]*const \{ printPlan \} = createExternalBetaPlanPrinter\(\{ contract, formatRequiredEnvAlternatives, formatOutputArtifacts \}\);[ \t]*$/m.test(activeRunnerSource)

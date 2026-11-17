@@ -9,6 +9,7 @@ import { parse as parseDotenv } from 'dotenv';
 import { readEnvFileSelection, readSelectedJobSelection } from './lib/external-beta-evidence-selections.mjs';
 import { buildExternalBetaPlan } from './lib/external-beta-evidence-plan.mjs';
 import { createExternalBetaPlanPrinter } from './lib/external-beta-evidence-plan-printer.mjs';
+import { createExternalBetaEnvFileLoader } from './lib/external-beta-evidence-env-file-loader.mjs';
 import { buildExternalBetaHandoff } from './lib/external-beta-evidence-handoff.mjs';
 import { createExternalBetaDisplayFormatters } from './lib/external-beta-evidence-display-formatters.mjs';
 import {
@@ -70,6 +71,7 @@ if (handoffJson && (execute || validateArtifacts || json || summary || handoff))
   process.exit(1);
 }
 
+const { loadExternalBetaEnvFiles } = createExternalBetaEnvFileLoader({ parseDotenv, readFileSync, validateExternalBetaEnvFilePath, env: process.env });
 const envFileSelection = readEnvFileSelection(args);
 if (envFileSelection.errors.length > 0) {
   console.error('Invalid external beta evidence env file selection:');
@@ -321,47 +323,6 @@ function percent(numerator, denominator) {
     return 0;
   }
   return Math.round((numerator / denominator) * 100);
-}
-
-function loadExternalBetaEnvFiles(paths) {
-  const violations = [];
-  const loadedSources = new Map();
-  for (const path of paths) {
-    const label = `--env-file ${path}`;
-    validateExternalBetaEnvFilePath(path, label, violations);
-    if (violations.some((violation) => violation.startsWith(`${label}:`))) {
-      continue;
-    }
-
-    const parsed = parseDotenv(readFileSync(path, 'utf8'));
-    for (const [name, rawValue] of Object.entries(parsed)) {
-      if (!/^[A-Z_][A-Z0-9_]*$/.test(name)) {
-        violations.push(`${label}: env name ${name} is not a valid uppercase env var name`);
-        continue;
-      }
-
-      const value = String(rawValue).trim();
-      if (value.length === 0) {
-        continue;
-      }
-      if (name === 'EXTERNAL_BETA_EVIDENCE_CONFIRM') {
-        violations.push(`${label}: EXTERNAL_BETA_EVIDENCE_CONFIRM must be set explicitly in the operator shell, not loaded from --env-file`);
-        continue;
-      }
-
-      const existingValue = process.env[name]?.trim();
-      if (existingValue !== undefined && existingValue.length > 0 && existingValue !== value) {
-        const existingSource = loadedSources.get(name) ?? 'the shell environment';
-        violations.push(`${label}: env ${name} conflicts with ${existingSource}; refusing to merge evidence from different runs`);
-        continue;
-      }
-
-      process.env[name] = value;
-      loadedSources.set(name, label);
-    }
-  }
-
-  return violations;
 }
 
 function validateExternalBetaEnvFilePath(path, label, violations) {
