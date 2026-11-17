@@ -4943,9 +4943,6 @@
       "original": "agent-runtime-reader-summary-topic-label-plan-normalizer.ts",
       "owner": "agent-runtime-reader-summary-topic-untrusted-response.ts",
       "originalPositions": [
-        24,
-        25,
-        26,
         29,
         30,
         31,
