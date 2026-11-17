@@ -6410,6 +6410,20 @@
         38
       ],
       "responsibility": "Compiled provider-neutral release identity and fail-closed override refusal are owned independently from OpenAI legacy/daily prompt rendering; exact public export object/function identity and historical error semantics retained"
+    },
+    {
+      "original": "openai-responses-reader-summary-draft-normalizer.ts",
+      "owner": "openai-responses-reader-summary-lineage.ts",
+      "originalPositions": [
+        189,
+        190,
+        191,
+        192,
+        193,
+        194,
+        195
+      ],
+      "responsibility": "Immutable trusted reader-summary lineage field projection split from untrusted provider-draft normalization; prior public function object reexport retained; provisional exact original lines only, independent semantic/move-only review required."
     }
   ]
 }

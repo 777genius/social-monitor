@@ -2,6 +2,8 @@ import type {
   GeneratedReaderSummaryDraft,
 } from "../../domain";
 import { assembleOpenAiReaderSummaryDraft } from "./openai-responses-reader-summary-draft-assembly";
+import { buildOpenAiReaderSummaryLineage } from "./openai-responses-reader-summary-lineage";
+export { buildOpenAiReaderSummaryLineage } from "./openai-responses-reader-summary-lineage";
 export { assertOpenAiReaderSummaryDraftShape } from "./reader-summary-draft-shape-contract";
 import type {
   ReaderSummaryModelInput,
@@ -84,16 +86,4 @@ export const normalizeOpenAiReaderSummaryDraft = (
   });
 };
 
-export const buildOpenAiReaderSummaryLineage = (
-  input: ReaderSummaryModelInput,
-  route: ReaderSummaryModelRoute,
-  evalDatasetVersion: string,
-): GeneratedReaderSummaryDraft["lineage"] => ({
-  promptVersion: route.promptVersion,
-  schemaVersion: route.schemaVersion,
-  modelVersion: route.model,
-  providerVersion: route.provider,
-  rulesVersion: input.policy.rulesVersion,
-  evalDatasetVersion,
-  rankingPolicyVersion: input.evidence.rankingPolicyVersion,
-});
+

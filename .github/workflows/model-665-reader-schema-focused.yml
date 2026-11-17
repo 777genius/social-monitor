@@ -6,6 +6,9 @@ on:
       - refactor/summary-model-adapters-10k-20261108
     paths:
       - .github/workflows/model-665-reader-schema-focused.yml
+      - libs/summary/adapters/model/openai-responses-reader-summary-draft-normalizer.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-lineage.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-draft-normalizer.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-json-schema.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-json-schema.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-base-schema.ts
@@ -56,6 +59,7 @@ jobs:
       - name: Verify reader schema ownership and existing OpenAI adapter contract
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
+          libs/summary/adapters/model/openai-responses-reader-summary-draft-normalizer.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-json-schema.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-daily-writer-schema.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-model.adapter.spec.ts

@@ -2,8 +2,10 @@ import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 import { dailyEvidenceSelection } from
   "../../domain/policies/reader-summary-publication-evidence-test-fixtures";
 import type { ReaderSummaryModelInput } from "../../ports";
-import { normalizeOpenAiReaderSummaryDraft } from
+import { buildOpenAiReaderSummaryLineage, normalizeOpenAiReaderSummaryDraft } from
   "./openai-responses-reader-summary-draft-normalizer";
+import { buildOpenAiReaderSummaryLineage as directLineage } from
+  "./openai-responses-reader-summary-lineage";
 
 describe("normalizeOpenAiReaderSummaryDraft", () => {
   it("uses normalized story copy when canonical and legacy narrative are empty", () => {
@@ -65,6 +67,11 @@ describe("normalizeOpenAiReaderSummaryDraft", () => {
     expect(draft.content?.topReads.length).toBeGreaterThan(0);
     expect(draft.content?.qualityState).toBeDefined();
     expect(draft.citationMap.length).toBeGreaterThan(0);
+    expect(buildOpenAiReaderSummaryLineage).toBe(directLineage);
+    expect(draft.lineage).toEqual(directLineage(input, {
+      provider: "offline-test", model: "fixture", promptVersion: "test",
+      schemaVersion: "reader_summary.artifact.v1",
+    }, "test"));
     expect(draft.lineage).toMatchObject({
       promptVersion: "test",
       schemaVersion: "reader_summary.artifact.v1",
