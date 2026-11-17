@@ -13,6 +13,7 @@ import type { SummaryModelInput } from '../../ports';
 import { buildInstructions, buildPromptPayload } from './openai-responses-summary-prompt';
 import { openAiSummaryJsonSchema } from './openai-responses-summary-schema';
 import { runOpenAiResponsesSummaryGeneration } from './openai-responses-summary-generation';
+import { completeOpenAiSummaryAttempt as completeOpenAiSummaryAttemptFromInterpreter } from './openai-responses-summary-attempt-completion';
 import { resolveOpenAiSummaryRuntimeSettings } from './openai-responses-summary-runtime-settings';
 import { buildOpenAiSummaryRequest } from './openai-responses-summary-request-contract';
 import {
@@ -44,6 +45,28 @@ describe('OpenAiResponsesSummaryModelAdapter', () => {
         },
       },
     });
+  });
+
+  it('retains completion export identity and rejects invalid JSON before observing usage', () => {
+    const responseJson = Object.freeze({ output_text: "[]" });
+    const estimateUsage = jest.fn(() => ({
+      inputTokens: 10, outputTokens: 10, estimatedCostUsd: 0,
+    }));
+    expect(completeOpenAiSummaryAttempt).toBe(completeOpenAiSummaryAttemptFromInterpreter);
+    expect(() => completeOpenAiSummaryAttemptFromInterpreter({
+      responseJson,
+      input: buildInput(),
+      selectedRoute: {
+        provider: 'openai-responses',
+        model: 'selected-model',
+        promptVersion: 'summary.prompt.openai.responses.v1',
+        schemaVersion: 'summary.artifact.v1',
+      },
+      estimateUsage,
+      evalDatasetVersion: 'summary.eval.mvp.v1',
+    })).toThrow();
+    expect(estimateUsage).not.toHaveBeenCalled();
+    expect(responseJson.output_text).toBe("[]");
   });
 
   it('fails closed without estimating usage when the provider omits summary output', () => {
