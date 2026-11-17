@@ -201,6 +201,55 @@ describe("adaptive reader summary evidence", () => {
     expect(projected[1]?.evidenceTier).toBe("expanded_candidate");
   });
 
+  it("omits only previews covered by the exact hydrated full source, including UTF-16", () => {
+    const sourceText = "Ultra 🧪界 preview with a precise model qualifier";
+    const item: SummaryEvidenceItem = {
+      ...evidenceItem(0), sourceText, bodyPreview: "different source preview",
+    };
+    const before = JSON.stringify(item);
+    const projected = projectReaderSummaryPromptEvidenceItem(item, 0, true, "c1", 50_000, false);
+    expect(projected.sourceContent).toMatchObject({
+      mode: "full_source_text", text: sourceText,
+    });
+    expect(projected.bodyPreview).toBeUndefined();
+    // Non-expanded evidence cannot assume the source was already included.
+    const baseline = projectReaderSummaryPromptEvidenceItem(item, 0, false, "c1", 50_000, false);
+    expect(baseline.sourceContent).toBeUndefined();
+    expect(baseline.bodyPreview).toBe(sourceText);
+    expect(JSON.stringify(item)).toBe(before);
+  });
+
+  it("retains an abbreviated preview when it is not contained in selected fragments", () => {
+    const item: SummaryEvidenceItem = {
+      ...evidenceItem(0),
+      sourceText: "🧪".repeat(1_310),
+    };
+    const projected = projectReaderSummaryPromptEvidenceItem(item, 0, true, "c1", 5_000, false);
+    const hydrated = projected.sourceContent as { readonly fragments: readonly string[] };
+    expect(hydrated.fragments.length).toBeGreaterThan(0);
+    expect(projected.bodyPreview).toBeDefined();
+    expect(String(projected.bodyPreview).length).toBeLessThanOrEqual(600);
+    expect(hydrated.fragments.some((fragment) =>
+      fragment.includes(String(projected.bodyPreview)))).toBe(false);
+  });
+
+  it("omits a preview also present verbatim in one relevance fragment", () => {
+    const prefix = "Ultra ".repeat(99) + "abc";
+    expect(prefix).toHaveLength(597);
+    const sourceText = prefix + "... " + "Noise ".repeat(460);
+    const item: SummaryEvidenceItem = {
+      ...evidenceItem(0),
+      title: "Ultra model evidence",
+      whyImportant: ["Ultra model signal"],
+      sourceText,
+    };
+    const projected = projectReaderSummaryPromptEvidenceItem(item, 0, true, "c1", 5_000, false);
+    const hydrated = projected.sourceContent as { readonly fragments: readonly string[] };
+    expect(hydrated.fragments.length).toBeGreaterThan(0);
+    expect(hydrated.fragments.some((fragment) => fragment.includes(prefix + "..."))).toBe(true);
+    expect(projected.bodyPreview).toBeUndefined();
+  });
+
   it("keeps single-item prompt projection equivalent to the composed pack", () => {
     const selection = evidenceSelection();
     const projected = buildAdaptiveReaderSummaryEvidence(selection, coveragePlan());
