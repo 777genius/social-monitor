@@ -31,6 +31,17 @@ describe("grounded narrative section admission", () => {
     })).toBe(true);
   });
 
+  it("rejects empty citations even when the caller supplies a permissive guard", () => {
+    const permissiveGuard = jest.fn(() => true);
+    expect(isAdmissibleGroundedNarrativeSection({
+      ...eligible,
+      kind: "main_signal",
+      citationIds: [],
+      citationsAllowed: permissiveGuard,
+    })).toBe(false);
+    expect(permissiveGuard).not.toHaveBeenCalled();
+  });
+
   it("rejects a forged lead cluster even when the citation itself is valid", () => {
     expect(isAdmissibleGroundedNarrativeSection({
       ...eligible,
