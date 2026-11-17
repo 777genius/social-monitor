@@ -2793,9 +2793,6 @@
       "original": "agent-runtime-reader-summary-topic-group-recovery.ts",
       "owner": "agent-runtime-reader-summary-topic-anchor-keys.ts",
       "originalPositions": [
-        25,
-        26,
-        27,
         30,
         31,
         32,
