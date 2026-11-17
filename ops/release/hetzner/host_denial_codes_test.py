@@ -78,6 +78,10 @@ class HostCommandDenialTests(unittest.TestCase):
         }
         for expected, argv in cases.items():
             self.assertEqual(self.denial(argv, failed), expected)
+        named_config = [docker, 'compose', '--project-name', 'config', '-f', 'a.yml', '--profile', '*', 'up', '-d']
+        self.assertEqual(self.denial(named_config, failed), 'host-compose-failed')
+        hashed = [docker, 'compose', '--project-name', 'p', '--profile', '*', 'config', '--hash', 'api']
+        self.assertEqual(self.denial(hashed, failed), 'host-compose-config-failed')
         self.assertTrue(set(cases) <= set(published_codes()))
 
     def test_timeout_is_distinct_from_failure(self):

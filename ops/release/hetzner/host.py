@@ -6,6 +6,23 @@ import re
 from compose_contract import fixed_roots
 
 
+COMPOSE_VALUE_OPTIONS = frozenset(('--project-name', '--project-directory', '--env-file', '-f', '--profile'))
+
+
+def compose_subcommand(argv):
+    """First Compose word after global options, so option values such as a project named config never match."""
+    index = 2
+    while index < len(argv):
+        token = argv[index]
+        if token in COMPOSE_VALUE_OPTIONS:
+            index += 2
+        elif token.startswith('-'):
+            index += 1
+        else:
+            return token
+    return ''
+
+
 def failed_command(argv):
     """Name the failing command family without exposing arguments or stderr."""
     exe, verb = argv[0], (argv[1] if len(argv) > 1 else '')
@@ -15,7 +32,7 @@ def failed_command(argv):
     if exe != '/usr/bin/docker':
         return Denied('host-command-failed')
     if verb == 'compose':
-        return Denied('host-compose-config-failed') if 'config' in argv else Denied('host-compose-failed')
+        return Denied('host-compose-config-failed') if compose_subcommand(argv) == 'config' else Denied('host-compose-failed')
     if verb == 'image' and sub == 'inspect':
         return Denied('host-image-inspect-failed')
     if verb == 'image' and sub == 'load':
