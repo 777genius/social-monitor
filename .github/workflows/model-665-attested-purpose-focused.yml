@@ -7,6 +7,10 @@ on:
       - refactor/summary-model-adapters-10k-20261108
     paths:
       - .github/workflows/model-665-attested-purpose-focused.yml
+      - libs/summary/adapters/model/reader-summary-execution-identity-policy.ts
+      - libs/summary/adapters/model/reader-summary-execution-route-identity.ts
+      - libs/summary/adapters/model/reader-summary-execution-identity-policy.spec.ts
+      - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
 permissions:
   contents: read
 jobs:

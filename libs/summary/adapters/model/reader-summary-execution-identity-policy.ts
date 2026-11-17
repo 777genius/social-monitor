@@ -17,18 +17,10 @@ import {
 export type { ReaderSummaryAttestedTaskRole } from "./reader-summary-attested-purpose-policy";
 
 import {
-  activeReaderSummaryModel,
-  activeReaderSummaryProvider,
-  activeReaderSummaryPurposes,
-  frozenLegacyReaderSummaryRecoveryContract,
-  gatewayDefaultReasoningEffort,
-  isCodexGatewayOnlyReaderSummaryModel,
-  isGatewayReaderSummaryBackend,
   isGatewayReaderSummaryExecution,
-  mimoReaderSummaryBackend,
-  mimoReaderSummaryModel,
   type FrozenLegacyReaderSummaryRecoveryContract,
 } from "./active-reader-summary-generation-profile";
+import { expectedReaderSummaryExecutionRoute } from "./reader-summary-execution-route-identity";
 
 // Owns the fail-closed identity policy. The execution sink belongs to the
 // adapter-facing attestation recorder, not to this pure validation boundary.
@@ -42,24 +34,8 @@ export const validateReaderSummaryExecutionAttestation = (params: {
   readonly legacyRecoveryContract?: FrozenLegacyReaderSummaryRecoveryContract;
 }): AgentRuntimeExecutionAttestation => {
   const attestation = params.result.executionAttestation;
-  const mimoGeneration = params.legacyRecoveryContract === undefined &&
-    (params.taskRole === "summary" &&
-      (params.command.purpose === activeReaderSummaryPurposes.generate ||
-        params.command.purpose === activeReaderSummaryPurposes.repair) ||
-      params.taskRole === "daily_editor" &&
-        params.command.purpose === activeReaderSummaryPurposes.dailyEditorial) &&
-    params.command.controls.modelBackend === mimoReaderSummaryBackend;
-  // A gateway-only backend or Codex model carries its own model and effort;
-  // the command is the configured route, so the attestation must repeat it
-  // exactly and come from the gateway engine.
-  const gatewayRoute = isGatewayReaderSummaryBackend(params.command.controls.modelBackend) ||
-    (!mimoGeneration && isCodexGatewayOnlyReaderSummaryModel(params.command.controls.model));
-  const expectedModel = mimoGeneration
-    ? mimoReaderSummaryModel
-    : gatewayRoute ? params.command.controls.model : activeReaderSummaryModel;
-  const expectedEffort = gatewayRoute
-    ? params.command.controls.reasoningEffort ?? gatewayDefaultReasoningEffort
-    : expectedReasoningEffort(params.legacyRecoveryContract);
+  const { mimoGeneration, gatewayRoute, expectedModel, expectedEffort } =
+    expectedReaderSummaryExecutionRoute(params);
   if (
     params.result.status !== "completed" ||
     attestation === undefined ||
@@ -97,9 +73,3 @@ export const validateReaderSummaryExecutionAttestation = (params: {
   return attestation;
 };
 
-const expectedReasoningEffort = (
-  legacyRecoveryContract?: FrozenLegacyReaderSummaryRecoveryContract,
-): "high" | "xhigh" =>
-  legacyRecoveryContract === frozenLegacyReaderSummaryRecoveryContract
-    ? "xhigh"
-    : "high";
