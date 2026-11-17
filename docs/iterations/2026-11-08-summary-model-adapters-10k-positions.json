@@ -6626,6 +6626,33 @@
         129
       ],
       "responsibility": "Historical preexisting provider metadata anti-corruption: bounded GitHub repository trend vs GitHub Trending signal shape and early rejection independent of model instructions and evidence serialization; retrospective source provenance only"
+    },
+    {
+      "original": "gateway-llm/gateway-llm-failure.ts",
+      "owner": "gateway-llm/gateway-llm-failure-model-identity.ts",
+      "originalPositions": [
+        116,
+        117,
+        118,
+        119,
+        120,
+        121,
+        122
+      ],
+      "responsibility": "Paid completed-output model mismatch rejection is isolated from SDK failure taxonomy and predispatch admission; no attestation of an unexpected model or paid replay; original legacy function object is reexported"
+    },
+    {
+      "original": "gateway-llm/gateway-llm-failure.ts",
+      "owner": "gateway-llm/gateway-llm-failure-preflight.ts",
+      "originalPositions": [
+        130,
+        131,
+        132,
+        133,
+        134,
+        135
+      ],
+      "responsibility": "Undispatched invalid request/route/schema failures are an independent fail-closed preflight outcome, never confused with a paid provider result; original function identity reexport preserved"
     }
   ]
 }
