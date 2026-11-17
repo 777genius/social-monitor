@@ -4372,7 +4372,6 @@
         79,
         80,
         82,
-        85,
         86
       ],
       "responsibility": "Isolated provider draft quality flag set, no-signal evidence/reason admission and confidence range; preserves historical export and validation precedence after citation trust."
@@ -6824,6 +6823,90 @@
         36
       ],
       "responsibility": "Bounded redacted failure projection and terminal invalid_schema provider error, separate from Zod schema compilation/raw own-key admission; frozen positions uniquely transferred"
+    },
+    {
+      "original": "deterministic-reader-summary-narrative.ts",
+      "owner": "deterministic-reader-summary-lead-section.ts",
+      "originalPositions": [
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55
+      ],
+      "responsibility": "Lead section identity, daily-vs-single title and cluster-scope projection separated from citation selection, orchestration and secondary copy; exact preserved statements."
+    },
+    {
+      "original": "deterministic-reader-summary-narrative.ts",
+      "owner": "deterministic-reader-summary-citation-selection.ts",
+      "originalPositions": [
+        26,
+        30,
+        32,
+        34,
+        36,
+        37,
+        39,
+        40,
+        87,
+        88,
+        89,
+        90,
+        91,
+        93,
+        104,
+        105,
+        106,
+        165,
+        166,
+        167
+      ],
+      "responsibility": "Previously extracted trusted feed citation indexing, known-only IDs and daily/individual lead citation selection; retrospective source-exact original positions, not newly written code."
+    },
+    {
+      "original": "deterministic-reader-summary-narrative.ts",
+      "owner": "deterministic-reader-summary-provider-citation-policy.ts",
+      "originalPositions": [
+        118,
+        119,
+        120,
+        121,
+        122,
+        123,
+        124,
+        128,
+        129,
+        130,
+        131,
+        133,
+        134,
+        135,
+        140,
+        141,
+        142,
+        143,
+        144,
+        145,
+        146,
+        147,
+        148,
+        149,
+        150,
+        151,
+        152,
+        153,
+        155,
+        156,
+        159
+      ],
+      "responsibility": "Previously extracted provider-diversity candidate allocation algorithm, selection bias and deterministic tie order independent from presentation; retrospective first-use frozen implementation positions."
     }
   ]
 }

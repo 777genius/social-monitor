@@ -7,6 +7,7 @@ import {
   selectDeterministicNarrativeCitations,
 } from "./deterministic-reader-summary-citation-selection";
 import { buildDeterministicReaderSecondarySections } from "./deterministic-reader-summary-secondary-sections";
+import { buildDeterministicReaderLeadSection } from "./deterministic-reader-summary-lead-section";
 
 type ReaderSummaryDraftCitation =
   ProviderReaderSummaryAttempt["draft"]["citationMap"][number];
@@ -34,20 +35,13 @@ export const buildDeterministicReaderSummaryNarrative = (params: {
       secondary: params.input.coveragePlan.secondary,
       citationMap: params.citationMap,
     });
-  const leadStory = topStoryByClusterId.get(lead.clusterId);
-  const leadSection: ReaderSummaryNarrativeSection = {
-    id: "narrative-deterministic-lead",
-    kind: "lead",
-    title:
-      params.input.coveragePlan.mode === "daily_synthesis"
-        ? "Daily synthesis"
-        : (leadStory?.title ?? "Main signal"),
-    text: params.executiveSummary,
-    citationIds: leadCitationIds,
-    ...(params.input.coveragePlan.mode === "daily_synthesis"
-      ? {}
-      : { storyClusterId: lead.clusterId }),
-  };
+  const leadSection = buildDeterministicReaderLeadSection({
+    input: params.input,
+    executiveSummary: params.executiveSummary,
+    lead,
+    leadStory: topStoryByClusterId.get(lead.clusterId),
+    leadCitationIds,
+  });
   if (params.input.coveragePlan.mode === "single_story") {
     return [leadSection];
   }

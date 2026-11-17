@@ -24,6 +24,7 @@ on:
       - libs/summary/adapters/model/deterministic-reader-summary-provider-citation-policy.spec.ts
       - libs/summary/adapters/model/deterministic-reader-summary-narrative.ts
       - libs/summary/adapters/model/deterministic-reader-summary-secondary-sections.ts
+      - libs/summary/adapters/model/deterministic-reader-summary-lead-section.ts
       - libs/summary/adapters/model/deterministic-reader-summary-narrative.spec.ts
       - libs/summary/adapters/model/deterministic-reader-summary-outcome-policy.ts
       - libs/summary/adapters/model/deterministic-reader-summary-outcome-policy.spec.ts

@@ -4,6 +4,7 @@ import type {
   ReaderSummaryModelInput,
 } from "../../ports";
 import { buildDeterministicReaderSummaryNarrative } from "./deterministic-reader-summary-narrative";
+import { buildDeterministicReaderLeadSection } from "./deterministic-reader-summary-lead-section";
 
 type DraftCitation =
   ProviderReaderSummaryAttempt["draft"]["citationMap"][number];
@@ -129,6 +130,57 @@ describe("buildDeterministicReaderSummaryNarrative", () => {
       kind: "lead",
       storyClusterId: "lead",
       citationIds: ["lead-citation"],
+    });
+  });
+  it("isolates daily lead projection without attributing a single cluster", () => {
+    const lead = Object.freeze(planItem("lead", ["synthetic-feed"], ["rss"]));
+    const citationIds = Object.freeze(["trusted-citation"]);
+    const input = { coveragePlan: {
+      mode: "daily_synthesis",
+      lead,
+      secondary: [],
+    } as ReaderSummaryModelInput["coveragePlan"] };
+    const section = buildDeterministicReaderLeadSection({
+      input,
+      executiveSummary: "A concise daily synthesis.",
+      lead,
+      leadStory: {
+        storyClusterId: "lead",
+        title: "Story-specific title",
+      } as ProviderReaderSummaryAttempt["draft"]["topStories"][number],
+      leadCitationIds: citationIds,
+    });
+    expect(section).toEqual({
+      id: "narrative-deterministic-lead",
+      kind: "lead",
+      title: "Daily synthesis",
+      text: "A concise daily synthesis.",
+      citationIds: ["trusted-citation"],
+    });
+    expect(citationIds).toEqual(["trusted-citation"]);
+    expect(lead.clusterId).toBe("lead");
+  });
+
+  it("isolates single-story lead identity, title and empty citation fallback", () => {
+    const lead = planItem("lead", ["synthetic-feed"], ["rss"]);
+    const section = buildDeterministicReaderLeadSection({
+      input: { coveragePlan: {
+        mode: "single_story",
+        lead,
+        secondary: [],
+      } as ReaderSummaryModelInput["coveragePlan"] },
+      executiveSummary: "A single grounded story.",
+      lead,
+      leadStory: undefined,
+      leadCitationIds: [],
+    });
+    expect(section).toEqual({
+      id: "narrative-deterministic-lead",
+      kind: "lead",
+      title: "Main signal",
+      text: "A single grounded story.",
+      citationIds: [],
+      storyClusterId: "lead",
     });
   });
 
