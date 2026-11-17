@@ -116,15 +116,15 @@ describe("reader-summary generation identity policy", () => {
     expect(resolveReaderSummaryGenerationIdentityFromEnv({
       AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
       AGENT_RUNTIME_TRANSPORT: "gateway-llm",
-    })).toEqual({ provider: "codex", model: "gpt-6.1-sol", backend: "openai-chatgpt" });
+    })).toEqual({ provider: "codex", model: "gpt-6.1-terra", backend: "openai-chatgpt" });
     expect(resolveReaderSummaryDailyTaskIdentityFromEnv({
       AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
       AGENT_RUNTIME_TRANSPORT: "gateway-llm",
-    }, undefined)).toEqual({ model: "gpt-6.1-sol", modelBackend: "openai-chatgpt" });
+    }, undefined)).toEqual({ model: "gpt-6.1-terra", modelBackend: "openai-chatgpt" });
     expect(resolveReaderSummaryReasoningEffortFromEnv({
       AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
       AGENT_RUNTIME_TRANSPORT: "gateway-llm",
-    })).toBe("low");
+    })).toBe("medium");
     expect(resolveReaderSummaryReasoningEffortFromEnv({
       AGENT_RUNTIME_READER_SUMMARY_BACKEND: "kimi-code",
     })).toBe("default");
@@ -133,6 +133,22 @@ describe("reader-summary generation identity policy", () => {
       AGENT_RUNTIME_TRANSPORT: "gateway-llm",
       AGENT_RUNTIME_READER_SUMMARY_GENERATION_MODEL: "gpt-5.6-sol",
     })).toThrow("Gateway reader summary model conflicts with purpose policy");
+    expect(resolveReaderSummaryGenerationIdentityFromEnv({
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
+      AGENT_RUNTIME_TRANSPORT: "gateway-llm",
+      AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-6.1-sol",
+    })).toEqual({ provider: "codex", model: "gpt-6.1-sol", backend: "openai-chatgpt" });
+    expect(resolveReaderSummaryReasoningEffortFromEnv({
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
+      AGENT_RUNTIME_TRANSPORT: "gateway-llm",
+      AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-6.1-sol",
+    })).toBe("low");
+    expect(() => resolveReaderSummaryReasoningEffortFromEnv({
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
+      AGENT_RUNTIME_TRANSPORT: "gateway-llm",
+      AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-6.1-terra",
+      AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "low",
+    })).toThrow("AGENT_RUNTIME_GATEWAY_LLM_MODEL and _REASONING_EFFORT must be one of");
   });
   it("delegates daily model selection to one immutable backend-specific owner", () => {
     expect(resolveReaderSummaryDailyTaskIdentityFromEnv).toBe(directDailyTask);

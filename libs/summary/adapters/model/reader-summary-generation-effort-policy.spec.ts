@@ -40,6 +40,9 @@ describe("reader summary backend effort admission", () => {
 
   it("pins Codex gateway-only models to an admitted model-effort pair", () => {
     expect(resolveReaderSummaryBackendEffort(
+      "openai-chatgpt", undefined, "high", "gpt-6.1-terra",
+    )).toBe("medium");
+    expect(resolveReaderSummaryBackendEffort(
       "openai-chatgpt", undefined, "high", "gpt-6.1-sol",
     )).toBe("low");
     expect(() => resolveReaderSummaryBackendEffort(

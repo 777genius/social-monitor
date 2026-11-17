@@ -17,16 +17,23 @@ import {
 describe("Codex reader summary gateway route policy", () => {
   it("keeps the immutable catalog and historical facade identical", () => {
     expect(defaultCodexGatewayReaderSummaryRoute).toBe(catalogDefault);
-    expect(catalogDefault).toEqual({ model: "gpt-6.1-sol", reasoningEffort: "low" });
+    expect(catalogDefault).toEqual({ model: "gpt-6.1-terra", reasoningEffort: "medium" });
     expect(Object.isFrozen(codexGatewayReaderSummaryRoutes)).toBe(true);
     expect(Object.isFrozen(codexGatewayReaderSummaryRoutes[0])).toBe(true);
     expect(Object.isFrozen(codexGatewayReaderSummaryRoutes[1])).toBe(true);
+    expect(Object.isFrozen(codexGatewayReaderSummaryRoutes[2])).toBe(true);
     expect(codexGatewayReaderSummaryRoutes[1]).toEqual({
+      model: "gpt-6.1-sol", reasoningEffort: "low",
+    });
+    expect(codexGatewayReaderSummaryRoutes[2]).toEqual({
       model: activeReaderSummaryModel,
       reasoningEffort: activeReaderSummaryReasoningEffort,
     });
+    expect(isCodexGatewayReaderSummaryRoute("gpt-6.1-terra", "medium")).toBe(true);
+    expect(isCodexGatewayReaderSummaryRoute("gpt-6.1-terra", "low")).toBe(false);
     expect(isCodexGatewayReaderSummaryRoute("gpt-6.1-sol", "low")).toBe(true);
     expect(isCodexGatewayReaderSummaryRoute("gpt-6.1-sol", "high")).toBe(false);
+    expect(isCodexGatewayOnlyReaderSummaryModel("gpt-6.1-terra")).toBe(true);
     expect(isCodexGatewayOnlyReaderSummaryModel("gpt-6.1-sol")).toBe(true);
     expect(isCodexGatewayOnlyReaderSummaryModel(activeReaderSummaryModel)).toBe(false);
     expect(codexGatewayReaderSummaryReasoningEffort("unknown")).toBeUndefined();
@@ -38,6 +45,10 @@ describe("Codex reader summary gateway route policy", () => {
       AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
     };
     expect(resolveCodexGatewayReaderSummaryRoute(base)).toBe(catalogDefault);
+    expect(resolveCodexGatewayReaderSummaryRoute({
+      ...base,
+      AGENT_RUNTIME_GATEWAY_LLM_MODEL: " gpt-6.1-sol ",
+    })).toEqual({ model: "gpt-6.1-sol", reasoningEffort: "low" });
     expect(resolveCodexGatewayReaderSummaryRoute({
       ...base,
       AGENT_RUNTIME_GATEWAY_LLM_MODEL: " gpt-5.6-sol ",
@@ -61,6 +72,8 @@ describe("Codex reader summary gateway route policy", () => {
     };
     for (const pair of [
       { AGENT_RUNTIME_GATEWAY_LLM_MODEL: "unknown" },
+      { AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-6.1-terra", AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "low" },
+      { AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-6.1-terra", AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "high" },
       { AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-6.1-sol", AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "high" },
       { AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-5.6-sol", AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "low" },
     ]) {
@@ -89,8 +102,8 @@ describe("Codex reader summary gateway route policy", () => {
       AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: " high ",
     };
     const original = { ...gatewayEnv };
-    expect(parseCodexGatewayReaderSummaryRoute(gatewayEnv)).toBe(codexGatewayReaderSummaryRoutes[1]);
-    expect(resolveCodexGatewayReaderSummaryRoute(gatewayEnv)).toBe(codexGatewayReaderSummaryRoutes[1]);
+    expect(parseCodexGatewayReaderSummaryRoute(gatewayEnv)).toBe(codexGatewayReaderSummaryRoutes[2]);
+    expect(resolveCodexGatewayReaderSummaryRoute(gatewayEnv)).toBe(codexGatewayReaderSummaryRoutes[2]);
     expect(gatewayEnv).toEqual(original);
 
     expect(parseCodexGatewayReaderSummaryRoute({})).toBe(catalogDefault);
@@ -103,7 +116,7 @@ describe("Codex reader summary gateway route policy", () => {
     expect(() => parseCodexGatewayReaderSummaryRoute({
       AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-5.6-sol",
       AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "low",
-    })).toThrow("gpt-6.1-sol/low, gpt-5.6-sol/high for openai-chatgpt");
+    })).toThrow("gpt-6.1-terra/medium, gpt-6.1-sol/low, gpt-5.6-sol/high for openai-chatgpt");
   });
 
 });
