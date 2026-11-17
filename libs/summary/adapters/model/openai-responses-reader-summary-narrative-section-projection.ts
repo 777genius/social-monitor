@@ -6,14 +6,9 @@ import {
   requiredStringArray,
 } from "./openai-responses-reader-summary-json";
 import { defaultNarrativeTitle, narrativeSectionText } from "./openai-responses-reader-summary-narrative-evidence";
-import {
-  isValidReaderSummaryNarrativeLead,
-  type ReaderSummaryNarrativeCoverage,
-} from "./openai-responses-reader-summary-narrative-coverage";
-import {
-  maxNarrativeSections,
-  validSecondarySection,
-} from "./openai-responses-reader-summary-narrative-validation";
+import type { ReaderSummaryNarrativeCoverage } from "./openai-responses-reader-summary-narrative-coverage";
+import { maxNarrativeSections } from "./openai-responses-reader-summary-narrative-validation";
+import { isAdmissibleGroundedNarrativeSection } from "./openai-responses-reader-summary-narrative-section-admission";
 
 const narrativeKinds = new Set(readerSummaryNarrativeSectionKinds);
 
@@ -81,29 +76,14 @@ export const projectGroundedNarrativeSections = (params: {
         return [];
       }
       if (
-        kind === "lead" &&
-        params.coverage.mode === "single_story" &&
-        authoredStoryClusterId !== undefined &&
-        authoredStoryClusterId !== params.coverage.leadClusterId
-      ) {
-        return [];
-      }
-      if (!params.citationsAllowed(kind, citationIds)) {
-        return [];
-      }
-      if (
-        kind === "secondary_signal" &&
-        !validSecondarySection(
+        !isAdmissibleGroundedNarrativeSection({
+          kind,
+          authoredStoryClusterId,
           storyClusterId,
           citationIds,
-          params.coverage.secondaryCitationIds,
-        )
-      ) {
-        return [];
-      }
-      if (
-        kind === "lead" &&
-        !isValidReaderSummaryNarrativeLead(citationIds, params.coverage)
+          coverage: params.coverage,
+          citationsAllowed: params.citationsAllowed,
+        })
       ) {
         return [];
       }
