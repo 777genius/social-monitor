@@ -6,6 +6,39 @@ import re
 from compose_contract import fixed_roots
 
 
+def failed_command(argv):
+    """Name the failing command family without exposing arguments or stderr."""
+    exe, verb = argv[0], (argv[1] if len(argv) > 1 else '')
+    sub = argv[2] if len(argv) > 2 else ''
+    if exe == '/usr/bin/systemctl':
+        return Denied('host-systemctl-failed')
+    if exe != '/usr/bin/docker':
+        return Denied('host-command-failed')
+    if verb == 'compose':
+        return Denied('host-compose-config-failed') if 'config' in argv else Denied('host-compose-failed')
+    if verb == 'image' and sub == 'inspect':
+        return Denied('host-image-inspect-failed')
+    if verb == 'image' and sub == 'load':
+        return Denied('host-image-load-failed')
+    if verb == 'image' and sub == 'tag':
+        return Denied('host-image-tag-failed')
+    if verb == 'image' and sub == 'ls':
+        return Denied('host-image-list-failed')
+    if verb == 'image' and sub == 'rm':
+        return Denied('host-image-remove-failed')
+    if verb == 'inspect':
+        return Denied('host-docker-inspect-failed')
+    if verb == 'ps':
+        return Denied('host-docker-list-failed')
+    if verb == 'start':
+        return Denied('host-docker-start-failed')
+    if verb == 'update':
+        return Denied('host-docker-update-failed')
+    if verb == 'kill':
+        return Denied('host-docker-kill-failed')
+    return Denied('host-command-failed')
+
+
 class Host:
     def __init__(self, config):
         self.c = config
@@ -16,16 +49,23 @@ class Host:
                                     stderr=subprocess.DEVNULL, timeout=180, check=True,
                                     env={'PATH': '/usr/sbin:/usr/bin:/sbin:/bin',
                                          'HOME': '/nonexistent', 'LC_ALL': 'C', 'COMPOSE_DISABLE_ENV_FILE': '1'})
+        except subprocess.TimeoutExpired:
+            raise Denied('host-command-timeout') from None
         except (subprocess.SubprocessError, OSError):
-            raise Denied('host-command-failed') from None
+            raise failed_command(argv) from None
         return result.stdout
 
     def docker(self, *args):
         return self.command(['/usr/bin/docker', *args])
 
     def evidence(self, verb, binding):
-        result = json.loads(self.command([self.c['adapter'], verb],
-                                        json.dumps(binding).encode()))
+        try:
+            raw = self.command([self.c['adapter'], verb], json.dumps(binding).encode())
+        except Denied as error:
+            if str(error) == 'host-command-failed':
+                raise Denied('host-adapter-failed') from None
+            raise
+        result = json.loads(raw)
         require(isinstance(result, dict) and result.get('version') == 1, 'adapter-version')
         fresh(result.get('observed_at'), self.c['evidence_max_age_seconds'])
         for key, value in binding.items():
