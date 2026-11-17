@@ -22,6 +22,228 @@
       "owner": "iliya",
       "expiresAt": "2026-11-07",
       "mitigation": "inherits zod advisory only; same input-bound mitigation; upgrade tracked"
+    },
+    {
+      "packageName": "@jest/console",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "@jest/core",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "@jest/environment",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "@jest/expect",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "@jest/fake-timers",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "@jest/globals",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "@jest/reporters",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "@jest/test-result",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "@jest/test-sequencer",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "@jest/transform",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "@types/jest",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "@typescript-eslint/typescript-estree",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "anymatch",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "babel-jest",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "expect",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "fdir",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "jest",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "jest-changed-files",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "jest-circus",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "jest-cli",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "jest-config",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "jest-each",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "jest-environment-node",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "jest-haste-map",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "jest-message-util",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "jest-mock",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "jest-resolve",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "jest-resolve-dependencies",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "jest-runner",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "jest-runtime",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "jest-snapshot",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "jest-util",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "jest-watcher",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "jest-worker",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "picomatch",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "tinyglobby",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
+    },
+    {
+      "packageName": "ts-jest",
+      "owner": "iliya",
+      "expiresAt": "2026-12-01",
+      "mitigation": "GHSA-fc5q-39xc-vjpf picomatch ReDoS via repeated extglobs; no patched release exists (latest 4.0.7 is affected); matched patterns come from repository test and tooling configuration, never from user input, and the package is not reachable from request handling; upgrade tracked until a fixed picomatch ships"
     }
   ]
 }
