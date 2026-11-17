@@ -17,7 +17,8 @@ import {
   buildOpenAiReaderSummaryWeeklyInstructions,
   buildOpenAiReaderSummaryWeeklyPromptPayload,
 } from "./openai-responses-reader-summary-weekly-prompt";
-import { buildOpenAiReaderSummaryWeeklyResponseFormat } from "./openai-responses-reader-summary-weekly-schema";
+import { buildOpenAiReaderSummaryWeeklyJsonSchema, buildOpenAiReaderSummaryWeeklyResponseFormat } from "./openai-responses-reader-summary-weekly-schema";
+import { projectOpenAiReaderSummaryWeeklyDocumentSchema } from "./openai-responses-reader-summary-weekly-document-schema";
 import { admitOpenAiReaderSummaryWeeklyOutput } from "./openai-responses-reader-summary-weekly-output-admission";
 import { executeOpenAiReaderSummaryWeeklyGeneration } from "./openai-responses-reader-summary-weekly-generation";
 import { normalizeOpenAiReaderSummaryWeeklyOptions } from "./openai-responses-reader-summary-weekly-options";
@@ -53,6 +54,38 @@ describe("OpenAiResponsesReaderSummaryWeeklyModelAdapter", () => {
     const input = weeklyInput();
     const output = weeklyOutput(input);
     expect(admitOpenAiReaderSummaryWeeklyOutput(input, JSON.stringify(output))).toEqual(output);
+  });
+
+  it("keeps the admitted sealed-weekly schema equal to its pure document projection", () => {
+    const input = Object.freeze(weeklyInput());
+    const snapshot = JSON.stringify(input);
+    const projected = projectOpenAiReaderSummaryWeeklyDocumentSchema(
+      input,
+      input.stories.map((story) => story.storyId),
+      input.citations.map((citation) => citation.citationId),
+      input.days.map((day) => day.date),
+    );
+    expect(projected).toEqual(buildOpenAiReaderSummaryWeeklyJsonSchema(input));
+    expect(projected).toMatchObject({
+      additionalProperties: false,
+      properties: {
+        sealId: { const: input.sealId },
+        sealSha: { const: input.sealSha },
+        headlineCitationIds: { items: { enum: input.citations.map((citation) => citation.citationId) } },
+      },
+      $defs: {
+        story: { properties: { storyId: { enum: input.stories.map((story) => story.storyId) } } },
+        section: { additionalProperties: false },
+      },
+    });
+    expect(JSON.stringify(input)).toBe(snapshot);
+  });
+
+  it("rejects a mismatched weekly seal before building the public JSON schema", () => {
+    const input = weeklyInput();
+    expect(() => buildOpenAiReaderSummaryWeeklyJsonSchema({
+      ...input, sealSha: "0".repeat(64),
+    })).toThrow();
   });
 
   it.each(["{", "{}"])("rejects malformed weekly output %s without retry", (value) => {
