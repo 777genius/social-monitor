@@ -1,46 +1,8 @@
-import type {
-  ProviderSummaryAttempt,
-  SummaryModelEstimate,
-  SummaryModelInput,
-  SummaryModelRoute,
-  SummaryModelValidationResult,
-} from "../../ports";
-import {
-  assertOpenAiSummaryDraftShape,
-  normalizeOpenAiSummaryDraft,
-} from "./openai-responses-summary-draft-normalizer";
-import { SummaryModelProviderError } from "./openai-responses-summary-model-error";
-import { extractOpenAiSummaryOutputText } from "./openai-responses-summary-output-text";
-import { parseOpenAiSummaryJsonObject } from "./openai-responses-summary-response-parser";
-import { resolveOpenAiSummaryUsage } from "./openai-responses-summary-usage";
+import type { ProviderSummaryAttempt, SummaryModelValidationResult } from "../../ports";
+import { assertOpenAiSummaryDraftShape } from "./openai-responses-summary-draft-normalizer";
 
-/** Interprets untrusted provider output only after transport succeeds. */
-export const completeOpenAiSummaryAttempt = (params: {
-  readonly responseJson: Record<string, unknown>;
-  readonly input: SummaryModelInput;
-  readonly selectedRoute: SummaryModelRoute;
-  readonly estimateUsage: () => SummaryModelEstimate;
-  readonly evalDatasetVersion: string;
-}): ProviderSummaryAttempt => {
-  const outputText = extractOpenAiSummaryOutputText(params.responseJson);
-  if (outputText === undefined) {
-    throw new SummaryModelProviderError({
-      kind: "unsafe_or_refused",
-      retryable: false,
-      message: "OpenAI response did not contain summary output text",
-    });
-  }
-  const rawDraft = parseOpenAiSummaryJsonObject(outputText);
-  const usage = resolveOpenAiSummaryUsage(params.responseJson, params.estimateUsage());
-  const draft = normalizeOpenAiSummaryDraft(
-    rawDraft,
-    params.input,
-    params.selectedRoute,
-    usage,
-    params.evalDatasetVersion,
-  );
-  return { route: params.selectedRoute, draft };
-};
+// Preserve the historical named export as the identical function object.
+export { completeOpenAiSummaryAttempt } from "./openai-responses-summary-attempt-completion";
 
 /** Keep post-normalization port validation distinct from HTTP and schema decoding. */
 export const validateOpenAiSummaryResponse = (
