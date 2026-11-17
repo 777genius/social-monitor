@@ -2,6 +2,7 @@ import type { ReaderSummaryTopicNodeLabel } from "../../domain";
 import type { ReaderSummaryTopicLabelerInput } from "../../ports";
 import { meaningfulTopicLabelTokens } from "../../domain/services/reader-summary-topic-map-label-quality";
 import { normalizeTopicLabel } from "../../domain/services/reader-summary-topic-map-text";
+import { indexUniqueReaderSummaryTopicCandidates } from "./agent-runtime-reader-summary-topic-candidate-index";
 
 export const groundedNodeAnchors = (
   label: ReaderSummaryTopicNodeLabel,
@@ -35,11 +36,7 @@ export const buildGroundedTopicRecoveryAnchorMaps = (params: {
   readonly nodeLabels: readonly ReaderSummaryTopicNodeLabel[];
   readonly candidates: readonly ReaderSummaryTopicLabelerInput["candidates"][number][];
 }) => {
-  const candidateByNodeId = new Map(
-    params.candidates.map(
-      (candidate) => [candidate.nodeId, candidate] as const,
-    ),
-  );
+  const candidateByNodeId = indexUniqueReaderSummaryTopicCandidates(params.candidates);
   const anchorsByNodeId = new Map(
     params.nodeLabels.map((label) => [
       label.nodeId,

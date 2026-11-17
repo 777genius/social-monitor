@@ -3,6 +3,7 @@ import type { ReaderSummaryTopicLabelCandidate } from "../../ports";
 import { buildGroundedTopicCohortsForCandidates } from "./agent-runtime-reader-summary-topic-grounded-cohorts";
 import { selectGroundedCohortDisplays } from "./agent-runtime-reader-summary-topic-cohort-grounding";
 import { applyGroundedCohortDisplays } from "./agent-runtime-reader-summary-topic-cohort-assignment";
+import { indexUniqueReaderSummaryTopicCandidates } from "./agent-runtime-reader-summary-topic-candidate-index";
 import {
   collectExistingGroundedCohortIds,
   hasGroundedCohortCapacity,
@@ -20,7 +21,7 @@ export const completeRequiredGroundedTopicCohorts = (
   readonly recoveredNodeCount: number;
 } => {
   let nodeLabels = [...initialNodeLabels];
-  const candidateById = new Map(candidates.map((item) => [item.nodeId, item]));
+  const candidateById = indexUniqueReaderSummaryTopicCandidates(candidates);
   const semanticAnchorsByGroup = new Map<string, readonly string[]>();
   const displayByGroup = new Map<string, string>();
   const groupIds = collectExistingGroundedCohortIds(nodeLabels);

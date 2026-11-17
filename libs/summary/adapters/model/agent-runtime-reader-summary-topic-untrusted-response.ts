@@ -4,6 +4,7 @@ import {
 } from "../../domain";
 import type { ReaderSummaryTopicLabelerInput } from "../../ports";
 import { normalizeSemanticGroupId } from "./agent-runtime-reader-summary-topic-group-policy";
+import { indexUniqueReaderSummaryTopicCandidates } from "./agent-runtime-reader-summary-topic-candidate-index";
 import {
   readRecordArray,
   readStringArray,
@@ -21,10 +22,8 @@ export const readCompleteTopicNodeLabels = (
   rawNodeLabels: unknown,
   candidates: readonly TopicCandidate[],
 ) => {
-  const knownNodeIds = new Set(candidates.map((candidate) => candidate.nodeId));
-  const candidateByNodeId = new Map(
-    candidates.map((candidate) => [candidate.nodeId, candidate] as const),
-  );
+  const candidateByNodeId = indexUniqueReaderSummaryTopicCandidates(candidates);
+  const knownNodeIds = new Set(candidateByNodeId.keys());
   const parsedNodeLabels = readRecordArray(rawNodeLabels)
     .map((label) => {
       const nodeId = stringValue(label.nodeId);

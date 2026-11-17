@@ -10,6 +10,9 @@ on:
       - libs/summary/adapters/model/agent-runtime-reader-summary-cohort-grouping.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-cohort-grouping.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-grounded-cohorts.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-candidate-index.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-candidate-index.spec.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-untrusted-response.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-candidate-anchor-policy.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-candidate-anchor-policy.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-recovery.ts
@@ -76,6 +79,7 @@ jobs:
       - name: Topic identity and cohort integration Jest
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
+          libs/summary/adapters/model/agent-runtime-reader-summary-topic-candidate-index.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-candidate-anchor-policy.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-integrity.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-admission.spec.ts
