@@ -1,3 +1,10 @@
+## 2026-11-17 — Two further frozen-coordinate retractions after fail-closed fixes
+
+- Static comparison of pinned original source against the exact specialist owner found two more previously credited statements are intentionally no longer present verbatim: `gateway-llm/gateway-llm-client.ts:158` (positive timeout test now rejects unsafe/noninteger deadline before dispatch), and `agent-runtime-reader-summary-topic-relation-verifier.adapter.ts:260` (ambiguous NUL-delimited pair key replaced by collision-free sorted JSON encoding).
+- Removed ONLY those two original coordinates from the machine audit manifest; retained behavior and negative regression tests, no weakening or loophole in the audit. The prior `agent-runtime-model-support.ts:258` retraction remains.
+- **Current provisional 4,686 distinct pinned original coordinates / 246 ownership slices**, frozen baseline **84 / 15,318 PHYSICAL**. Optimistic gap **at least 5,314**, before semantic or move-only discounts. No independently accepted 10k.
+- Source/jest/frozen audit need terminal exact-current-HEAD CI; previously cancelled/queued/failing runs do not qualify. PR stays Draft and unmerged; no prod, flags, schema/dependency changes, no other PR writes.
+
 ## 2026-11-17 — Strict frozen-source credit retraction after unsafe-integer hardening
 
 - Current focused [OpenAI Summary verification #43991219203](https://github.com/777genius/social-monitor/actions/runs/43991219203) on `132ef633`, attempt 2, passed dependency installation and Prisma generation but **FAILED** the actual frozen-original audit: original `3fa1b9e9:agent-runtime-model-support.ts:258` no longer occurs in `agent-runtime-model-usage.ts`.
