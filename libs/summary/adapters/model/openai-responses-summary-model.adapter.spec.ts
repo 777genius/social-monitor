@@ -91,6 +91,46 @@ describe('OpenAiResponsesSummaryModelAdapter', () => {
     expect(estimateUsage).not.toHaveBeenCalled();
   });
 
+  it.each(['incomplete', 'failed', 'in_progress'])(
+    'rejects an HTTP-successful %s response even if its output is valid JSON',
+    (status) => {
+      const estimateUsage = jest.fn(() => ({
+        inputTokens: 10, outputTokens: 10, estimatedCostUsd: 0,
+      }));
+      expect(() => completeOpenAiSummaryAttempt({
+        responseJson: { status, output_text: JSON.stringify(validProviderDraft()) },
+        input: buildInput(),
+        selectedRoute: {
+          provider: 'openai-responses', model: 'selected-model',
+          promptVersion: 'summary.prompt.openai.responses.v1',
+          schemaVersion: 'summary.artifact.v1',
+        },
+        estimateUsage, evalDatasetVersion: 'summary.eval.mvp.v1',
+      })).toThrow('OpenAI summary response did not complete');
+      expect(estimateUsage).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects reported provider errors before accepting valid-looking JSON output', () => {
+    const estimateUsage = jest.fn(() => ({
+      inputTokens: 10, outputTokens: 10, estimatedCostUsd: 0,
+    }));
+    expect(() => completeOpenAiSummaryAttempt({
+      responseJson: {
+        status: 'completed', error: { code: 'synthetic_error' },
+        output_text: JSON.stringify(validProviderDraft()),
+      },
+      input: buildInput(),
+      selectedRoute: {
+        provider: 'openai-responses', model: 'selected-model',
+        promptVersion: 'summary.prompt.openai.responses.v1',
+        schemaVersion: 'summary.artifact.v1',
+      },
+      estimateUsage, evalDatasetVersion: 'summary.eval.mvp.v1',
+    })).toThrow('OpenAI summary response reported an error');
+    expect(estimateUsage).not.toHaveBeenCalled();
+  });
+
   it('rejects post-normalization provider and schema route mismatches', async () => {
     const adapter = new OpenAiResponsesSummaryModelAdapter({
       apiKey: fakeOpenAiApiKey,

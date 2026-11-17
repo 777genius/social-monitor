@@ -20,6 +20,21 @@ export const completeOpenAiSummaryAttempt = (params: {
   readonly estimateUsage: () => SummaryModelEstimate;
   readonly evalDatasetVersion: string;
 }): ProviderSummaryAttempt => {
+  // HTTP 200 can still carry an incomplete/failed Responses execution.
+  // A parseable partial JSON object must never become a published summary.
+  if (params.responseJson.status !== undefined &&
+      params.responseJson.status !== "completed") {
+    throw new SummaryModelProviderError({
+      kind: "invalid_schema", retryable: false,
+      message: "OpenAI summary response did not complete",
+    });
+  }
+  if (params.responseJson.error !== undefined && params.responseJson.error !== null) {
+    throw new SummaryModelProviderError({
+      kind: "invalid_schema", retryable: false,
+      message: "OpenAI summary response reported an error",
+    });
+  }
   const outputText = extractOpenAiSummaryOutputText(params.responseJson);
   if (outputText === undefined) {
     throw new SummaryModelProviderError({
