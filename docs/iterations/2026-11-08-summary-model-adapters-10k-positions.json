@@ -6988,6 +6988,98 @@
         222
       ],
       "responsibility": "Untrusted next-action kind/label/reason admission and trusted-citation canonical URL projection have a dedicated policy; interest section and item normalization remain separate, legacy function-object identity retained. Provisional exact-source trace only."
+    },
+    {
+      "original": "agent-runtime-reader-summary-daily-editorial.ts",
+      "owner": "agent-runtime-reader-summary-daily-editorial-command.ts",
+      "originalPositions": [
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        42
+      ],
+      "responsibility": "Previously separated scoped daily-editor request ID, bounded command controls and frozen prompt contract; transport/attested response are different owners"
+    },
+    {
+      "original": "agent-runtime-reader-summary-daily-editorial.ts",
+      "owner": "agent-runtime-reader-summary-daily-editorial-response.ts",
+      "originalPositions": [
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        60,
+        61,
+        62,
+        66,
+        67,
+        69
+      ],
+      "responsibility": "Previously separated fail-closed daily plan decoding, attestation recording and billable rejection policy; not the command dispatcher"
+    },
+    {
+      "original": "openai-responses-reader-summary-daily-editor.ts",
+      "owner": "openai-responses-reader-summary-daily-editor-wire.ts",
+      "originalPositions": [
+        28,
+        30,
+        31,
+        32,
+        33,
+        34,
+        38,
+        39,
+        40,
+        41,
+        42,
+        46,
+        47,
+        48
+      ],
+      "responsibility": "Previously separated strict daily-editor request schema wire fields and metered usage independently of plan acceptance"
+    },
+    {
+      "original": "openai-responses-reader-summary-daily-editor.ts",
+      "owner": "openai-responses-reader-summary-daily-editor-response.ts",
+      "originalPositions": [
+        51,
+        52,
+        53,
+        55,
+        57,
+        58,
+        59
+      ],
+      "responsibility": "Previously separated untrusted OpenAI editorial response schema admission and request/output SHA policy"
+    },
+    {
+      "original": "reader-summary-daily-input-receipt.ts",
+      "owner": "reader-summary-daily-prompt-admission.ts",
+      "originalPositions": [
+        10,
+        14,
+        15,
+        16,
+        17,
+        19,
+        20,
+        21,
+        22
+      ],
+      "responsibility": "Previously separated frozen evidence and daily-plan prompt admission from generation receipt hashing"
     }
   ]
 }
