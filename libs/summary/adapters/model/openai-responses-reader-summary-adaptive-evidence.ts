@@ -2,6 +2,7 @@ import {
   expandedEvidenceIds,
   sourceHydrationLimitForSelection,
 } from "./openai-responses-reader-summary-expansion-policy";
+import { availablePromotionV3PresentationIds } from "./openai-responses-reader-summary-v3-presentation-candidates";
 import { projectReaderSummaryPromptEvidenceItem } from "./openai-responses-reader-summary-evidence-projection";
 import type {
   ReaderSummaryCoveragePlan,
@@ -14,12 +15,7 @@ export const buildAdaptiveReaderSummaryEvidence = (
   citationIdByFeedItemId?: ReadonlyMap<string, string>,
 ): readonly Record<string, unknown>[] => {
   const expandedIds = expandedEvidenceIds(selection, coveragePlan);
-  const verifiedV3PresentationIds = new Set([
-    ...(selection.promotionV3?.top ?? []),
-    ...(selection.promotionV3?.additional ?? []),
-    ...(selection.promotionV3?.news ?? []),
-  ].filter((candidate) => candidate.presentation.status === "available")
-    .map((candidate) => candidate.candidateId));
+  const verifiedV3PresentationIds = availablePromotionV3PresentationIds(selection);
   const sourceHydrationLimit = sourceHydrationLimitForSelection(selection);
 
   return selection.selectedEvidence.map((item, index) =>

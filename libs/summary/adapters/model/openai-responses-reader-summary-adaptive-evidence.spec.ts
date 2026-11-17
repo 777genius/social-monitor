@@ -8,6 +8,7 @@ import {
   type SummaryEvidenceSelection,
 } from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
+import { availablePromotionV3PresentationIds } from "./openai-responses-reader-summary-v3-presentation-candidates";
 import { buildAdaptiveReaderSummaryEvidence } from "./openai-responses-reader-summary-adaptive-evidence";
 import { sourceHydrationLimitForSelection } from "./openai-responses-reader-summary-expansion-policy";
 import {
@@ -23,6 +24,33 @@ import {
 } from "./openai-responses-reader-summary-prompt";
 
 describe("adaptive reader summary evidence", () => {
+  it("selects only available V3 presentation IDs from admitted lanes without mutating promotion state", () => {
+    const candidate = (candidateId: string, status: string) => ({
+      candidateId,
+      presentation: { status },
+    } as never);
+    const selection: SummaryEvidenceSelection = {
+      ...evidenceSelection(),
+      promotionV3: {
+        policyVersion: READER_PROMOTION_POLICY_STAMP,
+        outcome: "ready",
+        top: [candidate("feed-0", "available"), candidate("feed-1", "unavailable")],
+        additional: [candidate("feed-2", "available"), candidate("feed-0", "available")],
+        news: [candidate("feed-119", "available"), candidate("feed-3", "rejected")],
+        excluded: [candidate("feed-4", "available")],
+      },
+    };
+    const frozen = JSON.stringify(selection.promotionV3);
+
+    expect([...availablePromotionV3PresentationIds(selection)]).toEqual([
+      "feed-0", "feed-2", "feed-119",
+    ]);
+    expect(availablePromotionV3PresentationIds({
+      ...selection, promotionV3: undefined,
+    }).size).toBe(0);
+    expect(JSON.stringify(selection.promotionV3)).toBe(frozen);
+  });
+
   it("keeps 120 baseline items and expands exactly 25 ranked candidates", () => {
     const selection = evidenceSelection();
     const evidence = buildAdaptiveReaderSummaryEvidence(

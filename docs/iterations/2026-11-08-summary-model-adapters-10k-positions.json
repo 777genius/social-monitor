@@ -6532,6 +6532,18 @@
         85
       ],
       "responsibility": "Historical already-extracted untrusted weekly stories/observations/citations data boundary, distinct from signed certification contract (retrospective provenance; no new implementation credit this run)"
+    },
+    {
+      "original": "openai-responses-reader-summary-adaptive-evidence.ts",
+      "owner": "openai-responses-reader-summary-v3-presentation-candidates.ts",
+      "originalPositions": [
+        23,
+        24,
+        25,
+        26,
+        27
+      ],
+      "responsibility": "Status-only V3 presentation candidate identity across Top, Additional and News lanes, independent of evidence-source hydration and downstream trusted presentation binding; preserves order and Set deduplication"
     }
   ]
 }

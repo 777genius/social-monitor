@@ -17,6 +17,8 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-evidence-projection.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-verified-presentation.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-conversation-context.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-adaptive-evidence.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-v3-presentation-candidates.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-adaptive-evidence.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-prompt.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-prompt-payload.ts
