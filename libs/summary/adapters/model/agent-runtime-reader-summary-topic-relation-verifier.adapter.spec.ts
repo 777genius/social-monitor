@@ -127,6 +127,48 @@ describe("AgentRuntimeReaderSummaryTopicRelationVerifier", () => {
     })).toThrow("Unknown topic relation node node:a");
   });
 
+  it.each(["candidate", "label"] as const)(
+    "refuses ambiguous requested %s identity before model dispatch and attestation",
+    async (kind) => {
+      const client = new CapturingAgentRuntimeClient({
+        status: "completed", structuredOutput: { decisions: [] }, warnings: [],
+      });
+      const record = jest.fn();
+      const verifier = new AgentRuntimeReaderSummaryTopicRelationVerifier({
+        client, verifiedAttestationSink: { record },
+      });
+      const original = input();
+      const duplicate: ReaderSummaryTopicRelationVerifierInput = kind === "candidate"
+        ? { ...original, candidates: [...original.candidates, original.candidates[0]!] }
+        : { ...original, labelPlan: {
+          ...original.labelPlan,
+          nodeLabels: [...original.labelPlan.nodeLabels, original.labelPlan.nodeLabels[0]!],
+        } };
+      await expect(verifier.verify(duplicate)).rejects.toThrow(
+        `Ambiguous topic relation ${kind} node:a`,
+      );
+      expect(client.commands).toHaveLength(0);
+      expect(record).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not change the prompt for unused duplicate labels or candidates", () => {
+    const original = input();
+    const unrelated = {
+      ...original,
+      candidates: [...original.candidates, candidate("node:other", "story:a"),
+        candidate("node:other", "story:b")],
+      labelPlan: {
+        ...original.labelPlan,
+        nodeLabels: [...original.labelPlan.nodeLabels,
+          label("node:other", "topic:other", "Other"),
+          label("node:other", "topic:other", "Other")],
+      },
+    };
+    expect(buildAgentRuntimeReaderSummaryTopicRelationVerifierPrompt(unrelated))
+      .toBe(buildAgentRuntimeReaderSummaryTopicRelationVerifierPrompt(original));
+  });
+
   it("rejects incomplete pair decisions", async () => {
     const verifier = new AgentRuntimeReaderSummaryTopicRelationVerifier({
       client: new CapturingAgentRuntimeClient({

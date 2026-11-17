@@ -1,16 +1,12 @@
 import type { ReaderSummaryTopicRelationVerifierInput } from "../../ports";
 import { buildAgentRuntimeTopicEvidenceSamples } from "./agent-runtime-reader-summary-topic-evidence-prompt";
+import { indexRequestedTopicRelationNodes } from "./agent-runtime-reader-summary-topic-relation-node-index-policy";
 
 /** Resolve relation nodes only against their labeled candidates and selected cluster evidence. */
 export const buildAgentRuntimeReaderSummaryTopicRelationNodeProjection = (
   input: ReaderSummaryTopicRelationVerifierInput,
 ) => {
-  const candidateByNodeId = new Map(
-    input.candidates.map((candidate) => [candidate.nodeId, candidate] as const),
-  );
-  const labelByNodeId = new Map(
-    input.labelPlan.nodeLabels.map((label) => [label.nodeId, label] as const),
-  );
+  const { candidateByNodeId, labelByNodeId } = indexRequestedTopicRelationNodes(input);
   const evidenceByFeedItemId = new Map(
     input.selectedEvidence.map((item) => [item.feedItemId, item] as const),
   );
