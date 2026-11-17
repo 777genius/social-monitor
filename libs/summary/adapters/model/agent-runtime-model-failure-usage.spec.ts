@@ -14,6 +14,14 @@ describe("Agent Runtime failure and usage policies", () => {
   it("tracks physical usage across paid repair attempts", () => {
     const estimate = { inputTokens: 100, outputTokens: 20, estimatedCostUsd: 0.1 };
     expect(usageFromAgentRuntime(undefined, estimate)).toEqual(estimate);
+    // The synthetic/custom runtime port may bypass JSON/gRPC's number rules;
+    // do not let unsafe counters corrupt the paid repair budget.
+    expect(usageFromAgentRuntime({
+      inputTokens: Number.MAX_SAFE_INTEGER + 1,
+      outputTokens: Number.NaN,
+      totalTokens: Number.MAX_SAFE_INTEGER + 1,
+      estimatedCostUsd: Number.POSITIVE_INFINITY,
+    }, estimate)).toEqual(estimate);
     const spent = sumReaderSummaryUsage(estimate, estimate);
     expect(spent).toEqual({ inputTokens: 200, outputTokens: 40, estimatedCostUsd: 0.2 });
     expect(() => assertReaderSummaryRepairWithinBudget(spent, estimate, {

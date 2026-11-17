@@ -21,7 +21,8 @@ export const admitGatewayLlmTaskRoute = (
     return { failure: gatewayLlmLocalFailure("invalid_request",
       "Gateway task reasoning effort conflicts with the route policy") };
   }
-  if (command.systemPrompt.trim().length === 0 || !(command.timeoutMs > 0)) {
+  if (command.systemPrompt.trim().length === 0 ||
+      !Number.isSafeInteger(command.timeoutMs) || command.timeoutMs <= 0) {
     return { failure: gatewayLlmLocalFailure("invalid_request",
       "Gateway task requires instructions and a positive timeout") };
   }

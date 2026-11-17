@@ -9,6 +9,7 @@ on:
       - .github/workflows/model-665-agent-output-request-focused.yml
       - libs/summary/adapters/model/agent-runtime-model-failure-usage.spec.ts
       - libs/summary/adapters/model/agent-runtime-model-failure.ts
+      - libs/summary/adapters/model/agent-runtime-model-usage.ts
       - libs/summary/adapters/model/agent-runtime-model-task-failure.ts
       - libs/summary/adapters/model/agent-runtime-model-output.ts
       - libs/summary/adapters/model/agent-runtime-model-boundaries.spec.ts

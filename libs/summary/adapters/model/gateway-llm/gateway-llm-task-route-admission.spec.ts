@@ -60,6 +60,8 @@ describe("gateway LLM task route admission", () => {
     for (const fields of [
       { systemPrompt: " \t " }, { timeoutMs: 0 },
       { timeoutMs: -1 }, { timeoutMs: Number.NaN },
+      { timeoutMs: Number.POSITIVE_INFINITY },
+      { timeoutMs: 1.5 }, { timeoutMs: Number.MAX_SAFE_INTEGER + 1 },
     ]) expect(admitGatewayLlmTaskRoute(command({}, fields), route))
       .toMatchObject({ failure: { code: "invalid_request" } });
     expect(admitGatewayLlmTaskRoute(command({}, { timeoutMs: 1 }), route)).toBeNull();

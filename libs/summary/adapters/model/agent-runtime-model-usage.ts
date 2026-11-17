@@ -35,7 +35,7 @@ const nonNegativeIntegerOrFallback = (
   value: number,
   fallback: number,
 ): number =>
-  Number.isInteger(value) && value >= 0
+  Number.isSafeInteger(value) && value >= 0
     ? value
     : fallback;
 
