@@ -46,7 +46,7 @@ describe('OpenAI summary JSON trust-boundary ownership', () => {
       .toThrow('optionalStringArray[0] must be a non-empty string');
     expect(optionalNonNegativeInteger(0)).toBe(0);
     expect(optionalNonNegativeInteger(2)).toBe(2);
-    for (const invalid of [-1, 1.5, NaN, Infinity, '2']) {
+    for (const invalid of [-1, 1.5, NaN, Infinity, '2', Number.MAX_SAFE_INTEGER + 1]) {
       expect(optionalNonNegativeInteger(invalid)).toBeUndefined();
     }
   });

@@ -27,6 +27,6 @@ export const normalizeOptionalStringArray = (
 export const optionalNonNegativeInteger = (
   value: unknown,
 ): number | undefined =>
-  typeof value === 'number' && Number.isInteger(value) && value >= 0
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
     ? value
     : undefined;

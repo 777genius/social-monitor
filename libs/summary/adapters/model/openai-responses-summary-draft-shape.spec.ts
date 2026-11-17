@@ -69,6 +69,25 @@ describe('OpenAI summary draft independent admission policies', () => {
     expect(() => assertOpenAiSummaryDraftUsage({
       usage: { inputTokens: 0, outputTokens: -1, estimatedCostUsd: 0 },
     })).toThrow('Summary usage values must be non-negative');
+    // Directly supplied/malformed runtime values must not bypass the port
+    // validator or poison cost, token and confidence accounting.
+    for (const invalidScore of [NaN, Infinity, -Infinity]) {
+      expect(() => assertOpenAiSummaryDraftQuality({
+        ...draft, confidence: { ...draft.confidence, score: invalidScore },
+      })).toThrow('Summary confidence score must be between 0 and 1');
+    }
+    for (const invalidUsage of [
+      { inputTokens: NaN, outputTokens: 0, estimatedCostUsd: 0 },
+      { inputTokens: Number.MAX_SAFE_INTEGER + 1, outputTokens: 0, estimatedCostUsd: 0 },
+      { inputTokens: 0, outputTokens: Infinity, estimatedCostUsd: 0 },
+      { inputTokens: 0, outputTokens: 1.5, estimatedCostUsd: 0 },
+      { inputTokens: 0, outputTokens: 0, estimatedCostUsd: NaN },
+      { inputTokens: 0, outputTokens: 0, estimatedCostUsd: Infinity },
+    ]) {
+      expect(() => assertOpenAiSummaryDraftUsage({
+        usage: invalidUsage,
+      })).toThrow('Summary usage values must be non-negative');
+    }
     expect(() => assertOpenAiSummaryDraftUsage({
       usage: { inputTokens: 0, outputTokens: 0, estimatedCostUsd: 0 },
     })).not.toThrow();

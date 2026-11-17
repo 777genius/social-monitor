@@ -32,7 +32,7 @@ export const assertOpenAiSummaryDraftQuality = (
     throw new Error('No-signal summary must include a reason');
   }
 
-  if (draft.confidence.score < 0 || draft.confidence.score > 1) {
+  if (!Number.isFinite(draft.confidence.score) || draft.confidence.score < 0 || draft.confidence.score > 1) {
     throw new Error('Summary confidence score must be between 0 and 1');
   }
 };
