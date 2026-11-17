@@ -3292,15 +3292,22 @@
       "original": "openai-responses-summary-model.adapter.ts",
       "owner": "openai-responses-summary-response-policy.ts",
       "originalPositions": [
-        210,
-        218,
-        223,
         241,
         251,
         259,
         260
       ],
-      "responsibility": "Untrusted output interpretation, draft normalization and postnormalization route/shape rejection have a dedicated response boundary"
+      "responsibility": "Post-normalization port draft and route/schema admission only; independent of paid provider output interpretation"
+    },
+    {
+      "original": "openai-responses-summary-model.adapter.ts",
+      "owner": "openai-responses-summary-attempt-completion.ts",
+      "originalPositions": [
+        210,
+        218,
+        223
+      ],
+      "responsibility": "Pre-port paid provider text admission, parse and draft completion; original statements reowned from existing response-policy slice with no additional credit"
     },
     {
       "original": "openai-responses-summary-model.adapter.ts",
