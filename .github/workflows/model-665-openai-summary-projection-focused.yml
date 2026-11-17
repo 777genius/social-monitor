@@ -31,6 +31,7 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-legacy-instructions.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-legacy-instructions.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-content-items.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-next-action-normalization.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-content-quality.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-content-provenance.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-content-quality-state.ts

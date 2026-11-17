@@ -1,4 +1,5 @@
 import type { ReaderSummaryCitation } from "../../domain";
+import { normalizeNextAction as normalizeNextActionPolicy } from "./openai-responses-reader-summary-next-action-normalization";
 import {
   normalizeNextAction,
   normalizeReaderInterestSection,
@@ -63,4 +64,56 @@ describe("Reader brief citation-backed item projection", () => {
     expect(() => normalizeReaderItem({ title: "Missing reason", citationIds: ["c1"] }, citations))
       .toThrow();
   });
+
+  it("retains identical legacy export and prioritizes first known trusted action citation", () => {
+    expect(normalizeNextAction).toBe(normalizeNextActionPolicy);
+    const second: ReaderSummaryCitation = Object.freeze({
+      ...citation,
+      citationId: "c2",
+      canonicalUrl: "https://example.test/other",
+    });
+    const twoCitations = new Map([["c1", citation], ["c2", second]]);
+    const proposal = Object.freeze({
+      kind: "read_source",
+      label: "  Read the source  ",
+      reason: " Verify the claim ",
+      citationIds: Object.freeze(["untrusted", "c2", "c1"]),
+      canonicalUrl: "https://example.test/spoofed",
+    });
+    const result = normalizeNextActionPolicy(proposal, twoCitations);
+    expect(result).toEqual({
+      kind: "read_source",
+      label: "Read the source",
+      reason: "Verify the claim",
+      citationIds: ["untrusted", "c2", "c1"],
+      canonicalUrl: "https://example.test/other",
+    });
+    expect(proposal.citationIds).toEqual(["untrusted", "c2", "c1"]);
+    expect(normalizeNextAction(proposal, twoCitations)).toEqual(result);
+  });
+
+  it("never accepts untrusted action URLs or invalid kinds as trusted provenance", () => {
+    const action = Object.freeze({
+      label: "Read more",
+      reason: "Verify details",
+      citationIds: Object.freeze(["unknown"]),
+      canonicalUrl: "https://example.test/forged",
+    });
+    expect(normalizeNextActionPolicy(action, citations)).toEqual({
+      kind: "read_source",
+      label: "Read more",
+      reason: "Verify details",
+      citationIds: ["unknown"],
+      canonicalUrl: undefined,
+    });
+    expect(() => normalizeNextActionPolicy({
+      ...action,
+      kind: "unsupported_action_kind",
+    }, citations)).toThrow("Unsupported next action kind");
+    expect(() => normalizeNextActionPolicy({
+      ...action,
+      citationIds: ["c1", 123],
+    }, citations)).toThrow("next action citations must be a non-empty string");
+  });
+
 });

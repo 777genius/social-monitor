@@ -6964,6 +6964,24 @@
         83
       ],
       "responsibility": "Interpret untrusted provider citation JSON, rebind to selected evidence and establish admitted citation IDs before claim/risk projection, distinct from draft assembly"
+    },
+    {
+      "original": "openai-responses-reader-summary-content-support.ts",
+      "owner": "openai-responses-reader-summary-next-action-normalization.ts",
+      "originalPositions": [
+        207,
+        208,
+        209,
+        215,
+        216,
+        217,
+        218,
+        219,
+        220,
+        221,
+        222
+      ],
+      "responsibility": "Untrusted next-action kind/label/reason admission and trusted-citation canonical URL projection have a dedicated policy; interest section and item normalization remain separate, legacy function-object identity retained. Provisional exact-source trace only."
     }
   ]
 }
