@@ -29,4 +29,4 @@ export const assertCompleteTopicRelationPairs = (
 const relationPairKey = (pair: {
   readonly sourceNodeId: string;
   readonly targetNodeId: string;
-}): string => [pair.sourceNodeId, pair.targetNodeId].sort().join("\u0000");
+}): string => JSON.stringify([pair.sourceNodeId, pair.targetNodeId].sort());

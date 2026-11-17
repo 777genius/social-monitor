@@ -36,6 +36,22 @@ describe("Agent Runtime topic relation output contract", () => {
     ] }, relations)).toThrow("must decide every requested pair exactly once");
     expect(() => parseJsonObject("[]")).toThrow("must be an object");
   });
+  it("does not treat delimiter-containing IDs as the same requested pair", () => {
+    const requested: ReaderSummaryTopicRelationVerifierInput["relations"] = [{
+      sourceNodeId: "a\u0000b", targetNodeId: "c",
+      sharedTerms: ["synthetic"],
+    }];
+    const forged = {
+      sourceNodeId: "a", targetNodeId: "b\u0000c",
+      sameTopic: true, confidenceScore: 0.99,
+    };
+    expect(() => normalizeDecisions({ decisions: [forged] }, requested))
+      .toThrow("must decide every requested pair exactly once");
+    expect(normalizeDecisions({ decisions: [{
+      ...forged, sourceNodeId: "a\u0000b", targetNodeId: "c",
+    }] }, requested)).toMatchObject([{ sourceNodeId: "a\u0000b", targetNodeId: "c" }]);
+  });
+
   it("checks exact unordered pair coverage, not just response length", () => {
     const requested: ReaderSummaryTopicRelationVerifierInput["relations"] = [
       ...relations,
