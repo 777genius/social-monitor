@@ -28,6 +28,12 @@ describe("Agent Runtime topic relation output contract", () => {
     expect(() => normalizeDecisions({ decisions: [
       { sourceNodeId: "topic-a", targetNodeId: "topic-b", sameTopic: true, confidenceScore: 2 },
     ] }, relations)).toThrow("must decide every requested pair exactly once");
+    // Real JSON cannot encode NaN, but an injected/custom runtime client can
+    // return structuredOutput directly; do not attest or publish it as trusted.
+    expect(() => normalizeDecisions({ decisions: [
+      { sourceNodeId: "topic-a", targetNodeId: "topic-b",
+        sameTopic: true, confidenceScore: Number.NaN },
+    ] }, relations)).toThrow("must decide every requested pair exactly once");
     expect(() => parseJsonObject("[]")).toThrow("must be an object");
   });
   it("checks exact unordered pair coverage, not just response length", () => {

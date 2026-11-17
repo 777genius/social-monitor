@@ -21,6 +21,7 @@ export const normalizeDecisions = (
           targetNodeId === undefined ||
           typeof sameTopic !== "boolean" ||
           typeof confidenceScore !== "number" ||
+          !Number.isFinite(confidenceScore) ||
           confidenceScore < 0 ||
           confidenceScore > 1
         ) {
