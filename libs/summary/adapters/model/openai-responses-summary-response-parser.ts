@@ -14,10 +14,14 @@ export const parseOpenAiSummaryJsonObject = (
     throw new SummaryModelProviderError({
       kind: 'invalid_schema',
       retryable: false,
+      // V8 JSON.parse diagnostics can quote raw provider text, which must
+      // never leak into error logs or downstream failure messages.
       message:
-        error instanceof Error
-          ? error.message
-          : 'OpenAI summary output must be JSON',
+        error instanceof SyntaxError
+          ? 'OpenAI summary output must be JSON'
+          : error instanceof Error
+            ? error.message
+            : 'OpenAI summary output must be JSON',
     });
   }
 };

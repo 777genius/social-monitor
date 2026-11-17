@@ -46,5 +46,11 @@ describe("ordinary OpenAI response admission responsibilities", () => {
     expect(() => parseOpenAiSummaryJsonObject("[]")).toThrow(SummaryModelProviderError);
     expect(() => parseOpenAiSummaryJsonObject("{not-json")).toThrow(SummaryModelProviderError);
     expect(parseOpenAiSummaryJsonObject('{"ok":true}')).toEqual({ ok: true });
+    const secret = 'PRIVATE_PROVIDER_DATA_DO_NOT_LOG';
+    let rejected: unknown;
+    try { parseOpenAiSummaryJsonObject(secret); } catch (error) { rejected = error; }
+    expect(rejected).toBeInstanceOf(SummaryModelProviderError);
+    expect((rejected as Error).message).toBe('OpenAI summary output must be JSON');
+    expect((rejected as Error).message).not.toContain(secret);
   });
 });

@@ -11,8 +11,11 @@ export const parseOpenAiReaderSummaryJsonObject = (
   try {
     return requiredRecord(JSON.parse(value), "OpenAI reader summary output");
   } catch (error) {
-    const detail =
-      error instanceof Error ? error.message : "unknown parse failure";
+    // SyntaxError.message may contain raw model output including private
+    // evidence. Preserve the wrapped error identity without echoing it.
+    const detail = error instanceof SyntaxError
+      ? "malformed JSON"
+      : error instanceof Error ? error.message : "unknown parse failure";
     throw new OpenAiReaderSummaryOutputParseError(detail);
   }
 };

@@ -42,5 +42,11 @@ describe("OpenAI reader summary response parsing", () => {
     expect(parseOpenAiReaderSummaryJsonObject('{"ok":true}')).toEqual({ ok: true });
     expect(() => parseOpenAiReaderSummaryJsonObject("[]")).toThrow(OpenAiReaderSummaryOutputParseError);
     expect(() => parseOpenAiReaderSummaryJsonObject("{")).toThrow(OpenAiReaderSummaryOutputParseError);
+    const secret = "PRIVATE_READER_SOURCE_DO_NOT_LOG";
+    let rejected: unknown;
+    try { parseOpenAiReaderSummaryJsonObject(secret); } catch (error) { rejected = error; }
+    expect(rejected).toBeInstanceOf(OpenAiReaderSummaryOutputParseError);
+    expect((rejected as OpenAiReaderSummaryOutputParseError).detail).toBe("malformed JSON");
+    expect((rejected as Error).message).not.toContain(secret);
   });
 });
