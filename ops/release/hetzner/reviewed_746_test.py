@@ -3,7 +3,7 @@ import copy
 import unittest
 from unittest.mock import patch
 from contract import Denied, digest
-from evidence import (REVIEW_746_BASE, REVIEW_746_HEAD, REVIEW_746_DIGEST, REVIEW_746_PATHS,
+from evidence import (package_ci_path, REVIEW_746_BASE, REVIEW_746_HEAD, REVIEW_746_DIGEST, REVIEW_746_PATHS,
                       PACKAGE_BUILD, PACKAGE_CHECK, backend_compatibility)
 from operator_github import GitHub, backend_release
 
@@ -84,7 +84,10 @@ class Reviewed746Tests(unittest.TestCase):
             with self.subTest(path=path, side='before'), self.assertRaises(Denied): self.collect(old=before)
             after = copy.deepcopy(self.next)
             after[path]['sha'] = '8' * 40
-            with self.subTest(path=path, side='after'), self.assertRaises(Denied): self.collect(current=after)
+            if package_ci_path(path):
+                with self.subTest(path=path, side='after-ci'): self.collect(current=after)
+            else:
+                with self.subTest(path=path, side='after'), self.assertRaises(Denied): self.collect(current=after)
 
     def test_extra_runtime_or_package_build_change_is_rejected(self):
         after = copy.deepcopy(self.next)

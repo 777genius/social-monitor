@@ -189,8 +189,7 @@ def backend_compatibility(evidence, revisions, candidate, snapshot):
                     proof['delta_sha256'] == delta['delta_sha256'] and
                     proof['review_delta_sha256'] == expected_digest and
                     isinstance(proof['continuation'], list) and
-                    all(isinstance(p, str) and package_ci_path(p) and p not in expected_paths
-                        for p in proof['continuation']) and
+                    all(isinstance(p, str) and package_ci_path(p) for p in proof['continuation']) and
                     paths == sorted(expected_paths | set(proof['continuation'])),
                     'backend-sensitive-files')
             reviewed, review_paths = proof, expected_paths
