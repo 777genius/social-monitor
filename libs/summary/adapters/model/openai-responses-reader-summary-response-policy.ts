@@ -34,6 +34,20 @@ export const completeOpenAiReaderSummaryAttempt = ({
   readonly evalDatasetVersion: string;
   readonly dailyGenerationReceipt: ProviderReaderSummaryAttempt["dailyGenerationReceipt"];
 }): ProviderReaderSummaryAttempt => {
+  // Responses HTTP 200 is not proof that the model completed. Never trust
+  // parseable partial/failed output as a publishable reader summary.
+  if (responseJson.status !== undefined && responseJson.status !== "completed") {
+    throw new ReaderSummaryModelProviderError({
+      kind: "invalid_schema", retryable: false,
+      message: "OpenAI reader summary response did not complete",
+    });
+  }
+  if (responseJson.error !== undefined && responseJson.error !== null) {
+    throw new ReaderSummaryModelProviderError({
+      kind: "invalid_schema", retryable: false,
+      message: "OpenAI reader summary response reported an error",
+    });
+  }
   const outputText = extractOpenAiOutputText(responseJson);
 
   if (outputText === undefined) {

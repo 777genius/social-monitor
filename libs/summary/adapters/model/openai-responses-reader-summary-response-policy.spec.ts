@@ -28,6 +28,26 @@ const complete = (
 });
 
 describe("OpenAI reader summary response trust policy", () => {
+  it.each(["incomplete", "failed", "in_progress"])(
+    "rejects a %s response despite valid-looking output JSON",
+    (status) => {
+      const estimateUsage = jest.fn((): never => { throw new Error("metered early"); });
+      expect(() => complete({ status, output_text: '{"headline":"looks complete"}' },
+        estimateUsage)).toThrow("OpenAI reader summary response did not complete");
+      expect(estimateUsage).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects a provider error even if the response carries parseable JSON", () => {
+    const estimateUsage = jest.fn((): never => { throw new Error("metered early"); });
+    expect(() => complete({
+      status: "completed",
+      error: { code: "synthetic_provider_failure" },
+      output_text: '{"headline":"looks complete"}',
+    }, estimateUsage)).toThrow("OpenAI reader summary response reported an error");
+    expect(estimateUsage).not.toHaveBeenCalled();
+  });
+
   it("refuses missing output before estimating usage", () => {
     const estimateUsage = jest.fn((): never => { throw new Error("metered early"); });
     expect(() => complete({ output: [] }, estimateUsage)).toThrow(
