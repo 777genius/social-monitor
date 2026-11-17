@@ -20,6 +20,8 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-adaptive-evidence.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-prompt.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-prompt-payload.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-cluster-payload.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-cluster-payload.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-coverage-plan-payload.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-coverage-plan-payload.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-legacy-instructions.ts
@@ -125,6 +127,7 @@ jobs:
           libs/summary/adapters/model/openai-responses-reader-summary-adaptive-evidence.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-legacy-instructions.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-prompt-contract.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-cluster-payload.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-coverage-plan-payload.spec.ts
           libs/summary/adapters/model/openai-responses-summary-prompt.spec.ts
           libs/summary/adapters/model/openai-responses-summary-schema-boundaries.spec.ts
