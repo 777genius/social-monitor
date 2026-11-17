@@ -6681,6 +6681,40 @@
         50
       ],
       "responsibility": "Grounded relation-node evidence and semantic identity projection isolated from prompt serialization and schema; ambiguous requested candidate/label identity now independently rejected by the new predispatch index policy (which itself receives no baseline LOC credit)"
+    },
+    {
+      "original": "reader-summary-daily-editorial-model.ts",
+      "owner": "reader-summary-daily-editorial-prompt.ts",
+      "originalPositions": [
+        34,
+        35,
+        36,
+        40,
+        43,
+        44,
+        46
+      ],
+      "responsibility": "Frozen daily-editor input admission, trusted ordinary writer evidence projection and exact-count check separated from fixed provider instructions and model-result hash facade; retrospective previously extracted implementation trace"
+    },
+    {
+      "original": "reader-summary-daily-editorial-model.ts",
+      "owner": "reader-summary-daily-editorial-evidence-binding.ts",
+      "originalPositions": [
+        53,
+        54,
+        56,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        66,
+        67,
+        68
+      ],
+      "responsibility": "Stable editorial request projection bound to frozen manifest, source order and trusted story/provider metadata; separate from prompt instructions, schema, model transport and facade; retrospective source provenance only"
     }
   ]
 }

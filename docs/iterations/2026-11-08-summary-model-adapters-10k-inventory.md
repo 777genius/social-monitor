@@ -1,3 +1,8 @@
+## 2026-11-17 — Frozen daily editorial original-to-specialist trace (+20 provenance only)
+
+- Baseline `reader-summary-daily-editorial-model.ts` first-use control-flow/binding implementation maps to `reader-summary-daily-editorial-prompt.ts` at **34,35,36,40,43,44,46** and `reader-summary-daily-editorial-evidence-binding.ts` at **53,54,56,58–64,66–68**, 20 disjoint unique source positions. No model instructions/schema literals/imports/test/unchanged lines; retained old facade does not own these statements. **Historical implementation already existed**, not newly moved or independently accepted meaningful LOC.
+- Provisional machine original positions **4,872** / **263** original-owner slices / **63** pinned originals (fixed **84 files / 15,318 physical LOC**). New shared candidate identity index gets **0 source-coordinate credit**. Optimistic deficit **≥5,128**, subject to independent semantic discounts and fresh source audit CI.
+
 ## 2026-11-17 — Selected topic candidate identity trace (Draft #665)
 
 - New shared `agent-runtime-reader-summary-topic-candidate-index.ts` owns unique selected candidate `nodeId` admission for `agent-runtime-reader-summary-topic-untrusted-response.ts`, `agent-runtime-reader-summary-topic-cohort-completion.ts`, and `agent-runtime-reader-summary-topic-anchor-keys.ts`. No original source-position credit: replaced 3 already-refactored `Map` owner expressions, keeping prior source manifest unchanged at **4,852 candidate positions / 261 slices / 62 pinned original files**. The frozen 84 / 15,318 PHYSICAL baseline is unaffected. **0 independently accepted meaningful LOC; remaining ≥5,148 before exclusions**.
