@@ -1,3 +1,4 @@
+import { buildOpenAiSummaryTrustedCitationContext } from './openai-responses-summary-trusted-citation-context';
 import type { SummaryCitation, SummaryKeyPoint, SummaryRisk } from '../../domain';
 import type { SummaryModelInput } from '../../ports';
 import { normalizeCitationMap } from './openai-responses-summary-citations';
@@ -39,6 +40,34 @@ const modelCitation = (
 });
 
 describe('OpenAI summary citation trust and reference boundaries', () => {
+  it('grounds only admitted provider citation identities before downstream references', () => {
+    const input = { evidence: { items: evidence } } as unknown as SummaryModelInput;
+    const providerCitation = Object.freeze(modelCitation('c2'));
+    const raw = Object.freeze({ citationMap: Object.freeze([
+      providerCitation, modelCitation('c99'),
+    ]) });
+    const context = buildOpenAiSummaryTrustedCitationContext(raw, input);
+
+    expect(context.citationMap).toEqual([{
+      citationId: 'c2', feedItemId: 'feed-2', sourceItemId: 'source-2',
+      providerKey: 'github', canonicalUrl: undefined, field: 'title',
+    }]);
+    expect([...context.knownCitationIds]).toEqual(['c2']);
+    expect(providerCitation.feedItemId).toBe('spoofed-feed');
+    expect(raw.citationMap).toHaveLength(2);
+  });
+
+  it('uses evidence-only fallback for absent citations and rejects invalid fields before rebinding', () => {
+    const input = { evidence: { items: evidence } } as unknown as SummaryModelInput;
+    const context = buildOpenAiSummaryTrustedCitationContext({ citationMap: [] }, input);
+    expect(context.citationMap).toEqual(
+      withEvidenceBackedCitations(fallbackCitationMap(evidence), evidence),
+    );
+    expect([...context.knownCitationIds]).toEqual(['c1', 'c2']);
+    expect(() => buildOpenAiSummaryTrustedCitationContext({
+      citationMap: [{ ...modelCitation('c1'), field: 'invented' }],
+    }, input)).toThrow('Invalid citation field at citationMap[0].field');
+  });
   it('rejects malformed model citation fields rather than interpreting them as evidence', () => {
     expect(normalizeCitationMap({ c1: 'feed-1' })).toEqual([]);
     expect(() => normalizeCitationMap([{

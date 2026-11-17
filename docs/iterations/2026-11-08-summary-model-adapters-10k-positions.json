@@ -6949,6 +6949,21 @@
         68
       ],
       "responsibility": "Sealed weekly writer envelope constraints and trusted citation/story enum projections owned by a pure document-schema policy; input seal admission and public Responses format remain separate in the existing facade. Candidate exact-source provenance only, not independently accepted meaningful LOC."
+    },
+    {
+      "original": "openai-responses-summary-draft-normalizer.ts",
+      "owner": "openai-responses-summary-trusted-citation-context.ts",
+      "originalPositions": [
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        82,
+        83
+      ],
+      "responsibility": "Interpret untrusted provider citation JSON, rebind to selected evidence and establish admitted citation IDs before claim/risk projection, distinct from draft assembly"
     }
   ]
 }

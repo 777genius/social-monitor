@@ -4,11 +4,7 @@ import type {
   SummaryModelInput,
   SummaryModelRoute,
 } from '../../ports';
-import { normalizeCitationMap } from './openai-responses-summary-citations';
-import {
-  fallbackCitationMap,
-  withEvidenceBackedCitations,
-} from './openai-responses-summary-evidence-citations';
+import { buildOpenAiSummaryTrustedCitationContext } from './openai-responses-summary-trusted-citation-context';
 import {
   withKnownCitationIds,
   withKnownRiskCitationIds,
@@ -47,16 +43,8 @@ export const normalizeOpenAiSummaryDraft = (
   evalDatasetVersion: string,
 ): GeneratedSummaryDraft => {
   const normalizedQualityFlags = normalizeQualityFlags(raw.qualityFlags);
-  const modelCitationMap = normalizeCitationMap(raw.citationMap);
-  const citationMap = withEvidenceBackedCitations(
-    modelCitationMap.length === 0
-      ? fallbackCitationMap(input.evidence.items)
-      : modelCitationMap,
-    input.evidence.items,
-  );
-  const knownCitationIds = new Set(
-    citationMap.map((citation) => citation.citationId),
-  );
+  const { citationMap, knownCitationIds } =
+    buildOpenAiSummaryTrustedCitationContext(raw, input);
   const draft = {
     headline: stringOrFallback(raw.headline, fallbackHeadline(raw, input)),
     executiveSummary: stringOrFallback(
