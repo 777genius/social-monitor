@@ -16,7 +16,7 @@ describe("OpenAI reader summary usage mapping", () => {
     });
   });
 
-  it.each([NaN, Infinity, -1, "90", null, undefined])(
+  it.each([NaN, Infinity, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, "90", null, undefined])(
     "falls back for invalid token counts: %s",
     (invalid) => {
       expect(resolveOpenAiReaderSummaryUsage({

@@ -79,7 +79,7 @@ export const normalizeSetValue = <T extends string>(
 };
 
 export const numberOrFallback = (value: unknown, fallback: number): number =>
-  typeof value === "number" && Number.isFinite(value) && value >= 0
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0
     ? value
     : fallback;
 
