@@ -925,20 +925,23 @@
         110,
         111,
         112,
+        122,
+        146,
+        151
+      ],
+      "responsibility": "Provider-section shape, model text/title and trusted citation-ID projection only; model-authored cluster trust predicates now have a separate owner. Four duplicate/rewritten returns retracted; provenance only."
+    },
+    {
+      "original": "openai-responses-reader-summary-narrative.ts",
+      "owner": "openai-responses-reader-summary-narrative-section-admission.ts",
+      "originalPositions": [
         117,
         119,
-        122,
-        125,
         128,
         129,
-        135,
-        138,
-        141,
-        146,
-        151,
-        295
+        138
       ],
-      "responsibility": "Untrusted narrative kind/text/citation/story-cluster projection into grounded sections, without taking authority over evidence IDs. Retrospectively traced original positions, provenance only; not independently approved meaningful LOC or new implementation"
+      "responsibility": "Fail-closed provider-section admission for explicit lead identity, allowed citations and planned secondary/lead grounding, separated from title/text construction; 5 already credited original statements reassigned, no new eligible LOC."
     },
     {
       "original": "agent-runtime-reader-summary-story-relation-verifier.adapter.ts",
