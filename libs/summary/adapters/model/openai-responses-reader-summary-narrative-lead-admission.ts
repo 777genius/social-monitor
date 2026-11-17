@@ -1,4 +1,5 @@
 import type { ReaderSummaryNarrativeSection } from "../../domain";
+import { readerSummaryLeadTitle } from "./openai-responses-reader-summary-narrative-title-policy";
 import {
   isValidReaderSummaryNarrativeLead,
   type ReaderSummaryNarrativeCoverage,
@@ -30,13 +31,11 @@ export const ensureCitedLead = (
       ? {
           ...section,
           kind: "lead",
-          title:
-            (coverage.mode === "daily_synthesis"
-              ? "Daily synthesis"
-              : coverage.leadClusterId === undefined
-                ? undefined
-                : storyTitlesByClusterId.get(coverage.leadClusterId)) ??
-            "Overview",
+          title: readerSummaryLeadTitle(
+            coverage.mode,
+            coverage.leadClusterId,
+            storyTitlesByClusterId,
+          ),
           ...(coverage.mode === "daily_synthesis" ||
           coverage.leadClusterId === undefined
             ? { storyClusterId: undefined }

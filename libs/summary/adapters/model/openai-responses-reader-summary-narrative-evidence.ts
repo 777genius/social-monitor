@@ -1,6 +1,5 @@
 import {
   type ReaderSummaryCitation,
-  type ReaderSummaryCoverageMode,
   type ReaderSummaryNarrativeSection,
 } from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
@@ -8,6 +7,9 @@ import type { ReaderSummaryModelInput } from "../../ports";
 // Keep original function-object identity for direct consumers.
 export { watchEligibleCitationIds } from "./openai-responses-reader-summary-watch-evidence-policy";
 import { optionalString, requiredString } from "./openai-responses-reader-summary-json";
+import { readerSummaryLeadTitle } from "./openai-responses-reader-summary-narrative-title-policy";
+// Preserve the historical named export as the identical runtime function.
+export { defaultNarrativeTitle } from "./openai-responses-reader-summary-narrative-title-policy";
 
 export const narrativeSectionText = (params: {
   readonly value: Record<string, unknown>;
@@ -62,14 +64,11 @@ export const fallbackNarrative = (params: {
     {
       id: "narrative-1",
       kind: "lead",
-      title:
-        (params.input.coveragePlan.mode === "daily_synthesis"
-          ? "Daily synthesis"
-          : params.input.coveragePlan.lead?.clusterId === undefined
-            ? undefined
-            : params.storyTitlesByClusterId.get(
-                params.input.coveragePlan.lead.clusterId,
-              )) ?? "Overview",
+      title: readerSummaryLeadTitle(
+        params.input.coveragePlan.mode,
+        params.input.coveragePlan.lead?.clusterId,
+        params.storyTitlesByClusterId,
+      ),
       text: requiredString(
         params.legacyExecutiveSummary,
         "reader summary executive summary",
@@ -81,36 +80,5 @@ export const fallbackNarrative = (params: {
         : { storyClusterId: params.input.coveragePlan.lead.clusterId }),
     },
   ];
-};
-
-export const defaultNarrativeTitle = (
-  kind: ReaderSummaryNarrativeSection["kind"] | undefined,
-  storyClusterId: string | undefined,
-  storyTitlesByClusterId: ReadonlyMap<string, string>,
-  coverageMode: ReaderSummaryCoverageMode,
-): string | undefined => {
-  switch (kind) {
-    case "lead":
-      if (coverageMode === "daily_synthesis") {
-        return "Daily synthesis";
-      }
-      return (
-        (storyClusterId === undefined
-          ? undefined
-          : storyTitlesByClusterId.get(storyClusterId)) ?? "Overview"
-      );
-    case "main_signal":
-      return "Main signal";
-    case "why_it_matters":
-      return "Why it matters";
-    case "watch":
-      return "Watch";
-    case "secondary_signal":
-      return storyClusterId === undefined
-        ? undefined
-        : storyTitlesByClusterId.get(storyClusterId);
-    case undefined:
-      return undefined;
-  }
 };
 

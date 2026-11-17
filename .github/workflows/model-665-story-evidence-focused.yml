@@ -23,6 +23,8 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-story-fallback-slate.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-story-fallback-coverage.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-story-normalizer.spec.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-narrative-title-policy.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-narrative-title-policy.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-narrative-evidence.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-watch-evidence-policy.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-narrative.ts
@@ -91,6 +93,7 @@ jobs:
           libs/summary/adapters/model/openai-responses-reader-summary-evidence-relations.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-narrative-validation.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-editorial-copy-policy.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-narrative-title-policy.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-narrative-evidence.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-narrative.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-narrative-coverage.spec.ts
