@@ -17,6 +17,18 @@ describe("gateway LLM dispatch-free replay policy", () => {
     expect(decision({ kind: "new_attempt", afterMs: 5, mayDuplicateCost: false })).toEqual({ afterMs: 5, replay: "new_attempt" });
     expect(decision({ kind: "new_attempt", afterMs: 5, mayDuplicateCost: true })).toEqual({ afterMs: 5, replay: null });
   });
+  it("requires explicit false duplicate-cost evidence before a new attempt", () => {
+    const malformed = [
+      { kind: "new_attempt", afterMs: 5 },
+      { kind: "new_attempt", afterMs: 5, mayDuplicateCost: null },
+      { kind: "new_attempt", afterMs: 5, mayDuplicateCost: 0 },
+      { kind: "new_attempt", afterMs: 5, mayDuplicateCost: "false" },
+    ] as unknown as readonly Parameters<typeof gatewayLlmDispatchFreeRetry>[0]["retry"][];
+    for (const retry of malformed) {
+      expect(decision(retry)).toEqual({ afterMs: 5, replay: null });
+    }
+  });
+
   it("rejects malformed SDK retry delays and clock ranges before replay", () => {
     const retry = (afterMs: number) => ({ kind: "same_attempt" as const, afterMs });
     for (const afterMs of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {

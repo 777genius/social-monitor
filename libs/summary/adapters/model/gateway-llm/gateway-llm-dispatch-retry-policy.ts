@@ -25,7 +25,7 @@ export const gatewayLlmDispatchFreeRetry = (params: {
     return { afterMs: 0, replay: null };
   }
   const replay = retry.kind === "same_attempt" ||
-    (retry.kind === "new_attempt" && !retry.mayDuplicateCost);
+    (retry.kind === "new_attempt" && retry.mayDuplicateCost === false);
   if (!replay || params.retries >= params.maxRetries ||
       params.signal?.aborted === true ||
       remainingMs <= afterMs) {
