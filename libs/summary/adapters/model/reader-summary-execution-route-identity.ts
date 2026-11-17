@@ -18,7 +18,7 @@ import {
  * purpose before accepting any output or recording an attestation.
  */
 export const expectedReaderSummaryExecutionRoute = (params: {
-  readonly command: AgentRuntimeTaskCommand;
+  readonly command: Pick<AgentRuntimeTaskCommand, "purpose" | "controls">;
   readonly taskRole: ReaderSummaryAttestedTaskRole;
   readonly legacyRecoveryContract?: FrozenLegacyReaderSummaryRecoveryContract;
 }) => {

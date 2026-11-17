@@ -21,6 +21,7 @@ import {
   type FrozenLegacyReaderSummaryRecoveryContract,
 } from "./active-reader-summary-generation-profile";
 import { expectedReaderSummaryExecutionRoute } from "./reader-summary-execution-route-identity";
+import { activeReaderSummaryProvider } from "./reader-summary-runtime-contract";
 
 // Owns the fail-closed identity policy. The execution sink belongs to the
 // adapter-facing attestation recorder, not to this pure validation boundary.

@@ -86,8 +86,8 @@ describe("reader summary execution route identity", () => {
     readonly model: string;
     readonly modelBackend: string;
     readonly reasoningEffort?: string;
-  }): AgentRuntimeTaskCommand =>
-    ({ purpose, controls }) as AgentRuntimeTaskCommand;
+  }): Pick<AgentRuntimeTaskCommand, "purpose" | "controls"> =>
+    ({ purpose, controls });
 
   it("keeps CLI and MiMo generation identities distinct without mutating commands", () => {
     const cli = command(activeReaderSummaryPurposes.generate, {
