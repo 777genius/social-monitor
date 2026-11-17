@@ -186,7 +186,7 @@ test("SQL contracts reject missing cross-tenant filters, visibility and latest-r
 });
 
 test("orchestrator delegates through real TS imports/calls without duplicate SQL helpers", () => {
-  const source = readFileSync("scripts/capture-durable-backend-e2e-loop.ts", "utf8");
+  const source = readFileSync(new URL("../capture-durable-backend-e2e-loop.ts", import.meta.url), "utf8");
   const tree = ts.createSourceFile("durable-backend-e2e-loop.ts", source,
     ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const names = ["seedDurableIdentity", "durableCounts",
@@ -253,7 +253,7 @@ test("orchestrator delegates through real TS imports/calls without duplicate SQL
     "missing real factory dependency: " + name);
   }
 
-  const pollerSource = readFileSync("scripts/lib/durable-backend-e2e-evidence-pollers.ts", "utf8");
+  const pollerSource = readFileSync(new URL("./durable-backend-e2e-evidence-pollers.ts", import.meta.url), "utf8");
   const pollerTree = ts.createSourceFile("durable-backend-e2e-evidence-pollers.ts",
     pollerSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const factory = pollerTree.statements.find(statement =>

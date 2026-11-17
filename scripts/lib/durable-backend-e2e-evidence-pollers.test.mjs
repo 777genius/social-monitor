@@ -115,7 +115,7 @@ test("both pollers preserve immediate timeout diagnostics without fabricating ev
 });
 
 test("runner invokes extracted pollers with original live DB snapshots and parser helpers", () => {
-  const source = readFileSync("scripts/capture-durable-backend-e2e-loop.ts", "utf8");
+  const source = readFileSync(new URL("../capture-durable-backend-e2e-loop.ts", import.meta.url), "utf8");
   assert.match(source, /createDurableBackendEvidencePollers\(\{\s*pool, scheduledScanEvidenceSnapshot, autoSummaryEvidenceSnapshot, readString, readNumber, readStringArray, delay,/);
   assert.match(source, /pollScheduledScanEvidence\(/);
   assert.match(source, /pollAutoSummaryEvidence\(/);

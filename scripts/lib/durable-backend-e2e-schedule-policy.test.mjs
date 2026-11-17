@@ -48,7 +48,7 @@ test("idempotency strings remain byte-for-byte compatible for every key family",
 });
 
 test("runner delegates all key families and scan cadence to extracted policy", () => {
-  const source = readFileSync("scripts/capture-durable-backend-e2e-loop.ts", "utf8");
+  const source = readFileSync(new URL("../capture-durable-backend-e2e-loop.ts", import.meta.url), "utf8");
   assert.match(source, /createDurableScanPolicyCadence\(\{ minimumScanIntervalSecondsForProvider \}\)/);
   for (const name of ["durableDeliveryDigestScheduleWindow", "scheduledInterestIdempotencyKey",
     "bindingIdempotencyKey", "policyIdempotencyKey", "scanIdempotencyKey",
