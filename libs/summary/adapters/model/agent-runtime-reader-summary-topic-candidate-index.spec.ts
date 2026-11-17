@@ -16,6 +16,20 @@ const candidate = (nodeId: string, fallbackLabel: string): ReaderSummaryTopicLab
   labelCandidates: [],
 });
 
+const duplicateIdentityCases: readonly (readonly [string, boolean])[] = [
+  ["repeated object", true],
+  ["conflicting fallback", false],
+];
+
+const admissionCases: readonly (
+  readonly [string, (items: readonly ReaderSummaryTopicLabelCandidate[]) => unknown]
+)[] = [
+  ["untrusted label admission", (items) => readCompleteTopicNodeLabels([], items)],
+  ["cohort completion", (items) => completeRequiredGroundedTopicCohorts([], items, new Map())],
+  ["grounded recovery anchor mapping", (items) =>
+    buildGroundedTopicRecoveryAnchorMaps({ nodeLabels: [], candidates: items })],
+];
+
 describe("selected reader-summary topic candidate identity", () => {
   it("retains source order, references and immutable inputs for unique ids", () => {
     const first = candidate("topic:beacon", "Orion Beacon");
@@ -29,10 +43,7 @@ describe("selected reader-summary topic candidate identity", () => {
     expect(selected).toEqual([first, second]);
   });
 
-  it.each([
-    ["repeated object", true],
-    ["conflicting fallback", false],
-  ])("rejects ambiguous candidate identity for %s", (_, sameObject) => {
+  it.each(duplicateIdentityCases)("rejects ambiguous candidate identity for %s", (_, sameObject) => {
     const first = candidate("topic:beacon", "Orion Beacon");
     const duplicate = sameObject ? first : candidate("topic:beacon", "Another label");
     expect(() => indexUniqueReaderSummaryTopicCandidates([first, duplicate]))
@@ -46,14 +57,7 @@ describe("selected reader-summary topic candidate identity", () => {
     expect(result.size).toBe(1);
   });
 
-  it.each([
-    ["untrusted label admission", (items: readonly ReaderSummaryTopicLabelCandidate[]) =>
-      readCompleteTopicNodeLabels([], items)],
-    ["cohort completion", (items: readonly ReaderSummaryTopicLabelCandidate[]) =>
-      completeRequiredGroundedTopicCohorts([], items, new Map())],
-    ["grounded recovery anchor mapping", (items: readonly ReaderSummaryTopicLabelCandidate[]) =>
-      buildGroundedTopicRecoveryAnchorMaps({ nodeLabels: [], candidates: items })],
-  ])("rejects duplicate selected ids in %s before Map overwrite", (_, project) => {
+  it.each(admissionCases)("rejects duplicate selected ids in %s before Map overwrite", (_, project) => {
     const items = [
       candidate("topic:beacon", "Orion Beacon"),
       candidate("topic:beacon", "False anchor"),
