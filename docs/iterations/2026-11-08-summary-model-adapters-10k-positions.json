@@ -4380,9 +4380,6 @@
       "original": "openai-responses-summary-draft-shape.ts",
       "owner": "openai-responses-summary-draft-usage-policy.ts",
       "originalPositions": [
-        90,
-        91,
-        92,
         94
       ],
       "responsibility": "Isolated nonnegative input/output token and cost accounting following citation and reliability checks, with unchanged fail-closed error and numeric behavior."
