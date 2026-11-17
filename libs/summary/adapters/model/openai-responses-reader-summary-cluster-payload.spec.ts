@@ -1,3 +1,4 @@
+import { primaryReaderSummaryEvidence } from "../../domain";
 import { readerSummaryInput } from "./agent-runtime-reader-summary-model.spec-support";
 import {
   projectAdditionalReaderSummaryStoryCluster,
@@ -24,7 +25,13 @@ describe("reader summary story-cluster prompt projection", () => {
     const payload = JSON.parse(buildOpenAiReaderSummaryPromptPayload(input)) as {
       storyClusters: unknown[];
     };
-    expect(payload.storyClusters).toEqual([projected]);
+    // The prompt uses the domain-selected primary evidence, not the raw fixture.
+    // Selection can update whyImportant without changing this wire projection.
+    const selectedCluster = primaryReaderSummaryEvidence(input.evidence).clusters[0];
+    if (selectedCluster === undefined) throw new Error("Primary selection must retain a cluster");
+    expect(payload.storyClusters).toEqual([
+      projectPrimaryReaderSummaryStoryCluster(selectedCluster),
+    ]);
     expect(JSON.stringify(cluster)).toBe(frozen);
   });
 
