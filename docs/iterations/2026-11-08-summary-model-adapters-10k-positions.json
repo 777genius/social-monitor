@@ -6742,6 +6742,48 @@
         26
       ],
       "responsibility": "Provider-neutral source-bound citation IDs and field choice independent from evidence order/admission"
+    },
+    {
+      "original": "openai-responses-reader-summary-parsers.ts",
+      "owner": "openai-responses-reader-summary-required-values.ts",
+      "originalPositions": [
+        2,
+        3,
+        6,
+        15,
+        16,
+        19,
+        26,
+        27,
+        30,
+        40,
+        41,
+        53,
+        54,
+        57,
+        65,
+        66,
+        68,
+        69,
+        72
+      ],
+      "responsibility": "Previously implemented strict required-field validation, object/array and enum admission owned by fail-closed parser specialist; first-use frozen code statements only"
+    },
+    {
+      "original": "openai-responses-reader-summary-parsers.ts",
+      "owner": "openai-responses-reader-summary-optional-values.ts",
+      "originalPositions": [
+        10,
+        11,
+        12,
+        34,
+        45,
+        46,
+        47,
+        79,
+        81
+      ],
+      "responsibility": "Previously implemented lenient optional display values and finite nonnegative fallback owned separately from strict provider field admission; first-use frozen code statements only"
     }
   ]
 }
