@@ -14,6 +14,9 @@ import {
   uniqueNonEmptyStrings,
 } from "./openai-responses-reader-summary-text-values";
 import * as publicJson from "./openai-responses-reader-summary-json";
+import * as legacyParsers from "./openai-responses-reader-summary-parsers";
+import * as strictParserValues from "./openai-responses-reader-summary-required-values";
+import * as optionalParserValues from "./openai-responses-reader-summary-optional-values";
 
 describe("reader summary raw-value and presentation boundaries", () => {
   it("rejects missing and malformed required provider values without coercion", () => {
@@ -48,6 +51,25 @@ describe("reader summary raw-value and presentation boundaries", () => {
     expect(normalizeStringArrayLike("c1, c2, c1", "citations")).toEqual(["c1", "c2"]);
     expect(() => normalizeStringArrayLike(["c1", false], "citations"))
       .toThrow("citations must be a non-empty string");
+  });
+
+  it("keeps the split parser export identity and strict-vs-optional trust distinction", () => {
+    expect(legacyParsers.requiredString).toBe(strictParserValues.requiredString);
+    expect(legacyParsers.requiredRecord).toBe(strictParserValues.requiredRecord);
+    expect(legacyParsers.normalizeSetValue).toBe(strictParserValues.normalizeSetValue);
+    expect(legacyParsers.optionalString).toBe(optionalParserValues.optionalString);
+    expect(legacyParsers.nonNegativeNumberOrFallback)
+      .toBe(optionalParserValues.nonNegativeNumberOrFallback);
+
+    expect(() => legacyParsers.requiredString("  ", "title"))
+      .toThrow("title must be a non-empty string");
+    expect(legacyParsers.optionalString("  ")).toBeUndefined();
+    expect(legacyParsers.optionalString("  title  ")).toBe("title");
+    expect(() => legacyParsers.requiredArray(null, "evidence"))
+      .toThrow("evidence must be an array");
+    expect(legacyParsers.optionalArray(null)).toEqual([]);
+    expect(legacyParsers.nonNegativeNumberOrFallback(-1, 17)).toBe(17);
+    expect(legacyParsers.nonNegativeNumberOrFallback(0, 17)).toBe(0);
   });
 
   it("preserves the old exported provider JSON contract", () => {
