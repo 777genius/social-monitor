@@ -16,6 +16,10 @@ export const openAiResponsesCompletionIssue = (
   if (present(response.error)) return "error";
   if (present(response.incomplete_details)) return "not_completed";
   if (present(response.refusal)) return "refusal";
+  // A present but malformed output envelope cannot be rescued by aggregate
+  // output_text: the conflicting provider structure is still untrusted.
+  if (response.output !== undefined && !Array.isArray(response.output)) return "not_completed";
+  const fragments: string[] = [];
 
   for (const rawOutput of Array.isArray(response.output) ? response.output : []) {
     const output = record(rawOutput);
@@ -24,12 +28,27 @@ export const openAiResponsesCompletionIssue = (
     if (output.type === "refusal" || present(output.refusal)) return "refusal";
     if (output.status !== undefined && output.status !== "completed") return "not_completed";
     if (present(output.incomplete_details)) return "not_completed";
+    if (output.content !== undefined && !Array.isArray(output.content)) return "not_completed";
     for (const rawContent of Array.isArray(output.content) ? output.content : []) {
       const content = record(rawContent);
       if (content === undefined) continue;
       if (content.type === "error" || present(content.error)) return "error";
       if (content.type === "refusal" || present(content.refusal)) return "refusal";
+      if (content.type === "output_text") {
+        if (typeof content.text !== "string" || content.text.trim().length === 0) {
+          return "not_completed";
+        }
+        fragments.push(content.text);
+      }
     }
+  }
+  // An explicit completed response cannot present contradictory JSON payloads.
+  // The strict summary schema produces one output_text item, never stitched text.
+  if (response.status === "completed") {
+    if (fragments.length > 1) return "not_completed";
+    if (fragments.length === 1 && typeof response.output_text === "string" &&
+        response.output_text.trim().length > 0 &&
+        fragments[0] !== response.output_text) return "not_completed";
   }
   return null;
 };
