@@ -24,6 +24,8 @@ type Access = Awaited<ReturnType<ConsumerControlPort["runAccess"]>>;
 type Script = {
   readonly access?: (intent: Prepare) => Promise<Access>;
   readonly request?: (call: number) => Promise<NativeResponse>;
+  readonly onSleep?: (ms: number) => void;
+  readonly clock?: () => Date;
 };
 
 const accountA = "00000000-0000-4000-8000-00000000000a";
@@ -94,8 +96,8 @@ const harness = (script: Script = {}, runId = "run-1", route: GatewayLlmRoute = 
     accounts: new CooldownRotatingAccountSelector({ busyCooldownMs: 30_000,
       unauthorizedCooldownMs: 3_600_000 }),
     sdk: approvedGatewayLlmSdkIdentity,
-    clock: { now: () => new Date() },
-    sleep: async (ms) => { sleeps.push(ms); },
+    clock: { now: script.clock ?? (() => new Date()) },
+    sleep: async (ms) => { sleeps.push(ms); script.onSleep?.(ms); },
   });
   return { client, prepares, bodies, sleeps, requests: () => requests };
 };
@@ -490,6 +492,43 @@ describe("GatewayLlmClient", () => {
     expect(secondPrepare!.attemptRef).toBe("a2");
     expect(secondPrepare!.accountRefs[0]).not.toBe(firstPrepare!.accountRefs[0]);
     expect(result.executionAttestation?.gateway?.accountRef).toBe(secondPrepare!.accountRefs[0]);
+  });
+
+  it("does not replay after cancellation during dispatch-free backoff", async () => {
+    const controller = new AbortController();
+    const fake = harness({
+      request: async () => {
+        throw safe("not_dispatched", "admission_limited",
+          { kind: "after", milliseconds: 1 });
+      },
+      onSleep: () => controller.abort(),
+    });
+    const result = await fake.client.runTask(command(), { signal: controller.signal });
+    expect(result).toMatchObject({ status: "failed",
+      failure: { code: "task_cancelled", retryable: false,
+        details: { gatewayEffect: "not_dispatched" } } });
+    expect(fake.requests()).toBe(1);
+    expect(fake.prepares).toHaveLength(1);
+    expect(fake.sleeps).toEqual([1]);
+  });
+
+  it("does not replay if backoff passes the hard task deadline", async () => {
+    let nowMs = Date.now();
+    const fake = harness({
+      clock: () => new Date(nowMs),
+      request: async () => {
+        throw safe("not_dispatched", "admission_limited",
+          { kind: "after", milliseconds: 1 });
+      },
+      onSleep: () => { nowMs += 32_000; },
+    });
+    const result = await fake.client.runTask(command({ timeoutMs: 1_000 }));
+    expect(result).toMatchObject({ status: "failed",
+      failure: { code: "task_timeout", retryable: false,
+        details: { gatewayEffect: "not_dispatched" } } });
+    expect(fake.requests()).toBe(1);
+    expect(fake.prepares).toHaveLength(1);
+    expect(fake.sleeps).toEqual([1]);
   });
 
   it("bounds repeated nondispatched admission failures to two safe replays", async () => {

@@ -6,6 +6,8 @@ import type { GatewayLlmPrepared } from "./gateway-llm-task-preparation";
 import { completeGatewayLlmTask } from "./gateway-llm-task-completion";
 import { completeGatewayLlmFailedTask } from "./gateway-llm-task-failure";
 import { gatewayLlmDispatchFreeRetry } from "./gateway-llm-dispatch-retry-policy";
+import { gatewayLlmFailureShape } from "./gateway-llm-failure-taxonomy";
+import { gatewayLlmUsage } from "./gateway-llm-usage";
 
 /** SDK dispatch owns account feedback, attempt identity, safe replay, and settlement.
  * Route/response validation and transport-independent failure projection stay separate. */
@@ -46,6 +48,27 @@ export class GatewayLlmDispatch {
         });
       }
       await this.options.sleep(retryDecision.afterMs, options?.signal);
+      // A cancellation or deadline can become effective during the backoff.
+      // Do not allocate a new attempt or submit a second provider request.
+      const resumedAt = this.options.clock.now();
+      const cancelled = options?.signal?.aborted === true;
+      if (cancelled || resumedAt.getTime() >= prepared.task.deadline.getTime()) {
+        const shape = gatewayLlmFailureShape(cancelled ? "cancelled" : "deadline");
+        return {
+          status: "failed",
+          warnings: [],
+          failure: {
+            code: shape.code,
+            safeMessage: shape.safeMessage,
+            retryable: false,
+            reconnectRequired: shape.reconnectRequired === true,
+            causeCategory: shape.causeCategory,
+            details: { gatewayEffect: "not_dispatched" },
+          },
+          durationMs: resumedAt.getTime() - startedAt,
+          ...gatewayLlmUsage(result.usage),
+        };
+      }
       if (retryDecision.replay === "new_attempt") {
         identity = this.options.attempts.next(command.requestId);
         task = this.withAttempt(prepared, identity);
