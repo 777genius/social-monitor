@@ -16,6 +16,9 @@ on:
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-wire-contract.ts
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-task-command.spec.ts
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-request.ts
+      - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-proposal.ts
+      - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-trusted-binding.ts
+      - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-proposal.spec.ts
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-request-bytes.ts
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-output-object.ts
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-runtime-output-rejection.ts
@@ -71,3 +74,4 @@ jobs:
           libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-execution.spec.ts
           libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-batching.spec.ts
           libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-request-boundaries.spec.ts
+          libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-proposal.spec.ts

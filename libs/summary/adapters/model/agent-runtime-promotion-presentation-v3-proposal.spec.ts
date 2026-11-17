@@ -1,4 +1,6 @@
 import { bind, contractProposals } from "./agent-runtime-promotion-presentation-v3-proposal";
+import { bind as bindTrustedPresentation } from "./agent-runtime-promotion-presentation-v3-trusted-binding";
+import { promotionPayloadDigest } from "../../domain/services/reader-post-promotion-attestation";
 import type { ReaderPostPresentationV3Input } from "../../domain/services/reader-post-presentation-v3";
 
 const requested = [{ candidateId: "synthetic-id" }] as ReaderPostPresentationV3Input[];
@@ -67,12 +69,32 @@ describe("V3 proposal trust boundaries", () => {
     };
     // Directly exercise the binding boundary even when its caller supplies
     // an object with extra untrusted properties.
-    const output = bind(trusted, {
+    const proposal = {
       ...valid(),
       tenantId: "forged-tenant",
       workspaceId: "forged-workspace",
       sourceBindingId: "forged-binding",
-    });
+    };
+    const beforeInput = JSON.stringify(trusted);
+    const beforeProposal = JSON.stringify(proposal);
+    const output = bind(trusted, proposal);
+    expect(bind).toBe(bindTrustedPresentation);
+    expect(output).toEqual(bindTrustedPresentation(trusted, proposal));
+    const expectedDigest = promotionPayloadDigest(JSON.stringify({
+      candidateId: trusted.candidateId, providerKey: trusted.providerKey,
+      context: {
+        tenantId: trusted.tenantId, workspaceId: trusted.workspaceId,
+        interestId: trusted.interestId, sourceBindingId: trusted.sourceBindingId,
+        sourceItemId: trusted.sourceItemId, trustedIntent: trusted.trustedIntent,
+        availability: "body_present",
+      },
+      title: trusted.title, body: trusted.body,
+    }));
+    expect(output).toEqual(expect.objectContaining({
+      binding: expect.objectContaining({ reviewedInputDigest: expectedDigest }),
+    }));
+    expect(JSON.stringify(trusted)).toBe(beforeInput);
+    expect(JSON.stringify(proposal)).toBe(beforeProposal);
     expect(output).toEqual(expect.objectContaining({
       status: "accepted",
       binding: expect.objectContaining({

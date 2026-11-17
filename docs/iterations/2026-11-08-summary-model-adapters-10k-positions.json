@@ -1193,7 +1193,14 @@
         371,
         372,
         373,
-        374,
+        374
+      ],
+      "responsibility": "Untrusted candidate proposal/qualification/citation admission and duplicate-ID rejection, independent of trusted scope/digest binding"
+    },
+    {
+      "original": "agent-runtime-promotion-presentation-v3.builder.ts",
+      "owner": "agent-runtime-promotion-presentation-v3-trusted-binding.ts",
+      "originalPositions": [
         377,
         378,
         379,
@@ -1215,7 +1222,7 @@
         395,
         396
       ],
-      "responsibility": "Untrusted candidate proposal/qualification/citation admission and trusted scope/digest binding separated from provider runtime and request encoding"
+      "responsibility": "Trusted tenant/workspace/source binding and canonical reviewed-input digest, independent of provider proposal admission"
     },
     {
       "original": "agent-runtime-promotion-presentation-v3.builder.ts",
