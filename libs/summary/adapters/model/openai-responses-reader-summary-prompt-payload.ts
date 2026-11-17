@@ -8,6 +8,7 @@ import type { ReaderSummaryModelInput } from "../../ports";
 import { buildAdaptiveReaderSummaryEvidence } from "./openai-responses-reader-summary-adaptive-evidence";
 import { readerSummaryCitableEvidence } from "./reader-summary-evidence-citation-map";
 import { buildReaderSummaryCoveragePlanPromptPayload } from "./openai-responses-reader-summary-coverage-plan-payload";
+import { projectAdditionalReaderSummaryStoryCluster, projectPrimaryReaderSummaryStoryCluster } from "./openai-responses-reader-summary-cluster-payload";
 
 export const buildOpenAiReaderSummaryPromptPayload = (
   input: ReaderSummaryModelInput,
@@ -35,20 +36,7 @@ export const buildOpenAiReaderSummaryPromptPayload = (
       endedAt: input.evidence.sourceWindow.endedAt.toISOString(),
     },
     editorialSlate: input.evidence.dailyGenerationInput === undefined ? input.evidence.editorialSlate : undefined,
-    storyClusters: primaryEvidence.clusters.map((cluster) => ({
-      id: cluster.id,
-      storyKey: cluster.storyKey,
-      representativeFeedItemId: cluster.representativeFeedItemId,
-      duplicateFeedItemIds: cluster.duplicateFeedItemIds,
-      interestIds: cluster.interestIds,
-      providerKeys: cluster.providerKeys,
-      score: cluster.score,
-      observedAtRange: {
-        startedAt: cluster.observedAtRange.startedAt.toISOString(),
-        endedAt: cluster.observedAtRange.endedAt.toISOString(),
-      },
-      whyImportant: cluster.whyImportant,
-    })),
+    storyClusters: primaryEvidence.clusters.map(projectPrimaryReaderSummaryStoryCluster),
     contextArtifacts: input.contextArtifacts.map((artifact) => ({
       artifactId: artifact.artifactId,
       scope: artifact.scope,
@@ -61,16 +49,7 @@ export const buildOpenAiReaderSummaryPromptPayload = (
       coveragePlan,
       citationIdByFeedItemId,
     ),
-    additionalStoryClusters: additionalEvidence.clusters.map((cluster) => ({
-      id: cluster.id,
-      storyKey: cluster.storyKey,
-      representativeFeedItemId: cluster.representativeFeedItemId,
-      duplicateFeedItemIds: cluster.duplicateFeedItemIds,
-      interestIds: cluster.interestIds,
-      providerKeys: cluster.providerKeys,
-      score: cluster.score,
-      whyImportant: cluster.whyImportant,
-    })),
+    additionalStoryClusters: additionalEvidence.clusters.map(projectAdditionalReaderSummaryStoryCluster),
     additionalEvidence: buildAdaptiveReaderSummaryEvidence(
       additionalEvidence,
       coveragePlan,
