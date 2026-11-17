@@ -53,6 +53,9 @@ on:
       - libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-identity.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-command.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter.spec.ts
+      - libs/summary/adapters/model/story-relation-response-schema.ts
+      - libs/summary/adapters/model/story-relation-response-schema-failure.ts
+      - libs/summary/adapters/model/story-relation-response-schema.spec.ts
 permissions:
   contents: read
 jobs:
@@ -103,3 +106,4 @@ jobs:
           libs/summary/adapters/model/openai-responses-reader-summary-narrative-coverage.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-contracts.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter.spec.ts
+          libs/summary/adapters/model/story-relation-response-schema.spec.ts

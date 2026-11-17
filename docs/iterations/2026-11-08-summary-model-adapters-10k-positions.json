@@ -6798,6 +6798,26 @@
         153
       ],
       "responsibility": "Original selected evidence citation mapping, evidence-dependent confidence, risks and optional highlights owned by cited projection; reallocated, net +0"
+    },
+    {
+      "original": "story-relation-response-schema.ts",
+      "owner": "story-relation-response-schema-failure.ts",
+      "originalPositions": [
+        7,
+        8,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        33,
+        34,
+        35,
+        36
+      ],
+      "responsibility": "Bounded redacted failure projection and terminal invalid_schema provider error, separate from Zod schema compilation/raw own-key admission; frozen positions uniquely transferred"
     }
   ]
 }
