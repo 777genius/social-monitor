@@ -57,7 +57,8 @@ test("scheduled scan retries pending snapshots, preserves success evidence and D
   const f = harness({ scans: [undefined, scheduledSuccess] });
   const value = await f.pollScheduledScanEvidence(scheduledParams, { timeoutMs: 5000, label: "scheduled" });
   assert.deepEqual(value, {
-    ...scheduledParams, scanJobId: "scan-1", scheduledIdempotencyKey: "scheduled-1",
+    providerKey: "rss", sourceBindingId: "binding", scanPolicyId: "policy",
+    scanJobId: "scan-1", scheduledIdempotencyKey: "scheduled-1",
     status: "SUCCEEDED", completedAt: scheduledSuccess.completedAt,
     nextRunAtAfterSchedule: scheduledSuccess.nextRunAtAfterSchedule,
     feedItemCount: 2, feedItemIds: ["feed-1", "feed-2"],
