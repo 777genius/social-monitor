@@ -6420,6 +6420,39 @@
         350
       ],
       "responsibility": "Provider-independent canonical lead title for fallback, admitted provider sections and cited-main-signal promotion; historical default title export is referentially identical"
+    },
+    {
+      "original": "openai-responses-reader-summary-prompt.ts",
+      "owner": "openai-responses-reader-summary-cluster-payload.ts",
+      "originalPositions": [
+        181,
+        182,
+        183,
+        184,
+        185,
+        186,
+        187,
+        188,
+        189,
+        190,
+        192
+      ],
+      "responsibility": "Primary story-cluster serialization owns the trusted observed-at window and stable model-wire field order independently of prompt composition"
+    },
+    {
+      "original": "openai-responses-reader-summary-prompt.ts",
+      "owner": "openai-responses-reader-summary-cluster-payload.ts",
+      "originalPositions": [
+        207,
+        208,
+        209,
+        210,
+        211,
+        212,
+        213,
+        214
+      ],
+      "responsibility": "Additional-context cluster projection omits the primary-only observed-at window while preserving the exact historical context wire shape"
     }
   ]
 }
