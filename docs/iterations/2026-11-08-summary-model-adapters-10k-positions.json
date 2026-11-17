@@ -6453,6 +6453,85 @@
         214
       ],
       "responsibility": "Additional-context cluster projection omits the primary-only observed-at window while preserving the exact historical context wire shape"
+    },
+    {
+      "original": "openai-responses-reader-summary-weekly-prompt.ts",
+      "owner": "openai-responses-reader-summary-weekly-instructions.ts",
+      "originalPositions": [
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53
+      ],
+      "responsibility": "Historical already-extracted weekly trusted editorial instruction policy: byte-identical fixed anti-injection, citation, chronology, and section rules no longer coupled to evidence serialization (retrospective provenance only; copied prompt literals require independent meaningful-LOC discount)"
+    },
+    {
+      "original": "openai-responses-reader-summary-weekly-prompt.ts",
+      "owner": "openai-responses-reader-summary-weekly-certification-contract.ts",
+      "originalPositions": [
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78
+      ],
+      "responsibility": "Historical already-extracted trusted weekly seal, certified-day, provider-count projection; separates attested contract metadata from untrusted model evidence and preserves exact wire identity (retrospective provenance, not new implementation in this run)"
+    },
+    {
+      "original": "openai-responses-reader-summary-weekly-prompt.ts",
+      "owner": "openai-responses-reader-summary-weekly-untrusted-evidence.ts",
+      "originalPositions": [
+        82,
+        83,
+        84,
+        85
+      ],
+      "responsibility": "Historical already-extracted untrusted weekly stories/observations/citations data boundary, distinct from signed certification contract (retrospective provenance; no new implementation credit this run)"
     }
   ]
 }
