@@ -124,3 +124,49 @@ describe("Gateway LLM failure attempt provenance", () => {
     });
   });
 });
+
+import {
+  gatewayLlmLocalFailure,
+  gatewayLlmModelMismatch,
+} from "./gateway-llm-failure";
+import { gatewayLlmModelMismatch as directModelMismatch } from "./gateway-llm-failure-model-identity";
+import { gatewayLlmLocalFailure as directPreflightFailure } from "./gateway-llm-failure-preflight";
+
+describe("Gateway failure trust phases and legacy exports", () => {
+  it("keeps legacy imports the same function objects as dedicated policies", () => {
+    expect(gatewayLlmModelMismatch).toBe(directModelMismatch);
+    expect(gatewayLlmLocalFailure).toBe(directPreflightFailure);
+  });
+
+  it("rejects a completed paid output from another model without retry or identity mutation", () => {
+    const identity = Object.freeze({ taskId: "synthetic-paid-task", attempt: 2 });
+    expect(directModelMismatch(identity)).toEqual({
+      code: "provider_model_mismatch",
+      safeMessage: "Provider reported a different model than requested",
+      retryable: false,
+      reconnectRequired: false,
+      causeCategory: "model_identity",
+      details: {
+        gatewayEffect: "completed",
+        gatewayTaskId: "synthetic-paid-task",
+        gatewayAttempt: "2",
+      },
+    });
+    expect(identity).toEqual({ taskId: "synthetic-paid-task", attempt: 2 });
+  });
+
+  it.each([
+    ["invalid_request", "invalid_request"],
+    ["unsupported_route", "invalid_request"],
+    ["invalid_schema", "output_schema"],
+  ] as const)("marks %s as not dispatched with %s cause", (code, category) => {
+    expect(directPreflightFailure(code, "Synthetic safe error")).toEqual({
+      code,
+      safeMessage: "Synthetic safe error",
+      retryable: false,
+      reconnectRequired: false,
+      causeCategory: category,
+      details: { gatewayEffect: "not_dispatched" },
+    });
+  });
+});
