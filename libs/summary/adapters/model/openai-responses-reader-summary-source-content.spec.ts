@@ -8,6 +8,13 @@ import {
   compactText as directCompactText,
   relevantSourceFragments,
 } from "./openai-responses-reader-summary-source-fragments";
+import {
+  sourceChunks,
+  compactText as chunkCompactText,
+} from "./openai-responses-reader-summary-fragment-chunking";
+import {
+  relevantSourceFragments as directlyRankedFragments,
+} from "./openai-responses-reader-summary-fragment-ranking";
 
 const evidenceItem = (
   values: Pick<SummaryEvidenceItem, "providerKey" | "sourceText" | "title" | "whyImportant">,
@@ -99,4 +106,36 @@ describe("reader-summary source-content privacy and bounds", () => {
     );
     expect(content.includedCharacterCount).toBeLessThan(content.originalCharacterCount);
   });
+  it("preserves source-fragment function identity across the legacy and specialized imports", () => {
+    expect(relevantSourceFragments).toBe(directlyRankedFragments);
+    expect(compactText).toBe(chunkCompactText);
+  });
+
+  it("segments a long, non-whitespace source without dropping or duplicating text", () => {
+    const source = "a".repeat(781);
+    expect(sourceChunks(source)).toEqual(["a".repeat(780), "a"]);
+    expect(sourceChunks(source).join("")).toBe(source);
+    expect(sourceChunks("")).toEqual([""]);
+  });
+
+  it("keeps lexical ranking deterministic and avoids mutating frozen evidence", () => {
+    const source = [
+      "General commentary and unrelated context. ".repeat(30),
+      "Ultra preview token limits have changed. ".repeat(30),
+      "Ordinary unrelated market context. ".repeat(30),
+    ].join("");
+    const item = Object.freeze(evidenceItem({
+      providerKey: "rss",
+      sourceText: source,
+      title: "Ultra preview limits",
+      whyImportant: Object.freeze(["token limits"]),
+    }));
+    const ranked = relevantSourceFragments(source, item);
+    expect(ranked).toEqual(directlyRankedFragments(source, item));
+    expect(ranked).toHaveLength(3);
+    expect(ranked.some((fragment) => fragment.includes("Ultra preview token limits"))).toBe(true);
+    expect(item.whyImportant).toEqual(["token limits"]);
+    expect(ranked).toEqual(relevantSourceFragments(source, item));
+  });
+
 });
