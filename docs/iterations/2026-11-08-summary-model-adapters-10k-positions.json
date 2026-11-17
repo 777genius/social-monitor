@@ -1951,10 +1951,6 @@
         109,
         110,
         111,
-        112,
-        113,
-        115,
-        116,
         117,
         118,
         119,
@@ -1979,7 +1975,7 @@
         142,
         355
       ],
-      "responsibility": "Bounded provider prompt evidence projection, source/citation identity and content quality fields; verified-headline admission and conversation compaction delegated to independent specialists"
+      "responsibility": "Bounded provider prompt evidence projection with current-main suppression of previews already present in hydrated evidence; original 112/113/115/116 verbatim statements no longer traceable after this meaningful parity correction and are excluded"
     },
     {
       "original": "openai-responses-reader-summary-adaptive-evidence.ts",
