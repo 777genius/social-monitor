@@ -3,6 +3,8 @@ import { READER_POST_PRESENTATION_V3_MAX_REQUEST_BYTES,
   "../../domain/services/reader-post-presentation-v3";
 import { OpenAiPromotionPresentationV3Builder } from
   "./openai-promotion-presentation-v3.builder";
+import { dispatchOpenAiPromotionPresentationBatch } from
+  "./openai-promotion-presentation-v3-batch-admission";
 
 const input = (index: number): ReaderPostPresentationV3Input => ({
   tenantId: "tenant", workspaceId: "workspace", interestId: "interest",
@@ -53,6 +55,24 @@ describe("OpenAI Promotion V3 presentation builder", () => {
         .rejects.toThrow("V3 presentation batch mixes tenant or workspace scopes");
     }
     expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it("rejects direct admission of mixed-scope evidence before creating an HTTP request", async () => {
+    const buildSubset = jest.fn(async () => []);
+    const executeWithinBudget = jest.fn(async () => []);
+    for (const other of [
+      { ...input(2), tenantId: "another-tenant" },
+      { ...input(2), workspaceId: "another-workspace" },
+    ]) {
+      await expect(dispatchOpenAiPromotionPresentationBatch({
+        inputs: [input(1), other],
+        model: "gpt-5.4-mini",
+        buildSubset,
+        executeWithinBudget,
+      })).rejects.toThrow("V3 presentation batch mixes tenant or workspace scopes");
+    }
+    expect(buildSubset).not.toHaveBeenCalled();
+    expect(executeWithinBudget).not.toHaveBeenCalled();
   });
 
   it("rejects an oversized response body", async () => {

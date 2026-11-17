@@ -28,6 +28,7 @@ on:
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-batching.ts
       - libs/summary/adapters/model/promotion-presentation-batch-scope.ts
       - libs/summary/adapters/model/openai-promotion-presentation-v3.builder.ts
+      - libs/summary/adapters/model/openai-promotion-presentation-v3-batch-admission.ts
       - libs/summary/adapters/model/openai-promotion-presentation-v3.builder.spec.ts
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-execution.spec.ts
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-batching.spec.ts

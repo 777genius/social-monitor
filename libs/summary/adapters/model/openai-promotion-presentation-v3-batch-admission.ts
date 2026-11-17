@@ -4,6 +4,7 @@ import {
   type ReaderPostPresentationV3Result,
 } from "../../domain/services/reader-post-presentation-v3";
 import { buildOpenAiPresentationV3RequestBody } from "./openai-promotion-presentation-v3-transport";
+import { assertPromotionPresentationBatchScope } from "./promotion-presentation-batch-scope";
 
 /**
  * Encoded-request admission is independent of provider dispatch and sealing.
@@ -21,6 +22,8 @@ export const dispatchOpenAiPromotionPresentationBatch = async (params: {
   ) => Promise<readonly ReaderPostPresentationV3Result[]>;
 }): Promise<readonly ReaderPostPresentationV3Result[]> => {
   const { inputs } = params;
+  // The helper is exported; enforce isolation even without its builder caller.
+  assertPromotionPresentationBatchScope(inputs);
   const requestBody = buildOpenAiPresentationV3RequestBody(inputs, params.model);
   if (Buffer.byteLength(requestBody, "utf8") >
       READER_POST_PRESENTATION_V3_MAX_REQUEST_BYTES) {
