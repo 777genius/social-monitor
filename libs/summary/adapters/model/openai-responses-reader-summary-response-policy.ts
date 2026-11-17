@@ -14,6 +14,7 @@ import {
   resolveOpenAiReaderSummaryUsage,
 } from "./openai-responses-reader-summary-model-support";
 import { ReaderSummaryModelProviderError } from "./openai-responses-reader-summary-provider-error";
+import { openAiResponsesCompletionIssue } from "./openai-responses-completion-state";
 
 /**
  * Decodes untrusted OpenAI responses after transport completes.
@@ -36,16 +37,16 @@ export const completeOpenAiReaderSummaryAttempt = ({
 }): ProviderReaderSummaryAttempt => {
   // Responses HTTP 200 is not proof that the model completed. Never trust
   // parseable partial/failed output as a publishable reader summary.
-  if (responseJson.status !== undefined && responseJson.status !== "completed") {
+  const stateIssue = openAiResponsesCompletionIssue(responseJson);
+  if (stateIssue !== null) {
     throw new ReaderSummaryModelProviderError({
-      kind: "invalid_schema", retryable: false,
-      message: "OpenAI reader summary response did not complete",
-    });
-  }
-  if (responseJson.error !== undefined && responseJson.error !== null) {
-    throw new ReaderSummaryModelProviderError({
-      kind: "invalid_schema", retryable: false,
-      message: "OpenAI reader summary response reported an error",
+      kind: stateIssue === "refusal" ? "unsafe_or_refused" : "invalid_schema",
+      retryable: false,
+      message: stateIssue === "error"
+        ? "OpenAI reader summary response reported an error"
+        : stateIssue === "refusal"
+          ? "OpenAI reader summary response was refused"
+          : "OpenAI reader summary response did not complete",
     });
   }
   const outputText = extractOpenAiOutputText(responseJson);

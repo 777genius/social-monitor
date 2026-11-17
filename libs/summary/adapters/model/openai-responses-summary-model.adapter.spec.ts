@@ -131,6 +131,32 @@ describe('OpenAiResponsesSummaryModelAdapter', () => {
     expect(estimateUsage).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["nested refusal", { output: [{ type: "message", content: [{ type: "refusal", refusal: "synthetic" }] }] },
+      "OpenAI summary response was refused"],
+    ["nested error", { output: [{ type: "error", error: { code: "synthetic" } }] },
+      "OpenAI summary response reported an error"],
+    ["nested incomplete", { output: [{ type: "message", status: "in_progress" }] },
+      "OpenAI summary response did not complete"],
+    ["truncated", { incomplete_details: { reason: "max_output_tokens" } },
+      "OpenAI summary response did not complete"],
+  ])('rejects %s even with syntactically valid aggregate output', (_name, envelope, message) => {
+    const estimateUsage = jest.fn(() => ({
+      inputTokens: 10, outputTokens: 10, estimatedCostUsd: 0,
+    }));
+    expect(() => completeOpenAiSummaryAttempt({
+      responseJson: { status: 'completed', output_text: JSON.stringify(validProviderDraft()), ...envelope },
+      input: buildInput(),
+      selectedRoute: {
+        provider: 'openai-responses', model: 'selected-model',
+        promptVersion: 'summary.prompt.openai.responses.v1',
+        schemaVersion: 'summary.artifact.v1',
+      },
+      estimateUsage, evalDatasetVersion: 'summary.eval.mvp.v1',
+    })).toThrow(message);
+    expect(estimateUsage).not.toHaveBeenCalled();
+  });
+
   it('rejects post-normalization provider and schema route mismatches', async () => {
     const adapter = new OpenAiResponsesSummaryModelAdapter({
       apiKey: fakeOpenAiApiKey,

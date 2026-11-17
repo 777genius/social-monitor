@@ -48,6 +48,8 @@ on:
       - libs/summary/adapters/model/openai-responses-summary-model.adapter.spec.ts
       - libs/summary/adapters/model/openai-responses-summary-generation.ts
       - libs/summary/adapters/model/openai-responses-summary-attempt-completion.ts
+      - libs/summary/adapters/model/openai-responses-completion-state.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-daily-editor-response.ts
       - libs/summary/adapters/model/openai-responses-summary-response-policy.ts
       - libs/summary/adapters/model/openai-responses-summary-provider-error.ts
       - libs/summary/adapters/model/openai-responses-summary-error-classification.ts

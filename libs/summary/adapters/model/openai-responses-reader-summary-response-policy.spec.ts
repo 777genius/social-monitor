@@ -3,6 +3,8 @@ import type {
   ReaderSummaryModelInput,
   ReaderSummaryModelRoute,
 } from "../../ports";
+import type { ReaderSummaryDailyGenerationInput } from "../../domain";
+import { readOpenAiDailyEditorialResponse } from "./openai-responses-reader-summary-daily-editor-response";
 import {
   completeOpenAiReaderSummaryAttempt,
   validateOpenAiReaderSummaryResponse,
@@ -46,6 +48,38 @@ describe("OpenAI reader summary response trust policy", () => {
       output_text: '{"headline":"looks complete"}',
     }, estimateUsage)).toThrow("OpenAI reader summary response reported an error");
     expect(estimateUsage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["refusal", { output: [{ type: "message", content: [{ type: "refusal", refusal: "synthetic" }] }] },
+      "OpenAI reader summary response was refused"],
+    ["nested error", { output: [{ type: "error", error: { code: "synthetic" } }] },
+      "OpenAI reader summary response reported an error"],
+    ["nested incomplete", { output: [{ type: "message", status: "in_progress" }] },
+      "OpenAI reader summary response did not complete"],
+    ["truncated", { incomplete_details: { reason: "max_output_tokens" } },
+      "OpenAI reader summary response did not complete"],
+  ])("rejects %s even when aggregate output looks valid", (_caseName, envelope, message) => {
+    const estimateUsage = jest.fn((): never => { throw new Error("metered early"); });
+    expect(() => complete({
+      status: "completed", output_text: '{"headline":"looks valid"}', ...envelope,
+    }, estimateUsage)).toThrow(message);
+    expect(estimateUsage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ output: [{ type: "message", content: [{ type: "refusal", refusal: "synthetic" }] }] },
+      "Daily editorial plan response was refused"],
+    [{ output: [{ type: "message", status: "in_progress" }] },
+      "Daily editorial plan response did not complete"],
+    [{ error: { code: "synthetic" } }, "Daily editorial plan response reported an error"],
+  ])("never seals daily editor plans from an untrusted completion envelope", (patch, message) => {
+    expect(() => readOpenAiDailyEditorialResponse({
+      status: "completed", output_text: '{"version":"reader_summary.daily_editorial.v2"}',
+      ...patch,
+    }, {} as ReaderSummaryDailyGenerationInput, "synthetic prompt",
+    { inputTokens: 1, outputTokens: 2, estimatedCostUsd: 0 }))
+      .toThrow(message);
   });
 
   it("refuses missing output before estimating usage", () => {

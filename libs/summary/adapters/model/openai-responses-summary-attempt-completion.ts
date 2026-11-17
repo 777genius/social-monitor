@@ -9,6 +9,7 @@ import { SummaryModelProviderError } from "./openai-responses-summary-model-erro
 import { extractOpenAiSummaryOutputText } from "./openai-responses-summary-output-text";
 import { parseOpenAiSummaryJsonObject } from "./openai-responses-summary-response-parser";
 import { resolveOpenAiSummaryUsage } from "./openai-responses-summary-usage";
+import { openAiResponsesCompletionIssue } from "./openai-responses-completion-state";
 
 // Provider-output trust and draft completion belong to the paid-attempt interpreter.
 // Post-normalization port validation remains separately owned by response-policy.ts.
@@ -22,17 +23,16 @@ export const completeOpenAiSummaryAttempt = (params: {
 }): ProviderSummaryAttempt => {
   // HTTP 200 can still carry an incomplete/failed Responses execution.
   // A parseable partial JSON object must never become a published summary.
-  if (params.responseJson.status !== undefined &&
-      params.responseJson.status !== "completed") {
+  const stateIssue = openAiResponsesCompletionIssue(params.responseJson);
+  if (stateIssue !== null) {
     throw new SummaryModelProviderError({
-      kind: "invalid_schema", retryable: false,
-      message: "OpenAI summary response did not complete",
-    });
-  }
-  if (params.responseJson.error !== undefined && params.responseJson.error !== null) {
-    throw new SummaryModelProviderError({
-      kind: "invalid_schema", retryable: false,
-      message: "OpenAI summary response reported an error",
+      kind: stateIssue === "refusal" ? "unsafe_or_refused" : "invalid_schema",
+      retryable: false,
+      message: stateIssue === "error"
+        ? "OpenAI summary response reported an error"
+        : stateIssue === "refusal"
+          ? "OpenAI summary response was refused"
+          : "OpenAI summary response did not complete",
     });
   }
   const outputText = extractOpenAiSummaryOutputText(params.responseJson);
