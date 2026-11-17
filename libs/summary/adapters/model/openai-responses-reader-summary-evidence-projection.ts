@@ -2,6 +2,7 @@ import type { SummaryEvidenceItem } from "../../domain";
 import { adaptiveSourceContent, compactText } from "./openai-responses-reader-summary-source-content";
 import { acceptedReaderPresentation } from "./openai-responses-reader-summary-verified-presentation";
 import { compactConversationContext } from "./openai-responses-reader-summary-conversation-context";
+import { isReaderSummaryPreviewCoveredByHydratedSource } from "./openai-responses-reader-summary-preview-coverage";
 
 export { acceptedReaderPresentation } from "./openai-responses-reader-summary-verified-presentation";
 export { compactConversationContext } from "./openai-responses-reader-summary-conversation-context";
@@ -28,13 +29,7 @@ export const projectReaderSummaryPromptEvidenceItem = (
   const preview = baselineSource === undefined
     ? undefined : compactText(baselineSource, baselineTextLimit);
   const sourceContent = expanded ? adaptiveSourceContent(item, sourceHydrationLimit) : undefined;
-  const sourceParts = sourceContent === undefined ? [] :
-    typeof sourceContent.text === "string" ? [sourceContent.text] :
-      Array.isArray(sourceContent.fragments) ? sourceContent.fragments : [];
-  // Exact current-main policy: avoid repeating a preview already contained in
-  // the hydrated whole source or an admitted relevance fragment.
-  const covered = preview !== undefined && preview.length > 0 &&
-    sourceParts.some((part: unknown) => typeof part === "string" && part.includes(preview));
+  const covered = isReaderSummaryPreviewCoveredByHydratedSource(preview, sourceContent);
 
   return {
     index: index + 1,
