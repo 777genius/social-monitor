@@ -1,4 +1,5 @@
 # Temporary exact-copy full matrix qualification of the draft model-adapter refactor.
+# Re-qualify exact current code and its pinned frozen-source ledger on this branch; NOT a deployment or merge authorization.
 # Keep PR Draft; do not merge/deploy. Remove this workflow after collecting CI evidence.
 name: Model draft full CI qualification
 
