@@ -52,6 +52,18 @@ describe("Agent Runtime topic relation output contract", () => {
     }] }, requested)).toMatchObject([{ sourceNodeId: "a\u0000b", targetNodeId: "c" }]);
   });
 
+  it("rejects duplicate requested unordered pairs rather than collapsing evidence", () => {
+    const requested: ReaderSummaryTopicRelationVerifierInput["relations"] = [
+      ...relations,
+      { sourceNodeId: "topic-b", targetNodeId: "topic-a", sharedTerms: ["synthetic"] },
+    ];
+    expect(() => normalizeDecisions({ decisions: [{
+      sourceNodeId: "topic-a", targetNodeId: "topic-b",
+      sameTopic: true, confidenceScore: 0.9,
+    }] }, requested)).toThrow("requested unordered topic relation pairs must be unique");
+    expect(relations).toHaveLength(1);
+  });
+
   it("checks exact unordered pair coverage, not just response length", () => {
     const requested: ReaderSummaryTopicRelationVerifierInput["relations"] = [
       ...relations,

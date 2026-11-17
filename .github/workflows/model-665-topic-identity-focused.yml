@@ -30,6 +30,7 @@ on:
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-support-policy.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-label-plan-normalizer.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-relation-decisions.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-relation-command.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-relation-pair-coverage.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-relation-decisions.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-relation-verifier.adapter.spec.ts

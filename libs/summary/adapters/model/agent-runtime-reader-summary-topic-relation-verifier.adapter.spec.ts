@@ -141,6 +141,29 @@ describe("AgentRuntimeReaderSummaryTopicRelationVerifier", () => {
     );
   });
 
+  it("refuses duplicate unordered relation requests before invoking the model", async () => {
+    const client = new CapturingAgentRuntimeClient({
+      status: "completed", structuredOutput: { decisions: [] }, warnings: [],
+    });
+    const record = jest.fn();
+    const verifier = new AgentRuntimeReaderSummaryTopicRelationVerifier({
+      client, verifiedAttestationSink: { record },
+    });
+    const request = input();
+    const repeated = {
+      ...request,
+      relations: [...request.relations, {
+        sourceNodeId: "node:b", targetNodeId: "node:a",
+        sharedTerms: ["synthetic"],
+      }],
+    };
+    await expect(verifier.verify(repeated)).rejects.toThrow(
+      "requested unordered topic relation pairs must be unique",
+    );
+    expect(client.commands).toHaveLength(0);
+    expect(record).not.toHaveBeenCalled();
+  });
+
   it("does not dispatch or record when no topic relation is requested", async () => {
     const client = new CapturingAgentRuntimeClient({
       status: "completed", structuredOutput: { decisions: [] }, warnings: [],

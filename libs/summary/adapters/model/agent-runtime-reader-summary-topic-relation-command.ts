@@ -1,5 +1,6 @@
 import { agentRuntimeReaderSummaryTopicRelationVerifierJsonSchema } from "./agent-runtime-reader-summary-topic-relation-response-schema";
 import { readerSummaryScopeKey } from "../../domain";
+import { expectedTopicRelationPairs } from "./agent-runtime-reader-summary-topic-relation-pair-coverage";
 import type {
   AgentRuntimeTaskCommand,
   ReaderSummaryTopicMapAttemptContext,
@@ -32,6 +33,8 @@ export const buildAgentRuntimeTopicRelationCommand = (
 }>,
 ): AgentRuntimeTaskCommand => {
   const { input, attemptContext } = params;
+  // Refuse repeated unordered identities before any provider dispatch or charge.
+  expectedTopicRelationPairs(input.relations);
   const command = {
       requestId: buildAgentRuntimeRequestId(
         `reader-summary-topic-relations-attempt-${attemptContext.attemptNumber}`,

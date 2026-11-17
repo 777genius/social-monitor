@@ -6,6 +6,11 @@ export const expectedTopicRelationPairs = (
   relations: ReaderSummaryTopicRelationVerifierInput["relations"],
 ): ReadonlySet<string> => {
   const expectedPairs = new Set(relations.map(relationPairKey));
+  if (expectedPairs.size !== relations.length) {
+    throw new Error(
+      "Reader summary requested unordered topic relation pairs must be unique",
+    );
+  }
   return expectedPairs;
 };
 
