@@ -18,30 +18,38 @@ export const isAdmissibleGroundedNarrativeSection = (params: {
     citationIds: readonly string[],
   ) => boolean;
 }): boolean => {
+  const {
+    kind,
+    authoredStoryClusterId,
+    storyClusterId,
+    citationIds,
+    coverage,
+    citationsAllowed,
+  } = params;
   if (
-    params.kind === "lead" &&
-    params.coverage.mode === "single_story" &&
-    params.authoredStoryClusterId !== undefined &&
-    params.authoredStoryClusterId !== params.coverage.leadClusterId
+    kind === "lead" &&
+    coverage.mode === "single_story" &&
+    authoredStoryClusterId !== undefined &&
+    authoredStoryClusterId !== coverage.leadClusterId
   ) {
     return false;
   }
-  if (!params.citationsAllowed(params.kind, params.citationIds)) {
+  if (!citationsAllowed(kind, citationIds)) {
     return false;
   }
   if (
-    params.kind === "secondary_signal" &&
+    kind === "secondary_signal" &&
     !validSecondarySection(
-      params.storyClusterId,
-      params.citationIds,
-      params.coverage.secondaryCitationIds,
+      storyClusterId,
+      citationIds,
+      coverage.secondaryCitationIds,
     )
   ) {
     return false;
   }
   if (
-    params.kind === "lead" &&
-    !isValidReaderSummaryNarrativeLead(params.citationIds, params.coverage)
+    kind === "lead" &&
+    !isValidReaderSummaryNarrativeLead(citationIds, coverage)
   ) {
     return false;
   }
