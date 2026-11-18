@@ -7080,6 +7080,42 @@
         22
       ],
       "responsibility": "Previously separated frozen evidence and daily-plan prompt admission from generation receipt hashing"
+    },
+    {
+      "original": "summary-provider-labels.ts",
+      "owner": "summary-provider-list-presentation.ts",
+      "originalPositions": [
+        2,
+        3,
+        4,
+        6,
+        7,
+        8
+      ],
+      "responsibility": "Independent provider-count and display truncation policy, no provider-key vocabulary or identity deduplication"
+    },
+    {
+      "original": "summary-provider-labels.ts",
+      "owner": "summary-provider-key-label.ts",
+      "originalPositions": [
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        21,
+        23,
+        24,
+        27,
+        28,
+        29,
+        30,
+        31
+      ],
+      "responsibility": "Provider-key display vocabulary and fallback tokenization separated from count formatting and identity deduplication"
     }
   ]
 }

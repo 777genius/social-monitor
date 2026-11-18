@@ -1,3 +1,5 @@
+import { providerKeyLabel as specialistProviderKeyLabel } from "./summary-provider-key-label";
+import { summarizeProviderLabels as specialistSummarizeProviderLabels } from "./summary-provider-list-presentation";
 import { uniqueStrings as identityUniqueStrings } from "./summary-provider-uniqueness";
 import {
   providerKeyLabel,
@@ -35,5 +37,19 @@ describe("provider label vs identity responsibilities", () => {
     expect(summarizeProviderLabels(labels.slice(0, 3))).toBe("GitHub, Hacker News, Reddit");
     expect(summarizeProviderLabels([])).toBe("");
     expect(labels).toHaveLength(4);
+  });
+
+  it("preserves exact public function identity for the independent display policies", () => {
+    expect(providerKeyLabel).toBe(specialistProviderKeyLabel);
+    expect(summarizeProviderLabels).toBe(specialistSummarizeProviderLabels);
+  });
+
+  it("keeps fallback provider spelling and truncation deterministic without mutating inputs", () => {
+    const keys = Object.freeze(["unknown:provider_name", "reddit", "github-repo-radar", "rss"]);
+    const labels = Object.freeze(keys.map(providerKeyLabel));
+    expect(labels).toEqual(["Unknown Provider Name", "Reddit", "GitHub Repo Radar", "RSS"]);
+    expect(summarizeProviderLabels(labels)).toBe("Unknown Provider Name, Reddit, GitHub Repo Radar + 1 more");
+    expect(summarizeProviderLabels(labels)).toBe(specialistSummarizeProviderLabels(labels));
+    expect(keys).toEqual(["unknown:provider_name", "reddit", "github-repo-radar", "rss"]);
   });
 });
