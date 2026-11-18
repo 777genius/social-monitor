@@ -105,6 +105,7 @@ function validateProof(value, expectedDate) {
   ) {
     fail("publication proof identity or verified result is invalid");
   }
+  // The legacy migration also consumes this validated proof for binding checks.
   return { state: "complete", proof: value };
 }
 
@@ -171,6 +172,7 @@ function validateOutcome(value, expectedDate) {
   ) {
     fail("terminal provider states do not prove the declared outcome");
   }
+  // Terminal-outcome callers consume only its state, never the outcome payload.
   return value.outcome;
 }
 

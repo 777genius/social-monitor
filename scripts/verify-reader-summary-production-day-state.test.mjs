@@ -287,6 +287,44 @@ test("malformed, stale, and conflicting latest states fail closed", () => {
   });
 });
 
+test("immutable cursor checks bind raw artifact and dated-state bytes, not only parsed JSON", () => {
+  withFixture((directory) => {
+    const proofPath = writeProof(directory, collectionDate);
+    const datedState = join(directory, stateFilename(collectionDate));
+    buildCompleteState(proofPath, datedState, collectionDate);
+    const latestState = join(directory, "latest-state.v1.json");
+    cpSync(datedState, latestState);
+
+    // Preserve exact latest-vs-dated byte equality even when both parse identically.
+    chmodSync(latestState, 0o644);
+    writeFileSync(latestState, Buffer.concat([
+      readFileSync(latestState), Buffer.from("\n"),
+    ]));
+    const modifiedLatest = assertFailure([
+      "--latest-state", latestState, "--state-dir", directory,
+    ]);
+    assert.match(modifiedLatest.stderr, /latest state does not exactly match its immutable dated state/);
+
+    // Restore the cursor, then change only proof whitespace. All three
+    // read paths must reject the stale byteLength/SHA-256 binding.
+    cpSync(datedState, latestState);
+    writeFileSync(proofPath, Buffer.concat([
+      readFileSync(proofPath), Buffer.from("\n"),
+    ]));
+    for (const args of [
+      ["--expected-date", collectionDate, "--publication-proof", proofPath, "--state", datedState],
+      ["--dated-state", datedState, "--state-dir", directory],
+      ["--latest-state", latestState, "--state-dir", directory],
+    ]) {
+      const rejected = assertFailure(args);
+      assert.match(
+        rejected.stderr,
+        /day state (does not exactly bind its verified terminal artifact|binding is stale or conflicting)/,
+      );
+    }
+  });
+});
+
 test("dated and direct state checks reject invalid terminal identity", () => {
   withFixture((directory) => {
     const proofPath = writeProof(directory, collectionDate);
