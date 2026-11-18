@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import {
-  stateArtifactFormat, proofArtifactFormat, outcomeArtifactFormat,
   validateState, validateProof, validateLegacyPublicationBinding, createState,
   assertDate, assertObject, stableJson, reportFilename, proofFilename, fail,
 } from './lib/reader-summary-production-day-state-validation.mjs';
