@@ -11,11 +11,10 @@ import { extractReaderSummaryGatewaySchemaViolations } from "./agent-runtime-rea
 import {
   assertReaderSummaryRepairWithinBudget,
   sumReaderSummaryUsage,
-  usageFromAgentRuntime,
 } from "./agent-runtime-model-support";
 import { readAttestedAgentRuntimeReaderSummaryDraft } from "./agent-runtime-reader-summary-attested-draft";
 import { isRepairableNarrativeError } from "./reader-summary-narrative-repair-contract";
-import { readerSummaryDailyInputReceipt } from "./reader-summary-daily-input-receipt";
+import { runAgentRuntimeReaderSummaryPaidAttempt } from "./agent-runtime-reader-summary-paid-attempt";
 import type { VerifiedReaderSummaryExecutionAttestationSink } from "./reader-summary-execution-attestation";
 
 export const readerSummaryNarrativeAttempts = ["primary", "repair"] as const;
@@ -41,10 +40,10 @@ export const runAgentRuntimeReaderSummaryGeneration = async (params: Readonly<{
   // Two attempts at most: the repair runs once, for either cause.
   for (const attempt of readerSummaryNarrativeAttempts) {
     const command = params.buildTaskCommand(attempt, schemaViolations);
-    const dailyGenerationReceipt = readerSummaryDailyInputReceipt(command.prompt, input.evidence.dailyGenerationInput, input.dailyEditorialPlan);
-    const result = await params.client.runTask(command);
-    const estimate = params.estimate();
-    const attemptUsage = usageFromAgentRuntime(result.usage, estimate);
+    const { result, estimate, attemptUsage, dailyGenerationReceipt } =
+      await runAgentRuntimeReaderSummaryPaidAttempt({
+        client: params.client, command, input, estimate: params.estimate,
+      });
     logicalRunUsage = sumReaderSummaryUsage(logicalRunUsage, attemptUsage);
     if (attempt === "primary") {
       schemaViolations = extractReaderSummaryGatewaySchemaViolations(result);

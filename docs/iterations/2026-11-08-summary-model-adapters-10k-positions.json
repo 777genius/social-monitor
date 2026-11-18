@@ -2951,8 +2951,6 @@
         228,
         229,
         231,
-        233,
-        236,
         237,
         238,
         240,
@@ -7435,6 +7433,15 @@
         226
       ],
       "responsibility": "Pure bounded UTF-16 source excerpt and relevance-token policy, separate from feed ID admission (historically split original coordinates newly audited without duplication)"
+    },
+    {
+      "original": "agent-runtime-reader-summary-model.adapter.ts",
+      "owner": "agent-runtime-reader-summary-paid-attempt.ts",
+      "originalPositions": [
+        233,
+        236
+      ],
+      "responsibility": "Daily frozen receipt preflight and physical attempt usage normalization, separate from primary/repair scheduling; two previously credited frozen coordinates reowned"
     }
   ]
 }
