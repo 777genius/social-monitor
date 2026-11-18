@@ -23,7 +23,7 @@ Future<void> bootstrapAppSession(
     return;
   }
 
-  final bootstrap = await _loadBootstrap(apiRuntime, earlyBootstrapReader);
+  final bootstrap = await _readPrefetchedBootstrap(earlyBootstrapReader);
   if (bootstrap != null) {
     _restoreSession(
       controller,
@@ -47,8 +47,9 @@ Future<void> bootstrapAppSession(
   );
 }
 
-Future<generated.AppBootstrapResponseDto?> _loadBootstrap(
-  generated.GeneratedApiRuntime apiRuntime,
+/// A missing or stalled HTML prefetch must not trigger a second expensive
+/// /app/bootstrap request. Session discovery below is the lightweight fallback.
+Future<generated.AppBootstrapResponseDto?> _readPrefetchedBootstrap(
   EarlyAppBootstrapReader earlyBootstrapReader,
 ) async {
   Map<String, Object?>? earlyPayload;
@@ -70,14 +71,7 @@ Future<generated.AppBootstrapResponseDto?> _loadBootstrap(
     }
   }
 
-  final result = await apiRuntime.client
-      .sendUnscoped<generated.AppBootstrapResponseDto>(
-        () => apiRuntime.rest.appBootstrap.appBootstrapControllerGet(),
-      );
-  return result.fold(
-    onSuccess: (dto) => _hasConsistentBootstrapScope(dto) ? dto : null,
-    onFailure: (_) => null,
-  );
+  return null;
 }
 
 bool _hasConsistentBootstrapScope(generated.AppBootstrapResponseDto dto) {
