@@ -5,7 +5,6 @@ import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/summary_citation.dart';
 import '../formatters/reader_summary_trust_copy.dart';
 import '../view_models/reader_summary_trust_snapshot.dart';
-import 'reader_summary_source_text.dart';
 import 'reader_summary_url_action_contract.dart';
 
 part 'reader_summary_trust_summary_line.dart';
@@ -150,21 +149,27 @@ class _TrustDetails extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (report.risks.isNotEmpty) ...[
-          _ReliabilityNotes(report: report),
-          const SizedBox(height: AppSpacing.sm),
-        ],
-        for (final entry in claims.indexed)
-          _TrustStory(
-            index: entry.$1,
-            claim: entry.$2,
-            citationsById: citationsById,
-            onOpenUrl: onOpenUrl,
-          ),
-      ],
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1080),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (report.risks.isNotEmpty) ...[
+              _ReliabilityNotes(report: report),
+              const SizedBox(height: AppSpacing.sm),
+            ],
+            for (final entry in claims.indexed)
+              _TrustStory(
+                index: entry.$1,
+                claim: entry.$2,
+                citationsById: citationsById,
+                onOpenUrl: onOpenUrl,
+              ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -237,20 +242,21 @@ class _TrustStory extends StatelessWidget {
       claim,
     );
 
-    return DecoratedBox(
+    return Container(
       key: ValueKey('reader-summary-trust-story-$index'),
+      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: colorScheme.outlineVariant)),
+        color: colorScheme.surface,
+        border: Border.all(color: colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+        padding: const EdgeInsets.all(AppSpacing.md),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               claim.claim,
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.labelLarge?.copyWith(
                 fontWeight: FontWeight.w800,
                 letterSpacing: 0,
@@ -286,8 +292,6 @@ class _TrustStory extends StatelessWidget {
             const SizedBox(height: AppSpacing.xs),
             Text(
               trustConfidenceExplanation(claim.confidence),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
                 letterSpacing: 0,
@@ -297,8 +301,6 @@ class _TrustStory extends StatelessWidget {
               const SizedBox(height: AppSpacing.xs),
               Text(
                 trustClaimRiskDescription(claim.risks.first),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: colorScheme.onSurfaceVariant,
                   letterSpacing: 0,
@@ -347,10 +349,8 @@ class _EvidenceLine extends StatelessWidget {
           ),
           const SizedBox(width: AppSpacing.xs),
           Expanded(
-            child: ReaderSummarySourceText(
+            child: Text(
               '$label - ${evidence.title}',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ),
