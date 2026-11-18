@@ -174,6 +174,55 @@ function validateOutcome(value, expectedDate) {
   return value.outcome;
 }
 
+function validateLegacyPublicationBinding(report, proof, requestedDate, latestByteLength, latestSha256) {
+  const expectedPeriod = utcPeriod(requestedDate);
+  const identity = report.reportIdentity;
+  const provenance = report.provenance;
+  const binding = provenance?.sourceEvidence;
+  if (
+    report.schemaVersion !== 1 ||
+    report.artifactFormat !== reportArtifactFormat ||
+    report.generatedBy !== reportGeneratedBy ||
+    report.collectionDate !== requestedDate ||
+    report.blockingPassed !== true ||
+    report.failure !== null ||
+    !isObject(report.qualityGates) ||
+    Object.keys(report.qualityGates).length === 0 ||
+    Object.values(report.qualityGates).some((passed) => passed !== true) ||
+    !isObject(identity) ||
+    identity.requestedDate !== requestedDate ||
+    !periodsEqual(identity.requestedUtcPeriod, expectedPeriod) ||
+    !isObject(provenance) ||
+    !periodsEqual(provenance.requestedUtcPeriod, expectedPeriod) ||
+    !periodsEqual(provenance.collectionUtcPeriod, expectedPeriod) ||
+    !isObject(binding)
+  ) {
+    fail("legacy latest report is not a verified completed publication");
+  }
+  if (
+    proof.reportByteLength !== latestByteLength ||
+    proof.reportSha256 !== latestSha256 ||
+    proof.reportArtifactId !== identity.artifactId ||
+    proof.evidenceArtifactId !== binding.artifactId ||
+    proof.evidenceArtifactSha256 !== binding.sha256 ||
+    proof.evidenceArtifactByteLength !== binding.byteLength ||
+    proof.frontendArtifactSha256 !==
+      binding.captureExecution?.frontendArtifactSha256 ||
+    proof.frontendArtifactByteLength !==
+      binding.captureExecution?.frontendArtifactByteLength ||
+    proof.readerSummaryId !== binding.readerSummaryId ||
+    proof.readerSummaryJobId !== binding.readerSummaryJobId ||
+    !periodsEqual(proof.requestedUtcPeriod, expectedPeriod) ||
+    stableJson(proof.captureExecution) !==
+      stableJson(binding.captureExecution) ||
+    stableJson(proof.model) !== stableJson(binding.runtimeProvenance) ||
+    stableJson(proof.qualityGateNames) !==
+      stableJson(Object.keys(report.qualityGates).sort())
+  ) {
+    fail("legacy publication proof or evidence binding is inconsistent");
+  }
+}
+
 function validateProvider(value) {
   assertObject(value, "terminal provider");
   assertExactKeys(value, [
@@ -305,4 +354,4 @@ function fail(message) {
   throw new Error(message);
 }
 
-export { stateArtifactFormat, proofArtifactFormat, outcomeArtifactFormat, reportArtifactFormat, reportGeneratedBy, validateState, validateProof, validateOutcome, assertDate, assertObject, stableJson, reportFilename, proofFilename, utcPeriod, periodsEqual, isObject, fail };
+export { stateArtifactFormat, proofArtifactFormat, outcomeArtifactFormat, reportArtifactFormat, reportGeneratedBy, validateState, validateProof, validateOutcome, validateLegacyPublicationBinding, assertDate, assertObject, stableJson, reportFilename, proofFilename, utcPeriod, periodsEqual, isObject, fail };

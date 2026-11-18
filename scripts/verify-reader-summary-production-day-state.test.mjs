@@ -160,6 +160,29 @@ test("legacy Jul22 publication bootstraps exact completed cursor", () => {
   });
 });
 
+test("legacy publication rejects failed quality gate even with matching immutable bytes and proof", () => {
+  withFixture((directory) => {
+    const legacyDate = "2026-07-22";
+    const latest = writeLegacyPublication(directory, legacyDate);
+    const report = JSON.parse(readFileSync(latest, "utf8"));
+    report.qualityGates.productionDefinitionOfDoneSatisfied = false;
+    const bytes = Buffer.from(`${JSON.stringify(report, null, 2)}\n`);
+    writeFileSync(latest, bytes);
+    writeFileSync(join(directory, reportFilename(legacyDate)), bytes);
+    const proofPath = join(directory, proofFilename(legacyDate));
+    const proof = JSON.parse(readFileSync(proofPath, "utf8"));
+    proof.reportByteLength = bytes.byteLength;
+    proof.reportSha256 = createHash("sha256").update(bytes).digest("hex");
+    writeFileSync(proofPath, `${JSON.stringify(proof)}\n`);
+    const rejected = assertFailure([
+      "--legacy-latest", latest,
+      "--state-dir", directory,
+      "--state-out", join(directory, "rejected-state.json"),
+    ]);
+    assert.match(rejected.stderr, /legacy latest report is not a verified completed publication/);
+  });
+});
+
 test("malformed or inconsistent legacy publication fails closed", () => {
   withFixture((directory) => {
     const latest = join(directory, "latest.v1.json");
@@ -530,6 +553,7 @@ function assertFailure(args) {
     Number.isInteger(result.status) && result.status !== 0,
     `expected a rejected verifier exit, got status=${result.status} signal=${result.signal}; stderr=${result.stderr}`,
   );
+  return result;
 }
 
 function withFixture(runTest) {
