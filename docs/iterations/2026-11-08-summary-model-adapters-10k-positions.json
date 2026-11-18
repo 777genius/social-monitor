@@ -1862,11 +1862,18 @@
       "original": "openai-responses-reader-summary-adaptive-evidence.ts",
       "owner": "openai-responses-reader-summary-expansion-policy.ts",
       "originalPositions": [
-        9,
         11,
         12,
         29,
-        47,
+        47
+      ],
+      "responsibility": "Retrospective frozen-source mapping: coverage-first expanded evidence admission, eligibility/score/timestamp tie-break and sealed daily selection are distinct from untrusted source projection; no newly implemented behavior or duplicate source credit; 2026-11-18 retracted original lines 58-59 after consolidating source-hydration limit selection (new shared expression, not source-exact)"
+    },
+    {
+      "original": "openai-responses-reader-summary-adaptive-evidence.ts",
+      "owner": "openai-responses-reader-summary-expanded-candidate-selection.ts",
+      "originalPositions": [
+        9,
         48,
         49,
         51,
@@ -1891,7 +1898,7 @@
         90,
         91
       ],
-      "responsibility": "Retrospective frozen-source mapping: coverage-first expanded evidence admission, eligibility/score/timestamp tie-break and sealed daily selection are distinct from untrusted source projection; no newly implemented behavior or duplicate source credit; 2026-11-18 retracted original lines 58-59 after consolidating source-hydration limit selection (new shared expression, not source-exact)"
+      "responsibility": "Coverage-first hydratable source admission, 25-item cap and deterministic eligible score/time ordering; route owner only selects sealed daily bypass and fixed legacy/V3 hydration limits; frozen original responsibility reassignment, no newly credited positions"
     },
     {
       "original": "openai-responses-reader-summary-adaptive-evidence.ts",

@@ -10,7 +10,8 @@ import {
 import type { ReaderSummaryModelInput } from "../../ports";
 import { availablePromotionV3PresentationIds } from "./openai-responses-reader-summary-v3-presentation-candidates";
 import { buildAdaptiveReaderSummaryEvidence } from "./openai-responses-reader-summary-adaptive-evidence";
-import { sourceHydrationLimitForSelection } from "./openai-responses-reader-summary-expansion-policy";
+import { expandedEvidenceIds, sourceHydrationLimitForSelection } from "./openai-responses-reader-summary-expansion-policy";
+import { selectHydratableExpandedEvidenceIds } from "./openai-responses-reader-summary-expanded-candidate-selection";
 import {
   acceptedReaderPresentation,
   compactConversationContext,
@@ -49,6 +50,32 @@ describe("adaptive reader summary evidence", () => {
       ...selection, promotionV3: undefined,
     }).size).toBe(0);
     expect(JSON.stringify(selection.promotionV3)).toBe(frozen);
+  });
+
+  it("keeps coverage-first admission, 25-cap, and source-only rejection in the independent candidate policy", () => {
+    const initial = evidenceSelection();
+    const selection: SummaryEvidenceSelection = {
+      ...initial,
+      selectedEvidence: initial.selectedEvidence.map((item) =>
+        item.feedItemId === "feed-0" || item.feedItemId === "feed-119"
+          ? { ...item, sourceText: "https://source.test/only",
+              bodyPreview: "https://source.test/only" }
+          : item,
+      ),
+    };
+    const frozen = JSON.stringify(selection);
+    const plan = coveragePlan();
+    const admitted = [...selectHydratableExpandedEvidenceIds(
+      selection, plan, sourceHydrationLimitForSelection(selection),
+    )];
+
+    expect(admitted).toHaveLength(25);
+    expect(new Set(admitted).size).toBe(25);
+    expect(admitted[0]).toBe("feed-118");
+    expect(admitted).not.toContain("feed-0");
+    expect(admitted).not.toContain("feed-119");
+    expect([...expandedEvidenceIds(selection, plan)]).toEqual(admitted);
+    expect(JSON.stringify(selection)).toBe(frozen);
   });
 
   it("keeps 120 baseline items and expands exactly 25 ranked candidates", () => {

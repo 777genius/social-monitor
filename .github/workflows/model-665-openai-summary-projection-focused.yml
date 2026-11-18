@@ -22,6 +22,7 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-preview-coverage.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-verified-presentation.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-conversation-context.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-expanded-candidate-selection.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-adaptive-evidence.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-v3-presentation-candidates.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-adaptive-evidence.spec.ts
