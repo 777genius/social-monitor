@@ -7135,6 +7135,42 @@
         15
       ],
       "responsibility": "Versioned narrative/daily-synthesis repair instruction dispatch and schema-violation suffix composition; prompt bytes preserved"
+    },
+    {
+      "original": "agent-runtime-reader-summary-story-relation-verifier.adapter.ts",
+      "owner": "agent-runtime-reader-summary-story-relation-lane-policy.ts",
+      "originalPositions": [
+        160,
+        161,
+        162,
+        163,
+        164,
+        165,
+        166,
+        167,
+        168,
+        169,
+        170,
+        171,
+        172,
+        173,
+        176,
+        177,
+        178,
+        179,
+        180,
+        181,
+        189,
+        191,
+        195,
+        196,
+        198,
+        201,
+        202,
+        204,
+        206
+      ],
+      "responsibility": "Lane-specific provider-purpose, prompt/schema, bounded timeout and signed output metadata admission split from scoped request identity, runtime dispatch and attestation. Exact pinned statement origins; public behavior preserved. Attribution is provisional only."
     }
   ]
 }

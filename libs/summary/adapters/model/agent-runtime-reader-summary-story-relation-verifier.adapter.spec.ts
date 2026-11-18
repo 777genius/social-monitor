@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { projectAgentRuntimeStoryRelationLaneContract } from "./agent-runtime-reader-summary-story-relation-lane-policy";
 import { readerSummaryScopeKey } from "../../domain";
 import { buildAgentRuntimeRequestId } from "./agent-runtime-model-support";
 import { buildAgentRuntimeStoryRelationIdentity } from "./agent-runtime-reader-summary-story-relation-identity";
@@ -54,6 +55,66 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
       .not.toBe(buildAgentRuntimeStoryRelationIdentity(changedEvidence).requestId);
     expect(buildAgentRuntimeStoryRelationIdentity(base).requestId)
       .toBe(buildAgentRuntimeStoryRelationIdentity({ ...base, evidence: changedEvidence.evidence }).requestId);
+  });
+
+  it("projects exact default, shadow, independent-news and related-topic lane contracts without dispatch", () => {
+    const base = input();
+    const settings = {
+      promptVersion: "reader_summary.story_relation.agent_runtime.v3",
+      relatedTopicPromptVersion: "reader_summary.related_topic_relation.agent_runtime.v1",
+      timeoutMs: 300_000,
+      relatedTopicTimeoutMs: 15_000,
+    } as const;
+    const before = JSON.stringify(base);
+    const standard = projectAgentRuntimeStoryRelationLaneContract(base, settings);
+    expect(standard).toMatchObject({
+      purpose: "social_monitor.reader_summary.verify_story_relations.v2",
+      schemaVersion: "reader_summary.story_relation.v1",
+      outputSchemaName: "social_monitor_reader_summary_story_relations",
+      timeoutMs: 300_000,
+      metadata: { promptVersion: settings.promptVersion },
+    });
+    expect(standard.metadata).not.toHaveProperty("verificationLane");
+    expect(standard.metadata).not.toHaveProperty("taskRole");
+
+    const shadow = projectAgentRuntimeStoryRelationLaneContract({
+      ...base, verificationLane: "safe_recall_shadow", timeoutMs: 55_000,
+    }, settings);
+    expect(shadow.outputSchema).toBe(standard.outputSchema);
+    expect(shadow.timeoutMs).toBe(55_000);
+    expect(shadow.metadata).toMatchObject({ verificationLane: "safe_recall_shadow" });
+    expect(shadow.metadata).not.toHaveProperty("taskRole");
+
+    const independent = projectAgentRuntimeStoryRelationLaneContract({
+      ...base, verificationLane: "independent_news",
+    }, settings);
+    expect(independent.systemPrompt).toContain("independently named publishers");
+    expect(standard.systemPrompt).not.toContain("independently named publishers");
+    expect(independent.metadata.promptVersion)
+      .toBe("reader_summary.story_relation.agent_runtime.v3.independent_news.v1");
+    expect(independent.timeoutMs).toBe(300_000);
+
+    const related = projectAgentRuntimeStoryRelationLaneContract({
+      ...base,
+      verificationLane: "related_topic",
+      candidates: base.candidates.map((candidate) => ({
+        ...candidate, subjectFeedItemId: "feed:hn", officialAnchorFeedItemId: "feed:rss",
+        subjectStoryClusterId: "story:hn", targetStoryClusterId: "story:rss",
+      })),
+    }, settings);
+    expect(related).toMatchObject({
+      purpose: "social_monitor.reader_summary.verify_related_topic_relations.v2",
+      schemaVersion: "reader_summary.related_topic_relation.v1",
+      outputSchemaName: "social_monitor_reader_summary_related_topic_relations",
+      timeoutMs: 15_000,
+      metadata: {
+        taskRole: "related_topic_relation",
+        verificationLane: "related_topic",
+        promptVersion: settings.relatedTopicPromptVersion,
+      },
+    });
+    expect(related.outputSchema).not.toBe(standard.outputSchema);
+    expect(JSON.stringify(base)).toBe(before);
   });
 
   it("uses subscription runtime and decides every shortlisted pair", async () => {

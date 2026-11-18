@@ -54,6 +54,7 @@ on:
       - libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-verifier-prompt.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-identity.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-command.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-lane-policy.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter.spec.ts
       - libs/summary/adapters/model/story-relation-response-schema.ts
       - libs/summary/adapters/model/story-relation-response-schema-failure.ts
