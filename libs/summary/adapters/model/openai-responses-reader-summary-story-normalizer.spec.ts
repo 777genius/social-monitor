@@ -32,6 +32,8 @@ import {
   ensureCoveragePlanStories as coverageOwner,
   topUpTopStories as topUpOwner,
 } from "./openai-responses-reader-summary-story-fallback-coverage";
+import { ensureCoveragePlanStories as plannedCoverageOwner } from "./openai-responses-reader-summary-story-fallback-plan";
+import { topUpTopStories as distinctTopUpOwner } from "./openai-responses-reader-summary-story-fallback-topup";
 
 describe("normalizeTopStories coverage alignment", () => {
   it("adds the approved coverage lead when the model returns eight other stories", () => {
@@ -321,6 +323,8 @@ describe("story fallback ownership", () => {
     expect(immutableEditorialSlateTopStories).toBe(slateOwner);
     expect(ensureCoveragePlanStories).toBe(coverageOwner);
     expect(topUpTopStories).toBe(topUpOwner);
+    expect(coverageOwner).toBe(plannedCoverageOwner);
+    expect(topUpOwner).toBe(distinctTopUpOwner);
   });
 
   it("preserves selected-evidence citations and planned coverage order", () => {
@@ -333,6 +337,27 @@ describe("story fallback ownership", () => {
       .toEqual(["story:3", "story:1", "story:2"]);
     expect(topUpTopStories(covered, input, citations)).toBe(covered);
     expect(topUpTopStories(fallback.slice(0, 1), input, citations)).toEqual(fallback);
+  });
+
+  it("isolates planned lead precedence from duplicate-citation-safe top-ups", () => {
+    const input = modelInput(3);
+    const citations = citationMap(3);
+    const unplanned = fallbackTopStories(input, citations).slice(0, 1);
+    const snapshot = structuredClone(unplanned);
+
+    const planned = plannedCoverageOwner(unplanned, input, citations);
+    expect(planned.map((story) => story.storyClusterId)).toEqual([
+      "story:3", "story:1",
+    ]);
+    const topInput = modelInput(2);
+    const topCitations = citationMap(2);
+    const overlapping = [{
+      ...fallbackTopStories(topInput, topCitations)[0]!,
+      citationIds: ["c1", "c2"],
+    }];
+    expect(distinctTopUpOwner(overlapping, topInput, topCitations)).toEqual(overlapping);
+    expect(unplanned).toEqual(snapshot);
+    expect(plannedCoverageOwner(unplanned, input, citations)).toEqual(planned);
   });
 
   it("rejects an immutable editorial Top without any trusted cited source", () => {

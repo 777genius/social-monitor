@@ -22,6 +22,8 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-story-fallback-evidence.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-story-fallback-slate.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-story-fallback-coverage.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-story-fallback-topup.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-story-fallback-plan.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-story-normalizer.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-narrative-title-policy.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-narrative-title-policy.spec.ts

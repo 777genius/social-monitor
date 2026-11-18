@@ -6,12 +6,10 @@ import type { ReaderSummaryModelInput } from "../../ports";
 import { reconcileModelTopStoriesWithCitations } from "./openai-responses-reader-summary-story-citations";
 import { normalizeDailyEditorialStories } from "./openai-responses-reader-summary-daily-editorial-stories";
 export { clusterIdFromCitations } from "./openai-responses-reader-summary-story-citations";
-import {
-  fallbackTopStories,
-  immutableEditorialSlateTopStories,
-  topUpTopStories,
-  ensureCoveragePlanStories,
-} from "./openai-responses-reader-summary-story-fallback";
+import { fallbackTopStories } from "./openai-responses-reader-summary-story-fallback-evidence";
+import { immutableEditorialSlateTopStories } from "./openai-responses-reader-summary-story-fallback-slate";
+import { topUpTopStories } from "./openai-responses-reader-summary-story-fallback-topup";
+import { ensureCoveragePlanStories } from "./openai-responses-reader-summary-story-fallback-plan";
 
 export const normalizeTopStories = (
   values: readonly Record<string, unknown>[],
