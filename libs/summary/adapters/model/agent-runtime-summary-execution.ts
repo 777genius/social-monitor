@@ -8,12 +8,7 @@ import type {
 import { buildAgentRuntimeSummaryTaskCommand } from "./agent-runtime-summary-task-command";
 import { defaultAgentRuntimeSummaryModel } from "./agent-runtime-summary-options";
 import type { AgentRuntimeSummaryRuntimeSettings } from "./agent-runtime-summary-runtime-settings";
-import {
-  readAgentRuntimeObjectOutput,
-  usageFromAgentRuntime,
-} from "./agent-runtime-model-support";
-import { parseOpenAiSummaryJsonObject } from "./openai-responses-summary-response-parser";
-import { normalizeOpenAiSummaryDraft } from "./openai-responses-summary-draft-normalizer";
+import { interpretAgentRuntimeSummaryTaskResult } from "./agent-runtime-summary-result-interpretation";
 
 /**
  * Own the effectful summary request and strict provider-result interpretation.
@@ -43,26 +38,12 @@ export const runAgentRuntimeSummaryExecution = async ({
     maxOutputTokens: settings.maxOutputTokens,
     timeoutMs: settings.timeoutMs,
   });
-  const result = await client.runTask(command);
-  const rawDraft = readAgentRuntimeObjectOutput(
-    result,
-    parseOpenAiSummaryJsonObject,
-    "Summary",
-  );
-  const usage = usageFromAgentRuntime(
-    result.usage,
-    estimateUsage(),
-  );
-  const draft = normalizeOpenAiSummaryDraft(
-    rawDraft,
+  const taskResult = await client.runTask(command);
+  return interpretAgentRuntimeSummaryTaskResult({
+    result: taskResult,
     input,
     selectedRoute,
-    usage,
-    settings.evalDatasetVersion,
-  );
-
-  return {
-    route: selectedRoute,
-    draft,
-  };
+    evalDatasetVersion: settings.evalDatasetVersion,
+    estimateUsage,
+  });
 };

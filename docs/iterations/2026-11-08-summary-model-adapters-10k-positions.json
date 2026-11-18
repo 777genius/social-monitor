@@ -940,7 +940,7 @@
     },
     {
       "original": "agent-runtime-summary-model.adapter.ts",
-      "owner": "agent-runtime-summary-execution.ts",
+      "owner": "agent-runtime-summary-result-interpretation.ts",
       "originalPositions": [
         203,
         204,
@@ -954,7 +954,7 @@
         221,
         222
       ],
-      "responsibility": "Effectful Agent Runtime dispatch, strict object response decoding, metered usage and normalized summary result isolated from route/budget/no-signal port orchestration"
+      "responsibility": "Fail-closed post-transport object interpretation before metering, original draft normalization and route identity; reownership of previously counted frozen positions, no additional original LOC"
     },
     {
       "original": "agent-runtime-promotion-presentation-v3.builder.ts",

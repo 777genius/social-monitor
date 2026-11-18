@@ -12,10 +12,67 @@ import {
   resolveAgentRuntimeSummaryModelOptions,
 } from "./agent-runtime-summary-model.adapter";
 import { resolveAgentRuntimeSummaryRuntimeSettings } from "./agent-runtime-summary-runtime-settings";
+import { interpretAgentRuntimeSummaryTaskResult } from "./agent-runtime-summary-result-interpretation";
 import { gatewayModelTaskFixture } from "../composition/gateway-model-task.spec-support";
 import { resolveGatewayLlmTransportConfig } from "../composition/reader-summary-agent-runtime-transport";
 
 describe("AgentRuntimeSummaryModelAdapter", () => {
+  it("interprets a completed task with bounded physical usage and unchanged route identity", () => {
+    const input = buildInput();
+    const selectedRoute = {
+      provider: "agent-runtime", model: "codex:summary-test",
+      promptVersion: "summary.prompt.agent_runtime.v1",
+      schemaVersion: "summary.artifact.v1",
+    } as const;
+    const estimateUsage = jest.fn(() => ({
+      inputTokens: 23, outputTokens: 41, estimatedCostUsd: 0.125,
+    }));
+    const result = interpretAgentRuntimeSummaryTaskResult({
+      result: {
+        status: "completed", structuredOutput: validProviderDraft(), warnings: [],
+        usage: {
+          inputTokens: -2, outputTokens: 1.5, totalTokens: 0,
+          estimatedCostUsd: Number.POSITIVE_INFINITY,
+        },
+      },
+      input, selectedRoute, evalDatasetVersion: "summary.eval.mvp.v1",
+      estimateUsage,
+    });
+
+    expect(estimateUsage).toHaveBeenCalledTimes(1);
+    expect(result.route).toBe(selectedRoute);
+    expect(result.draft.headline).toBe("Backend signals are converging");
+    expect(result.draft.usage).toEqual({
+      inputTokens: 23, outputTokens: 41, estimatedCostUsd: 0.125,
+    });
+    expect(input.evidence.items).toHaveLength(2);
+  });
+
+  it("rejects untrusted output before metering or publication", () => {
+    const input = buildInput();
+    const selectedRoute = {
+      provider: "agent-runtime", model: "codex:summary-test",
+      promptVersion: "summary.prompt.agent_runtime.v1",
+      schemaVersion: "summary.artifact.v1",
+    } as const;
+    const estimateUsage = jest.fn(() => ({
+      inputTokens: 23, outputTokens: 41, estimatedCostUsd: 0.125,
+    }));
+    const interpret = (result: AgentRuntimeTaskResult) =>
+      interpretAgentRuntimeSummaryTaskResult({
+        result, input, selectedRoute,
+        evalDatasetVersion: "summary.eval.mvp.v1", estimateUsage,
+      });
+    expect(() => interpret({
+      status: "completed", outputText: "{invalid-json", warnings: [],
+    })).toThrow();
+    expect(() => interpret({
+      status: "waiting_for_input", warnings: [],
+    })).toThrow("requested interactive input");
+    expect(estimateUsage).not.toHaveBeenCalled();
+  });
+
+
   it("preserves default and explicitly supplied execution options", () => {
     const client = new CapturingAgentRuntimeClient({ status: "completed", warnings: [] });
     expect(resolveAgentRuntimeSummaryRuntimeSettings({
