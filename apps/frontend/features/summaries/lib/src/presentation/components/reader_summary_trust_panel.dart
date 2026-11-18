@@ -5,7 +5,6 @@ import '../../domain/aggregates/reader_summary.dart';
 import '../../domain/entities/summary_citation.dart';
 import '../formatters/reader_summary_trust_copy.dart';
 import '../view_models/reader_summary_trust_snapshot.dart';
-import 'reader_summary_source_text.dart';
 import 'reader_summary_url_action_contract.dart';
 
 part 'reader_summary_trust_summary_line.dart';
@@ -47,41 +46,53 @@ class _ReaderSummaryTrustPanelState extends State<ReaderSummaryTrustPanel> {
       report: widget.reliabilityReport,
     );
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Divider(height: AppSpacing.md),
-        Material(
-          color: Colors.transparent,
-          child: InkWell(
-            key: const ValueKey('reader-summary-trust-toggle'),
-            borderRadius: BorderRadius.circular(8),
-            onTap: _toggleExpanded,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _TrustSummaryLine(
-                    snapshot: snapshot,
-                    report: widget.reliabilityReport,
-                    expanded: _expanded,
-                  ),
-                  if (_expanded) ...[
-                    const SizedBox(height: AppSpacing.sm),
-                    _TrustDetails(
-                      claims: widget.claims,
-                      report: widget.reliabilityReport,
-                      citationsById: widget.citationsById,
-                      onOpenUrl: widget.onOpenUrl,
-                    ),
-                  ],
-                ],
+    final colors = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.md),
+      child: Material(
+        color: colors.surfaceContainerLow,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: colors.outlineVariant),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Only the header is an expansion target. Evidence links and
+            // selectable text below must not trigger the panel ripple.
+            InkWell(
+              key: const ValueKey('reader-summary-trust-toggle'),
+              onTap: _toggleExpanded,
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                child: _TrustSummaryLine(
+                  snapshot: snapshot,
+                  report: widget.reliabilityReport,
+                  expanded: _expanded,
+                ),
               ),
             ),
-          ),
+            if (_expanded) ...[
+              Divider(height: 1, color: colors.outlineVariant),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.md,
+                  AppSpacing.sm,
+                  AppSpacing.md,
+                  AppSpacing.md,
+                ),
+                child: _TrustDetails(
+                  claims: widget.claims,
+                  report: widget.reliabilityReport,
+                  citationsById: widget.citationsById,
+                  onOpenUrl: widget.onOpenUrl,
+                ),
+              ),
+            ],
+          ],
         ),
-      ],
+      ),
     );
   }
 }
@@ -138,21 +149,27 @@ class _TrustDetails extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (report.risks.isNotEmpty) ...[
-          _ReliabilityNotes(report: report),
-          const SizedBox(height: AppSpacing.sm),
-        ],
-        for (final entry in claims.indexed)
-          _TrustStory(
-            index: entry.$1,
-            claim: entry.$2,
-            citationsById: citationsById,
-            onOpenUrl: onOpenUrl,
-          ),
-      ],
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1080),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (report.risks.isNotEmpty) ...[
+              _ReliabilityNotes(report: report),
+              const SizedBox(height: AppSpacing.sm),
+            ],
+            for (final entry in claims.indexed)
+              _TrustStory(
+                index: entry.$1,
+                claim: entry.$2,
+                citationsById: citationsById,
+                onOpenUrl: onOpenUrl,
+              ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -164,26 +181,43 @@ class _ReliabilityNotes extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: report.risks
-          .take(2)
-          .map(
-            (risk) => Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.xs),
-              child: Text(
-                trustReliabilityRiskDescription(risk),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  letterSpacing: 0,
-                ),
-              ),
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.info_outline,
+            size: 18,
+            color: colors.onSurfaceVariant,
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final risk in report.risks.take(2))
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+                    child: Text(
+                      trustReliabilityRiskDescription(risk),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+              ],
             ),
-          )
-          .toList(growable: false),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -208,20 +242,21 @@ class _TrustStory extends StatelessWidget {
       claim,
     );
 
-    return DecoratedBox(
+    return Container(
       key: ValueKey('reader-summary-trust-story-$index'),
+      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: colorScheme.outlineVariant)),
+        color: colorScheme.surface,
+        border: Border.all(color: colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+        padding: const EdgeInsets.all(AppSpacing.md),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               claim.claim,
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.labelLarge?.copyWith(
                 fontWeight: FontWeight.w800,
                 letterSpacing: 0,
@@ -257,8 +292,6 @@ class _TrustStory extends StatelessWidget {
             const SizedBox(height: AppSpacing.xs),
             Text(
               trustConfidenceExplanation(claim.confidence),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
                 letterSpacing: 0,
@@ -268,8 +301,6 @@ class _TrustStory extends StatelessWidget {
               const SizedBox(height: AppSpacing.xs),
               Text(
                 trustClaimRiskDescription(claim.risks.first),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: colorScheme.onSurfaceVariant,
                   letterSpacing: 0,
@@ -318,10 +349,8 @@ class _EvidenceLine extends StatelessWidget {
           ),
           const SizedBox(width: AppSpacing.xs),
           Expanded(
-            child: ReaderSummarySourceText(
+            child: SelectableText(
               '$label - ${evidence.title}',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ),

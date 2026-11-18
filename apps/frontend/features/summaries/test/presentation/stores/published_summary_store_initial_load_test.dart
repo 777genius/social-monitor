@@ -17,6 +17,242 @@ import 'package:social_monitor_summaries/src/presentation/stores/published_summa
 import '../../support/summaries_test_fixtures.dart';
 
 void main() {
+  test(
+    'retains old calendar metadata when history only references the new day',
+    () async {
+      final day = SummaryPeriodPreset.daily.resolve();
+      final oldStart = day.startedAt.subtract(const Duration(days: 5));
+      final old = _dailySummary(
+        'old-article',
+        oldStart.year,
+        oldStart.month,
+        oldStart.day,
+      );
+      final current = _dailySummary(
+        'current-article',
+        day.startedAt.year,
+        day.startedAt.month,
+        day.startedAt.day,
+      );
+      final catalog = _InitialLoadCatalog(
+        latestResult: Future.value(
+          Result.success(WorkspaceSummarySnapshot(
+            current: old,
+            availablePeriods: [old.period],
+          )),
+        ),
+        historyResult: Future.value(
+          Result.success(WorkspaceSummarySnapshot(
+            availablePeriods: [current.period],
+            availableSummaryReferences: [
+              PublishedSummaryReference(
+                summaryId: current.id,
+                period: current.period,
+              ),
+            ],
+            availablePeriodsAreComplete: false,
+          )),
+        ),
+        publishedSummaries: {current.id: current},
+      );
+      final store = _store(catalog, allowUnpublishedDays: true);
+      addTearDown(store.dispose);
+
+      await store.load();
+
+      expect(_readySummary(store).id, current.id);
+      expect(store.availablePeriods, containsAll([old.period, current.period]));
+      expect(
+        store.availableSummaryReferences.map((reference) => reference.summaryId),
+        containsAll([old.id, current.id]),
+      );
+    },
+  );
+
+  test('public daily reader preserves a failed latest request', () async {
+    final catalog = _InitialLoadCatalog(
+      latestResult: Future.value(const Result.failure(
+        UnexpectedFailure(message: 'Latest publication unavailable'),
+      )),
+      historyResult: Future.value(const Result.failure(
+        UnexpectedFailure(message: 'Publication history unavailable'),
+      )),
+    );
+    final store = _store(catalog, allowUnpublishedDays: true);
+    addTearDown(store.dispose);
+
+    await store.load();
+
+    final state = store.state as FailureViewState<ReaderSummary>;
+    expect(state.failure.message, 'Latest publication unavailable');
+    expect(store.canBrowseUnpublishedDaily, isTrue);
+    expect(store.selectedPeriod, SummaryPeriodPreset.daily.resolve());
+  });
+
+  test('public daily reader keeps source browsing when article fetch fails',
+      () async {
+    final day = SummaryPeriodPreset.daily.resolve();
+    final oldStart = day.startedAt.subtract(const Duration(days: 5));
+    final old = _dailySummary(
+      'old-article',
+      oldStart.year,
+      oldStart.month,
+      oldStart.day,
+    );
+    const currentId = 'current-article';
+    final catalog = _InitialLoadCatalog(
+      latestResult: Future.value(
+        Result.success(WorkspaceSummarySnapshot(current: old)),
+      ),
+      historyResult: Future.value(
+        Result.success(WorkspaceSummarySnapshot(
+          availableSummaryReferences: [
+            PublishedSummaryReference(
+              summaryId: currentId,
+              period: day,
+            ),
+          ],
+        )),
+      ),
+      publishedFailureForId: currentId,
+    );
+    final store = _store(catalog, allowUnpublishedDays: true);
+    addTearDown(store.dispose);
+
+    await store.load();
+
+    final state = store.state as FailureViewState<ReaderSummary>;
+    expect(state.failure.message, 'Publication detail unavailable');
+    expect(store.canBrowseUnpublishedDaily, isTrue);
+  });
+
+  test(
+    'public browsing opens the latest complete day, not an old AI article',
+    () async {
+      final day = SummaryPeriodPreset.daily.resolve();
+      final oldStart = day.startedAt.subtract(const Duration(days: 5));
+      final old = _dailySummary(
+        'old-article',
+        oldStart.year,
+        oldStart.month,
+        oldStart.day,
+      );
+      final catalog = _InitialLoadCatalog(
+        latestResult: Future.value(
+          Result.success(WorkspaceSummarySnapshot(current: old)),
+        ),
+        historyResult: Future.value(
+          Result.success(
+            WorkspaceSummarySnapshot(
+              availablePeriods: [old.period],
+              availableSummaryReferences: [
+                PublishedSummaryReference(
+                  summaryId: old.id,
+                  period: old.period,
+                ),
+              ],
+              availablePeriodsAreComplete: true,
+            ),
+          ),
+        ),
+      );
+      final store = _store(catalog, allowUnpublishedDays: true);
+      addTearDown(store.dispose);
+
+      await store.load();
+
+      expect(store.selectedPeriod, day);
+      expect(store.state, isA<EmptyViewState<ReaderSummary>>());
+      expect(store.canBrowseUnpublishedDaily, isTrue);
+      expect(store.availablePeriods, contains(old.period));
+      expect(store.canNavigateToPreviousPeriod, isTrue);
+      expect(catalog.publishedQueries, isEmpty);
+    },
+  );
+
+  test(
+    'public initial render does not wait for history to show source posts',
+    () async {
+      final day = SummaryPeriodPreset.daily.resolve();
+      final oldStart = day.startedAt.subtract(const Duration(days: 5));
+      final old = _dailySummary(
+        'old-article',
+        oldStart.year,
+        oldStart.month,
+        oldStart.day,
+      );
+      final waitingHistory = Completer<Result<WorkspaceSummarySnapshot>>();
+      final catalog = _InitialLoadCatalog(
+        latestResult: Future.value(
+          Result.success(WorkspaceSummarySnapshot(current: old)),
+        ),
+        historyResult: waitingHistory.future,
+      );
+      final store = _store(catalog, allowUnpublishedDays: true);
+      addTearDown(store.dispose);
+      final load = store.load();
+      await _waitUntil(() => store.state is EmptyViewState<ReaderSummary>);
+
+      expect(store.selectedPeriod, day);
+      expect(store.availablePeriods, contains(old.period));
+
+      waitingHistory.complete(
+        const Result.success(WorkspaceSummarySnapshot()),
+      );
+      await load;
+      expect(store.state, isA<EmptyViewState<ReaderSummary>>());
+    },
+  );
+
+  test(
+    'public initial load accepts a same-day reference found in history',
+    () async {
+      final day = SummaryPeriodPreset.daily.resolve();
+      final oldStart = day.startedAt.subtract(const Duration(days: 5));
+      final old = _dailySummary(
+        'old-article',
+        oldStart.year,
+        oldStart.month,
+        oldStart.day,
+      );
+      final current = _dailySummary(
+        'current-article',
+        day.startedAt.year,
+        day.startedAt.month,
+        day.startedAt.day,
+      );
+      final catalog = _InitialLoadCatalog(
+        latestResult: Future.value(
+          Result.success(WorkspaceSummarySnapshot(current: old)),
+        ),
+        historyResult: Future.value(
+          Result.success(
+            WorkspaceSummarySnapshot(
+              availablePeriods: [old.period, current.period],
+              availableSummaryReferences: [
+                PublishedSummaryReference(
+                  summaryId: current.id,
+                  period: current.period,
+                ),
+              ],
+              availablePeriodsAreComplete: true,
+            ),
+          ),
+        ),
+        publishedSummaries: {current.id: current},
+      );
+      final store = _store(catalog, allowUnpublishedDays: true);
+      addTearDown(store.dispose);
+
+      await store.load();
+
+      expect(store.selectedPeriod, day);
+      expect(_readySummary(store).id, current.id);
+      // Adjacent history may be prefetched after the selected article loads.
+      expect(catalog.publishedQueries, contains(current.id));
+    },
+  );
+
   test('publishes latest while the period catalog is still loading', () async {
     final summary = _dailySummary('summary-july-10', 2026, 7, 10);
     final latest = Completer<Result<WorkspaceSummarySnapshot>>();
@@ -133,9 +369,13 @@ void main() {
   );
 }
 
-PublishedSummaryStore _store(_InitialLoadCatalog catalog) {
+PublishedSummaryStore _store(
+  _InitialLoadCatalog catalog, {
+  bool allowUnpublishedDays = false,
+}) {
   return PublishedSummaryStore(
     scope: summaryWorkspaceScope,
+    allowUnpublishedDays: allowUnpublishedDays,
     loadLatest: LoadWorkspaceSummaryUseCase(catalog),
     loadHistory: LoadWorkspaceSummaryHistoryUseCase(catalog),
     loadPublished: LoadPublishedSummaryUseCase(catalog),
@@ -173,11 +413,13 @@ final class _InitialLoadCatalog extends Fake implements SummaryReviewCatalog {
     required this.latestResult,
     required this.historyResult,
     this.publishedSummaries = const {},
+    this.publishedFailureForId,
   });
 
   final Future<Result<WorkspaceSummarySnapshot>> latestResult;
   final Future<Result<WorkspaceSummarySnapshot>> historyResult;
   final Map<String, ReaderSummary> publishedSummaries;
+  final String? publishedFailureForId;
   final List<LoadWorkspaceSummaryQuery> latestQueries = [];
   final List<LoadWorkspaceSummaryQuery> historyQueries = [];
   final List<String> publishedQueries = [];
@@ -203,6 +445,11 @@ final class _InitialLoadCatalog extends Fake implements SummaryReviewCatalog {
     LoadPublishedSummaryQuery query,
   ) async {
     publishedQueries.add(query.summaryId);
+    if (query.summaryId == publishedFailureForId) {
+      return const Result.failure(
+        UnexpectedFailure(message: 'Publication detail unavailable'),
+      );
+    }
     return Result.success(
       WorkspaceSummarySnapshot(current: publishedSummaries[query.summaryId]),
     );

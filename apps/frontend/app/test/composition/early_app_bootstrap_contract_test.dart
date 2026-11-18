@@ -20,7 +20,9 @@ void main() {
     expect(html, contains('new AbortController()'));
     expect(html, contains('signal: controller.signal'));
     expect(html, contains('controller.abort()'));
-    expect(html, contains('}, 12000)'));
+    // A stalled speculative request must not delay auth restoration for 12s.
+    expect(html, contains('}, 3000)'));
+    expect(html, isNot(contains('}, 12000)')));
     expect(html, isNot(contains('authorization')));
     expect(html, contains('if (pendingResponse === null)'));
     expect(html, contains('pendingResponse = null'));
