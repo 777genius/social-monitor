@@ -9,12 +9,12 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 
-const verifier = join(
-  process.cwd(),
-  "scripts/verify-reader-summary-production-day-state.mjs",
+const verifier = fileURLToPath(
+  new URL("./verify-reader-summary-production-day-state.mjs", import.meta.url),
 );
 const collectionDate = "2026-07-27";
 
@@ -199,6 +199,64 @@ test("terminal incomplete providers require a diagnostic reason", () => {
       join(directory, "state.json"),
     ]);
   });
+});
+
+test("real verifier works from a non-repository working directory", () => {
+  withFixture((directory) => {
+    const proofPath = writeProof(directory, collectionDate);
+    const statePath = join(directory, "foreign-cwd-state.json");
+    run([
+      "--expected-date", collectionDate,
+      "--publication-proof", proofPath,
+      "--state-out", statePath,
+    ], { cwd: directory });
+    run([
+      "--expected-date", collectionDate,
+      "--publication-proof", proofPath,
+      "--state", statePath,
+    ], { cwd: directory });
+    assert.equal(JSON.parse(readFileSync(statePath, "utf8")).state, "complete");
+  });
+});
+
+test("real verifier rejects malformed proof policy after extraction", () => {
+  for (const corrupt of [
+    (proof) => { proof.requestedUtcPeriod.endedAt = "2026-07-29T00:00:00.000Z"; },
+    (proof) => { proof.qualityGateNames.push(proof.qualityGateNames[0]); },
+    (proof) => { proof.reportSha256 = "z".repeat(64); },
+  ]) {
+    withFixture((directory) => {
+      const proofPath = writeProof(directory, collectionDate);
+      const proof = JSON.parse(readFileSync(proofPath, "utf8"));
+      corrupt(proof);
+      writeFileSync(proofPath, `${JSON.stringify(proof)}\n`);
+      assertFailure([
+        "--expected-date", collectionDate,
+        "--publication-proof", proofPath,
+        "--state-out", join(directory, "rejected-state.json"),
+      ]);
+    });
+  }
+});
+
+test("real verifier rejects conflicting provider diagnostics after extraction", () => {
+  for (const corrupt of [
+    (outcome) => { outcome.providerReadiness.providers[1].providerKey = "hacker-news"; },
+    (outcome) => { outcome.providerReadiness.providers[1].databaseFeedItemCount = -1; },
+    (outcome) => { outcome.outcome = "unavailable"; },
+  ]) {
+    withFixture((directory) => {
+      const outcomePath = writeOutcome(directory, collectionDate, "partial");
+      const outcome = JSON.parse(readFileSync(outcomePath, "utf8"));
+      corrupt(outcome);
+      writeFileSync(outcomePath, `${JSON.stringify(outcome)}\n`);
+      assertFailure([
+        "--expected-date", collectionDate,
+        "--terminal-outcome", outcomePath,
+        "--state-out", join(directory, "rejected-state.json"),
+      ]);
+    });
+  }
 });
 
 function writeLegacyPublication(directory, date) {
@@ -406,8 +464,9 @@ function outcomeFilename(date) {
   return `reader-summary-production-day-outcome.${date}.v1.json`;
 }
 
-function run(args) {
+function run(args, options = {}) {
   const result = spawnSync(process.execPath, [verifier, ...args], {
+    cwd: options.cwd,
     encoding: "utf8",
   });
   assert.equal(result.status, 0, result.stderr);
