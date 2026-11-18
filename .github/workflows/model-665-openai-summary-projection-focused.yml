@@ -12,6 +12,7 @@ on:
       - libs/summary/adapters/model/openai-responses-summary-transport-failure.ts
       - libs/summary/adapters/model/openai-responses-summary-transport.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-source-content.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-source-normalization.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-source-fragments.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-fragment-chunking.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-fragment-ranking.ts

@@ -1,6 +1,8 @@
 import type { SummaryEvidenceItem } from "../../domain";
 import { relevantSourceFragments } from "./openai-responses-reader-summary-source-fragments";
+import { normalizeSourceText } from "./openai-responses-reader-summary-source-normalization";
 export { compactText } from "./openai-responses-reader-summary-source-fragments";
+export { normalizeSourceText } from "./openai-responses-reader-summary-source-normalization";
 
 const expandedSourceLimit = 2_500;
 
@@ -44,18 +46,4 @@ const fullSourceContent = (
   includedCharacterCount: source.length,
   text: source,
 });
-
-export const normalizeSourceText = (value: string | undefined,
-  sourceHydrationLimit: number): string | undefined => {
-  const normalized = value
-    ?.slice(0, sourceHydrationLimit)
-    .replace(/\[([^\]]+)\]\(\s*https?:\/\/[^)\s]+\s*\)/giu, "$1")
-    .replace(/https?:\/\/\S+/giu, "")
-    .replace(/<[^>]+>/gu, " ")
-    .replace(/\s+/gu, " ")
-    .trim();
-  return normalized === undefined || normalized.length === 0
-    ? undefined
-    : normalized;
-};
 

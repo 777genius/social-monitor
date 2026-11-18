@@ -4,7 +4,7 @@ import type {
   SummaryEvidenceSelection,
 } from "../../domain";
 import { isTopReadEligibleEvidence } from "../../domain/policies/top-read-eligibility-policy";
-import { normalizeSourceText } from "./openai-responses-reader-summary-source-content";
+import { normalizeSourceText } from "./openai-responses-reader-summary-source-normalization";
 
 const expandedCandidateLimit = 25;
 const legacySourceHydrationLimit = 50_000;

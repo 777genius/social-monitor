@@ -4,6 +4,7 @@ import {
   compactText,
   normalizeSourceText,
 } from "./openai-responses-reader-summary-source-content";
+import { normalizeSourceText as directNormalizeSourceText } from "./openai-responses-reader-summary-source-normalization";
 import {
   compactText as directCompactText,
   relevantSourceFragments,
@@ -35,6 +36,16 @@ describe("reader-summary source-content privacy and bounds", () => {
     const text = "[label](https://example.invalid/a) Next <b>detail</b> https://example.invalid/other";
     expect(normalizeSourceText(text, 500)).toBe("label Next detail");
     expect(normalizeSourceText(undefined, 500)).toBeUndefined();
+  });
+
+  it("uses one independent lexical admission policy for expansion and hydration", () => {
+    expect(normalizeSourceText).toBe(directNormalizeSourceText);
+    const raw = "  [🧪 v2](https://example.invalid/source)   <b>value</b>  ";
+    expect(directNormalizeSourceText(raw, raw.length)).toBe("🧪 v2 value");
+    expect(directNormalizeSourceText("https://example.invalid/only", 100)).toBeUndefined();
+    // UTF-16 limits are preserved (astral symbol uses two code units).
+    expect(directNormalizeSourceText("🧪qualifier tail", 2)).toBe("🧪");
+    expect(raw).toContain("[🧪 v2]");
   });
 
   it("retains bounded text compaction without reordering words", () => {
