@@ -689,14 +689,8 @@
     },
     {
       "original": "openai-responses-reader-summary-narrative.ts",
-      "owner": "openai-responses-reader-summary-narrative-evidence.ts",
+      "owner": "openai-responses-reader-summary-narrative-text.ts",
       "originalPositions": [
-        114,
-        220,
-        221,
-        222,
-        223,
-        227,
         228,
         229,
         230,
@@ -710,7 +704,14 @@
         240,
         242,
         243,
-        244,
+        244
+      ],
+      "responsibility": "Authored section/cited source text precedence, separated from planned lead fallback; only frozen executable code coordinates retained"
+    },
+    {
+      "original": "openai-responses-reader-summary-narrative.ts",
+      "owner": "openai-responses-reader-summary-narrative-fallback.ts",
+      "originalPositions": [
         282,
         284,
         285,
@@ -730,7 +731,7 @@
         316,
         318
       ],
-      "responsibility": "Narrative text/title/evidence fallback, without provider-diverse watch-citation trust; previous owner lines redistributed with +0 new credit."
+      "responsibility": "Fail-closed approved-plan feed admission and bounded cited fallback lead; legacy public function identity retained"
     },
     {
       "original": "openai-responses-reader-summary-narrative.ts",

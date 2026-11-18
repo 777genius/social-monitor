@@ -26,6 +26,8 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-narrative-title-policy.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-narrative-title-policy.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-narrative-evidence.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-narrative-text.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-narrative-fallback.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-watch-evidence-policy.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-narrative.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-narrative-section-projection.ts

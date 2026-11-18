@@ -5,7 +5,8 @@ import {
   optionalString,
   requiredStringArray,
 } from "./openai-responses-reader-summary-json";
-import { defaultNarrativeTitle, narrativeSectionText } from "./openai-responses-reader-summary-narrative-evidence";
+import { defaultNarrativeTitle } from "./openai-responses-reader-summary-narrative-title-policy";
+import { narrativeSectionText } from "./openai-responses-reader-summary-narrative-text";
 import type { ReaderSummaryNarrativeCoverage } from "./openai-responses-reader-summary-narrative-coverage";
 import { maxNarrativeSections } from "./openai-responses-reader-summary-narrative-validation";
 import { isAdmissibleGroundedNarrativeSection } from "./openai-responses-reader-summary-narrative-section-admission";
