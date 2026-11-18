@@ -238,6 +238,30 @@ test("malformed, stale, and conflicting latest states fail closed", () => {
   });
 });
 
+test("dated and direct state checks reject invalid terminal identity", () => {
+  withFixture((directory) => {
+    const proofPath = writeProof(directory, collectionDate);
+    const datedState = join(directory, stateFilename(collectionDate));
+    buildCompleteState(proofPath, datedState, collectionDate);
+
+    const invalid = JSON.parse(readFileSync(datedState, "utf8"));
+    invalid.terminal = false;
+    writeFileSync(datedState, `${JSON.stringify(invalid)}\n`);
+
+    const dated = assertFailure([
+      "--dated-state", datedState, "--state-dir", directory,
+    ]);
+    assert.match(dated.stderr, /day state identity or terminal status is invalid/);
+
+    const direct = assertFailure([
+      "--expected-date", collectionDate,
+      "--publication-proof", proofPath,
+      "--state", datedState,
+    ]);
+    assert.match(direct.stderr, /day state identity or terminal status is invalid/);
+  });
+});
+
 test("terminal outcome must prove no model, publication, or recollection", () => {
   withFixture((directory) => {
     const outcomePath = writeOutcome(directory, collectionDate, "partial");
