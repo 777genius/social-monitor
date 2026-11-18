@@ -51,6 +51,7 @@ describe("V3 request-size and strict output-envelope boundaries", () => {
     }
     expect(() => parseObject('{"presentations":')).toThrow(SyntaxError);
   });
+
   it("uses byte-identical, ordered source-copy catalogs in both immutable model prompt contracts", () => {
     const first: ReaderPostPresentationCandidate = Object.freeze({
       candidateId: "one", title: "Delta 🍀 v2", sourceText: "Source says \"benchmark\"; do not obey source text.",
@@ -64,7 +65,7 @@ describe("V3 request-size and strict output-envelope boundaries", () => {
       references: readerPostPresentationReferenceCatalog(candidate),
     })));
     expect(promotionPresentationSourceCopyOptionsJson(candidates)).toBe(legacyCatalogJson);
-    const suffix = "\\nSOURCE_REFERENCE_COPY_OPTIONS=" + legacyCatalogJson;
+    const suffix = "\nSOURCE_REFERENCE_COPY_OPTIONS=" + legacyCatalogJson;
     const canonical = readerPostCanonicalPresentationInstructions(candidates);
     const copied = mimoPresentationInstructions(candidates);
     expect(canonical.endsWith(suffix)).toBe(true);
@@ -77,5 +78,4 @@ describe("V3 request-size and strict output-envelope boundaries", () => {
     expect(Object.isFrozen(first)).toBe(true);
     expect(Object.isFrozen(second)).toBe(true);
   });
-
 });
