@@ -27,14 +27,14 @@ export const expandedEvidenceIds = (
     selection.selectedEvidence.map((item) => [item.feedItemId, item] as const),
   );
   const result = new Set<string>();
+  const sourceHydrationLimit = sourceHydrationLimitForSelection(selection);
   const add = (feedItemId: string): void => {
     const evidence = evidenceById.get(feedItemId);
     if (
       result.size < expandedCandidateLimit &&
       evidence !== undefined &&
       normalizeSourceText(evidence.sourceText ?? evidence.bodyPreview,
-        selection.promotionV3 === undefined ? legacySourceHydrationLimit :
-          v3SourceHydrationLimit) !==
+        sourceHydrationLimit) !==
         undefined
     ) {
       result.add(feedItemId);

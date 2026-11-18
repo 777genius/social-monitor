@@ -229,6 +229,62 @@ describe("adaptive reader summary evidence", () => {
     expect(projected[1]?.evidenceTier).toBe("expanded_candidate");
   });
 
+  it("uses the same source-length policy for expansion admission and transmitted hydration", () => {
+    const seed = evidenceSelection();
+    const sourceText = "🧪界".repeat(20_000); // 60,000 UTF-16 code units.
+    const source = Object.freeze({
+      ...evidenceItem(0), sourceText, bodyPreview: "Short independent preview",
+    });
+    const legacy: SummaryEvidenceSelection = {
+      ...seed, selectedEvidence: [source],
+    };
+    const promotionV3: SummaryEvidenceSelection = {
+      ...legacy,
+      promotionV3: {
+        policyVersion: READER_PROMOTION_POLICY_STAMP,
+        outcome: "ready",
+        top: [], additional: [], news: [], excluded: [],
+      },
+    };
+    const legacyResult = buildAdaptiveReaderSummaryEvidence(legacy, coveragePlan());
+    const v3Result = buildAdaptiveReaderSummaryEvidence(promotionV3, coveragePlan());
+    const legacyContent = legacyResult[0]?.sourceContent as {
+      readonly originalCharacterCount: number;
+    };
+    const v3Content = v3Result[0]?.sourceContent as {
+      readonly originalCharacterCount: number;
+    };
+
+    expect(sourceHydrationLimitForSelection(legacy)).toBe(50_000);
+    expect(sourceHydrationLimitForSelection(promotionV3)).toBe(64_000);
+    expect(legacyResult[0]?.evidenceTier).toBe("expanded_candidate");
+    expect(v3Result[0]?.evidenceTier).toBe("expanded_candidate");
+    expect(legacyContent.originalCharacterCount).toBe(50_000);
+    expect(v3Content.originalCharacterCount).toBe(sourceText.length);
+    expect(source.sourceText).toBe(sourceText);
+  });
+
+  it("retains model-visible preview when only a truncated Unicode prefix was transmitted", () => {
+    const sourceText = "🧪界".repeat(240) + " qualifier";
+    const item = Object.freeze({ ...evidenceItem(0), sourceText });
+    const projected = projectReaderSummaryPromptEvidenceItem(
+      item, 0, true, "c1", 320, false,
+    );
+    const hydrated = projected.sourceContent as {
+      readonly mode: string; readonly originalCharacterCount: number;
+      readonly text: string;
+    };
+
+    expect(hydrated.mode).toBe("full_source_text");
+    expect(hydrated.originalCharacterCount).toBe(320);
+    expect(hydrated.text).toHaveLength(320);
+    expect(sourceText).toContain(hydrated.text);
+    expect(String(projected.bodyPreview).length).toBeGreaterThan(320);
+    expect(String(projected.bodyPreview).length).toBeLessThanOrEqual(600);
+    expect(hydrated.text).not.toContain(String(projected.bodyPreview));
+    expect(item.sourceText).toBe(sourceText);
+  });
+
   it("omits only previews covered by the exact hydrated full source, including UTF-16", () => {
     const sourceText = "Ultra 🧪界 preview with a precise model qualifier";
     const item: SummaryEvidenceItem = {
