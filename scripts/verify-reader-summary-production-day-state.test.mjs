@@ -12,11 +12,59 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
+import * as ts from "typescript";
 
 const verifier = fileURLToPath(
   new URL("./verify-reader-summary-production-day-state.mjs", import.meta.url),
 );
 const collectionDate = "2026-07-27";
+
+test("CLI delegates every state/proof/outcome path to the pure validation owner", () => {
+  const script = ts.createSourceFile(
+    "production-day-cli.mjs", readFileSync(verifier, "utf8"),
+    ts.ScriptTarget.Latest, true, ts.ScriptKind.JS,
+  );
+  const policyPath = fileURLToPath(
+    new URL("./lib/reader-summary-production-day-state-validation.mjs", import.meta.url),
+  );
+  const policy = ts.createSourceFile(
+    "production-day-policy.mjs", readFileSync(policyPath, "utf8"),
+    ts.ScriptTarget.Latest, true, ts.ScriptKind.JS,
+  );
+  const policyImport = script.statements.find((statement) =>
+    ts.isImportDeclaration(statement) &&
+    statement.moduleSpecifier.text === "./lib/reader-summary-production-day-state-validation.mjs");
+  assert.ok(policyImport, "CLI must import the extracted validation policy");
+  const bindings = policyImport.importClause?.namedBindings;
+  assert.ok(bindings && ts.isNamedImports(bindings), "CLI must import policy functions by name");
+  const imported = new Set(bindings.elements.map((element) => element.name.text));
+  const calls = new Map();
+  function visit(node) {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+      const name = node.expression.text;
+      calls.set(name, (calls.get(name) ?? 0) + 1);
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(script);
+  // Counts are the original executable admission paths, not comment/string markers.
+  for (const [name, expectedCalls] of [
+    ["validateState", 3],    // latest, dated and direct state verification
+    ["validateProof", 2],    // verified proof and state construction
+    ["validateOutcome", 1],  // terminal provider outcome
+  ]) {
+    assert.ok(imported.has(name), name + " must come from the extracted owner");
+    assert.equal(
+      script.statements.filter((node) => ts.isFunctionDeclaration(node) && node.name?.text === name).length,
+      0, name + " must not be duplicated in the CLI",
+    );
+    assert.equal(
+      policy.statements.filter((node) => ts.isFunctionDeclaration(node) && node.name?.text === name).length,
+      1, name + " must have exactly one policy implementation",
+    );
+    assert.equal(calls.get(name), expectedCalls, name + " executable call count changed");
+  }
+});
 
 test("creates deterministic complete state bound to a verified proof", () => {
   withFixture((directory) => {
