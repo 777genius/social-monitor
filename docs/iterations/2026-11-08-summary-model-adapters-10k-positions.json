@@ -3075,10 +3075,6 @@
       "original": "agent-runtime-reader-summary-model.adapter.ts",
       "owner": "reader-summary-token-budget.ts",
       "originalPositions": [
-        169,
-        170,
-        171,
-        172,
         191,
         192,
         195,
@@ -3275,11 +3271,6 @@
       "original": "openai-responses-summary-model.adapter.ts",
       "owner": "openai-responses-summary-budget.ts",
       "originalPositions": [
-        130,
-        131,
-        132,
-        133,
-        134,
         152,
         155,
         156,
@@ -3832,10 +3823,6 @@
       "original": "openai-responses-reader-summary-model.adapter.ts",
       "owner": "reader-summary-token-budget.ts",
       "originalPositions": [
-        119,
-        120,
-        121,
-        122,
         141,
         142,
         145,
@@ -4010,11 +3997,6 @@
       "original": "deterministic-reader-summary-model.adapter.ts",
       "owner": "deterministic-reader-summary-budget-policy.ts",
       "originalPositions": [
-        37,
-        38,
-        39,
-        40,
-        41,
         43,
         55,
         56,
@@ -7442,6 +7424,50 @@
         236
       ],
       "responsibility": "Daily frozen receipt preflight and physical attempt usage normalization, separate from primary/repair scheduling; two previously credited frozen coordinates reowned"
+    },
+    {
+      "original": "agent-runtime-reader-summary-model.adapter.ts",
+      "owner": "summary-model-budget-admission.ts",
+      "originalPositions": [
+        169,
+        170,
+        171,
+        172
+      ],
+      "responsibility": "Shared pure provider-neutral five-boundary admission; original executable statements reassigned from provider wrappers without repeated LOC credit"
+    },
+    {
+      "original": "openai-responses-summary-model.adapter.ts",
+      "owner": "summary-model-budget-admission.ts",
+      "originalPositions": [
+        130,
+        131,
+        132,
+        133
+      ],
+      "responsibility": "Shared pure provider-neutral five-boundary admission; original executable statements reassigned from provider wrappers without repeated LOC credit"
+    },
+    {
+      "original": "openai-responses-reader-summary-model.adapter.ts",
+      "owner": "summary-model-budget-admission.ts",
+      "originalPositions": [
+        119,
+        120,
+        121,
+        122
+      ],
+      "responsibility": "Shared pure provider-neutral five-boundary admission; original executable statements reassigned from provider wrappers without repeated LOC credit"
+    },
+    {
+      "original": "deterministic-reader-summary-model.adapter.ts",
+      "owner": "summary-model-budget-admission.ts",
+      "originalPositions": [
+        37,
+        38,
+        39,
+        40
+      ],
+      "responsibility": "Shared pure provider-neutral five-boundary admission; original executable statements reassigned from provider wrappers without repeated LOC credit"
     }
   ]
 }
