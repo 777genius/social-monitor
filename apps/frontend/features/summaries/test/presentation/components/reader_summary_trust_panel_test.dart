@@ -70,6 +70,36 @@ void main() {
     );
   });
 
+  testWidgets('expanded evidence reveals full selectable source copy', (
+    tester,
+  ) async {
+    const viewport = Size(375, 800);
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = viewport;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    const sourceTitle =
+        'A detailed original post title about setting up a reliable MCP '
+        'agent workflow, with a precise caveat that must remain readable '
+        'at narrow mobile widths and increased text scaling.';
+    await tester.pumpWidget(
+      _TestApp(
+        summary: _trustSummary(evidenceTitle: sourceTitle),
+        viewport: viewport,
+        textScaler: const TextScaler.linear(1.5),
+      ),
+    );
+    await tester.tap(find.text('Trust & evidence'));
+    await tester.pumpAndSettle();
+
+    final source = find.text('Reddit [1] - $sourceTitle');
+    expect(source, findsOneWidget);
+    expect(tester.widget<SelectableText>(source).maxLines, isNull);
+    expect(find.text('Source text'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('wraps trust copy at 375x800 with 1.5 text scaling', (
     tester,
   ) async {
@@ -124,7 +154,9 @@ void main() {
   });
 }
 
-ReaderSummary _trustSummary() {
+ReaderSummary _trustSummary({
+  String evidenceTitle = 'Thread evidence about MCP agent workflows',
+}) {
   return const SummaryMapper().readerSummaryToDomain(
     readerSummaryApiDto(
       content: readerSummaryContentApiDto(
@@ -133,7 +165,7 @@ ReaderSummary _trustSummary() {
             claim: 'Reddit users report useful MCP agent workflows',
             evidence: [
               SummaryClaimEvidenceApiDto(
-                title: 'Thread evidence about MCP agent workflows',
+                title: evidenceTitle,
                 providerKey: 'reddit',
                 citationId: 'claim-citation',
                 canonicalUrl: 'https://reddit.example/r/mcp/comments/1',
