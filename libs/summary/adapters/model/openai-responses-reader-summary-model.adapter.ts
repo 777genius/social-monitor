@@ -18,7 +18,7 @@ import type {
 import { admitOpenAiReaderSummaryGeneration } from "./openai-responses-reader-summary-generation-admission";
 import {
   validateOpenAiReaderSummaryResponse,
-} from "./openai-responses-reader-summary-response-policy";
+} from "./openai-responses-reader-summary-response-validation";
 import { classifyOpenAiReaderSummaryModelError } from "./openai-responses-reader-summary-error-policy";
 import { buildReaderSummaryNoSignalAttempt } from "./reader-summary-no-signal-attempt";
 import { runOpenAiReaderSummaryGeneration } from "./openai-responses-reader-summary-generation";

@@ -10,6 +10,9 @@ on:
       - libs/summary/adapters/model/reader-summary-citable-evidence.ts
       - libs/summary/adapters/model/reader-summary-citation-map-projection.ts
       - libs/summary/adapters/model/reader-summary-citation-map-projection.spec.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-response-policy.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-response-validation.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-response-validation.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-draft-normalizer.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-draft-policy-projection.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-draft-enabled-sections.ts
@@ -73,6 +76,7 @@ jobs:
           libs/summary/adapters/model/openai-responses-reader-summary-json-schema.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-daily-writer-schema.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-model.adapter.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-response-validation.spec.ts
           libs/summary/adapters/model/reader-summary-prompt-release-policy.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-prompt-boundaries.spec.ts
           libs/summary/adapters/model/reader-summary-prompt-release-options.spec.ts

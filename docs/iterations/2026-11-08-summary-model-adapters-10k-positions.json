@@ -3838,7 +3838,14 @@
         230,
         231,
         234,
-        241,
+        241
+      ],
+      "responsibility": "Untrusted OpenAI completion/refusal, usage and citation-bound draft normalization; validation independently owned"
+    },
+    {
+      "original": "openai-responses-reader-summary-model.adapter.ts",
+      "owner": "openai-responses-reader-summary-response-validation.ts",
+      "originalPositions": [
         249,
         250,
         251,
@@ -3851,7 +3858,7 @@
         266,
         267
       ],
-      "responsibility": "Untrusted OpenAI output text/refusal, cited draft normalization and strict provider response validation no longer live inside transport/orchestration adapter"
+      "responsibility": "Independent normalized draft/schema/provider route validation, fail-closed after transport and generation"
     },
     {
       "original": "openai-responses-reader-summary-model.adapter.ts",
