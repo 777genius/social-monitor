@@ -56,7 +56,7 @@ Future<generated.AppBootstrapResponseDto?> _readPrefetchedBootstrap(
   try {
     earlyPayload = await earlyBootstrapReader();
   } on Object {
-    // The generated client remains authoritative when the HTML bridge fails.
+    // No retry of the expensive bootstrap: the session endpoint is next.
   }
   if (earlyPayload != null) {
     try {

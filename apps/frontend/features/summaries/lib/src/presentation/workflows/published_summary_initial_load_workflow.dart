@@ -117,8 +117,12 @@ extension PublishedSummaryInitialLoadWorkflow on PublishedSummaryStore {
       }
       // Show this day's source posts immediately, without waiting for the
       // history request or rendering a different day's AI article.
-      state = const EmptyViewState<ReaderSummary>(
-        reason: 'No published daily summary exists for this day.',
+      state = latestResult.fold<AsyncViewState<ReaderSummary>>(
+        onSuccess: (_) => const EmptyViewState<ReaderSummary>(
+          reason: 'No published daily summary exists for this day.',
+        ),
+        onFailure: (failure) =>
+            FailureViewState<ReaderSummary>(failure: failure),
       );
       _notifyChanged();
     }
@@ -163,9 +167,18 @@ extension PublishedSummaryInitialLoadWorkflow on PublishedSummaryStore {
       if (candidate != null &&
           sameSummaryPeriodWindow(candidate.period, selectedPeriod)) {
         _publishInitialResult(result, history: history);
+      } else if (state is! ReadyViewState<ReaderSummary>) {
+        // A referenced publication failed to load. Keep source browsing
+        // available, but do not mislabel an API failure as an unpublished day.
+        result.fold<void>(
+          onSuccess: (_) {},
+          onFailure: (failure) {
+            state = FailureViewState<ReaderSummary>(failure: failure);
+            _notifyChanged();
+          },
+        );
       }
     }
     _prefetchAdjacentSummaries();
   }
-
 }
