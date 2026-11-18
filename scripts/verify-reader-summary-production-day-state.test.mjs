@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
   cpSync,
+  chmodSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -246,6 +247,8 @@ test("dated and direct state checks reject invalid terminal identity", () => {
 
     const invalid = JSON.parse(readFileSync(datedState, "utf8"));
     invalid.terminal = false;
+    // The CLI writes this fixture 0444; explicitly grant write access to model tampering.
+    chmodSync(datedState, 0o644);
     writeFileSync(datedState, `${JSON.stringify(invalid)}\n`);
 
     const dated = assertFailure([
