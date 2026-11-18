@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import {
   validateState, validateProof, validateLegacyPublicationBinding, createState,
-  assertDate, assertObject, stableJson, reportFilename, proofFilename, fail,
+  assertDate, assertObject, stableJson, reportFilename, proofFilename, stateFilename, fail,
 } from './lib/reader-summary-production-day-state-validation.mjs';
 
 const options = parseOptions(process.argv.slice(2));
@@ -143,10 +143,6 @@ function writeState(path, state) {
     flag: "wx",
     mode: 0o444,
   });
-}
-
-function stateFilename(date) {
-  return `reader-summary-production-day-state.${date}.v1.json`;
 }
 
 function parseOptions(args) {

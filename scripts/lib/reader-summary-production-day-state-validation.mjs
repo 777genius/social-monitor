@@ -276,6 +276,10 @@ function validateProvider(value) {
   }
 }
 
+function stateFilename(date) {
+  return `reader-summary-production-day-state.${date}.v1.json`;
+}
+
 function reportFilename(date) {
   return `reader-summary-production-day-run.${date}.v1.json`;
 }
@@ -375,4 +379,4 @@ function fail(message) {
   throw new Error(message);
 }
 
-export { stateArtifactFormat, proofArtifactFormat, outcomeArtifactFormat, reportArtifactFormat, reportGeneratedBy, validateState, validateProof, validateOutcome, createState, validateLegacyPublicationBinding, assertDate, assertObject, stableJson, reportFilename, proofFilename, utcPeriod, periodsEqual, isObject, fail };
+export { stateArtifactFormat, proofArtifactFormat, outcomeArtifactFormat, reportArtifactFormat, reportGeneratedBy, validateState, validateProof, validateOutcome, createState, validateLegacyPublicationBinding, assertDate, assertObject, stableJson, reportFilename, proofFilename, stateFilename, utcPeriod, periodsEqual, isObject, fail };
