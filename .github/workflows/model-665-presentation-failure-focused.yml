@@ -16,6 +16,8 @@ on:
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-wire-contract.ts
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-task-command.spec.ts
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-request.ts
+      - libs/summary/adapters/model/promotion-presentation-source-copy-options.ts
+      - libs/summary/adapters/model/reader-post-canonical-presentation-instructions.ts
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-proposal.ts
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-trusted-binding.ts
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-proposal.spec.ts

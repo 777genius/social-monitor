@@ -1192,12 +1192,18 @@
       "original": "agent-runtime-promotion-presentation-v3.builder.ts",
       "owner": "agent-runtime-promotion-presentation-v3-request.ts",
       "originalPositions": [
-        279,
-        300,
+        279
+      ],
+      "responsibility": "Provider-specific source-copy request instructions and machine-computed evidence offsets; backward-compatible exports for separated size and output policies"
+    },
+    {
+      "original": "agent-runtime-promotion-presentation-v3.builder.ts",
+      "owner": "promotion-presentation-source-copy-options.ts",
+      "originalPositions": [
         301,
         302
       ],
-      "responsibility": "Provider-specific source-copy request instructions and machine-computed evidence offsets; backward-compatible exports for separated size and output policies"
+      "responsibility": "Shared ordered source-derived copy catalog serialized once for canonical and MiMo/gateway-only presentation prompts; two unique pinned original expressions reassigned, interpolated wrapper line 300 withdrawn, no duplicate or new credit"
     },
     {
       "original": "agent-runtime-reader-summary-topic-labeler.adapter.ts",
