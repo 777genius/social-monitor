@@ -7181,7 +7181,7 @@
     },
     {
       "original": "agent-runtime-reader-summary-story-relation-verifier.adapter.ts",
-      "owner": "agent-runtime-reader-summary-story-relation-options.ts",
+      "owner": "agent-runtime-reader-summary-story-relation-config.ts",
       "originalPositions": [
         66,
         67,
@@ -7198,7 +7198,14 @@
         110,
         111,
         114,
-        115,
+        115
+      ],
+      "responsibility": "Pure provider/model and bounded story/related-topic verifier defaults (16 previously counted frozen implementation positions), separated from environment access; unchanged expressions and contract"
+    },
+    {
+      "original": "agent-runtime-reader-summary-story-relation-verifier.adapter.ts",
+      "owner": "agent-runtime-reader-summary-story-relation-env-options.ts",
+      "originalPositions": [
         242,
         245,
         246,
@@ -7218,7 +7225,7 @@
         263,
         264
       ],
-      "responsibility": "Retrospectively verified original task-identity defaults, explicit lane-option values and trusted environment override projection already extracted into story-relation configuration; the runtime verifier now only consumes this bounded policy. Source-code implementation predates this attribution and is counted once only."
+      "responsibility": "Caller-supplied environment precedence, scoped model identity and timeout/token option admission (18 previously counted frozen positions), independent of pure verifier defaults and runtime dispatch"
     },
     {
       "original": "agent-runtime-reader-summary-story-relation-verifier.adapter.ts",

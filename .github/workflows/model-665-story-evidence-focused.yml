@@ -54,6 +54,10 @@ on:
       - libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-verifier-prompt.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-identity.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-command.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-options.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-config.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-env-options.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-options-boundary.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-lane-policy.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter.spec.ts
       - libs/summary/adapters/model/story-relation-response-schema.ts
@@ -113,5 +117,6 @@ jobs:
           libs/summary/adapters/model/openai-responses-reader-summary-narrative-coverage.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-contracts.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-options-boundary.spec.ts
           libs/summary/adapters/model/story-relation-response-schema.spec.ts
           libs/summary/adapters/model/reader-summary-narrative-repair-contract.spec.ts
