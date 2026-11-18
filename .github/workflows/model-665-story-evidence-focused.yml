@@ -58,6 +58,10 @@ on:
       - libs/summary/adapters/model/story-relation-response-schema.ts
       - libs/summary/adapters/model/story-relation-response-schema-failure.ts
       - libs/summary/adapters/model/story-relation-response-schema.spec.ts
+      - libs/summary/adapters/model/reader-summary-narrative-repair-contract.ts
+      - libs/summary/adapters/model/reader-summary-narrative-repair-eligibility.ts
+      - libs/summary/adapters/model/reader-summary-narrative-repair-instructions.ts
+      - libs/summary/adapters/model/reader-summary-narrative-repair-contract.spec.ts
 permissions:
   contents: read
 jobs:
@@ -109,3 +113,4 @@ jobs:
           libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-contracts.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-story-relation-verifier.adapter.spec.ts
           libs/summary/adapters/model/story-relation-response-schema.spec.ts
+          libs/summary/adapters/model/reader-summary-narrative-repair-contract.spec.ts

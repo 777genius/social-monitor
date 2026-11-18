@@ -7117,6 +7117,24 @@
         31
       ],
       "responsibility": "Provider-key display vocabulary and fallback tokenization separated from count formatting and identity deduplication"
+    },
+    {
+      "original": "reader-summary-narrative-repair-contract.ts",
+      "owner": "reader-summary-narrative-repair-eligibility.ts",
+      "originalPositions": [
+        8,
+        9
+      ],
+      "responsibility": "Repair eligibility error-prefix classification isolated from provider prompt construction; exact original predicate and historical function identity preserved"
+    },
+    {
+      "original": "reader-summary-narrative-repair-contract.ts",
+      "owner": "reader-summary-narrative-repair-instructions.ts",
+      "originalPositions": [
+        13,
+        15
+      ],
+      "responsibility": "Versioned narrative/daily-synthesis repair instruction dispatch and schema-violation suffix composition; prompt bytes preserved"
     }
   ]
 }
