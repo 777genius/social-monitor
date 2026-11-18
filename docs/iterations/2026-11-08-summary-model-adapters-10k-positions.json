@@ -4678,7 +4678,7 @@
     },
     {
       "original": "openai-responses-reader-summary-draft-normalizer.ts",
-      "owner": "openai-responses-reader-summary-draft-policy-projection.ts",
+      "owner": "openai-responses-reader-summary-draft-enabled-sections.ts",
       "originalPositions": [
         112,
         113,
@@ -4688,7 +4688,14 @@
         121,
         126,
         127,
-        128,
+        128
+      ],
+      "responsibility": "Enabled-only interest, repeated signal and risk interpretation; malformed disabled provider sections are never decoded"
+    },
+    {
+      "original": "openai-responses-reader-summary-draft-normalizer.ts",
+      "owner": "openai-responses-reader-summary-draft-mandatory-quality.ts",
+      "originalPositions": [
         132,
         133,
         135,
@@ -4700,7 +4707,7 @@
         141,
         142
       ],
-      "responsibility": "Publication switches and required quality/confidence admission of optional model sections separated from normalizer orchestration, without decoding disabled sections"
+      "responsibility": "Unconditionally validate model quality flags and confidence regardless of optional publication switches"
     },
     {
       "original": "openai-responses-reader-summary-draft-normalizer.ts",

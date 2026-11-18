@@ -11,6 +11,10 @@ on:
       - libs/summary/adapters/model/reader-summary-citation-map-projection.ts
       - libs/summary/adapters/model/reader-summary-citation-map-projection.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-draft-normalizer.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-draft-policy-projection.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-draft-enabled-sections.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-draft-mandatory-quality.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-draft-policy-projection.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-lineage.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-draft-normalizer.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-json-schema.ts
@@ -65,6 +69,7 @@ jobs:
           npx jest --config jest.config.ts --runInBand --runTestsByPath
           libs/summary/adapters/model/reader-summary-citation-map-projection.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-draft-normalizer.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-draft-policy-projection.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-json-schema.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-daily-writer-schema.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-model.adapter.spec.ts

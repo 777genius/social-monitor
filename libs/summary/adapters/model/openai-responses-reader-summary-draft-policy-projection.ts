@@ -1,20 +1,7 @@
-import type {
-  GeneratedReaderSummaryDraft,
-  ReaderSummaryCitation,
-  ReaderSummaryQualityFlag,
-} from "../../domain";
+import type { GeneratedReaderSummaryDraft, ReaderSummaryCitation } from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
-import { asRecord, normalizeRecordArray } from "./openai-responses-reader-summary-raw-values";
-import { uniqueNonEmptyStrings } from "./openai-responses-reader-summary-text-values";
-import {
-  normalizeRisks,
-  normalizeConfidence,
-  normalizeQualityFlags,
-} from "./openai-responses-reader-summary-quality";
-import {
-  normalizeInterestHighlights,
-  normalizeRepeatedSignals,
-} from "./openai-responses-reader-summary-evidence-relations";
+import { normalizeOpenAiReaderSummaryEnabledSections } from "./openai-responses-reader-summary-draft-enabled-sections";
+import { normalizeOpenAiReaderSummaryMandatoryQuality } from "./openai-responses-reader-summary-draft-mandatory-quality";
 
 type OptionalDraftContent = Pick<
   GeneratedReaderSummaryDraft,
@@ -23,56 +10,17 @@ type OptionalDraftContent = Pick<
   readonly normalizedQualityFlags: GeneratedReaderSummaryDraft["qualityFlags"];
 };
 
-/**
- * Apply the selected publication policy to optional, untrusted provider fields.
- * Disabled sections are not decoded; mandatory quality/confidence constraints
- * are evaluated regardless of optional-section policy flags.
- */
+/** Compose optional publication and required quality policies in original evaluation order. */
 export const normalizeOpenAiReaderSummaryOptionalContent = (params: {
   readonly raw: Record<string, unknown>;
   readonly input: ReaderSummaryModelInput;
   readonly citationMap: readonly ReaderSummaryCitation[];
   readonly topStoryCount: number;
-}): OptionalDraftContent => {
-  const { raw, input, citationMap, topStoryCount } = params;
-  const interestHighlights = input.policy.includeInterestHighlights
-    ? normalizeInterestHighlights(
-        normalizeRecordArray(raw.interestHighlights),
-        input,
-        citationMap,
-      )
-    : [];
-  const repeatedSignals = input.policy.includeRepeatedSignals
-    ? normalizeRepeatedSignals(
-        normalizeRecordArray(raw.repeatedSignals),
-        input,
-        citationMap,
-      )
-    : [];
-  const risksAndUnknowns = input.policy.includeRisks
-    ? normalizeRisks(
-        normalizeRecordArray(raw.risksAndUnknowns ?? raw.risks),
-        citationMap,
-      )
-    : [];
-  const rawQualityFlags = normalizeQualityFlags(raw.qualityFlags);
-  const normalizedQualityFlags =
-    topStoryCount === 0
-      ? (uniqueNonEmptyStrings([
-          ...rawQualityFlags,
-          "no_signal",
-          "limited_sources",
-        ]) as readonly ReaderSummaryQualityFlag[])
-      : rawQualityFlags.filter((flag) => flag !== "no_signal");
-  const confidence = normalizeConfidence(
-    asRecord(raw.confidence) ?? {},
-    topStoryCount,
-  );
-  return {
-    interestHighlights,
-    repeatedSignals,
-    risksAndUnknowns,
-    normalizedQualityFlags,
-    confidence,
-  };
-};
+}): OptionalDraftContent => ({
+  ...normalizeOpenAiReaderSummaryEnabledSections({
+    raw: params.raw,
+    input: params.input,
+    citationMap: params.citationMap,
+  }),
+  ...normalizeOpenAiReaderSummaryMandatoryQuality(params.raw, params.topStoryCount),
+});

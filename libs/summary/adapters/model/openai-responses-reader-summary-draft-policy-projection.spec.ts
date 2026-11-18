@@ -1,3 +1,5 @@
+import { normalizeOpenAiReaderSummaryEnabledSections } from "./openai-responses-reader-summary-draft-enabled-sections";
+import { normalizeOpenAiReaderSummaryMandatoryQuality } from "./openai-responses-reader-summary-draft-mandatory-quality";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 import { dailyEvidenceSelection } from "../../domain/policies/reader-summary-publication-evidence-test-fixtures";
 import type { ReaderSummaryModelInput } from "../../ports";
@@ -93,5 +95,43 @@ describe("OpenAI reader summary optional content projection", () => {
       topStoryCount: 1,
     });
     expect(result.risksAndUnknowns).toEqual([{ description: "Unverified claim", citationIds: [], reason: undefined }]);
+  });
+  it("composes optional sections before mandatory quality without mutating provider input", () => {
+    const raw = Object.freeze({
+      interestHighlights: Object.freeze([{ citationIds: Object.freeze([3]) }]),
+      repeatedSignals: Object.freeze([{ citationIds: Object.freeze([3]) }]),
+      risksAndUnknowns: Object.freeze([{ reason: "unsupported_reason" }]),
+      qualityFlags: Object.freeze(["no_signal"]),
+      confidence: null,
+    });
+    const params = { raw, input: makeInput(), citationMap: [], topStoryCount: 1 };
+    const enabled = normalizeOpenAiReaderSummaryEnabledSections(params);
+    const mandatory = normalizeOpenAiReaderSummaryMandatoryQuality(raw, 1);
+    const combined = normalizeOpenAiReaderSummaryOptionalContent(params);
+
+    expect(enabled).toEqual({ interestHighlights: [], repeatedSignals: [], risksAndUnknowns: [] });
+    expect(mandatory.normalizedQualityFlags).toEqual([]);
+    expect(mandatory.confidence).toMatchObject({ level: "low", score: 0.55 });
+    expect(combined).toEqual({ ...enabled, ...mandatory });
+    expect(Object.keys(combined)).toEqual([
+      "interestHighlights", "repeatedSignals", "risksAndUnknowns",
+      "normalizedQualityFlags", "confidence",
+    ]);
+    expect(raw.qualityFlags).toEqual(["no_signal"]);
+    expect(raw.risksAndUnknowns[0]?.reason).toBe("unsupported_reason");
+  });
+
+  it("does not allow disabled optional fields to bypass mandatory fail-closed validation", () => {
+    const raw = {
+      risksAndUnknowns: [{ reason: "unknown_reason" }],
+      qualityFlags: ["unrecognized_quality"],
+    };
+    expect(normalizeOpenAiReaderSummaryEnabledSections({
+      raw, input: makeInput(), citationMap: [],
+    })).toEqual({ interestHighlights: [], repeatedSignals: [], risksAndUnknowns: [] });
+    expect(() => normalizeOpenAiReaderSummaryMandatoryQuality(raw, 0)).toThrow();
+    expect(() => normalizeOpenAiReaderSummaryOptionalContent({
+      raw, input: makeInput(), citationMap: [], topStoryCount: 0,
+    })).toThrow();
   });
 });
