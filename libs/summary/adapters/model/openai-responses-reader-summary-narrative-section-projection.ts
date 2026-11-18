@@ -1,17 +1,9 @@
-import { readerSummaryNarrativeSectionKinds, type ReaderSummaryNarrativeSection } from "../../domain";
-import {
-  knownStringSubset,
-  normalizeSetValue,
-  optionalString,
-  requiredStringArray,
-} from "./openai-responses-reader-summary-json";
-import { defaultNarrativeTitle } from "./openai-responses-reader-summary-narrative-title-policy";
+import type { ReaderSummaryNarrativeSection } from "../../domain";
 import { narrativeSectionText } from "./openai-responses-reader-summary-narrative-text";
 import type { ReaderSummaryNarrativeCoverage } from "./openai-responses-reader-summary-narrative-coverage";
 import { maxNarrativeSections } from "./openai-responses-reader-summary-narrative-validation";
 import { isAdmissibleGroundedNarrativeSection } from "./openai-responses-reader-summary-narrative-section-admission";
-
-const narrativeKinds = new Set(readerSummaryNarrativeSectionKinds);
+import { decodeReaderSummaryProviderNarrativeSection } from "./openai-responses-reader-summary-narrative-provider-section";
 
 // Translate untrusted provider sections into grounded, bounded candidates.
 // Global lead/secondary completeness and deterministic fallback remain the
@@ -32,33 +24,9 @@ export const projectGroundedNarrativeSections = (params: {
   return params.rawSections
     .slice(0, maxNarrativeSections)
     .flatMap((value, index): readonly ReaderSummaryNarrativeSection[] => {
-      const kind = normalizeSetValue(
-        value.kind,
-        narrativeKinds,
-        "reader summary narrative kind",
-      );
-      const authoredStoryClusterId = optionalString(value.storyClusterId);
-      const storyClusterId =
-        kind === "lead"
-          ? params.coverage.mode === "daily_synthesis"
-            ? undefined
-            : (params.coverage.leadClusterId ?? authoredStoryClusterId)
-          : authoredStoryClusterId;
-      const title =
-        optionalString(value.title) ??
-        defaultNarrativeTitle(
-          kind,
-          storyClusterId,
-          params.storyTitlesByClusterId,
-          params.coverage.mode,
-        );
-      const citationIds = knownStringSubset(
-        requiredStringArray(
-          value.citationIds ?? [],
-          "reader summary narrative citations",
-        ),
-        params.knownCitationIds,
-      ).slice(0, 3);
+      const {
+        kind, authoredStoryClusterId, storyClusterId, title, citationIds,
+      } = decodeReaderSummaryProviderNarrativeSection(value, params);
       const text = narrativeSectionText({
         value,
         kind,
