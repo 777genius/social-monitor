@@ -141,26 +141,28 @@ extension PublishedSummaryInitialLoadWorkflow on PublishedSummaryStore {
       _notifyChanged();
     }
 
-    // A cache miss can hide a just-published article; history references
-    // identify its exact day without substituting an older publication.
-    if (state is EmptyViewState<ReaderSummary>) {
-      final reference = _referenceForPeriod(selectedPeriod);
-      if (reference != null) {
-        final result = await _loadPublished(
-          LoadPublishedSummaryQuery(
-            scope: _scope,
-            summaryId: reference.summaryId,
-          ),
-        );
-        if (!_generationGuard.isCurrent(generation)) return;
-        final candidate = result.fold<ReaderSummary?>(
-          onSuccess: (snapshot) => snapshot.current,
-          onFailure: (_) => null,
-        );
-        if (candidate != null &&
-            sameSummaryPeriodWindow(candidate.period, selectedPeriod)) {
-          _publishInitialResult(result, history: history);
-        }
+    // History can uncover a newly published article or a newer version for
+    // the current day. Never replace it with an article from a different day.
+    final visible = switch (state) {
+      ReadyViewState<ReaderSummary>(:final value) => value,
+      _ => null,
+    };
+    final reference = _referenceForPeriod(selectedPeriod);
+    if (reference != null && reference.summaryId != visible?.id) {
+      final result = await _loadPublished(
+        LoadPublishedSummaryQuery(
+          scope: _scope,
+          summaryId: reference.summaryId,
+        ),
+      );
+      if (!_generationGuard.isCurrent(generation)) return;
+      final candidate = result.fold<ReaderSummary?>(
+        onSuccess: (snapshot) => snapshot.current,
+        onFailure: (_) => null,
+      );
+      if (candidate != null &&
+          sameSummaryPeriodWindow(candidate.period, selectedPeriod)) {
+        _publishInitialResult(result, history: history);
       }
     }
     _prefetchAdjacentSummaries();
