@@ -7474,6 +7474,21 @@
         40
       ],
       "responsibility": "Shared pure provider-neutral five-boundary admission; original executable statements reassigned from provider wrappers without repeated LOC credit"
+    },
+    {
+      "original": "gateway-llm/gateway-llm-account-selector.ts",
+      "owner": "gateway-llm/gateway-llm-account-order-policy.ts",
+      "originalPositions": [
+        4,
+        55,
+        56,
+        57,
+        59,
+        60,
+        84,
+        85
+      ],
+      "responsibility": "Pure distinct-account admission and task-hash rotation owned independently from process-local gateway account cooldown and observation; historical max-account export identity kept"
     }
   ]
 }

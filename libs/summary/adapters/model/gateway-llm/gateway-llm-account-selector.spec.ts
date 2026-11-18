@@ -1,4 +1,5 @@
 import { CooldownRotatingAccountSelector, gatewayLlmMaxAccountRefs } from "./gateway-llm-account-selector";
+import { rotateGatewayLlmAccountRefs } from "./gateway-llm-account-order-policy";
 
 const refs = ["account-a", "account-b", "account-c"];
 const start = new Date("2026-11-08T00:00:00.000Z");
@@ -11,6 +12,35 @@ const order = (selector: CooldownRotatingAccountSelector, at = start) =>
   selector.order({ taskId: "task-1", accountRefs: refs, now: at });
 
 describe("gateway account rotation and cooldown admissions", () => {
+  it("keeps hash rotation pure while cooldowns only reprioritize the same accounts", () => {
+    const input = Object.freeze({
+      taskId: "task-1",
+      accountRefs: Object.freeze(["account-a", "account-b", "account-c", "account-a"]),
+    });
+    const rotated = rotateGatewayLlmAccountRefs(input);
+    expect(rotated).toEqual(configured().order({ ...input, now: start }));
+    expect(new Set(rotated).size).toBe(3);
+    expect(input.accountRefs).toEqual(["account-a", "account-b", "account-c", "account-a"]);
+    const selector = configured();
+    selector.observe({ accountRef: rotated[0]!, outcome: "busy", retryAfterMs: 60_000, now: start });
+    expect(selector.order({ ...input, now: start })).not.toEqual(rotated);
+    expect(rotateGatewayLlmAccountRefs(input)).toEqual(rotated);
+  });
+
+  it("enforces the 1..16 distinct-account boundary before cooldown admission", () => {
+    expect(() => rotateGatewayLlmAccountRefs({ taskId: "task", accountRefs: [] }))
+      .toThrow("Gateway llm route requires 1..16 distinct accounts");
+    const full = Object.freeze(Array.from({ length: gatewayLlmMaxAccountRefs },
+      (_, index) => `account-${index}`));
+    expect(rotateGatewayLlmAccountRefs({ taskId: "task", accountRefs: full }))
+      .toHaveLength(gatewayLlmMaxAccountRefs);
+    expect(rotateGatewayLlmAccountRefs({ taskId: "task", accountRefs: [...full, full[0]!] }))
+      .toHaveLength(gatewayLlmMaxAccountRefs);
+    expect(() => rotateGatewayLlmAccountRefs({ taskId: "task",
+      accountRefs: [...full, "account-extra"] }))
+      .toThrow("Gateway llm route requires 1..16 distinct accounts");
+  });
+
   it("keeps task-hash rotation deterministic, unique, and process-local", () => {
     const first = configured();
     expect(order(first)).toEqual(order(configured()));

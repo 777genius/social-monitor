@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { rotateGatewayLlmAccountRefs } from "./gateway-llm-account-order-policy";
 import {
   GatewayLlmAccountCooldowns,
   type CooldownAccountSelectorPolicy,
@@ -7,8 +7,7 @@ import {
 
 export type { CooldownAccountSelectorPolicy, GatewayLlmAccountObservation } from "./gateway-llm-account-cooldowns";
 
-/** The gateway accepts at most this many account preferences per task. */
-export const gatewayLlmMaxAccountRefs = 16;
+export { gatewayLlmMaxAccountRefs } from "./gateway-llm-account-order-policy";
 
 /**
  * Orders the configured accounts for one task. The gateway executes on the
@@ -43,13 +42,7 @@ export class CooldownRotatingAccountSelector implements GatewayLlmAccountSelecto
     readonly accountRefs: readonly string[];
     readonly now: Date;
   }): readonly string[] {
-    const refs = [...new Set(input.accountRefs)];
-    if (refs.length === 0 || refs.length > gatewayLlmMaxAccountRefs) {
-      throw new Error("Gateway llm route requires 1..16 distinct accounts");
-    }
-    const offset = stableOffset(input.taskId, refs.length);
-    const rotated = [...refs.slice(offset), ...refs.slice(0, offset)];
-    return this.cooldowns.prioritize(rotated, input.now);
+    return this.cooldowns.prioritize(rotateGatewayLlmAccountRefs(input), input.now);
   }
 
   observe(observation: GatewayLlmAccountObservation): void {
@@ -57,5 +50,3 @@ export class CooldownRotatingAccountSelector implements GatewayLlmAccountSelecto
   }
 }
 
-const stableOffset = (taskId: string, size: number): number =>
-  createHash("sha256").update(taskId, "utf8").digest().readUInt32BE(0) % size;
