@@ -3131,7 +3131,7 @@
         70,
         71
       ],
-      "responsibility": "Pair-specific evidence ID lookup, source excerpt and author/retrieval signal binding owned by existing story evidence projector rather than JSON prompt assembly; missing evidence strict failure, exact field order and provider lane retained"
+      "responsibility": "Pair-specific trusted evidence binding, source/author sampling and retrieval signals; pure excerpt policy lives in a distinct owner"
     },
     {
       "original": "openai-responses-reader-summary-draft-normalizer.ts",
@@ -7396,6 +7396,33 @@
         216
       ],
       "responsibility": "Previously separated source-scoped daily synthesis citation minimum and allowlisted evidence IDs; fail-closed evidence-bound schema contract independent of static wire schema."
+    },
+    {
+      "original": "agent-runtime-reader-summary-story-relation-verifier-prompt.ts",
+      "owner": "agent-runtime-reader-summary-story-source-excerpt.ts",
+      "originalPositions": [
+        200,
+        201,
+        202,
+        203,
+        210,
+        211,
+        212,
+        213,
+        214,
+        215,
+        216,
+        217,
+        218,
+        219,
+        220,
+        221,
+        222,
+        224,
+        225,
+        226
+      ],
+      "responsibility": "Pure bounded UTF-16 source excerpt and relevance-token policy, separate from feed ID admission (historically split original coordinates newly audited without duplication)"
     }
   ]
 }
