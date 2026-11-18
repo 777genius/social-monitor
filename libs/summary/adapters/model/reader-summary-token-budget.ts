@@ -6,6 +6,7 @@ import type {
   ReaderSummaryModelPolicy,
 } from "../../ports";
 import { buildOpenAiReaderSummaryPromptPayload } from "./openai-responses-reader-summary-prompt";
+import { exceedsSummaryModelBudget } from "./summary-model-budget-admission";
 
 /** Token budget shared by the two reader-summary provider implementations. */
 export type ReaderSummaryTokenEstimateSettings = {
@@ -47,9 +48,4 @@ export const isReaderSummaryBudgetExceeded = (
   estimate: ReaderSummaryModelEstimate,
   policy: ReaderSummaryModelPolicy,
   budget: ReaderSummaryModelBudget,
-): boolean =>
-  estimate.inputTokens > policy.maxInputTokens ||
-  estimate.outputTokens > policy.maxOutputTokens ||
-  estimate.estimatedCostUsd > policy.maxEstimatedCostUsd ||
-  estimate.inputTokens + estimate.outputTokens > budget.remainingTokens ||
-  estimate.estimatedCostUsd > budget.remainingCostUsd;
+): boolean => exceedsSummaryModelBudget(estimate, policy, budget);

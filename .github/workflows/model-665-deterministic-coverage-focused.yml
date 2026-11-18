@@ -19,6 +19,10 @@ on:
       - libs/summary/adapters/model/deterministic-reader-summary-provider-diversity.ts
       - libs/summary/adapters/model/deterministic-reader-summary-evidence-selection.spec.ts
       - libs/summary/adapters/model/deterministic-reader-summary-model.adapter.spec.ts
+      - libs/summary/adapters/model/deterministic-reader-summary-budget-policy.ts
+      - libs/summary/adapters/model/reader-summary-token-budget.ts
+      - libs/summary/adapters/model/summary-model-budget-admission.ts
+      - libs/summary/adapters/model/summary-model-budget-admission.spec.ts
       - libs/summary/adapters/model/deterministic-reader-summary-citation-selection.ts
       - libs/summary/adapters/model/deterministic-reader-summary-provider-citation-policy.ts
       - libs/summary/adapters/model/deterministic-reader-summary-provider-citation-policy.spec.ts
@@ -86,3 +90,6 @@ jobs:
           libs/summary/adapters/model/deterministic-summary-model.adapter.spec.ts
           libs/summary/adapters/model/deterministic-summary-outcome-policy.spec.ts
           libs/summary/adapters/model/summary-provider-labels.spec.ts
+          libs/summary/adapters/model/deterministic-reader-summary-budget-policy.spec.ts
+          libs/summary/adapters/model/reader-summary-token-budget.spec.ts
+          libs/summary/adapters/model/summary-model-budget-admission.spec.ts

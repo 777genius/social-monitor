@@ -5,6 +5,7 @@ import type {
   ReaderSummaryModelPolicy,
 } from "../../ports";
 import { primaryReaderSummaryEvidence } from "../../domain";
+import { exceedsSummaryModelBudget } from "./summary-model-budget-admission";
 
 /** Local estimates are deterministic and never initiate provider calls. */
 export const estimateDeterministicReaderSummaryTokens = (
@@ -40,13 +41,7 @@ export const assertDeterministicReaderSummaryBudget = (
   policy: ReaderSummaryModelPolicy,
   budget: ReaderSummaryModelBudget,
 ): void => {
-  if (
-    estimate.inputTokens > policy.maxInputTokens ||
-    estimate.outputTokens > policy.maxOutputTokens ||
-    estimate.estimatedCostUsd > policy.maxEstimatedCostUsd ||
-    estimate.inputTokens + estimate.outputTokens > budget.remainingTokens ||
-    estimate.estimatedCostUsd > budget.remainingCostUsd
-  ) {
+  if (exceedsSummaryModelBudget(estimate, policy, budget)) {
     throw new Error("Reader summary model budget exceeded");
   }
 };

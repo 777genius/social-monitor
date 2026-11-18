@@ -6,6 +6,7 @@ import type {
 } from "../../ports";
 import { buildPromptPayload } from "./openai-responses-summary-prompt";
 import { SummaryModelProviderError } from "./openai-responses-summary-model-error";
+import { exceedsSummaryModelBudget } from "./summary-model-budget-admission";
 
 /** Provider pricing and token estimate policy, independent of HTTP orchestration. */
 export type OpenAiSummaryEstimationSettings = {
@@ -43,13 +44,7 @@ export const assertOpenAiSummaryWithinBudget = (
   policy: SummaryModelPolicy,
   budget: SummaryModelBudget,
 ): void => {
-  if (
-    estimate.inputTokens > policy.maxInputTokens ||
-    estimate.outputTokens > policy.maxOutputTokens ||
-    estimate.estimatedCostUsd > policy.maxEstimatedCostUsd ||
-    estimate.inputTokens + estimate.outputTokens > budget.remainingTokens ||
-    estimate.estimatedCostUsd > budget.remainingCostUsd
-  ) {
+  if (exceedsSummaryModelBudget(estimate, policy, budget)) {
     throw new SummaryModelProviderError({
       kind: "budget_exceeded",
       retryable: false,
