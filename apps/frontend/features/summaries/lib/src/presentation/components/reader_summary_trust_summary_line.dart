@@ -13,73 +13,21 @@ class _TrustSummaryLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final screen = AppScreenClass.of(context);
-    final textScale = MediaQuery.textScalerOf(context).scale(1);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final singleLine =
-            !screen.isCompact &&
-            constraints.maxWidth.isFinite &&
-            constraints.maxWidth >= 760 &&
-            textScale <= 1.3;
-        if (!singleLine) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const _TrustPanelTitle(),
-              const SizedBox(height: AppSpacing.xs),
-              _TrustVerdict(snapshot: snapshot),
-              const SizedBox(height: AppSpacing.xs),
-              _TrustBadges(snapshot: snapshot, report: report),
-              const SizedBox(height: AppSpacing.xs),
-              _TrustToggleLabel(expanded: expanded),
-            ],
-          );
-        }
-
-        return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
-            const Flexible(flex: 2, child: _TrustPanelTitle()),
-            const SizedBox(width: AppSpacing.md),
-            Flexible(
-              flex: 2,
-              child: Text(
-                trustVerdictTitle(snapshot),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0,
-                ),
-              ),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              flex: 4,
-              child: Text(
-                trustVerdictDescription(snapshot),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  letterSpacing: 0,
-                ),
-              ),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Flexible(
-              flex: 5,
-              child: _TrustBadges(
-                snapshot: snapshot,
-                report: report,
-                singleLine: true,
-              ),
-            ),
-            const SizedBox(width: AppSpacing.sm),
+            const Expanded(child: _TrustPanelTitle()),
+            const SizedBox(width: AppSpacing.xs),
             _TrustToggleLabel(expanded: expanded),
           ],
-        );
-      },
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        _TrustVerdict(snapshot: snapshot),
+        const SizedBox(height: AppSpacing.sm),
+        _TrustBadges(snapshot: snapshot, report: report),
+      ],
     );
   }
 }
@@ -91,7 +39,11 @@ class _TrustPanelTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        const Icon(Icons.verified_outlined, size: 18),
+        Icon(
+          Icons.verified_outlined,
+          size: 18,
+          color: Theme.of(context).colorScheme.primary,
+        ),
         const SizedBox(width: AppSpacing.xs),
         Flexible(
           child: Text(
@@ -138,38 +90,14 @@ class _TrustToggleLabel extends StatelessWidget {
   }
 }
 
-class _TrustBadgeRow extends StatelessWidget {
-  const _TrustBadgeRow({required this.children});
-
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final child in children) ...[
-            child,
-            if (child != children.last) const SizedBox(width: AppSpacing.xs),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
 class _TrustBadges extends StatelessWidget {
   const _TrustBadges({
     required this.snapshot,
     required this.report,
-    this.singleLine = false,
   });
 
   final ReaderSummaryTrustSnapshot snapshot;
   final SummaryReliabilityReport report;
-  final bool singleLine;
 
   @override
   Widget build(BuildContext context) {
@@ -183,24 +111,12 @@ class _TrustBadges extends StatelessWidget {
           label: trustSourceGroupLabel(snapshot.sourceGroupCount),
           tone: AppStatusTone.neutral,
         ),
-      AppStatusBadge(
-        label: snapshot.needsConfirmation
-            ? 'Needs confirmation'
-            : 'Evidence linked',
-        tone: snapshot.needsConfirmation
-            ? AppStatusTone.warning
-            : AppStatusTone.success,
-      ),
       if (report.risks.isNotEmpty)
         AppStatusBadge(
           label: trustEvidenceRiskBadgeLabel(report.riskLevel),
           tone: _riskTone(report.riskLevel),
         ),
     ];
-    if (singleLine) {
-      return _TrustBadgeRow(children: badges);
-    }
-
     return Wrap(
       spacing: AppSpacing.xs,
       runSpacing: AppSpacing.xs,

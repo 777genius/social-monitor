@@ -9,7 +9,7 @@ import 'package:social_monitor_summaries/src/presentation/components/reader_summ
 import '../../support/summaries_test_fixtures.dart';
 
 void main() {
-  testWidgets('keeps collapsed trust summary in one row on wide panels', (
+  testWidgets('shows readable trust verdict and wrapped badges', (
     tester,
   ) async {
     tester.view.devicePixelRatio = 1;
@@ -17,20 +17,17 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     addTearDown(tester.view.resetPhysicalSize);
 
-    final summary = _trustSummary();
-    await tester.pumpWidget(_TestApp(summary: summary));
+    await tester.pumpWidget(_TestApp(summary: _trustSummary()));
 
-    final rowCenterY = tester.getCenter(find.text('Trust & evidence')).dy;
-    for (final finder in [
-      find.text('Needs confirmation').first,
-      find.text(
-        'Treat this as a lead until another independent source group confirms the key items.',
-      ),
-      find.text('Medium confidence'),
-      find.text('Why trust this?'),
-    ]) {
-      expect((tester.getCenter(finder).dy - rowCenterY).abs(), lessThan(26));
-    }
+    final title = find.text('Trust & evidence');
+    final verdict = find.text('Needs confirmation').first;
+    expect(
+      tester.getTopLeft(verdict).dy,
+      greaterThan(tester.getTopLeft(title).dy),
+    );
+    expect(find.text('Medium confidence'), findsOneWidget);
+    expect(find.text('1 source group'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('toggles evidence from the whole trust panel surface', (
@@ -47,6 +44,14 @@ void main() {
     await tester.tap(find.text('Trust & evidence'));
     await tester.pumpAndSettle();
 
+    expect(
+      find.text('Reddit users report useful MCP agent workflows'),
+      findsOneWidget,
+    );
+
+    // Expanded content is readable/selectable without collapsing the panel.
+    await tester.tap(find.text('Reddit users report useful MCP agent workflows'));
+    await tester.pumpAndSettle();
     expect(
       find.text('Reddit users report useful MCP agent workflows'),
       findsOneWidget,

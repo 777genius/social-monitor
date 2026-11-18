@@ -47,41 +47,53 @@ class _ReaderSummaryTrustPanelState extends State<ReaderSummaryTrustPanel> {
       report: widget.reliabilityReport,
     );
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Divider(height: AppSpacing.md),
-        Material(
-          color: Colors.transparent,
-          child: InkWell(
-            key: const ValueKey('reader-summary-trust-toggle'),
-            borderRadius: BorderRadius.circular(8),
-            onTap: _toggleExpanded,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _TrustSummaryLine(
-                    snapshot: snapshot,
-                    report: widget.reliabilityReport,
-                    expanded: _expanded,
-                  ),
-                  if (_expanded) ...[
-                    const SizedBox(height: AppSpacing.sm),
-                    _TrustDetails(
-                      claims: widget.claims,
-                      report: widget.reliabilityReport,
-                      citationsById: widget.citationsById,
-                      onOpenUrl: widget.onOpenUrl,
-                    ),
-                  ],
-                ],
+    final colors = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.md),
+      child: Material(
+        color: colors.surfaceContainerLow,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: colors.outlineVariant),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Only the header is an expansion target. Evidence links and
+            // selectable text below must not trigger the panel ripple.
+            InkWell(
+              key: const ValueKey('reader-summary-trust-toggle'),
+              onTap: _toggleExpanded,
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                child: _TrustSummaryLine(
+                  snapshot: snapshot,
+                  report: widget.reliabilityReport,
+                  expanded: _expanded,
+                ),
               ),
             ),
-          ),
+            if (_expanded) ...[
+              Divider(height: 1, color: colors.outlineVariant),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.md,
+                  AppSpacing.sm,
+                  AppSpacing.md,
+                  AppSpacing.md,
+                ),
+                child: _TrustDetails(
+                  claims: widget.claims,
+                  report: widget.reliabilityReport,
+                  citationsById: widget.citationsById,
+                  onOpenUrl: widget.onOpenUrl,
+                ),
+              ),
+            ],
+          ],
         ),
-      ],
+      ),
     );
   }
 }
@@ -164,26 +176,43 @@ class _ReliabilityNotes extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: report.risks
-          .take(2)
-          .map(
-            (risk) => Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.xs),
-              child: Text(
-                trustReliabilityRiskDescription(risk),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  letterSpacing: 0,
-                ),
-              ),
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.info_outline,
+            size: 18,
+            color: colors.onSurfaceVariant,
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final risk in report.risks.take(2))
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+                    child: Text(
+                      trustReliabilityRiskDescription(risk),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+              ],
             ),
-          )
-          .toList(growable: false),
+          ),
+        ],
+      ),
     );
   }
 }
