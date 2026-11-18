@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { test } from "node:test";
 import { createDurableBackendEvidencePollers } from "./durable-backend-e2e-evidence-pollers.ts";
+
+const ts = createRequire(import.meta.url)("typescript");
 
 const scheduledParams = {
   tenantId: "tenant", workspaceId: "workspace", providerKey: "rss",
@@ -114,10 +117,87 @@ test("both pollers preserve immediate timeout diagnostics without fabricating ev
   assert.deepEqual(f.called.summary, []);
 });
 
-test("runner invokes extracted pollers with original live DB snapshots and parser helpers", () => {
+const POLLER_MODULE = "./lib/durable-backend-e2e-evidence-pollers";
+const POLLER_NAMES = ["pollScheduledScanEvidence", "pollAutoSummaryEvidence"];
+const POLLER_DEPS = [
+  "pool", "scheduledScanEvidenceSnapshot", "autoSummaryEvidenceSnapshot",
+  "readString", "readNumber", "readStringArray", "delay",
+];
+
+function inspectPollerWiring(source) {
+  const tree = ts.createSourceFile("durable-backend-e2e-loop.ts", source,
+    ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const imported = new Set();
+  const called = new Set();
+  const declared = new Set();
+  let factoryDeps;
+  let boundPollers;
+  for (const statement of tree.statements) {
+    if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier) &&
+      statement.moduleSpecifier.text === POLLER_MODULE &&
+      statement.importClause?.namedBindings &&
+      ts.isNamedImports(statement.importClause.namedBindings)) {
+      for (const element of statement.importClause.namedBindings.elements) {
+        if (!element.propertyName) imported.add(element.name.text);
+      }
+    }
+  }
+  function visit(node) {
+    if (ts.isFunctionDeclaration(node) && node.name) declared.add(node.name.text);
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+      called.add(node.expression.text);
+      if (node.expression.text === "createDurableBackendEvidencePollers" &&
+        node.arguments.length === 1 && ts.isObjectLiteralExpression(node.arguments[0])) {
+        factoryDeps = new Set(node.arguments[0].properties
+          .filter(ts.isShorthandPropertyAssignment).map(property => property.name.text));
+      }
+    }
+    if (ts.isVariableDeclaration(node) && ts.isObjectBindingPattern(node.name) &&
+      node.initializer && ts.isCallExpression(node.initializer) &&
+      ts.isIdentifier(node.initializer.expression) &&
+      node.initializer.expression.text === "createDurableBackendEvidencePollers") {
+      boundPollers = new Set(node.name.elements.map(element => element.name.getText(tree)));
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(tree);
+  return { imported, called, declared, factoryDeps, boundPollers };
+}
+
+test("runner delegates real imported pollers and passes live DB snapshots and parsers", () => {
   const source = readFileSync(new URL("../capture-durable-backend-e2e-loop.ts", import.meta.url), "utf8");
-  assert.match(source, /createDurableBackendEvidencePollers\(\{\s*pool, scheduledScanEvidenceSnapshot, autoSummaryEvidenceSnapshot, readString, readNumber, readStringArray, delay,/);
-  assert.match(source, /pollScheduledScanEvidence\(/);
-  assert.match(source, /pollAutoSummaryEvidence\(/);
-  assert.doesNotMatch(source, /^async function pollScheduledScanEvidence\(/m);
+  const wiring = inspectPollerWiring(source);
+  assert.ok(wiring.imported.has("createDurableBackendEvidencePollers"),
+    "runner must import the extracted owner");
+  assert.ok(wiring.called.has("createDurableBackendEvidencePollers"),
+    "runner must actually call the poller factory");
+  for (const dependency of POLLER_DEPS) {
+    assert.ok(wiring.factoryDeps?.has(dependency), dependency + " must be passed by live shorthand");
+  }
+  for (const name of POLLER_NAMES) {
+    assert.ok(wiring.boundPollers?.has(name), name + " must be bound from the factory");
+    assert.ok(wiring.called.has(name), name + " must have a real call");
+    assert.ok(!wiring.declared.has(name), name + " must not duplicate the extracted owner");
+  }
+});
+
+test("comment-only factory call and wrong import owner fail structural inspection", () => {
+  const source = readFileSync(new URL("../capture-durable-backend-e2e-loop.ts", import.meta.url), "utf8");
+  const commented = source.replace(
+    "createDurableBackendEvidencePollers({",
+    "identity(/* createDurableBackendEvidencePollers({ */ {",
+  );
+  assert.notEqual(commented, source, "mutation must target the real factory");
+  assert.ok(commented.includes("createDurableBackendEvidencePollers("),
+    "old substring guard would incorrectly accept the comment");
+  assert.ok(!inspectPollerWiring(commented).called.has("createDurableBackendEvidencePollers"),
+    "commented-out factory must not satisfy an actual AST call");
+
+  const wrongOwner = source.replace(
+    'from "./lib/durable-backend-e2e-evidence-pollers";',
+    'from "./lib/unrelated-poller";',
+  );
+  assert.notEqual(wrongOwner, source, "mutation must target the real import");
+  assert.ok(!inspectPollerWiring(wrongOwner).imported.has("createDurableBackendEvidencePollers"),
+    "wrong import source must not satisfy the extracted-owner contract");
 });
