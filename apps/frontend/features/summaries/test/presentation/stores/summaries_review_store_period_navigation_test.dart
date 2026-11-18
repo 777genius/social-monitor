@@ -27,6 +27,44 @@ import '../../support/deferred_summary_review_catalog.dart';
 import '../../support/summaries_test_fixtures.dart';
 
 void main() {
+  test(
+    'opens the latest completed source-post day instead of an older AI summary',
+    () async {
+      final latestDay = SummaryPeriodPreset.daily.resolve();
+      final olderDay = SummaryPeriodPreset.daily.resolve(
+        periodEndedAt: latestDay.endedAt.subtract(const Duration(days: 5)),
+      );
+      final client = InMemorySummariesApiClient(
+        items: [summaryApiDto()],
+        workspaceSummary: readerSummaryApiDto(
+          period: summaryPeriodApiDto(
+            startedAt: olderDay.startedAt,
+            endedAt: olderDay.endedAt,
+            periodKey: null,
+          ),
+        ),
+      );
+      final store = _storeWithCatalog(
+        GeneratedSummaryReviewCatalog(apiClient: client),
+        allowUnpublishedDays: true,
+      );
+      addTearDown(store.dispose);
+
+      expect(store.selectedSummaryPeriod, latestDay);
+      await store.loadWorkspaceSummary();
+
+      // An older published article remains in the calendar, but cannot
+      // replace the default day or suppress its source-only posts list.
+      expect(store.selectedSummaryPeriod, latestDay);
+      final state =
+          store.workspaceSummaryState as ReadyViewState<WorkspaceSummarySnapshot>;
+      expect(state.value.current, isNull);
+      expect(state.value.availablePeriods, contains(olderDay));
+      expect(store.isSelectedSummaryPeriodCurrent, isTrue);
+      expect(client.loadWorkspaceSummaryRequests.single.allowLatestFallback, isTrue);
+    },
+  );
+
   test('does not navigate to periods without a workspace summary', () async {
     final apiClient = InMemorySummariesApiClient(
       items: [summaryApiDto()],

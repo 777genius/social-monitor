@@ -123,4 +123,6 @@ WorkspaceSummarySnapshot? _summarySnapshotForSelectedDailyWindow(
 bool _requiresExactUnpublishedDay(SummariesReviewStore store) =>
     store.allowUnpublishedDays &&
     store.selectedSummaryPeriodPreset == SummaryPeriodPreset.daily &&
-    store._selectedSummaryPeriodEndedAt != null;
+    // The implicit latest day is also exact when browsing collected posts.
+    // Never present a historical AI summary as today's post collection.
+    true;
