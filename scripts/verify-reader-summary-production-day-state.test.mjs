@@ -100,6 +100,38 @@ test("creates deterministic complete state bound to a verified proof", () => {
   });
 });
 
+test("CLI preserves an existing immutable cursor for proof, outcome, and legacy migration", () => {
+  for (const kind of ["proof", "outcome", "legacy"]) {
+    withFixture((directory) => {
+      const stateOut = join(directory, "existing-state.json");
+      const original = `previous immutable state: ${kind}\n`;
+      writeFileSync(stateOut, original);
+      let args;
+      if (kind === "legacy") {
+        const date = "2026-07-22";
+        const latest = writeLegacyPublication(directory, date);
+        args = [
+          "--legacy-latest", latest,
+          "--state-dir", directory,
+          "--state-out", stateOut,
+        ];
+      } else {
+        const binding = kind === "proof"
+          ? writeProof(directory, collectionDate)
+          : writeOutcome(directory, collectionDate, "partial");
+        args = [
+          "--expected-date", collectionDate,
+          kind === "proof" ? "--publication-proof" : "--terminal-outcome", binding,
+          "--state-out", stateOut,
+        ];
+      }
+      const rejected = assertFailure(args);
+      assert.match(rejected.stderr, /EEXIST/, `${kind}: must reject existing output`);
+      assert.equal(readFileSync(stateOut, "utf8"), original, `${kind}: original bytes must survive`);
+    });
+  }
+});
+
 for (const outcome of ["partial", "unavailable"]) {
   test(`creates and verifies immutable ${outcome} state`, () => {
     withFixture((directory) => {
