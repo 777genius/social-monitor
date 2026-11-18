@@ -477,7 +477,11 @@ function assertFailure(args) {
   const result = spawnSync(process.execPath, [verifier, ...args], {
     encoding: "utf8",
   });
-  assert.notEqual(result.status, 0, "expected verifier failure");
+  assert.ifError(result.error);
+  assert.ok(
+    Number.isInteger(result.status) && result.status !== 0,
+    `expected a rejected verifier exit, got status=${result.status} signal=${result.signal}; stderr=${result.stderr}`,
+  );
 }
 
 function withFixture(runTest) {
