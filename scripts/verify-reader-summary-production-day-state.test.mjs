@@ -39,22 +39,37 @@ test("CLI delegates every state/proof/outcome path to the pure validation owner"
   const bindings = policyImport.importClause?.namedBindings;
   assert.ok(bindings && ts.isNamedImports(bindings), "CLI must import policy functions by name");
   const imported = new Set(bindings.elements.map((element) => element.name.text));
-  const calls = new Map();
-  function visit(node) {
-    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-      const name = node.expression.text;
-      calls.set(name, (calls.get(name) ?? 0) + 1);
+  function countExecutableCalls(source) {
+    const calls = new Map();
+    function visit(node) {
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+        const name = node.expression.text;
+        calls.set(name, (calls.get(name) ?? 0) + 1);
+      }
+      ts.forEachChild(node, visit);
     }
-    ts.forEachChild(node, visit);
+    visit(source);
+    return calls;
   }
-  visit(script);
-  // Counts are the original executable admission paths, not comment/string markers.
-  for (const [name, expectedCalls] of [
-    ["validateState", 3],    // latest, dated and direct state verification
-    ["validateProof", 2],    // verified proof and state construction
-    ["validateOutcome", 1],  // terminal provider outcome
+  const cliCalls = countExecutableCalls(script);
+  const policyCalls = countExecutableCalls(policy);
+  assert.ok(imported.has("createState"), "CLI must delegate state construction to policy");
+  assert.equal(cliCalls.get("createState"), 1, "CLI must call state constructor once");
+  assert.equal(
+    policy.statements.filter((node) =>
+      ts.isFunctionDeclaration(node) && node.name?.text === "createState").length,
+    1, "policy must own the state constructor exactly once",
+  );
+  // Preserve six distinct executable admission paths across the two owners.
+  for (const [name, expectedCliCalls, expectedPolicyCalls] of [
+    ["validateState", 3, 0],    // latest, dated and direct state verification
+    ["validateProof", 1, 1],    // legacy proof and policy state construction
+    ["validateOutcome", 0, 1],  // outcome admission now belongs to policy
   ]) {
-    assert.ok(imported.has(name), name + " must come from the extracted owner");
+    assert.equal(
+      imported.has(name), expectedCliCalls > 0,
+      name + " should only be directly imported when the CLI calls it",
+    );
     assert.equal(
       script.statements.filter((node) => ts.isFunctionDeclaration(node) && node.name?.text === name).length,
       0, name + " must not be duplicated in the CLI",
@@ -63,7 +78,8 @@ test("CLI delegates every state/proof/outcome path to the pure validation owner"
       policy.statements.filter((node) => ts.isFunctionDeclaration(node) && node.name?.text === name).length,
       1, name + " must have exactly one policy implementation",
     );
-    assert.equal(calls.get(name), expectedCalls, name + " executable call count changed");
+    assert.equal(cliCalls.get(name) ?? 0, expectedCliCalls, name + " CLI admission paths changed");
+    assert.equal(policyCalls.get(name) ?? 0, expectedPolicyCalls, name + " policy admission paths changed");
   }
 });
 

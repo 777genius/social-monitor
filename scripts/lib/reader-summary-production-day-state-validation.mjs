@@ -174,6 +174,25 @@ function validateOutcome(value, expectedDate) {
   return value.outcome;
 }
 
+function createState(expectedDate, bindingFilename, byteLength, sha256, complete, artifact) {
+  const state = complete
+    ? validateProof(artifact, expectedDate).state
+    : validateOutcome(artifact, expectedDate);
+  return {
+    schemaVersion: 1,
+    artifactFormat: stateArtifactFormat,
+    requestedDate: expectedDate,
+    state,
+    terminal: true,
+    binding: {
+      artifactFormat: complete ? proofArtifactFormat : outcomeArtifactFormat,
+      filename: bindingFilename,
+      byteLength,
+      sha256,
+    },
+  };
+}
+
 function validateLegacyPublicationBinding(report, proof, requestedDate, latestByteLength, latestSha256) {
   const expectedPeriod = utcPeriod(requestedDate);
   const identity = report.reportIdentity;
@@ -354,4 +373,4 @@ function fail(message) {
   throw new Error(message);
 }
 
-export { stateArtifactFormat, proofArtifactFormat, outcomeArtifactFormat, reportArtifactFormat, reportGeneratedBy, validateState, validateProof, validateOutcome, validateLegacyPublicationBinding, assertDate, assertObject, stableJson, reportFilename, proofFilename, utcPeriod, periodsEqual, isObject, fail };
+export { stateArtifactFormat, proofArtifactFormat, outcomeArtifactFormat, reportArtifactFormat, reportGeneratedBy, validateState, validateProof, validateOutcome, createState, validateLegacyPublicationBinding, assertDate, assertObject, stableJson, reportFilename, proofFilename, utcPeriod, periodsEqual, isObject, fail };

@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import {
   stateArtifactFormat, proofArtifactFormat, outcomeArtifactFormat,
-  validateState, validateProof, validateOutcome, validateLegacyPublicationBinding,
+  validateState, validateProof, validateLegacyPublicationBinding, createState,
   assertDate, assertObject, stableJson, reportFilename, proofFilename, fail,
 } from './lib/reader-summary-production-day-state-validation.mjs';
 
@@ -121,22 +121,10 @@ function validateLegacyPublication(latestPath, stateDirectory) {
 function buildState(expectedDate, bindingPath, complete) {
   const bytes = readFileSync(bindingPath);
   const artifact = parseJson(bytes, bindingPath);
-  const state = complete
-    ? validateProof(artifact, expectedDate).state
-    : validateOutcome(artifact, expectedDate);
-  return {
-    schemaVersion: 1,
-    artifactFormat: stateArtifactFormat,
-    requestedDate: expectedDate,
-    state,
-    terminal: true,
-    binding: {
-      artifactFormat: complete ? proofArtifactFormat : outcomeArtifactFormat,
-      filename: basename(bindingPath),
-      byteLength: bytes.byteLength,
-      sha256: sha256Hex(bytes),
-    },
-  };
+  return createState(
+    expectedDate, basename(bindingPath), bytes.byteLength, sha256Hex(bytes),
+    complete, artifact,
+  );
 }
 
 function validateBinding(state, path) {
