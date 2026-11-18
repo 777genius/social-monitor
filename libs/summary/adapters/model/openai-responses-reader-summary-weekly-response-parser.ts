@@ -18,10 +18,10 @@ export const parseOpenAiReaderSummaryWeeklyResponse = (
   let parsed: unknown;
   try {
     parsed = JSON.parse(value);
-  } catch (error) {
-    const detail =
-      error instanceof Error ? error.message : "unknown JSON parse failure";
-    throw new OpenAiReaderSummaryWeeklyOutputParseError(detail);
+  } catch {
+    // SyntaxError.message may quote private provider evidence in recent V8.
+    // Keep syntax diagnostics fail-closed without exposing response fragments.
+    throw new OpenAiReaderSummaryWeeklyOutputParseError("malformed JSON");
   }
   return parseOpenAiReaderSummaryWeeklyValue(input, parsed);
 };

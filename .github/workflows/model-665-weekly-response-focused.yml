@@ -18,6 +18,7 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-legacy-compatibility.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-shapes.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-shape-validation.spec.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-parser.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-parser.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-output-admission.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-model.adapter.ts

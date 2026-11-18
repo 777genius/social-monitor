@@ -285,6 +285,20 @@ describe("OpenAI reader summary weekly response parser", () => {
     ).toThrow("non-dense array");
   });
 
+  it("redacts untrusted weekly source text from malformed JSON errors", () => {
+    const marker = "private-weekly-evidence-5d7f0c";
+    const parse = () =>
+      parseOpenAiReaderSummaryWeeklyResponse(weeklyInput(), `${marker} {`);
+    expect(parse).toThrow(OpenAiReaderSummaryWeeklyOutputParseError);
+    expect(parse).toThrow("malformed JSON");
+    try {
+      parse();
+    } catch (error) {
+      expect(error).toMatchObject({ detail: "malformed JSON" });
+      expect(String(error)).not.toContain(marker);
+    }
+  });
+
   it("rejects unknown fields and a mismatched input seal", () => {
     const input = weeklyInput();
     const extra = mutable(weeklyOutput(input));
