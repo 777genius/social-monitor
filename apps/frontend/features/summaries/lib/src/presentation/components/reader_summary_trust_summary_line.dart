@@ -13,21 +13,32 @@ class _TrustSummaryLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 430 ||
+            MediaQuery.textScalerOf(context).scale(1) > 1.3;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Expanded(child: _TrustPanelTitle()),
-            const SizedBox(width: AppSpacing.xs),
-            _TrustToggleLabel(expanded: expanded),
+            if (isNarrow) ...[
+              const _TrustPanelTitle(),
+              const SizedBox(height: AppSpacing.xs),
+              _TrustToggleLabel(expanded: expanded),
+            ] else
+              Row(
+                children: [
+                  const Expanded(child: _TrustPanelTitle()),
+                  const SizedBox(width: AppSpacing.xs),
+                  _TrustToggleLabel(expanded: expanded),
+                ],
+              ),
+            const SizedBox(height: AppSpacing.sm),
+            _TrustVerdict(snapshot: snapshot),
+            const SizedBox(height: AppSpacing.sm),
+            _TrustBadges(snapshot: snapshot, report: report),
           ],
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        _TrustVerdict(snapshot: snapshot),
-        const SizedBox(height: AppSpacing.sm),
-        _TrustBadges(snapshot: snapshot, report: report),
-      ],
+        );
+      },
     );
   }
 }
