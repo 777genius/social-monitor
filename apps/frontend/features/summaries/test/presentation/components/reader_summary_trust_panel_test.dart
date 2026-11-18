@@ -9,7 +9,7 @@ import 'package:social_monitor_summaries/src/presentation/components/reader_summ
 import '../../support/summaries_test_fixtures.dart';
 
 void main() {
-  testWidgets('keeps collapsed trust summary in one row on wide panels', (
+  testWidgets('shows readable trust verdict and wrapped badges', (
     tester,
   ) async {
     tester.view.devicePixelRatio = 1;
@@ -17,20 +17,17 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     addTearDown(tester.view.resetPhysicalSize);
 
-    final summary = _trustSummary();
-    await tester.pumpWidget(_TestApp(summary: summary));
+    await tester.pumpWidget(_TestApp(summary: _trustSummary()));
 
-    final rowCenterY = tester.getCenter(find.text('Trust & evidence')).dy;
-    for (final finder in [
-      find.text('Needs confirmation').first,
-      find.text(
-        'Treat this as a lead until another independent source group confirms the key items.',
-      ),
-      find.text('Medium confidence'),
-      find.text('Why trust this?'),
-    ]) {
-      expect((tester.getCenter(finder).dy - rowCenterY).abs(), lessThan(26));
-    }
+    final title = find.text('Trust & evidence');
+    final verdict = find.text('Needs confirmation').first;
+    expect(
+      tester.getTopLeft(verdict).dy,
+      greaterThan(tester.getTopLeft(title).dy),
+    );
+    expect(find.text('Medium confidence'), findsOneWidget);
+    expect(find.text('1 source group'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('toggles evidence from the whole trust panel surface', (
@@ -52,6 +49,14 @@ void main() {
       findsOneWidget,
     );
 
+    // Expanded content is readable/selectable without collapsing the panel.
+    await tester.tap(find.text('Reddit users report useful MCP agent workflows'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Reddit users report useful MCP agent workflows'),
+      findsOneWidget,
+    );
+
     await tester.tap(
       find.text(
         'Treat this as a lead until another independent source group confirms the key items.',
@@ -63,6 +68,41 @@ void main() {
       find.text('Reddit users report useful MCP agent workflows'),
       findsNothing,
     );
+  });
+
+  testWidgets('expanded evidence reveals full selectable source copy', (
+    tester,
+  ) async {
+    const viewport = Size(375, 800);
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = viewport;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    const sourceTitle =
+        'A detailed original post title about setting up a reliable MCP '
+        'agent workflow, with a precise caveat that must remain readable '
+        'at narrow mobile widths and increased text scaling.';
+    await tester.pumpWidget(
+      _TestApp(
+        summary: _trustSummary(evidenceTitle: sourceTitle),
+        viewport: viewport,
+        textScaler: const TextScaler.linear(1.5),
+      ),
+    );
+    await tester.tap(find.text('Trust & evidence'));
+    await tester.pumpAndSettle();
+
+    final source = find.text('Reddit [1] - $sourceTitle');
+    expect(source, findsOneWidget);
+    final selectableSource = find.ancestor(
+      of: source,
+      matching: find.byType(SelectableText),
+    );
+    expect(selectableSource, findsOneWidget);
+    expect(tester.widget<SelectableText>(selectableSource).maxLines, isNull);
+    expect(find.text('Source text'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('wraps trust copy at 375x800 with 1.5 text scaling', (
@@ -119,7 +159,9 @@ void main() {
   });
 }
 
-ReaderSummary _trustSummary() {
+ReaderSummary _trustSummary({
+  String evidenceTitle = 'Thread evidence about MCP agent workflows',
+}) {
   return const SummaryMapper().readerSummaryToDomain(
     readerSummaryApiDto(
       content: readerSummaryContentApiDto(
@@ -128,7 +170,7 @@ ReaderSummary _trustSummary() {
             claim: 'Reddit users report useful MCP agent workflows',
             evidence: [
               SummaryClaimEvidenceApiDto(
-                title: 'Thread evidence about MCP agent workflows',
+                title: evidenceTitle,
                 providerKey: 'reddit',
                 citationId: 'claim-citation',
                 canonicalUrl: 'https://reddit.example/r/mcp/comments/1',

@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:social_monitor_design_system/social_monitor_design_system.dart';
 import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
 import 'package:social_monitor_summaries/src/application/contracts/reader_source_launcher.dart';
+import 'package:social_monitor_summaries/src/application/contracts/summary_review_catalog.dart';
+import 'package:social_monitor_summaries/src/application/queries/load_workspace_summary_query.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/load_published_summary_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_summary_history_use_case.dart';
 import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_summary_use_case.dart';
@@ -16,6 +18,7 @@ import 'package:social_monitor_summaries/src/domain/value_objects/reader_posts_p
 import 'package:social_monitor_summaries/src/domain/value_objects/top_posts_sort_order.dart';
 import 'package:social_monitor_summaries/src/infrastructure/mappers/summary_mapper.dart';
 import 'package:social_monitor_summaries/src/presentation/components/reader_summary_brief_surface.dart';
+import 'package:social_monitor_summaries/src/presentation/components/reader_summary_unpublished_posts_sliver.dart';
 import 'package:social_monitor_summaries/src/presentation/components/reader_summary_view.dart';
 import 'package:social_monitor_summaries/src/presentation/pages/published_summary_page.dart';
 import 'package:social_monitor_summaries/src/presentation/stores/published_summary_store.dart';
@@ -170,6 +173,58 @@ void main() {
     await _selectAndCopy(tester, topPost, 4);
     expect(clipboardText, 'coding');
   });
+  testWidgets('failed publication still offers source posts and retry', (
+    tester,
+  ) async {
+    final catalog = _FailingPublicSummaryCatalog();
+    final browseCatalog = ControlledReaderPostCatalog();
+    final browseStore = browseCatalog.createStore();
+    addTearDown(browseStore.dispose);
+    final store = PublishedSummaryStore(
+      scope: summaryWorkspaceScope,
+      loadLatest: LoadWorkspaceSummaryUseCase(catalog),
+      loadHistory: LoadWorkspaceSummaryHistoryUseCase(catalog),
+      loadPublished: LoadPublishedSummaryUseCase(catalog),
+      openReaderSource: const OpenReaderSourceUseCase(_SourceLauncher()),
+      allowUnpublishedDays: true,
+    );
+    addTearDown(store.dispose);
+    final theme = AppTheme.light();
+    await tester.pumpWidget(
+      AppHeadlessScope(
+        theme: theme,
+        appBuilder: (overlayBuilder) => MaterialApp(
+          theme: theme,
+          builder: overlayBuilder,
+          home: Scaffold(
+            body: PublishedSummaryPage(
+              store: store,
+              readerPostsBrowseStore: browseStore,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(store.state, isA<FailureViewState<ReaderSummary>>());
+    expect(find.text('Summary unavailable'), findsOneWidget);
+    expect(find.textContaining('Latest publication unavailable'), findsOneWidget);
+    expect(find.text('Retry'), findsOneWidget);
+    expect(find.byType(ReaderSummaryUnpublishedPostsSliver), findsOneWidget);
+    expect(browseCatalog.queries, hasLength(1));
+    browseCatalog.responses.single.complete(
+      Result.success(const ReaderPostsPage(
+        items: [],
+        total: 0,
+        providerKeys: [],
+      )),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('unpublished public day shows original posts instead of article', (
     tester,
   ) async {
@@ -294,6 +349,23 @@ Future<void> _sendFindShortcut(WidgetTester tester) async {
   await tester.sendKeyDownEvent(modifier);
   await tester.sendKeyEvent(LogicalKeyboardKey.keyF);
   await tester.sendKeyUpEvent(modifier);
+}
+
+final class _FailingPublicSummaryCatalog extends Fake
+    implements SummaryReviewCatalog {
+  @override
+  Future<Result<WorkspaceSummarySnapshot>> loadWorkspaceSummary(
+    LoadWorkspaceSummaryQuery query,
+  ) async => const Result.failure(
+    UnexpectedFailure(message: 'Latest publication unavailable'),
+  );
+
+  @override
+  Future<Result<WorkspaceSummarySnapshot>> loadWorkspaceSummaryHistory(
+    LoadWorkspaceSummaryQuery query,
+  ) async => const Result.failure(
+    UnexpectedFailure(message: 'Publication history unavailable'),
+  );
 }
 
 final class _SourceLauncher implements ReaderSourceLauncher {

@@ -137,7 +137,12 @@ final class SummariesReviewStore extends ChangeNotifier {
 
   WorkspaceScope get scope => _scope;
   SummaryPeriod get selectedSummaryPeriod {
-    if (_selectedSummaryPeriodEndedAt == null) {
+    // The last published summary can be weeks older than the newest posts.
+    // On the live reader route, start at the latest completed UTC day so
+    // unpublished days can render their own collected source posts.
+    if (_selectedSummaryPeriodEndedAt == null &&
+        !(allowUnpublishedDays &&
+            selectedSummaryPeriodPreset == SummaryPeriodPreset.daily)) {
       final latest = switch (workspaceSummaryState) {
         ReadyViewState<WorkspaceSummarySnapshot>(:final value) => value.current,
         LoadingViewState<WorkspaceSummarySnapshot>(:final previousValue) =>

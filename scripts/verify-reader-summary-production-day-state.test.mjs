@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
   cpSync,
+  chmodSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -9,14 +10,78 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
+import * as ts from "typescript";
 
-const verifier = join(
-  process.cwd(),
-  "scripts/verify-reader-summary-production-day-state.mjs",
+const verifier = fileURLToPath(
+  new URL("./verify-reader-summary-production-day-state.mjs", import.meta.url),
 );
 const collectionDate = "2026-07-27";
+
+test("CLI delegates every state/proof/outcome path to the pure validation owner", () => {
+  const script = ts.createSourceFile(
+    "production-day-cli.mjs", readFileSync(verifier, "utf8"),
+    ts.ScriptTarget.Latest, true, ts.ScriptKind.JS,
+  );
+  const policyPath = fileURLToPath(
+    new URL("./lib/reader-summary-production-day-state-validation.mjs", import.meta.url),
+  );
+  const policy = ts.createSourceFile(
+    "production-day-policy.mjs", readFileSync(policyPath, "utf8"),
+    ts.ScriptTarget.Latest, true, ts.ScriptKind.JS,
+  );
+  const policyImport = script.statements.find((statement) =>
+    ts.isImportDeclaration(statement) &&
+    statement.moduleSpecifier.text === "./lib/reader-summary-production-day-state-validation.mjs");
+  assert.ok(policyImport, "CLI must import the extracted validation policy");
+  const bindings = policyImport.importClause?.namedBindings;
+  assert.ok(bindings && ts.isNamedImports(bindings), "CLI must import policy functions by name");
+  const imported = new Set(bindings.elements.map((element) => element.name.text));
+  function countExecutableCalls(source) {
+    const calls = new Map();
+    function visit(node) {
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+        const name = node.expression.text;
+        calls.set(name, (calls.get(name) ?? 0) + 1);
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(source);
+    return calls;
+  }
+  const cliCalls = countExecutableCalls(script);
+  const policyCalls = countExecutableCalls(policy);
+  assert.ok(imported.has("createState"), "CLI must delegate state construction to policy");
+  assert.equal(cliCalls.get("createState"), 1, "CLI must call state constructor once");
+  assert.equal(
+    policy.statements.filter((node) =>
+      ts.isFunctionDeclaration(node) && node.name?.text === "createState").length,
+    1, "policy must own the state constructor exactly once",
+  );
+  // Preserve six distinct executable admission paths across the two owners.
+  for (const [name, expectedCliCalls, expectedPolicyCalls] of [
+    ["validateState", 3, 0],    // latest, dated and direct state verification
+    ["validateProof", 1, 1],    // legacy proof and policy state construction
+    ["validateOutcome", 0, 1],  // outcome admission now belongs to policy
+  ]) {
+    assert.equal(
+      imported.has(name), expectedCliCalls > 0,
+      name + " should only be directly imported when the CLI calls it",
+    );
+    assert.equal(
+      script.statements.filter((node) => ts.isFunctionDeclaration(node) && node.name?.text === name).length,
+      0, name + " must not be duplicated in the CLI",
+    );
+    assert.equal(
+      policy.statements.filter((node) => ts.isFunctionDeclaration(node) && node.name?.text === name).length,
+      1, name + " must have exactly one policy implementation",
+    );
+    assert.equal(cliCalls.get(name) ?? 0, expectedCliCalls, name + " CLI admission paths changed");
+    assert.equal(policyCalls.get(name) ?? 0, expectedPolicyCalls, name + " policy admission paths changed");
+  }
+});
 
 test("creates deterministic complete state bound to a verified proof", () => {
   withFixture((directory) => {
@@ -33,6 +98,38 @@ test("creates deterministic complete state bound to a verified proof", () => {
       createHash("sha256").update(readFileSync(proofPath)).digest("hex"),
     );
   });
+});
+
+test("CLI preserves an existing immutable cursor for proof, outcome, and legacy migration", () => {
+  for (const kind of ["proof", "outcome", "legacy"]) {
+    withFixture((directory) => {
+      const stateOut = join(directory, "existing-state.json");
+      const original = `previous immutable state: ${kind}\n`;
+      writeFileSync(stateOut, original);
+      let args;
+      if (kind === "legacy") {
+        const date = "2026-07-22";
+        const latest = writeLegacyPublication(directory, date);
+        args = [
+          "--legacy-latest", latest,
+          "--state-dir", directory,
+          "--state-out", stateOut,
+        ];
+      } else {
+        const binding = kind === "proof"
+          ? writeProof(directory, collectionDate)
+          : writeOutcome(directory, collectionDate, "partial");
+        args = [
+          "--expected-date", collectionDate,
+          kind === "proof" ? "--publication-proof" : "--terminal-outcome", binding,
+          "--state-out", stateOut,
+        ];
+      }
+      const rejected = assertFailure(args);
+      assert.match(rejected.stderr, /EEXIST/, `${kind}: must reject existing output`);
+      assert.equal(readFileSync(stateOut, "utf8"), original, `${kind}: original bytes must survive`);
+    });
+  }
 });
 
 for (const outcome of ["partial", "unavailable"]) {
@@ -112,6 +209,29 @@ test("legacy Jul22 publication bootstraps exact completed cursor", () => {
   });
 });
 
+test("legacy publication rejects failed quality gate even with matching immutable bytes and proof", () => {
+  withFixture((directory) => {
+    const legacyDate = "2026-07-22";
+    const latest = writeLegacyPublication(directory, legacyDate);
+    const report = JSON.parse(readFileSync(latest, "utf8"));
+    report.qualityGates.productionDefinitionOfDoneSatisfied = false;
+    const bytes = Buffer.from(`${JSON.stringify(report, null, 2)}\n`);
+    writeFileSync(latest, bytes);
+    writeFileSync(join(directory, reportFilename(legacyDate)), bytes);
+    const proofPath = join(directory, proofFilename(legacyDate));
+    const proof = JSON.parse(readFileSync(proofPath, "utf8"));
+    proof.reportByteLength = bytes.byteLength;
+    proof.reportSha256 = createHash("sha256").update(bytes).digest("hex");
+    writeFileSync(proofPath, `${JSON.stringify(proof)}\n`);
+    const rejected = assertFailure([
+      "--legacy-latest", latest,
+      "--state-dir", directory,
+      "--state-out", join(directory, "rejected-state.json"),
+    ]);
+    assert.match(rejected.stderr, /legacy latest report is not a verified completed publication/);
+  });
+});
+
 test("malformed or inconsistent legacy publication fails closed", () => {
   withFixture((directory) => {
     const latest = join(directory, "latest.v1.json");
@@ -167,6 +287,70 @@ test("malformed, stale, and conflicting latest states fail closed", () => {
   });
 });
 
+test("immutable cursor checks bind raw artifact and dated-state bytes, not only parsed JSON", () => {
+  withFixture((directory) => {
+    const proofPath = writeProof(directory, collectionDate);
+    const datedState = join(directory, stateFilename(collectionDate));
+    buildCompleteState(proofPath, datedState, collectionDate);
+    const latestState = join(directory, "latest-state.v1.json");
+    cpSync(datedState, latestState);
+
+    // Preserve exact latest-vs-dated byte equality even when both parse identically.
+    chmodSync(latestState, 0o644);
+    writeFileSync(latestState, Buffer.concat([
+      readFileSync(latestState), Buffer.from("\n"),
+    ]));
+    const modifiedLatest = assertFailure([
+      "--latest-state", latestState, "--state-dir", directory,
+    ]);
+    assert.match(modifiedLatest.stderr, /latest state does not exactly match its immutable dated state/);
+
+    // Restore the cursor, then change only proof whitespace. All three
+    // read paths must reject the stale byteLength/SHA-256 binding.
+    cpSync(datedState, latestState);
+    writeFileSync(proofPath, Buffer.concat([
+      readFileSync(proofPath), Buffer.from("\n"),
+    ]));
+    for (const args of [
+      ["--expected-date", collectionDate, "--publication-proof", proofPath, "--state", datedState],
+      ["--dated-state", datedState, "--state-dir", directory],
+      ["--latest-state", latestState, "--state-dir", directory],
+    ]) {
+      const rejected = assertFailure(args);
+      assert.match(
+        rejected.stderr,
+        /day state (does not exactly bind its verified terminal artifact|binding is stale or conflicting)/,
+      );
+    }
+  });
+});
+
+test("dated and direct state checks reject invalid terminal identity", () => {
+  withFixture((directory) => {
+    const proofPath = writeProof(directory, collectionDate);
+    const datedState = join(directory, stateFilename(collectionDate));
+    buildCompleteState(proofPath, datedState, collectionDate);
+
+    const invalid = JSON.parse(readFileSync(datedState, "utf8"));
+    invalid.terminal = false;
+    // The CLI writes this fixture 0444; explicitly grant write access to model tampering.
+    chmodSync(datedState, 0o644);
+    writeFileSync(datedState, `${JSON.stringify(invalid)}\n`);
+
+    const dated = assertFailure([
+      "--dated-state", datedState, "--state-dir", directory,
+    ]);
+    assert.match(dated.stderr, /day state identity or terminal status is invalid/);
+
+    const direct = assertFailure([
+      "--expected-date", collectionDate,
+      "--publication-proof", proofPath,
+      "--state", datedState,
+    ]);
+    assert.match(direct.stderr, /day state identity or terminal status is invalid/);
+  });
+});
+
 test("terminal outcome must prove no model, publication, or recollection", () => {
   withFixture((directory) => {
     const outcomePath = writeOutcome(directory, collectionDate, "partial");
@@ -199,6 +383,64 @@ test("terminal incomplete providers require a diagnostic reason", () => {
       join(directory, "state.json"),
     ]);
   });
+});
+
+test("real verifier works from a non-repository working directory", () => {
+  withFixture((directory) => {
+    const proofPath = writeProof(directory, collectionDate);
+    const statePath = join(directory, "foreign-cwd-state.json");
+    run([
+      "--expected-date", collectionDate,
+      "--publication-proof", proofPath,
+      "--state-out", statePath,
+    ], { cwd: directory });
+    run([
+      "--expected-date", collectionDate,
+      "--publication-proof", proofPath,
+      "--state", statePath,
+    ], { cwd: directory });
+    assert.equal(JSON.parse(readFileSync(statePath, "utf8")).state, "complete");
+  });
+});
+
+test("real verifier rejects malformed proof policy after extraction", () => {
+  for (const corrupt of [
+    (proof) => { proof.requestedUtcPeriod.endedAt = "2026-07-29T00:00:00.000Z"; },
+    (proof) => { proof.qualityGateNames.push(proof.qualityGateNames[0]); },
+    (proof) => { proof.reportSha256 = "z".repeat(64); },
+  ]) {
+    withFixture((directory) => {
+      const proofPath = writeProof(directory, collectionDate);
+      const proof = JSON.parse(readFileSync(proofPath, "utf8"));
+      corrupt(proof);
+      writeFileSync(proofPath, `${JSON.stringify(proof)}\n`);
+      assertFailure([
+        "--expected-date", collectionDate,
+        "--publication-proof", proofPath,
+        "--state-out", join(directory, "rejected-state.json"),
+      ]);
+    });
+  }
+});
+
+test("real verifier rejects conflicting provider diagnostics after extraction", () => {
+  for (const corrupt of [
+    (outcome) => { outcome.providerReadiness.providers[1].providerKey = "hacker-news"; },
+    (outcome) => { outcome.providerReadiness.providers[1].databaseFeedItemCount = -1; },
+    (outcome) => { outcome.outcome = "unavailable"; },
+  ]) {
+    withFixture((directory) => {
+      const outcomePath = writeOutcome(directory, collectionDate, "partial");
+      const outcome = JSON.parse(readFileSync(outcomePath, "utf8"));
+      corrupt(outcome);
+      writeFileSync(outcomePath, `${JSON.stringify(outcome)}\n`);
+      assertFailure([
+        "--expected-date", collectionDate,
+        "--terminal-outcome", outcomePath,
+        "--state-out", join(directory, "rejected-state.json"),
+      ]);
+    });
+  }
 });
 
 function writeLegacyPublication(directory, date) {
@@ -406,8 +648,9 @@ function outcomeFilename(date) {
   return `reader-summary-production-day-outcome.${date}.v1.json`;
 }
 
-function run(args) {
+function run(args, options = {}) {
   const result = spawnSync(process.execPath, [verifier, ...args], {
+    cwd: options.cwd,
     encoding: "utf8",
   });
   assert.equal(result.status, 0, result.stderr);
@@ -418,7 +661,12 @@ function assertFailure(args) {
   const result = spawnSync(process.execPath, [verifier, ...args], {
     encoding: "utf8",
   });
-  assert.notEqual(result.status, 0, "expected verifier failure");
+  assert.ifError(result.error);
+  assert.ok(
+    Number.isInteger(result.status) && result.status !== 0,
+    `expected a rejected verifier exit, got status=${result.status} signal=${result.signal}; stderr=${result.stderr}`,
+  );
+  return result;
 }
 
 function withFixture(runTest) {
