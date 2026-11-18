@@ -177,4 +177,29 @@ describe("OpenAI reader summary daily writer schema boundary", () => {
     expect(dailyEditorialPlan.topics).toEqual([{ feedItemIds: ["feed-one", "feed-two"] }]);
   });
 
+
+  it("preserves the strict full base envelope and shared writer constraints across releases", () => {
+    const required = [
+      "headline", "executiveSummary", "narrativeSections", "content",
+      "topStories", "interestHighlights", "repeatedSignals", "risksAndUnknowns",
+      "citationMap", "qualityFlags", "confidence", "noSignalReason",
+    ];
+    expect(baseSchema.required).toEqual(required);
+    expect(Object.keys(baseSchema.properties)).toEqual(required);
+
+    for (const schema of [baseSchema, editorialSchema, synthesisSchema]) {
+      expect(schema.additionalProperties).toBe(false);
+      expect(schema.$defs.narrativeSection.additionalProperties).toBe(false);
+      expect(schema.$defs.narrativeSection.required).toEqual([
+        "kind", "title", "text", "citationIds", "storyClusterId",
+      ]);
+      expect(schema.$defs.topStory.additionalProperties).toBe(false);
+      expect(schema.$defs.risk.additionalProperties).toBe(false);
+      expect(schema.$defs.citation.additionalProperties).toBe(false);
+    }
+    expect(editorialSchema.$defs.topStory).toBe(baseSchema.$defs.topStory);
+    expect(synthesisSchema.$defs.risk).toBe(baseSchema.$defs.risk);
+    expect(synthesisSchema.properties.headline).toBe(baseSchema.properties.headline);
+  });
+
 });
