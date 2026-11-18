@@ -30,6 +30,7 @@ on:
       - libs/summary/adapters/model/agent-runtime-reader-summary-generation.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-generation.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-model.adapter.ts
+      - libs/summary/adapters/model/agent-runtime-summary-model.adapter.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-gateway-violations.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-model.gateway-repair.spec.ts
 permissions:
