@@ -1,5 +1,5 @@
 import type { OpenAiResponsesReaderSummaryModelAdapterOptions } from "./openai-responses-reader-summary-runtime-settings";
-import { openAiApiKeySourceDescription, resolveOpenAiApiKey } from "./openai-api-key-source";
+import { resolveOpenAiReaderSummaryCredential } from "./openai-responses-reader-summary-credential-admission";
 import { projectOpenAiReaderSummaryEnvironment } from "./openai-responses-reader-summary-env-options";
 import { assertNoReaderSummaryPromptReleaseOverride } from "./reader-summary-prompt-release-policy";
 
@@ -12,13 +12,7 @@ export const resolveOpenAiResponsesReaderSummaryModelOptions = (
     environmentName: "OPENAI_READER_SUMMARY_PROMPT_VERSION",
     value: env.OPENAI_READER_SUMMARY_PROMPT_VERSION,
   });
-  const apiKey = resolveOpenAiApiKey(env);
-
-  if (params.requireApiKey && apiKey.length === 0) {
-    throw new Error(
-      `READER_SUMMARY_MODEL_PROVIDER=openai-responses requires ${openAiApiKeySourceDescription}`,
-    );
-  }
+  const apiKey = resolveOpenAiReaderSummaryCredential(env, params);
 
   return {
     apiKey,
