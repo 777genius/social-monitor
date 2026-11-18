@@ -93,6 +93,10 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-response-policy.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-response-policy.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-model.adapter.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-options.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-credential-admission.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-credential-admission.spec.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-runtime-settings.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-generation-admission.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-generation-admission.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-response-parser.spec.ts
@@ -177,6 +181,9 @@ jobs:
           libs/summary/adapters/model/openai-responses-reader-summary-content-quality-boundaries.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-response-parser.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-model.adapter.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-credential-admission.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-runtime-settings.spec.ts
+          libs/summary/adapters/model/openai-api-key-file.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-response-policy.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-generation-admission.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-route-admission.spec.ts
