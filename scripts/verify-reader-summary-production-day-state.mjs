@@ -3,9 +3,9 @@ import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import {
-  stateArtifactFormat, proofArtifactFormat, outcomeArtifactFormat, reportArtifactFormat, reportGeneratedBy,
-  validateState, validateProof, validateOutcome, validateLegacyPublicationBinding, assertDate, assertObject, stableJson,
-  reportFilename, proofFilename, utcPeriod, periodsEqual, isObject, fail,
+  stateArtifactFormat, proofArtifactFormat, outcomeArtifactFormat,
+  validateState, validateProof, validateOutcome, validateLegacyPublicationBinding,
+  assertDate, assertObject, stableJson, reportFilename, proofFilename, fail,
 } from './lib/reader-summary-production-day-state-validation.mjs';
 
 const options = parseOptions(process.argv.slice(2));
