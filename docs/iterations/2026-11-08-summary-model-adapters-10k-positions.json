@@ -865,9 +865,24 @@
       "original": "openai-responses-reader-summary-narrative.ts",
       "owner": "openai-responses-reader-summary-narrative-section-projection.ts",
       "originalPositions": [
-        25,
         70,
         71,
+        99,
+        109,
+        110,
+        111,
+        112,
+        122,
+        146,
+        151
+      ],
+      "responsibility": "Grounded narrative candidate assembly, text precedence and trusted source publication. Provider field decoding is assigned once to a dedicated anti-corruption owner; stale original position 89 was withdrawn rather than matched to unrelated fallback text."
+    },
+    {
+      "original": "openai-responses-reader-summary-narrative.ts",
+      "owner": "openai-responses-reader-summary-narrative-provider-section.ts",
+      "originalPositions": [
+        25,
         72,
         73,
         75,
@@ -878,22 +893,13 @@
         84,
         85,
         86,
-        89,
         92,
         93,
         94,
         95,
-        98,
-        99,
-        109,
-        110,
-        111,
-        112,
-        122,
-        146,
-        151
+        98
       ],
-      "responsibility": "Provider-section shape, model text/title and trusted citation-ID projection only; model-authored cluster trust predicates now have a separate owner. Four duplicate/rewritten returns retracted; provenance only."
+      "responsibility": "Decode untrusted provider kind, declared cluster, title and citation IDs before separate grounded publication; 16 already-counted frozen positions reowned after extraction, zero new credited positions."
     },
     {
       "original": "openai-responses-reader-summary-narrative.ts",
