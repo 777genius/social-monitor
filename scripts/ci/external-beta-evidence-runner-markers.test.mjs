@@ -345,6 +345,32 @@ test('relocated private env admission markers fail closed at their actual owner'
   }
 });
 
+test('inline comments cannot spoof executable private env-file admission', () => {
+  for (const [line, forged, marker] of [
+    ['      validateExternalBetaEnvFilePath(path, label, violations);',
+      '      void path; // validateExternalBetaEnvFilePath(path, label, violations)',
+      'validateExternalBetaEnvFilePath(path, label, violations)'],
+    ["      const parsed = parseDotenv(readFileSync(path, 'utf8'));",
+      "      const parsed = {}; // parseDotenv(readFileSync(path, 'utf8'))",
+      "parseDotenv(readFileSync(path, 'utf8'))"],
+    ['        const existingValue = env[name]?.trim();',
+      '        const existingValue = undefined; // const existingValue = env[name]?.trim()',
+      'const existingValue = env[name]?.trim()'],
+    ['        env[name] = value;',
+      '        void value; // env[name] = value',
+      'env[name] = value'],
+  ]) {
+    assert.ok(sources.envFileLoaderSource.includes(line), 'fixture must match live source: ' + marker);
+    const tampered = sources.envFileLoaderSource.replace(line, forged);
+    assert.ok(tampered.includes(marker), 'previous substring-only check would accept marker');
+    assert.deepEqual(validateRunnerImplementationMarkers({
+      ...sources, envFileLoaderSource: tampered,
+    }), [
+      envFileLoaderPath + ': extracted private env-file admission must preserve "' + marker + '"',
+    ]);
+  }
+});
+
 test('runner cannot bypass live private env admission by commenting out its binding', () => {
   for (const needle of [
     "import { createExternalBetaEnvFileLoader } from './lib/external-beta-evidence-env-file-loader.mjs';",

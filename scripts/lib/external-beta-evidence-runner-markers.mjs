@@ -246,6 +246,17 @@ export function validateRunnerImplementationMarkers({
   const activeEnvFileLoaderSource = envFileLoaderSource
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^[ \t]*\/\/.*$/gm, '');
+  // These executable admission statements must exist outside inline comments.
+  const executableEnvMarkers = new Map([
+    ['validateExternalBetaEnvFilePath(path, label, violations)',
+      /^[ \t]*validateExternalBetaEnvFilePath\(path, label, violations\);[ \t]*(?:\/\/[^\n]*)?$/m],
+    ["parseDotenv(readFileSync(path, 'utf8'))",
+      /^[ \t]*const parsed = parseDotenv\(readFileSync\(path, 'utf8'\)\);[ \t]*(?:\/\/[^\n]*)?$/m],
+    ['const existingValue = env[name]?.trim()',
+      /^[ \t]*const existingValue = env\[name\]\?\.trim\(\);[ \t]*(?:\/\/[^\n]*)?$/m],
+    ['env[name] = value',
+      /^[ \t]*env\[name\] = value;[ \t]*(?:\/\/[^\n]*)?$/m],
+  ]);
   for (const name of [
     'function loadExternalBetaEnvFiles(paths)',
     'validateExternalBetaEnvFilePath(path, label, violations)',
@@ -256,7 +267,9 @@ export function validateRunnerImplementationMarkers({
     'refusing to merge evidence from different runs',
     'env[name] = value',
   ]) {
-    if (!activeEnvFileLoaderSource.includes(name)) {
+    const executable = executableEnvMarkers.get(name);
+    if (!activeEnvFileLoaderSource.includes(name)
+      || (executable && !executable.test(activeEnvFileLoaderSource))) {
       violations.push(envFileLoaderPath + ': extracted private env-file admission must preserve "' + name + '"');
     }
   }
