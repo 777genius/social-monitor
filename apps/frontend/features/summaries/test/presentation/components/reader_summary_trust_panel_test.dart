@@ -95,7 +95,12 @@ void main() {
 
     final source = find.text('Reddit [1] - $sourceTitle');
     expect(source, findsOneWidget);
-    expect(tester.widget<SelectableText>(source).maxLines, isNull);
+    final selectableSource = find.ancestor(
+      of: source,
+      matching: find.byType(SelectableText),
+    );
+    expect(selectableSource, findsOneWidget);
+    expect(tester.widget<SelectableText>(selectableSource).maxLines, isNull);
     expect(find.text('Source text'), findsNothing);
     expect(tester.takeException(), isNull);
   });

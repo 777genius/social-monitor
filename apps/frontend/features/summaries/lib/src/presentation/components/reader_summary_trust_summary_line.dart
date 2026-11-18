@@ -87,13 +87,15 @@ class _TrustToggleLabel extends StatelessWidget {
           color: Theme.of(context).colorScheme.primary,
         ),
         const SizedBox(width: AppSpacing.xs),
-        Text(
-          expanded ? 'Hide evidence' : 'Why trust this?',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: Theme.of(context).colorScheme.primary,
-            letterSpacing: 0,
+        Flexible(
+          child: Text(
+            expanded ? 'Hide evidence' : 'Why trust this?',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.primary,
+              letterSpacing: 0,
+            ),
           ),
         ),
       ],

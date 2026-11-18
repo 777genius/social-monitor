@@ -248,7 +248,8 @@ void main() {
 
       expect(store.selectedPeriod, day);
       expect(_readySummary(store).id, current.id);
-      expect(catalog.publishedQueries, [current.id]);
+      // Adjacent history may be prefetched after the selected article loads.
+      expect(catalog.publishedQueries, contains(current.id));
     },
   );
 
