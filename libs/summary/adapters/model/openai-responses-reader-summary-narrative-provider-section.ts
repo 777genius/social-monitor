@@ -1,5 +1,10 @@
 import { readerSummaryNarrativeSectionKinds, type ReaderSummaryNarrativeSection } from "../../domain";
-import { knownStringSubset, normalizeSetValue, optionalString, requiredStringArray } from "./openai-responses-reader-summary-json";
+import {
+  knownStringSubset,
+  normalizeSetValue,
+  optionalString,
+  requiredStringArray,
+} from "./openai-responses-reader-summary-json";
 import { defaultNarrativeTitle } from "./openai-responses-reader-summary-narrative-title-policy";
 import type { ReaderSummaryNarrativeCoverage } from "./openai-responses-reader-summary-narrative-coverage";
 
@@ -23,32 +28,32 @@ export const decodeReaderSummaryProviderNarrativeSection = (
     readonly storyTitlesByClusterId: ReadonlyMap<string, string>;
   },
 ): ReaderSummaryProviderNarrativeSection => {
-      const kind = normalizeSetValue(
-        value.kind,
-        narrativeKinds,
-        "reader summary narrative kind",
-      );
-      const authoredStoryClusterId = optionalString(value.storyClusterId);
-      const storyClusterId =
-        kind === "lead"
-          ? context.coverage.mode === "daily_synthesis"
-            ? undefined
-            : (context.coverage.leadClusterId ?? authoredStoryClusterId)
-          : authoredStoryClusterId;
-      const title =
-        optionalString(value.title) ??
-        defaultNarrativeTitle(
-          kind,
-          storyClusterId,
-          context.storyTitlesByClusterId,
-          context.coverage.mode,
-        );
-      const citationIds = knownStringSubset(
-        requiredStringArray(
-          value.citationIds ?? [],
-          "reader summary narrative citations",
-        ),
-        context.knownCitationIds,
-      ).slice(0, 3);
+  const kind = normalizeSetValue(
+    value.kind,
+    narrativeKinds,
+    "reader summary narrative kind",
+  );
+  const authoredStoryClusterId = optionalString(value.storyClusterId);
+  const storyClusterId =
+    kind === "lead"
+      ? context.coverage.mode === "daily_synthesis"
+        ? undefined
+        : (context.coverage.leadClusterId ?? authoredStoryClusterId)
+      : authoredStoryClusterId;
+  const title =
+    optionalString(value.title) ??
+    defaultNarrativeTitle(
+      kind,
+      storyClusterId,
+      context.storyTitlesByClusterId,
+      context.coverage.mode,
+    );
+  const citationIds = knownStringSubset(
+    requiredStringArray(
+      value.citationIds ?? [],
+      "reader summary narrative citations",
+    ),
+    context.knownCitationIds,
+  ).slice(0, 3);
   return { kind, authoredStoryClusterId, storyClusterId, title, citationIds };
 };
