@@ -3,11 +3,9 @@ import type {
   ReaderSummaryWeeklyModelOutput,
 } from "../../ports/reader-summary-weekly-model.port";
 import { openAiApiKeySourceDescription } from "./openai-api-key-source";
-import {
-  extractSingleOutputText,
-  modelError,
-  readCompletedResponse,
-} from "./openai-responses-reader-summary-weekly-response-contract";
+import { extractSingleOutputText } from "./openai-responses-reader-summary-weekly-response-output-text";
+import { modelError } from "./openai-responses-reader-summary-weekly-response-failure";
+import { readCompletedResponse } from "./openai-responses-reader-summary-weekly-response-http-reader";
 import { assertValidWeeklyInput } from "./openai-responses-reader-summary-weekly-input-admission";
 import { buildOpenAiReaderSummaryWeeklyRequest } from "./openai-responses-reader-summary-weekly-request";
 import { postOpenAiReaderSummaryWeeklyResponse } from "./openai-responses-reader-summary-weekly-transport";

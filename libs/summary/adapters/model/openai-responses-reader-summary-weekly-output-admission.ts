@@ -2,7 +2,7 @@ import type {
   ReaderSummaryWeeklyModelInput,
   ReaderSummaryWeeklyModelOutput,
 } from "../../ports/reader-summary-weekly-model.port";
-import { modelError } from "./openai-responses-reader-summary-weekly-response-contract";
+import { modelError } from "./openai-responses-reader-summary-weekly-response-failure";
 import { parseOpenAiReaderSummaryWeeklyResponse } from "./openai-responses-reader-summary-weekly-response-parser";
 
 /** Translate rejected artifact text to the stable non-retryable provider failure contract. */

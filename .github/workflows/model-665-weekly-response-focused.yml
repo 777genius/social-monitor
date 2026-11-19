@@ -32,6 +32,7 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-failure-policy.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-model.adapter.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-contract.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-http-reader.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-failure.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-records.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-state.ts

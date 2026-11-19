@@ -88,6 +88,30 @@ describe("OpenAI weekly response contract", () => {
     }
   });
 
+  it.each([
+    [429, false],
+    [502, true],
+  ] as const)("rejects HTTP %s before touching untrusted body (retryable=%s)", async (status, retryable) => {
+    const text = jest.fn();
+    const response = { ok: false, status, text } as unknown as Response;
+    await expect(readCompletedResponse(response)).rejects.toMatchObject({
+      failure: {
+        kind: "http_error", retryable,
+        message: `OpenAI reader summary weekly request failed with HTTP ${status}`,
+      },
+    });
+    expect(text).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed and non-object JSON before evaluating completion state", async () => {
+    await expect(readCompletedResponse(new Response("{broken", { status: 200 })))
+      .rejects.toMatchObject({ failure: { kind: "invalid_response", retryable: false,
+        message: "OpenAI reader summary weekly response body must be JSON" } });
+    await expect(readCompletedResponse(completed([1, 2])))
+      .rejects.toMatchObject({ failure: { kind: "invalid_response", retryable: false,
+        message: "OpenAI reader summary weekly response body must be an object" } });
+  });
+
   it("contains transport read failures without leaking provider exception details", async () => {
     const response = { ok: true, status: 200, text: jest.fn().mockRejectedValue(new Error("synthetic-private-payload")) } as unknown as Response;
     await expect(readCompletedResponse(response)).rejects.toMatchObject({

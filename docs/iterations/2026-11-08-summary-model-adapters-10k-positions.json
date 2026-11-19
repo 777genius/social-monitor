@@ -1761,7 +1761,7 @@
     },
     {
       "original": "openai-responses-reader-summary-weekly-model.adapter.ts",
-      "owner": "openai-responses-reader-summary-weekly-response-contract.ts",
+      "owner": "openai-responses-reader-summary-weekly-response-http-reader.ts",
       "originalPositions": [
         230,
         232,
@@ -1786,7 +1786,7 @@
         270,
         271
       ],
-      "responsibility": "Weekly HTTP status/body JSON decoding and bounded transport errors delegates semantic response-state validation to specialist"
+      "responsibility": "Provider HTTP status and body JSON decoding with bounded transport errors, independent of semantic completed-state validation; 22 previously credited frozen original positions transferred without duplicate credit"
     },
     {
       "original": "agent-runtime-reader-summary-topic-evidence-prompt.ts",
