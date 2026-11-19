@@ -7523,8 +7523,8 @@
       "responsibility": "Default-CWD lexical path admission now belongs to side-effect-free gRPC task-request policy rather than transport client; client preserves the identical legacy exported function object and constructor guard. Provisional provenance only, pending independent semantic review."
     },
     {
-      "original": "gateway-llm-client.ts",
-      "owner": "gateway-llm-task-preparation.ts",
+      "original": "gateway-llm/gateway-llm-client.ts",
+      "owner": "gateway-llm/gateway-llm-task-preparation.ts",
       "originalPositions": [
         147,
         191,
@@ -7542,8 +7542,8 @@
       "responsibility": "SDK task projection, output ceiling and bounded deadline moved from client transport to preparation policy"
     },
     {
-      "original": "gateway-llm-client.ts",
-      "owner": "gateway-llm-dispatch-loop.ts",
+      "original": "gateway-llm/gateway-llm-client.ts",
+      "owner": "gateway-llm/gateway-llm-dispatch-loop.ts",
       "originalPositions": [
         85,
         95,
@@ -7567,8 +7567,8 @@
       "responsibility": "Attempt state, SDK dispatch, account ordering and observation now owned by retry coordinator"
     },
     {
-      "original": "gateway-llm-client.ts",
-      "owner": "gateway-llm-task-route-admission.ts",
+      "original": "gateway-llm/gateway-llm-client.ts",
+      "owner": "gateway-llm/gateway-llm-task-route-admission.ts",
       "originalPositions": [
         149,
         150,
@@ -7583,8 +7583,8 @@
       "responsibility": "Fail-closed model/backend/effort and positive-timeout route admission before SDK dispatch"
     },
     {
-      "original": "gateway-llm-client.ts",
-      "owner": "gateway-llm-structured-output.ts",
+      "original": "gateway-llm/gateway-llm-client.ts",
+      "owner": "gateway-llm/gateway-llm-structured-output.ts",
       "originalPositions": [
         163,
         164,
@@ -7609,8 +7609,8 @@
       "responsibility": "Strict structured output decode and safe schema violation capture isolated from transport client"
     },
     {
-      "original": "gateway-llm-client.ts",
-      "owner": "gateway-llm-task-completion.ts",
+      "original": "gateway-llm/gateway-llm-client.ts",
+      "owner": "gateway-llm/gateway-llm-task-completion.ts",
       "originalPositions": [
         230,
         233,
@@ -7640,8 +7640,8 @@
       "responsibility": "Provider model matching, settlement warnings, selected output digest and attestation projection"
     },
     {
-      "original": "gateway-llm-client.ts",
-      "owner": "gateway-llm-health.ts",
+      "original": "gateway-llm/gateway-llm-client.ts",
+      "owner": "gateway-llm/gateway-llm-health.ts",
       "originalPositions": [
         129,
         133,
@@ -7651,8 +7651,8 @@
       "responsibility": "Fail-closed health probe response independent of task dispatch"
     },
     {
-      "original": "gateway-llm-client.ts",
-      "owner": "gateway-llm-task-failure.ts",
+      "original": "gateway-llm/gateway-llm-client.ts",
+      "owner": "gateway-llm/gateway-llm-task-failure.ts",
       "originalPositions": [
         112,
         113,
@@ -7663,8 +7663,8 @@
       "responsibility": "Safe failed-attempt projection with elapsed and deadline metadata"
     },
     {
-      "original": "gateway-llm-client.ts",
-      "owner": "gateway-llm-dispatch-retry-policy.ts",
+      "original": "gateway-llm/gateway-llm-client.ts",
+      "owner": "gateway-llm/gateway-llm-dispatch-retry-policy.ts",
       "originalPositions": [
         105,
         108,
