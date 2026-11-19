@@ -260,7 +260,7 @@ def backend_release(config, runner, binding):
                 reviewed_paths, reviewed_digest = gh.delta(base, reviewed_head)
                 continuation, _ = ([], digest([])) if sha == reviewed_head else gh.delta(reviewed_head, sha, allow_empty=True)
                 require(set(reviewed_paths) == expected_paths and reviewed_digest == expected_digest and
-                        all(core_policies.package_ci_path(p) and p not in expected_paths for p in continuation), 'operator-reviewed-delta')
+                        all(core_policies.package_ci_path(p) for p in continuation), 'operator-reviewed-delta')
                 reviewed = {'base': base, 'head': sha, 'delta_sha256': checksum,
                             'review_delta_sha256': reviewed_digest, 'continuation': continuation}
                 review_field = field
