@@ -63,3 +63,25 @@ it("preserves an identical rejected generation without charging an untrusted res
   expect(metrics.counters("summary_model_tokens_total")).toHaveLength(0);
   expect(metrics.counters("summary_model_estimated_cost_usd")).toHaveLength(0);
 });
+
+it("preserves daily success-before-usage ordering for a malformed successful result", async () => {
+  const metrics = new InMemoryMetricsRecorder();
+  const failure = Object.freeze(new Error("unreadable daily usage"));
+  const outcome = {
+    get usage(): never { throw failure; },
+  } as unknown as ReaderSummaryDailyEditorialAttempt;
+  const classifyError = jest.fn(() => ({
+    kind: "invalid_schema", retryable: false, message: failure.message,
+  }));
+  const delegate = {
+    planDaily: async () => outcome,
+    classifyError,
+  } as unknown as ReaderSummaryModelPort;
+  const model = new MeteredReaderSummaryModelAdapter(delegate, metrics);
+  await expect(model.planDaily(input, route)).rejects.toBe(failure);
+  expect(classifyError).toHaveBeenCalledWith(failure);
+  expect(metrics.counters("summary_model_requests_total").map((entry) => entry.labels.status))
+    .toEqual(["started", "succeeded", "failed"]);
+  expect(metrics.counters("summary_model_tokens_total")).toHaveLength(0);
+  expect(metrics.counters("summary_model_estimated_cost_usd")).toHaveLength(0);
+});
