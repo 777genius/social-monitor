@@ -7637,6 +7637,25 @@
         34
       ],
       "responsibility": "Infrastructure-only credential file existence/type/private-permission admission and read moved behind explicit file dependency; retrospective first-use trace."
+    },
+    {
+      "original": "agent-runtime-summary-model.adapter.ts",
+      "owner": "summary-no-signal-attempt.ts",
+      "originalPositions": [
+        277,
+        279,
+        280,
+        284,
+        285,
+        288,
+        289,
+        290,
+        292,
+        293,
+        294,
+        302
+      ],
+      "responsibility": "Previously extracted no-evidence fallback draft content, confidence/quality and explicit insufficient-evidence diagnostics, distinct from paid transport and route admission. Exact frozen source statements are absent from the facade; field labels, generic syntax, and rewritten lineage/usage are excluded; zero duplicate coordinates."
     }
   ]
 }

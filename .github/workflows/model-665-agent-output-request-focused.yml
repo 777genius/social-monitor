@@ -34,6 +34,8 @@ on:
       - libs/summary/adapters/model/agent-runtime-reader-summary-model.adapter.ts
       - libs/summary/adapters/model/agent-runtime-summary-execution.ts
       - libs/summary/adapters/model/agent-runtime-summary-result-interpretation.ts
+      - libs/summary/adapters/model/agent-runtime-summary-model.adapter.ts
+      - libs/summary/adapters/model/agent-runtime-summary-route-policy.ts
       - libs/summary/adapters/model/agent-runtime-summary-model.adapter.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-gateway-violations.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-model.gateway-repair.spec.ts

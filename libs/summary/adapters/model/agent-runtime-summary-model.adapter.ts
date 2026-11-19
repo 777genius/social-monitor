@@ -1,6 +1,5 @@
 import { runAgentRuntimeSummaryExecution } from "./agent-runtime-summary-execution";
 import {
-  assertAgentRuntimeSummaryWithinBudget,
   estimateAgentRuntimeSummaryUsage,
 } from "./agent-runtime-summary-budget-policy";
 import {
@@ -11,6 +10,7 @@ import { validateAgentRuntimeSummaryProviderResponse } from "./agent-runtime-sum
 export { resolveAgentRuntimeSummaryModelOptions } from "./agent-runtime-summary-options";
 export type { AgentRuntimeSummaryModelAdapterOptions } from "./agent-runtime-summary-options";
 import { buildSummaryNoSignalAttempt } from "./summary-no-signal-attempt";
+import { admitAgentRuntimeSummaryRoute } from "./agent-runtime-summary-route-policy";
 import type {
   AgentRuntimeClientPort,
   ProviderSummaryAttempt,
@@ -27,7 +27,6 @@ import {
   classifyAgentRuntimeError,
 } from "./agent-runtime-model-support";
 
-const provider = "agent-runtime";
 export class AgentRuntimeSummaryModelAdapter implements SummaryModelPort {
   private readonly client: AgentRuntimeClientPort;
   private readonly settings: AgentRuntimeSummaryRuntimeSettings;
@@ -42,12 +41,9 @@ export class AgentRuntimeSummaryModelAdapter implements SummaryModelPort {
     policy: SummaryModelPolicy,
     budget: SummaryModelBudget,
   ): SummaryModelRoute {
-    const route = this.buildRoute();
-    const estimate = this.estimate(input, route);
-
-    assertAgentRuntimeSummaryWithinBudget(estimate, policy, budget);
-
-    return route;
+    return admitAgentRuntimeSummaryRoute({
+      input, policy, budget, settings: this.settings,
+    });
   }
 
   estimate(
@@ -87,15 +83,6 @@ export class AgentRuntimeSummaryModelAdapter implements SummaryModelPort {
       error,
       "Unknown agent-runtime summary model error",
     );
-  }
-
-  private buildRoute(): SummaryModelRoute {
-    return {
-      provider,
-      model: `${this.settings.agentProvider}:${this.settings.model}`,
-      promptVersion: this.settings.promptVersion,
-      schemaVersion: "summary.artifact.v1",
-    };
   }
 
   private buildNoSignalAttempt(

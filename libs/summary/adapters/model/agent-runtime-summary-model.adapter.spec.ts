@@ -99,6 +99,40 @@ describe("AgentRuntimeSummaryModelAdapter", () => {
   });
 
   it.each([
+    { agentProvider: "codex" as const, model: "agent-runtime-summary" },
+    { agentProvider: "claude" as const, model: "synthetic-model-v2" },
+  ])("snapshots the $agentProvider route identity before caller option mutation", ({ agentProvider, model }) => {
+    const client = new CapturingAgentRuntimeClient({ status: "completed", warnings: [] });
+    const options = { client, agentProvider, model, promptVersion: "summary.snapshot.v1" };
+    const adapter = new AgentRuntimeSummaryModelAdapter(options);
+    options.model = "mutated-after-construction";
+    options.promptVersion = "mutated-prompt";
+    const route = adapter.route(buildInput(), {
+      preferredProvider: "agent-runtime", maxInputTokens: 12_000,
+      maxOutputTokens: 4_000, maxEstimatedCostUsd: 1,
+    }, { remainingTokens: 20_000, remainingCostUsd: 1 });
+    expect(route).toEqual({ provider: "agent-runtime", model: `${agentProvider}:${model}`,
+      promptVersion: "summary.snapshot.v1", schemaVersion: "summary.artifact.v1" });
+    expect(client.commands).toHaveLength(0);
+  });
+
+  it("admits exact remaining tokens but rejects one token less before dispatch", () => {
+    const client = new CapturingAgentRuntimeClient({ status: "completed", warnings: [] });
+    const adapter = new AgentRuntimeSummaryModelAdapter({ client });
+    const input = buildInput();
+    const policy = { preferredProvider: "agent-runtime" as const,
+      maxInputTokens: 12_000, maxOutputTokens: 4_000, maxEstimatedCostUsd: 1 };
+    const route = adapter.route(input, policy, { remainingTokens: 20_000, remainingCostUsd: 1 });
+    const estimate = adapter.estimate(input, route);
+    const exactTokens = estimate.inputTokens + estimate.outputTokens;
+    expect(adapter.route(input, policy, { remainingTokens: exactTokens, remainingCostUsd: 1 })).toEqual(route);
+    expect(() => adapter.route(input, policy, {
+      remainingTokens: exactTokens - 1, remainingCostUsd: 1,
+    })).toThrow("Summary model budget exceeded");
+    expect(client.commands).toHaveLength(0);
+  });
+
+  it.each([
     { label: "default Terra/medium", extra: {}, model: "gpt-6.1-terra", effort: "medium" },
     { label: "explicit Sol/low",
       extra: { AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-6.1-sol",
