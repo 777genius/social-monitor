@@ -1,5 +1,5 @@
 import { resolveReaderSummaryBackendSelectionFromEnv } from "./reader-summary-backend-selection";
-import { gatewayRouteModel } from "./reader-summary-gateway-route-policy";
+import { gatewayRouteModel, resolveGatewayReaderSummaryRoute } from "./reader-summary-gateway-route-policy";
 import type { ReaderSummaryGenerationBackend } from "./reader-summary-gateway-route-policy";
 import { mimoReaderSummaryBackend, activeReaderSummaryProvider } from "./reader-summary-runtime-contract";
 import {

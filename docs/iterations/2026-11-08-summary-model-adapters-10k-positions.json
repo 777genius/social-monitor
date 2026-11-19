@@ -1607,17 +1607,9 @@
         264,
         265,
         266,
-        267,
-        268,
-        269,
         270,
-        275,
         276,
-        281,
-        282,
         283,
-        289,
-        290,
         292
       ],
       "responsibility": "Generation/daily-task environment route selection and transport-specific defaults/strict override checks; same frozen source positions reassigned from former identity-policy module, counted once"
@@ -5884,23 +5876,11 @@
       "original": "active-reader-summary-generation-profile.ts",
       "owner": "reader-summary-daily-task-env-resolution.ts",
       "originalPositions": [
-        305,
-        306,
-        307,
-        308,
-        310,
         313,
         314,
         315,
-        318,
-        319,
-        320,
-        322,
-        323,
         325,
-        326,
-        328,
-        332
+        326
       ],
       "responsibility": "Purpose-specific daily-task model identity and strict Kimi/OpenRouter/MiMo backend admission independent of generation identity and effort; diagnostic shared without changing rejection semantics"
     },
@@ -7571,6 +7551,22 @@
         111
       ],
       "responsibility": "Dispatch-free replay admission and retry delay independent of SDK task lifecycle"
+    },
+    {
+      "original": "active-reader-summary-generation-profile.ts",
+      "owner": "reader-summary-backend-selection.ts",
+      "originalPositions": [
+        267,
+        268,
+        269,
+        275,
+        281,
+        282,
+        289,
+        290,
+        332
+      ],
+      "responsibility": "Single shared fail-closed generation/daily backend-selection policy owns original route precedence, backend admission, and exact error; duplicate former daily checks and rewritten projections not counted twice."
     }
   ]
 }
