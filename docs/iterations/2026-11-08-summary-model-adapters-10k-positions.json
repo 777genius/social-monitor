@@ -7489,6 +7489,24 @@
         85
       ],
       "responsibility": "Pure distinct-account admission and task-hash rotation owned independently from process-local gateway account cooldown and observation; historical max-account export identity kept"
+    },
+    {
+      "original": "gateway-llm/gateway-llm-output-schema.ts",
+      "owner": "gateway-llm/gateway-llm-schema-traversal.ts",
+      "originalPositions": [
+        3,
+        4,
+        5,
+        36,
+        37,
+        38,
+        39,
+        44,
+        45,
+        48,
+        49
+      ],
+      "responsibility": "Post-order JSON Schema structural child visitation now independent of Kimi/provider type-list policy. Original statements removed from the previous adapter and reused once in pure traversal; semantic approval still required."
     }
   ]
 }

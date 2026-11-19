@@ -1,9 +1,6 @@
-import { isSchemaNode as isNode, type SchemaNode } from "./gateway-llm-schema-primitives";
+import type { SchemaNode } from "./gateway-llm-schema-primitives";
 import { withExplicitType, withoutTypeList } from "./gateway-llm-schema-type-policy";
-
-const schemaMaps = ["properties", "$defs", "definitions"] as const;
-const schemaLists = ["anyOf", "oneOf", "allOf", "prefixItems"] as const;
-const schemaSingles = ["items", "additionalProperties", "not"] as const;
+import { mapGatewaySchemaTree } from "./gateway-llm-schema-traversal";
 
 /**
  * Rewrites a product schema into the "moonshot flavored" form Kimi enforces,
@@ -20,25 +17,5 @@ const schemaSingles = ["items", "additionalProperties", "not"] as const;
  *
  * Kimi also ignores minimum and maximum; the strict decode still checks them.
  */
-export const toGatewayOutputSchema = (schema: SchemaNode): SchemaNode => normalized(schema);
-
-const normalized = (node: SchemaNode): SchemaNode => {
-  const result: SchemaNode = { ...node };
-  for (const key of schemaMaps) {
-    const map = result[key];
-    if (isNode(map)) {
-      result[key] = Object.fromEntries(Object.entries(map).map(([name, child]) =>
-        [name, isNode(child) ? normalized(child) : child]));
-    }
-  }
-  for (const key of schemaLists) {
-    const list = result[key];
-    if (Array.isArray(list)) result[key] = list.map((child) => isNode(child) ? normalized(child) : child);
-  }
-  for (const key of schemaSingles) {
-    const child = result[key];
-    if (isNode(child)) result[key] = normalized(child);
-  }
-  return withoutTypeList(withExplicitType(result));
-};
-
+export const toGatewayOutputSchema = (schema: SchemaNode): SchemaNode =>
+  mapGatewaySchemaTree(schema, (node) => withoutTypeList(withExplicitType(node)));
