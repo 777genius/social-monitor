@@ -7,10 +7,6 @@ import type {
 } from "../../ports";
 import { readFailedDailyEditorUsage } from "./reader-summary-failed-daily-editor-usage";
 import { meterReaderSummaryAttempt } from "./reader-summary-metered-attempt";
-import {
-  recordReaderSummaryModelRequest,
-  recordReaderSummaryModelUsage,
-} from "./reader-summary-model-metrics";
 
 /** Owns daily planning admission and the paid usage attached to rejected plans. */
 export const meterReaderSummaryDailyPlanning = async (params: {
@@ -29,10 +25,7 @@ export const meterReaderSummaryDailyPlanning = async (params: {
     metrics,
     route,
     execute: () => planDaily(input, route),
-    recordSuccess: (attempt) => {
-      recordReaderSummaryModelRequest(metrics, route, "succeeded");
-      recordReaderSummaryModelUsage(metrics, route, attempt.usage);
-    },
+    usageOnSuccess: (attempt) => attempt.usage,
     classifyFailure: (error) => delegate.classifyError(error).kind,
     failedUsage: readFailedDailyEditorUsage,
   });

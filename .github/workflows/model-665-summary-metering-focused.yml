@@ -14,6 +14,11 @@ on:
       - libs/summary/adapters/model/metered-reader-summary-model.adapter.ts
       - libs/summary/adapters/model/metered-reader-summary-daily-planning.ts
       - libs/summary/adapters/model/metered-reader-summary-generation.ts
+      - libs/summary/adapters/model/reader-summary-metered-attempt.ts
+      - libs/summary/adapters/model/reader-summary-model-metrics.ts
+      - libs/summary/adapters/model/reader-summary-failed-daily-editor-usage.ts
+      - libs/summary/adapters/model/reader-summary-metered-attempt.spec.ts
+      - libs/summary/adapters/model/metered-reader-summary-model.adapter.spec.ts
       - libs/summary/adapters/model/metered-reader-summary-workflows.spec.ts
 permissions:
   contents: read

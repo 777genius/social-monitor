@@ -7,10 +7,6 @@ import type {
   ReaderSummaryModelRoute,
 } from "../../ports";
 import { meterReaderSummaryAttempt } from "./reader-summary-metered-attempt";
-import {
-  recordReaderSummaryModelRequest,
-  recordReaderSummaryModelUsage,
-} from "./reader-summary-model-metrics";
 
 /** Owns generation telemetry; an untrusted failed generation cannot charge usage. */
 export const meterReaderSummaryGeneration = (params: {
@@ -25,11 +21,7 @@ export const meterReaderSummaryGeneration = (params: {
     metrics,
     route,
     execute: () => delegate.generate(input, route, budget),
-    recordSuccess: (attempt) => {
-      const usage = attempt.draft.usage;
-      recordReaderSummaryModelRequest(metrics, route, "succeeded");
-      recordReaderSummaryModelUsage(metrics, route, usage);
-    },
+    usageOnSuccess: (attempt) => attempt.draft.usage,
     classifyFailure: (error) => delegate.classifyError(error).kind,
   });
 };
