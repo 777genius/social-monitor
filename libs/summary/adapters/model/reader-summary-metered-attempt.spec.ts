@@ -92,3 +92,22 @@ it("preserves unknown token usage as unknown rather than billing fabricated toke
   expect(metrics.counters("summary_model_requests_total").map((entry) => entry.labels.status))
     .toEqual(["started", "succeeded"]);
 });
+
+it("keeps generation success unrecorded if usage projection rejects its result", async () => {
+  const metrics = new InMemoryMetricsRecorder();
+  const failure = Object.freeze(new Error("unreadable generation usage"));
+  const result = {
+    get usage(): never { throw failure; },
+  };
+  const classifyFailure = jest.fn(() => "invalid_schema");
+  await expect(meterReaderSummaryAttempt({
+    metrics, route, execute: async () => result,
+    usageOnSuccess: (attempt) => attempt.usage,
+    classifyFailure,
+  })).rejects.toBe(failure);
+  expect(classifyFailure).toHaveBeenCalledWith(failure);
+  expect(metrics.counters("summary_model_requests_total").map((entry) => entry.labels.status))
+    .toEqual(["started", "failed"]);
+  expect(metrics.counters("summary_model_tokens_total")).toHaveLength(0);
+  expect(metrics.counters("summary_model_estimated_cost_usd")).toHaveLength(0);
+});
