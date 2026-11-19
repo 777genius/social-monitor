@@ -3,6 +3,7 @@ import { adaptiveSourceContent, compactText } from "./openai-responses-reader-su
 import { acceptedReaderPresentation } from "./openai-responses-reader-summary-verified-presentation";
 import { compactConversationContext } from "./openai-responses-reader-summary-conversation-context";
 import { isReaderSummaryPreviewCoveredByHydratedSource } from "./openai-responses-reader-summary-preview-coverage";
+import { projectReaderSummaryContentQuality } from "./openai-responses-reader-summary-content-quality-projection";
 
 export { acceptedReaderPresentation } from "./openai-responses-reader-summary-verified-presentation";
 export { compactConversationContext } from "./openai-responses-reader-summary-conversation-context";
@@ -50,19 +51,7 @@ export const projectReaderSummaryPromptEvidenceItem = (
     score: item.score,
     providerMetrics: item.providerMetricLabels?.slice(0, 8),
     whyImportant: compactStringArray(item.whyImportant, 3, 160),
-    contentQuality:
-      item.contentQuality === undefined
-        ? undefined
-        : {
-            decision: item.contentQuality.decision,
-            reason: compactText(item.contentQuality.reason, 140),
-            flags: item.contentQuality.flags.slice(0, 6),
-            eligibleForTopRead: item.contentQuality.eligibleForTopRead,
-            qualityScore: item.contentQuality.qualityScore,
-            interestRelevanceScore: item.contentQuality.interestRelevanceScore,
-            engagementIntegrityScore:
-              item.contentQuality.engagementIntegrityScore,
-          },
+    contentQuality: projectReaderSummaryContentQuality(item),
     conversationContext:
       item.conversationContext === undefined
         ? undefined

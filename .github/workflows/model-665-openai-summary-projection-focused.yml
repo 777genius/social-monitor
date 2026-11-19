@@ -18,6 +18,7 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-fragment-ranking.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-source-content.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-evidence-projection.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-content-quality-projection.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-preview-coverage.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-preview-coverage.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-verified-presentation.ts

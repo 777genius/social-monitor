@@ -25,6 +25,39 @@ import {
 } from "./openai-responses-reader-summary-prompt";
 
 describe("adaptive reader summary evidence", () => {
+  it("projects bounded quality diagnostics without exposing internal admission decisions or mutating input", () => {
+    const quality = Object.freeze({
+      decision: "accepted",
+      reason: "r".repeat(180),
+      flags: Object.freeze(["first", "second", "third", "fourth", "fifth", "sixth", "seventh"]),
+      eligibleForTopRead: true,
+      eligibleForSummary: false,
+      needsLlmReview: true,
+      qualityScore: 0.91,
+      interestRelevanceScore: 0.81,
+      engagementIntegrityScore: 0.71,
+    });
+    const item = { ...evidenceItem(0), contentQuality: quality };
+    const before = JSON.stringify(item);
+    const projected = projectReaderSummaryPromptEvidenceItem(item, 0, false, "c1", 50_000, false);
+    expect(projected.contentQuality).toEqual({
+      decision: "accepted",
+      reason: `${"r".repeat(137)}...`,
+      flags: ["first", "second", "third", "fourth", "fifth", "sixth"],
+      eligibleForTopRead: true,
+      qualityScore: 0.91,
+      interestRelevanceScore: 0.81,
+      engagementIntegrityScore: 0.71,
+    });
+    expect(projected.contentQuality).not.toHaveProperty("eligibleForSummary");
+    expect(projected.contentQuality).not.toHaveProperty("needsLlmReview");
+    expect(JSON.stringify(item)).toBe(before);
+    expect(projectReaderSummaryPromptEvidenceItem({
+      ...item, contentQuality: undefined,
+    }, 0, false, "c1", 50_000, false).contentQuality).toBeUndefined();
+  });
+
+
   it("selects only available V3 presentation IDs from admitted lanes without mutating promotion state", () => {
     const candidate = (candidateId: string, status: string) => ({
       candidateId,

@@ -1921,15 +1921,6 @@
         124,
         125,
         126,
-        127,
-        130,
-        131,
-        132,
-        133,
-        134,
-        135,
-        136,
-        137,
         139,
         140,
         142,
@@ -7656,6 +7647,22 @@
         302
       ],
       "responsibility": "Previously extracted no-evidence fallback draft content, confidence/quality and explicit insufficient-evidence diagnostics, distinct from paid transport and route admission. Exact frozen source statements are absent from the facade; field labels, generic syntax, and rewritten lineage/usage are excluded; zero duplicate coordinates."
+    },
+    {
+      "original": "openai-responses-reader-summary-adaptive-evidence.ts",
+      "owner": "openai-responses-reader-summary-content-quality-projection.ts",
+      "originalPositions": [
+        127,
+        130,
+        131,
+        132,
+        133,
+        134,
+        135,
+        136,
+        137
+      ],
+      "responsibility": "Bounded quality diagnostic fields and allowlist owned independently of evidence metadata and source hydration; reassigned original positions already counted, zero newly credited LOC"
     }
   ]
 }
