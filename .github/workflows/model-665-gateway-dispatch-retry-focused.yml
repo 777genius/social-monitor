@@ -25,7 +25,6 @@ on:
       - libs/summary/adapters/model/gateway-llm/gateway-llm-schema-primitives.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-schema-type-policy.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-output-schema.spec.ts
-          libs/summary/adapters/model/gateway-llm/gateway-llm-schema-traversal.spec.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-client.spec.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-schema-limits.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-schema-limit-collector.ts
@@ -74,4 +73,5 @@ jobs:
           libs/summary/adapters/model/gateway-llm/gateway-llm-task-route-admission.spec.ts
           libs/summary/adapters/model/gateway-llm/gateway-llm-failure-policies.spec.ts
           libs/summary/adapters/model/gateway-llm/gateway-llm-output-schema.spec.ts
+          libs/summary/adapters/model/gateway-llm/gateway-llm-schema-traversal.spec.ts
           libs/summary/adapters/model/gateway-llm/gateway-llm-schema-limits.spec.ts
