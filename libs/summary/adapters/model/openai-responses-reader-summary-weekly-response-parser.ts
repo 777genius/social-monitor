@@ -5,26 +5,14 @@ import type {
 } from "../../ports/reader-summary-weekly-model.port";
 import { assertFiniteDenseJson } from "./openai-responses-reader-summary-weekly-response-shapes";
 import { normalizeLegacyWeeklyModelOutput } from "./openai-responses-reader-summary-weekly-legacy-normalization";
+import { decodeOpenAiReaderSummaryWeeklyJson, OpenAiReaderSummaryWeeklyOutputParseError } from "./openai-responses-reader-summary-weekly-json-admission";
+export { OpenAiReaderSummaryWeeklyOutputParseError } from "./openai-responses-reader-summary-weekly-json-admission";
 
 export const parseOpenAiReaderSummaryWeeklyResponse = (
   input: ReaderSummaryWeeklyModelInput,
   value: string,
-): ReaderSummaryWeeklyModelOutput => {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw new OpenAiReaderSummaryWeeklyOutputParseError(
-      "response must be non-empty JSON text",
-    );
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(value);
-  } catch {
-    // SyntaxError.message may quote private provider evidence in recent V8.
-    // Keep syntax diagnostics fail-closed without exposing response fragments.
-    throw new OpenAiReaderSummaryWeeklyOutputParseError("malformed JSON");
-  }
-  return parseOpenAiReaderSummaryWeeklyValue(input, parsed);
-};
+): ReaderSummaryWeeklyModelOutput =>
+  parseOpenAiReaderSummaryWeeklyValue(input, decodeOpenAiReaderSummaryWeeklyJson(value));
 
 export const parseOpenAiReaderSummaryWeeklyValue = (
   input: ReaderSummaryWeeklyModelInput,
@@ -46,11 +34,3 @@ export const parseOpenAiReaderSummaryWeeklyValue = (
     throw new OpenAiReaderSummaryWeeklyOutputParseError(detail);
   }
 };
-
-export class OpenAiReaderSummaryWeeklyOutputParseError extends Error {
-  constructor(readonly detail: string) {
-    super(`OpenAI reader summary weekly output is invalid: ${detail}`);
-    this.name = "OpenAiReaderSummaryWeeklyOutputParseError";
-  }
-}
-

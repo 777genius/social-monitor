@@ -10,6 +10,7 @@ import {
   parseOpenAiReaderSummaryWeeklyResponse,
   parseOpenAiReaderSummaryWeeklyValue,
 } from "./openai-responses-reader-summary-weekly-response-parser";
+import { decodeOpenAiReaderSummaryWeeklyJson, OpenAiReaderSummaryWeeklyOutputParseError as AdmissionError } from "./openai-responses-reader-summary-weekly-json-admission";
 
 const dates = [
   "2026-07-20",
@@ -296,6 +297,32 @@ describe("OpenAI reader summary weekly response parser", () => {
     } catch (error) {
       expect(error).toMatchObject({ detail: "malformed JSON" });
       expect(String(error)).not.toContain(marker);
+    }
+  });
+
+  it("weekly syntax admission is separate from artifact trust", () => {
+    const opaqueJson = '{"unexpected":true}';
+    expect(decodeOpenAiReaderSummaryWeeklyJson(opaqueJson)).toEqual({ unexpected: true });
+    expect(decodeOpenAiReaderSummaryWeeklyJson("null")).toBeNull();
+    expect(() => parseOpenAiReaderSummaryWeeklyResponse(weeklyInput(), opaqueJson))
+      .toThrow(OpenAiReaderSummaryWeeklyOutputParseError);
+  });
+
+  it("retains legacy error identity and redacts syntax inputs at the admission boundary", () => {
+    expect(AdmissionError).toBe(OpenAiReaderSummaryWeeklyOutputParseError);
+    const marker = "private-weekly-source-fragment-f33d";
+    for (const raw of ["", "  \n\t", `${marker} {`]) {
+      let failure: unknown;
+      try {
+        decodeOpenAiReaderSummaryWeeklyJson(raw);
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure).toBeInstanceOf(OpenAiReaderSummaryWeeklyOutputParseError);
+      expect(String(failure)).not.toContain(marker);
+      expect((failure as OpenAiReaderSummaryWeeklyOutputParseError).detail).toBe(
+        raw.trim() ? "malformed JSON" : "response must be non-empty JSON text",
+      );
     }
   });
 

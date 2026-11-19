@@ -7808,6 +7808,21 @@
         424
       ],
       "responsibility": "Retrospective first-use attribution of already-extracted legacy weekly evidence trust: exact citation-array admission, cited chronology non-fabrication, closed claim types, one matching story and cited-observation range; no credit for type-only, generic throw, imports or tests"
+    },
+    {
+      "original": "openai-responses-reader-summary-weekly-response-parser.ts",
+      "owner": "openai-responses-reader-summary-weekly-json-admission.ts",
+      "originalPositions": [
+        30,
+        31,
+        32,
+        35,
+        37,
+        429,
+        430,
+        431
+      ],
+      "responsibility": "JSON lexical admission and redacted syntax failures now owned independently from trusted weekly artifact/schema/citation validation; same public parse-error class identity and fail-closed order"
     }
   ]
 }
