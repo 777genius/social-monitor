@@ -6,7 +6,7 @@ import type { GatewayLlmClientOptions, GatewayLlmRoute } from "./gateway-llm-cli
 import type { GatewayLlmOutputViolations } from "./gateway-llm-failure";
 import { prepareGatewayLlmOutput } from "./gateway-llm-structured-output";
 import { gatewayLlmDeadline } from "./gateway-llm-deadline";
-import { gatewayLlmOutputBytes } from "./gateway-llm-output-budget";
+import { gatewayLlmMaxOutputTokens, gatewayLlmOutputBytes } from "./gateway-llm-output-budget";
 import { admitGatewayLlmTaskRoute } from "./gateway-llm-task-route-admission";
 
 type PreparedTask = Omit<LlmTask<Record<string, unknown>>, "taskId" | "attempt" | "accountRefs">;
@@ -33,7 +33,6 @@ export const prepareGatewayLlmTask = (
   const controls = command.controls;
   const preparedOutput = prepareGatewayLlmOutput(command.outputSchema);
   if ("failure" in preparedOutput) return preparedOutput;
-  const requested = controls.maxOutputTokens;
   return {
     route,
     structured: preparedOutput.structured,
@@ -47,8 +46,7 @@ export const prepareGatewayLlmTask = (
       input: command.prompt,
       output: preparedOutput.output,
       ...(route.reasoningEffort === undefined ? {} : { effort: route.reasoningEffort }),
-      maxOutputTokens: Math.max(route.minOutputTokens,
-        Number.isSafeInteger(requested) && (requested as number) > 0 ? requested as number : 0),
+      maxOutputTokens: gatewayLlmMaxOutputTokens(route.minOutputTokens, controls.maxOutputTokens),
       limits: { outputBytes: gatewayLlmOutputBytes(command.purpose) },
       deadline: gatewayLlmDeadline(startedAt, command.timeoutMs),
       ...(preparedOutput.decode === undefined ? {} : { decode: preparedOutput.decode }),

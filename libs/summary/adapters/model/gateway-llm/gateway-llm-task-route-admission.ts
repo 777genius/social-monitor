@@ -1,6 +1,6 @@
 import type { AgentRuntimeFailure, AgentRuntimeTaskCommand } from "../../../ports";
 import { codexReaderSummaryBackend } from "../active-reader-summary-generation-profile";
-import type { GatewayLlmRoute } from "./gateway-llm-client";
+import type { GatewayLlmRoute } from "./gateway-llm-client-contract";
 import { gatewayLlmLocalFailure } from "./gateway-llm-failure";
 
 /** Fail closed before SDK schema parsing, account choice or any paid dispatch.

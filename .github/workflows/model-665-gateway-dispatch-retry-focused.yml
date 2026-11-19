@@ -15,6 +15,8 @@ on:
       - libs/summary/adapters/model/gateway-llm/gateway-llm-account-order-policy.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-account-selector.spec.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-task-preparation.ts
+      - libs/summary/adapters/model/gateway-llm/gateway-llm-request-identity.ts
+      - libs/summary/adapters/model/gateway-llm/gateway-llm-output-budget.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-task-route-admission.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-task-route-admission.spec.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-dispatch-loop.ts

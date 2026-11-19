@@ -20,6 +20,7 @@ import { RunScopedGatewayLlmAttempts } from "./gateway-llm-attempts";
 import { GatewayLlmClient, type GatewayLlmRoute } from "./gateway-llm-client";
 import { approvedGatewayLlmSdkIdentity } from "./gateway-llm-sdk-identity";
 import { gatewayLlmDeadline, gatewayLlmSettlementGraceMs } from "./gateway-llm-deadline";
+import { gatewayLlmCanonicalRequest, gatewayLlmCanonicalRequestSha256 } from "./gateway-llm-request-identity";
 
 type Access = Awaited<ReturnType<ConsumerControlPort["runAccess"]>>;
 type Script = {
@@ -656,12 +657,42 @@ describe("gateway usage accounting across outcome boundaries", () => {
 
 describe("gateway config dependency boundary", () => {
   it("uses only the shared route/options contract from dispatch and preparation", () => {
-    for (const moduleName of ["gateway-llm-dispatch-loop.ts", "gateway-llm-task-preparation.ts"]) {
+    for (const moduleName of [
+      "gateway-llm-dispatch-loop.ts", "gateway-llm-task-preparation.ts",
+      "gateway-llm-task-route-admission.ts", "gateway-llm-request-identity.ts",
+    ]) {
       const source = readFileSync(
         `libs/summary/adapters/model/gateway-llm/${moduleName}`, "utf8",
       );
       expect(source).toContain('from "./gateway-llm-client-contract"');
       expect(source).not.toContain('from "./gateway-llm-client"');
     }
+  });
+});
+
+
+describe("gateway output-token admission stays bound to the attested request", () => {
+  it.each([
+    ["omitted", undefined, 32_768],
+    ["negative", -1, 32_768],
+    ["zero", 0, 32_768],
+    ["fractional", 12.5, 32_768],
+    ["NaN", Number.NaN, 32_768],
+    ["infinite", Number.POSITIVE_INFINITY, 32_768],
+    ["below route floor", 16_000, 32_768],
+    ["above route floor", 35_000, 35_000],
+  ] as const)("uses one validated token ceiling for %s", async (_label, requested, expected) => {
+    const controls = Object.freeze({ ...command().controls, maxOutputTokens: requested });
+    const task = Object.freeze(command({ controls }));
+    const fake = harness();
+    const result = await fake.client.runTask(task);
+
+    expect(result.status).toBe("completed");
+    expect(gatewayLlmCanonicalRequest(task, kimiRoute).maxOutputTokens).toBe(expected);
+    expect(fake.prepares[0]).toMatchObject({ limits: { tokens: expected } });
+    expect(fake.bodies[0]).toMatchObject({ max_output_tokens: expected });
+    expect(result.executionAttestation?.canonicalRequestSha256)
+      .toBe(gatewayLlmCanonicalRequestSha256(task, kimiRoute));
+    expect(fake.requests()).toBe(1);
   });
 });
