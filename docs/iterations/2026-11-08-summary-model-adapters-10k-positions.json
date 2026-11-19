@@ -7675,6 +7675,76 @@
         68
       ],
       "responsibility": "Requested source/target IDs and shared terms bind only to their respective prevalidated grounded node evidence; transport prompt retains JSON serialization and model instructions"
+    },
+    {
+      "original": "active-reader-summary-generation-profile.ts",
+      "owner": "reader-summary-runtime-contract.ts",
+      "originalPositions": [
+        24,
+        36,
+        37,
+        38,
+        40,
+        334,
+        335,
+        336,
+        337,
+        338,
+        339,
+        340,
+        341,
+        342,
+        343,
+        344,
+        345,
+        346,
+        347,
+        348,
+        349,
+        350,
+        416,
+        417,
+        418,
+        419,
+        420,
+        421
+      ],
+      "responsibility": "Pinned provider, MiMo backend, purpose allowlist and legacy-recovery identity constants are now owned by the immutable runtime contract instead of the former environment/attestation/composition profile facade; retrospectively audited first-use positions, not new code from this import-only pass"
+    },
+    {
+      "original": "active-reader-summary-generation-profile.ts",
+      "owner": "reader-summary-mimo-attestation.ts",
+      "originalPositions": [
+        353,
+        354,
+        355,
+        356,
+        357,
+        401,
+        402,
+        404,
+        405,
+        407,
+        408,
+        409,
+        410,
+        411,
+        412
+      ],
+      "responsibility": "MiMo task-role purpose binding and fail-closed verification before sink emission now belong to the attestation/recording specialist, not the original generation-profile facade; retrospective ownership without duplicate original LOC"
+    },
+    {
+      "original": "active-reader-summary-generation-profile.ts",
+      "owner": "reader-summary-generation-env-resolution.ts",
+      "originalPositions": [
+        271,
+        278,
+        284,
+        293,
+        295,
+        318
+      ],
+      "responsibility": "Purpose-specific generation and daily task identity selection from environment is owned by the composition-time env resolver rather than the fixed route/model identity policy; first-use original positions rechecked for exact destination traces"
     }
   ]
 }
