@@ -1,6 +1,6 @@
 import type { LlmFailure, LlmTask } from "@agent-teams/account-gateway/llm";
 import type { AgentRuntimeTaskCommand, AgentRuntimeTaskResult } from "../../../ports";
-import type { GatewayLlmClientOptions } from "./gateway-llm-client";
+import type { GatewayLlmClientOptions } from "./gateway-llm-client-contract";
 import type { GatewayLlmAttemptIdentity } from "./gateway-llm-attempts";
 import type { GatewayLlmPrepared } from "./gateway-llm-task-preparation";
 import { completeGatewayLlmTask } from "./gateway-llm-task-completion";

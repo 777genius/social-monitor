@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import type { Prepare, SafeError } from "@agent-teams/account-gateway/contracts";
 import { GatewayError } from "@agent-teams/account-gateway/http";
 import type { NativeResponse } from "@agent-teams/account-gateway/http";
@@ -650,5 +651,17 @@ describe("gateway usage accounting across outcome boundaries", () => {
     expect(result.executionAttestation).toBeUndefined();
     expect(result.structuredOutput).toBeUndefined();
     expect(fake.requests()).toBe(1);
+  });
+});
+
+describe("gateway config dependency boundary", () => {
+  it("uses only the shared route/options contract from dispatch and preparation", () => {
+    for (const moduleName of ["gateway-llm-dispatch-loop.ts", "gateway-llm-task-preparation.ts"]) {
+      const source = readFileSync(
+        `libs/summary/adapters/model/gateway-llm/${moduleName}`, "utf8",
+      );
+      expect(source).toContain('from "./gateway-llm-client-contract"');
+      expect(source).not.toContain('from "./gateway-llm-client"');
+    }
   });
 });
