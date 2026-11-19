@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { test } from 'node:test';
+
+const ts = createRequire(import.meta.url)('typescript');
 import {
   createExternalBetaNegativeSmokeRuntime,
   childProcessErrorOutput,
@@ -40,16 +43,88 @@ test('smoke snippet preserves trimmed last eight nonblank lines', () => {
   assert.equal(smokeOutputSnippet(null), 'null');
 });
 
-test('runner delegates negative-smoke helpers instead of duplicating bodies', () => {
+const EXTRACTED_IMPORTS = [
+  'createExternalBetaNegativeSmokeRuntime', 'childProcessErrorOutput', 'smokeOutputSnippet',
+];
+
+function inspectRunnerWiring(source) {
+  const tree = ts.createSourceFile('check-external-beta-evidence-runner.mjs', source,
+    ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  const imports = new Set();
+  const calls = new Set();
+  const provided = new Set();
+  const declared = new Set();
+  let factoryBound = false;
+  for (const statement of tree.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) ||
+      statement.moduleSpecifier.text !== './lib/external-beta-negative-smoke-runtime.mjs' ||
+      !statement.importClause?.namedBindings ||
+      !ts.isNamedImports(statement.importClause.namedBindings)) continue;
+    for (const element of statement.importClause.namedBindings.elements) {
+      if (!element.propertyName) imports.add(element.name.text);
+    }
+  }
+  function visit(node) {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) calls.add(node.expression.text);
+    if (ts.isShorthandPropertyAssignment(node)) provided.add(node.name.text);
+    if (ts.isFunctionDeclaration(node) && node.name) declared.add(node.name.text);
+    if (ts.isVariableDeclaration(node) && ts.isObjectBindingPattern(node.name) &&
+      node.initializer && ts.isCallExpression(node.initializer) &&
+      ts.isIdentifier(node.initializer.expression) &&
+      node.initializer.expression.text === 'createExternalBetaNegativeSmokeRuntime' &&
+      node.initializer.arguments.length === 1 &&
+      ts.isObjectLiteralExpression(node.initializer.arguments[0])) {
+      const bindings = new Set(node.name.elements.filter((element) => !element.propertyName)
+        .map((element) => element.name.getText(tree)));
+      const dependencies = new Set(node.initializer.arguments[0].properties
+        .filter(ts.isShorthandPropertyAssignment).map((property) => property.name.text));
+      factoryBound = ['negativeSmokeOptions', 'shouldRunNegativeSmoke'].every(
+        (name) => bindings.has(name)) &&
+        ['strictSemanticNegativeSmokeLabels', 'representativeSemanticNegativeSmokeLabels'].every(
+          (name) => dependencies.has(name));
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(tree);
+  return { imports, calls, provided, declared, factoryBound };
+}
+
+test('runner delegates real imported functions, live bindings and diagnostic consumers', () => {
   const source = readFileSync(new URL('../check-external-beta-evidence-runner.mjs', import.meta.url), 'utf8');
-  assert.match(source, /from ['"]\.\/lib\/external-beta-negative-smoke-runtime\.mjs['"]/);
-  assert.match(source, /createExternalBetaNegativeSmokeRuntime\(\{/);
+  const wiring = inspectRunnerWiring(source);
+  for (const name of EXTRACTED_IMPORTS) {
+    assert.ok(wiring.imports.has(name), name + ' must import the extracted owner');
+  }
+  assert.ok(wiring.factoryBound, 'runner must bind the two helpers to the live Set dependencies');
+  for (const name of ['negativeSmokeOptions', 'shouldRunNegativeSmoke', 'smokeOutputSnippet']) {
+    assert.ok(wiring.calls.has(name), name + ' must be invoked, not mentioned in a comment');
+  }
+  assert.ok(wiring.provided.has('childProcessErrorOutput'),
+    'runner must inject its error normalizer into downstream smoke factories');
   for (const name of ['negativeSmokeOptions', 'shouldRunNegativeSmoke',
     'childProcessErrorOutput', 'smokeOutputSnippet']) {
-    assert.doesNotMatch(source, new RegExp('function\\s+' + name + '\\s*\\('));
+    assert.ok(!wiring.declared.has(name), name + ' must not be locally redefined');
   }
-  const packageScripts = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).scripts;
+  const scripts = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).scripts;
   for (const command of ['check:architecture', 'check:external-beta-evidence-runner']) {
-    assert.match(packageScripts[command], /scripts\/lib\/external-beta-negative-smoke-runtime\.test\.mjs/);
+    assert.match(scripts[command], /scripts\/lib\/external-beta-negative-smoke-runtime\.test\.mjs/);
   }
+});
+
+test('comment-only factory call and wrong import owner cannot satisfy wiring', () => {
+  const source = readFileSync(new URL('../check-external-beta-evidence-runner.mjs', import.meta.url), 'utf8');
+  const commentedCall = source.replace(
+    'createExternalBetaNegativeSmokeRuntime({',
+    'unrelated(/* createExternalBetaNegativeSmokeRuntime({ */ {',
+  );
+  assert.notEqual(commentedCall, source, 'mutation must change the real factory call');
+  assert.ok(commentedCall.includes('createExternalBetaNegativeSmokeRuntime('),
+    'the old string guard would still accept the comment-only marker');
+  assert.equal(inspectRunnerWiring(commentedCall).factoryBound, false);
+  const wrongOwner = source.replace(
+    "from './lib/external-beta-negative-smoke-runtime.mjs';",
+    "from './lib/unrelated-negative-smoke-runtime.mjs';",
+  );
+  assert.notEqual(wrongOwner, source, 'mutation must replace the real import path');
+  assert.equal(inspectRunnerWiring(wrongOwner).imports.has('childProcessErrorOutput'), false);
 });
