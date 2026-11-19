@@ -1,6 +1,13 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { LLM_DEFAULT_OUTPUT_BYTES, LLM_MAX_OUTPUT_BYTES } from "@agent-teams/account-gateway/llm";
 import type { AgentRuntimeTaskCommand } from "../../../ports";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
-import { codexReaderSummaryBackend } from "../active-reader-summary-generation-profile";
+import { codexReaderSummaryBackend } from "../codex-reader-summary-gateway-route-policy";
+import { gatewayDefaultReasoningEffort } from "../reader-summary-gateway-model-policy";
+import { activeReaderSummaryPurposes } from "../reader-summary-runtime-contract";
+import { gatewayLlmOutputBytes } from "./gateway-llm-output-budget";
+import { gatewayLlmMaxOutputTokens } from "./gateway-llm-output-budget";
 import type { GatewayLlmRoute } from "./gateway-llm-client";
 import { prepareGatewayLlmTask } from "./gateway-llm-task-preparation";
 import { admitGatewayLlmTaskRoute } from "./gateway-llm-task-route-admission";
@@ -71,5 +78,24 @@ describe("gateway LLM task route admission", () => {
     expect(admitGatewayLlmTaskRoute(command({ modelBackend: undefined }), codex)).toBeNull();
     expect(admitGatewayLlmTaskRoute(command({ modelBackend: "kimi-code" }), codex))
       .toMatchObject({ failure: { code: "unsupported_route" } });
+  });
+});
+
+describe("gateway LLM dispatch policy boundaries", () => {
+  it.each([
+    "gateway-llm-task-preparation.ts",
+    "gateway-llm-task-route-admission.ts",
+    "gateway-llm-output-budget.ts",
+  ])("keeps %s independent from the active generation profile facade", (filename) => {
+    const source = readFileSync(join(__dirname, filename), "utf8");
+    expect(source).not.toContain("../active-reader-summary-generation-profile");
+  });
+
+  it("keeps model-effort and purpose-specific SDK output limits unchanged", () => {
+    expect(gatewayDefaultReasoningEffort).toBe("default");
+    expect(gatewayLlmOutputBytes(activeReaderSummaryPurposes.generate)).toBe(LLM_MAX_OUTPUT_BYTES);
+    expect(gatewayLlmOutputBytes(activeReaderSummaryPurposes.repair)).toBe(LLM_MAX_OUTPUT_BYTES);
+    expect(gatewayLlmOutputBytes(activeReaderSummaryPurposes.topicLabel)).toBe(LLM_DEFAULT_OUTPUT_BYTES);
+    expect(gatewayLlmMaxOutputTokens(32_768, 6_000)).toBe(32_768);
   });
 });

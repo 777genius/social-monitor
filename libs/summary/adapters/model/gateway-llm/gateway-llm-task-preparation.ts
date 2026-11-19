@@ -1,7 +1,7 @@
 import type { LlmTask } from "@agent-teams/account-gateway/llm";
 
 import type { AgentRuntimeFailure, AgentRuntimeTaskCommand } from "../../../ports";
-import { gatewayDefaultReasoningEffort } from "../active-reader-summary-generation-profile";
+import { gatewayDefaultReasoningEffort } from "../reader-summary-gateway-model-policy";
 import type { GatewayLlmClientOptions, GatewayLlmRoute } from "./gateway-llm-client-contract";
 import type { GatewayLlmOutputViolations } from "./gateway-llm-failure";
 import { prepareGatewayLlmOutput } from "./gateway-llm-structured-output";

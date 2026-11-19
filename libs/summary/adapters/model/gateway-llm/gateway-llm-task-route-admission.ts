@@ -1,5 +1,5 @@
 import type { AgentRuntimeFailure, AgentRuntimeTaskCommand } from "../../../ports";
-import { codexReaderSummaryBackend } from "../active-reader-summary-generation-profile";
+import { codexReaderSummaryBackend } from "../codex-reader-summary-gateway-route-policy";
 import type { GatewayLlmRoute } from "./gateway-llm-client-contract";
 import { gatewayLlmLocalFailure } from "./gateway-llm-failure";
 
