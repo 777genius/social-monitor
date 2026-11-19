@@ -1,5 +1,5 @@
 import type { ReaderSummaryTopicRelationVerifierInput } from "../../ports";
-import { buildAgentRuntimeReaderSummaryTopicRelationNodeProjection } from "./agent-runtime-reader-summary-topic-relation-node-evidence";
+import { projectAgentRuntimeReaderSummaryTopicRelationPairs } from "./agent-runtime-reader-summary-topic-relation-pair-projection";
 
 export const agentRuntimeReaderSummaryTopicRelationVerifierInstructions = [
   "You verify whether shortlisted Social Monitor topic nodes describe the same concrete story or event.",
@@ -15,8 +15,6 @@ export const agentRuntimeReaderSummaryTopicRelationVerifierInstructions = [
 export const buildAgentRuntimeReaderSummaryTopicRelationVerifierPrompt = (
   input: ReaderSummaryTopicRelationVerifierInput,
 ): string => {
-  const node = buildAgentRuntimeReaderSummaryTopicRelationNodeProjection(input);
-
   return JSON.stringify(
     {
       task: "Verify shortlisted topic relations.",
@@ -25,13 +23,7 @@ export const buildAgentRuntimeReaderSummaryTopicRelationVerifierPrompt = (
         conservativeOnUncertainty: true,
         sharedTermsAreHintsOnly: true,
       },
-      pairs: input.relations.map((relation) => ({
-        sourceNodeId: relation.sourceNodeId,
-        targetNodeId: relation.targetNodeId,
-        sharedTerms: relation.sharedTerms,
-        source: node(relation.sourceNodeId),
-        target: node(relation.targetNodeId),
-      })),
+      pairs: projectAgentRuntimeReaderSummaryTopicRelationPairs(input),
     },
     null,
     2,

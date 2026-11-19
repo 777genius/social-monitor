@@ -13,6 +13,7 @@ import {
 } from "./agent-runtime-reader-summary-topic-relation-verifier.adapter";
 import { withTestExecutionAttestation } from "./reader-summary-execution-attestation.spec-support";
 import { buildAgentRuntimeReaderSummaryTopicRelationVerifierPrompt } from "./agent-runtime-reader-summary-topic-relation-verifier-prompt";
+import { projectAgentRuntimeReaderSummaryTopicRelationPairs } from "./agent-runtime-reader-summary-topic-relation-pair-projection";
 
 describe("AgentRuntimeReaderSummaryTopicRelationVerifier", () => {
   it("uses the shared runtime and parses one decision per requested pair", async () => {
@@ -109,6 +110,39 @@ describe("AgentRuntimeReaderSummaryTopicRelationVerifier", () => {
         target: { evidenceSamples: [{ authorHandle: "openai" }] },
       }],
     });
+  });
+
+  it("keeps ordered pair-to-evidence binding independent of the JSON prompt", () => {
+    const request = input();
+    const originalRelation = request.relations[0]!;
+    const reversed = {
+      ...originalRelation,
+      sourceNodeId: "node:b",
+      targetNodeId: "node:a",
+    };
+    const pairRequest = { ...request, relations: [originalRelation, reversed] };
+    const before = JSON.stringify(pairRequest.relations);
+    const pairs = projectAgentRuntimeReaderSummaryTopicRelationPairs(pairRequest);
+
+    expect(pairs).toEqual(
+      JSON.parse(buildAgentRuntimeReaderSummaryTopicRelationVerifierPrompt(pairRequest)).pairs,
+    );
+    expect(pairs).toMatchObject([
+      {
+        sourceNodeId: "node:a", targetNodeId: "node:b",
+        source: { evidenceSamples: [{ authorHandle: "openai" }] },
+        target: { evidenceSamples: [{ authorHandle: "sama" }] },
+      },
+      {
+        sourceNodeId: "node:b", targetNodeId: "node:a",
+        source: { evidenceSamples: [{ authorHandle: "sama" }] },
+        target: { evidenceSamples: [{ authorHandle: "openai" }] },
+      },
+    ]);
+    expect(JSON.stringify(pairRequest.relations)).toBe(before);
+    expect(projectAgentRuntimeReaderSummaryTopicRelationPairs({
+      ...request, relations: [],
+    })).toEqual([]);
   });
 
   it("fails closed on missing candidates and labels instead of inventing relation context", () => {
