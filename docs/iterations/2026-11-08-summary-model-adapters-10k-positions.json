@@ -7567,6 +7567,79 @@
         332
       ],
       "responsibility": "Single shared fail-closed generation/daily backend-selection policy owns original route precedence, backend admission, and exact error; duplicate former daily checks and rewritten projections not counted twice."
+    },
+    {
+      "original": "openai-responses-reader-summary-options.ts",
+      "owner": "openai-responses-reader-summary-credential-admission.ts",
+      "originalPositions": [
+        13,
+        15,
+        16,
+        17
+      ],
+      "responsibility": "Original provider credential requirement and fail-closed rejection, now isolated from nonsecret environment projection; retrospective first-use origin trace."
+    },
+    {
+      "original": "openai-responses-reader-summary-options.ts",
+      "owner": "openai-responses-reader-summary-env-options.ts",
+      "originalPositions": [
+        23,
+        39,
+        40,
+        42,
+        43
+      ],
+      "responsibility": "Nonsecret endpoint/pricing options projection separated from secret admission and prompt-release policy; retrospective exact-owner trace."
+    },
+    {
+      "original": "openai-responses-reader-summary-options.ts",
+      "owner": "openai-responses-summary-option-values.ts",
+      "originalPositions": [
+        52,
+        53,
+        59,
+        60
+      ],
+      "responsibility": "Shared pure finite numeric option admission extracted from environment mapping, preserving strict positive and nonnegative semantics; retrospective exact-owner trace."
+    },
+    {
+      "original": "openai-responses-reader-summary-http.ts",
+      "owner": "openai-responses-reader-summary-http-failure.ts",
+      "originalPositions": [
+        8,
+        9,
+        10,
+        11,
+        12,
+        14,
+        15,
+        17,
+        18,
+        20,
+        21,
+        24,
+        42,
+        43,
+        44,
+        45
+      ],
+      "responsibility": "HTTP status/message classification policy separated from response-body I/O; original retryability and fallback failure types preserved, retrospective first-use trace."
+    },
+    {
+      "original": "openai-api-key-source.ts",
+      "owner": "openai-api-key-file.ts",
+      "originalPositions": [
+        20,
+        21,
+        24,
+        25,
+        26,
+        28,
+        29,
+        30,
+        34
+      ],
+      "responsibility": "Infrastructure-only credential file existence/type/private-permission admission and read moved behind explicit file dependency; retrospective first-use trace."
     }
   ]
 }
