@@ -32,6 +32,7 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-narrative-fallback.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-watch-evidence-policy.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-narrative.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-narrative-input-admission.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-narrative-section-projection.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-narrative-provider-section.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-narrative-provider-section.spec.ts

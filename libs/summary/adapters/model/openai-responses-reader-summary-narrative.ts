@@ -1,5 +1,4 @@
 import { fallbackNarrative } from "./openai-responses-reader-summary-narrative-fallback";
-import { watchEligibleCitationIds } from "./openai-responses-reader-summary-watch-evidence-policy";
 export { readerSummaryNarrativeMarkdown } from "./openai-responses-reader-summary-narrative-markdown";
 import {
   ensureCitedLead,
@@ -12,13 +11,9 @@ import type {
   ReaderSummaryNarrativeSection,
 } from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
-import { asRecord } from "./openai-responses-reader-summary-json";
-import {
-  buildReaderSummaryNarrativeCitationGuard,
-  buildReaderSummaryNarrativeCoverage,
-} from "./openai-responses-reader-summary-narrative-coverage";
 import { normalizeDailyEditorialNarrative } from "./openai-responses-reader-summary-editorial-narrative";
 import { projectGroundedNarrativeSections } from "./openai-responses-reader-summary-narrative-section-projection";
+import { admitOpenAiReaderSummaryNarrativeInput } from "./openai-responses-reader-summary-narrative-input-admission";
 
 export const normalizeOpenAiReaderSummaryNarrative = (params: {
   readonly rawSections: unknown;
@@ -32,35 +27,11 @@ export const normalizeOpenAiReaderSummaryNarrative = (params: {
   if (params.input.dailyEditorialPlan !== undefined) {
     return normalizeDailyEditorialNarrative(params);
   }
-  const rawSections = Array.isArray(params.rawSections)
-    ? params.rawSections
-        .map(asRecord)
-        .filter((value): value is Record<string, unknown> => value !== null)
-    : [];
-  if (rawSections.length === 0) {
-    if (params.input.coveragePlan.secondary.length > 0) {
-      throw new Error(
-        "Reader summary narrative must include the planned cited lead and secondary signals",
-      );
-    }
+  const admission = admitOpenAiReaderSummaryNarrativeInput(params);
+  if (admission.kind === "fallback") {
     return fallbackNarrative(params);
   }
-
-  const knownCitationIds = new Set(
-    params.citationMap.map((citation) => citation.citationId),
-  );
-  const coverage = buildReaderSummaryNarrativeCoverage(
-    params.input,
-    params.citationMap,
-  );
-  const eligibleWatchCitationIds = watchEligibleCitationIds(
-    params.input,
-    params.citationMap,
-  );
-  const citationsAllowed = buildReaderSummaryNarrativeCitationGuard(
-    coverage,
-    eligibleWatchCitationIds,
-  );
+  const { rawSections, knownCitationIds, coverage, citationsAllowed } = admission;
   const sections = projectGroundedNarrativeSections({
     rawSections,
     coverage,

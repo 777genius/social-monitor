@@ -2,8 +2,44 @@ import { watchEligibleCitationIds } from "./openai-responses-reader-summary-watc
 import type { ReaderSummaryCitation } from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
 import { normalizeOpenAiReaderSummaryNarrative } from "./openai-responses-reader-summary-narrative";
+import { admitOpenAiReaderSummaryNarrativeInput } from "./openai-responses-reader-summary-narrative-input-admission";
 
 describe("normalizeOpenAiReaderSummaryNarrative", () => {
+
+  it("admits only object records without mutating the untrusted narrative array", () => {
+    const rawSections = [null, 7, { kind: "lead" }, "ignore"];
+    const original = [...rawSections];
+    const admission = admitOpenAiReaderSummaryNarrativeInput({
+      rawSections,
+      input: modelInput(),
+      citationMap: citations,
+    });
+    expect(admission.kind).toBe("grounded");
+    if (admission.kind !== "grounded") throw new Error("Grounded admission expected");
+    expect(admission.rawSections).toEqual([{ kind: "lead" }]);
+    expect([...admission.knownCitationIds]).toEqual(citations.map((item) => item.citationId));
+    expect(admission.citationsAllowed("watch", ["c4"])).toBe(false);
+    expect(rawSections).toEqual(original);
+  });
+
+  it("returns fallback without creating a citation policy for absent secondary-free sections", () => {
+    const input = modelInput();
+    const admission = admitOpenAiReaderSummaryNarrativeInput({
+      rawSections: [undefined, 9, "not a record"],
+      input: { ...input, coveragePlan: { ...input.coveragePlan, secondary: [] } },
+      citationMap: citations,
+    });
+    expect(admission).toEqual({ kind: "fallback" });
+  });
+
+  it("rejects missing narrative before fallback when secondary citations are required", () => {
+    expect(() => admitOpenAiReaderSummaryNarrativeInput({
+      rawSections: [undefined, null],
+      input: modelInput(),
+      citationMap: citations,
+    })).toThrow("planned cited lead and secondary signals");
+  });
+
   it("requires structured narrative when secondary signals are planned", () => {
     expect(() =>
       normalizeOpenAiReaderSummaryNarrative({

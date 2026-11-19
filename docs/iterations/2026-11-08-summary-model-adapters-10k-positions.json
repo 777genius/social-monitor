@@ -7745,6 +7745,31 @@
         318
       ],
       "responsibility": "Purpose-specific generation and daily task identity selection from environment is owned by the composition-time env resolver rather than the fixed route/model identity policy; first-use original positions rechecked for exact destination traces"
+    },
+    {
+      "original": "openai-responses-reader-summary-narrative.ts",
+      "owner": "openai-responses-reader-summary-narrative-input-admission.ts",
+      "originalPositions": [
+        40,
+        41,
+        42,
+        43,
+        45,
+        46,
+        47,
+        48,
+        54,
+        55,
+        57,
+        58,
+        59,
+        61,
+        62,
+        63,
+        65,
+        67
+      ],
+      "responsibility": "Untrusted non-daily narrative record admission, required secondary coverage veto and approved-citation guard creation are isolated from narrative projection/ordering; missing-record fallback ordering preserved"
     }
   ]
 }
