@@ -26,6 +26,7 @@ export const meterReaderSummaryDailyPlanning = async (params: {
     route,
     execute: () => planDaily(input, route),
     usageOnSuccess: (attempt) => attempt.usage,
+    recordSuccessBeforeUsageProjection: true,
     classifyFailure: (error) => delegate.classifyError(error).kind,
     failedUsage: readFailedDailyEditorUsage,
   });
