@@ -13,6 +13,9 @@ type MeteredReaderSummaryAttempt<T> = {
   // Each operation owns only its result-to-usage projection; the lifecycle
   // owns the identical success counters for both editor and writer calls.
   readonly usageOnSuccess: (attempt: T) => ReaderSummaryUsage;
+  // Daily planning historically records success before reading its usage;
+  // generation records success only after the usage projection succeeds.
+  readonly recordSuccessBeforeUsageProjection?: boolean;
   readonly classifyFailure: (error: unknown) => string;
   readonly failedUsage?: (error: unknown) => ReaderSummaryModelEstimate | undefined;
 };
@@ -24,8 +27,13 @@ export const meterReaderSummaryAttempt = async <T>(
   recordReaderSummaryModelRequest(params.metrics, params.route, "started");
   try {
     const attempt = await params.execute();
+    if (params.recordSuccessBeforeUsageProjection) {
+      recordReaderSummaryModelRequest(params.metrics, params.route, "succeeded");
+    }
     const usage = params.usageOnSuccess(attempt);
-    recordReaderSummaryModelRequest(params.metrics, params.route, "succeeded");
+    if (!params.recordSuccessBeforeUsageProjection) {
+      recordReaderSummaryModelRequest(params.metrics, params.route, "succeeded");
+    }
     recordReaderSummaryModelUsage(params.metrics, params.route, usage);
     return attempt;
   } catch (error) {
