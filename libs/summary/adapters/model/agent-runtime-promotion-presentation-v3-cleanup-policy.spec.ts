@@ -3,7 +3,7 @@ import type { ReaderPostPresentationV3Result } from "../../domain/services/reade
 import { projectPromotionPresentationCleanup } from "./agent-runtime-promotion-presentation-v3-cleanup-policy";
 
 const unavailable: ReaderPostPresentationV3Result = {
-  status: "unavailable", reason: "runtime_failure",
+  status: "unavailable", reason: "insufficient_support",
 };
 
 const failed = (details: Record<string, string>): AgentRuntimeTaskResult => ({
@@ -22,7 +22,7 @@ describe("promotion presentation cleanup projection", () => {
     };
     const project = projectPromotionPresentationCleanup(result);
     expect(project(unavailable)).toEqual({ ...unavailable, cleanupPending: true });
-    expect(unavailable).toEqual({ status: "unavailable", reason: "runtime_failure" });
+    expect(unavailable).toEqual({ status: "unavailable", reason: "insufficient_support" });
   });
 
   it("propagates pending cleanup from failed-task diagnostics independently of warnings", () => {
