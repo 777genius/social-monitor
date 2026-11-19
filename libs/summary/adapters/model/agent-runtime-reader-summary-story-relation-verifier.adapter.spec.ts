@@ -180,6 +180,40 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
     expect(promptPair.left.sourceText).toContain("bounded incident evidence");
   });
 
+  it("snapshots resolved verifier routing controls instead of retaining mutable caller options", async () => {
+    const client = new CapturingAgentRuntimeClient({
+      status: "completed",
+      structuredOutput: { decisions: [] },
+      warnings: [],
+    }, true);
+    const options = {
+      client,
+      model: "gpt-6.1-sol",
+      reasoningEffort: "low",
+      timeoutMs: 42_000,
+      maxOutputTokens: 1_024,
+    };
+    const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier(options);
+    options.model = "changed-after-construction";
+    options.reasoningEffort = "high";
+    options.timeoutMs = 1;
+    options.maxOutputTokens = 8;
+
+    await verifier.verify(input());
+    await verifier.verify({ ...input(), verificationLane: "independent_news" });
+
+    expect(client.commands).toHaveLength(2);
+    for (const command of client.commands) {
+      expect(command.controls).toMatchObject({
+        model: "gpt-6.1-sol",
+        reasoningEffort: "low",
+        maxOutputTokens: 1_024,
+      });
+      expect(command.timeoutMs).toBe(42_000);
+    }
+    expect(client.commands[0]?.requestId).not.toBe(client.commands[1]?.requestId);
+  });
+
   it("routes independent news through Codex with its own request and conservative prompt", async () => {
     const client = new CapturingAgentRuntimeClient({ status: "completed",
       structuredOutput: { decisions: [] }, warnings: [] }, true);

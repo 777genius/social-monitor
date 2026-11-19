@@ -11,7 +11,6 @@ import {
   type AgentRuntimeReaderSummaryStoryRelationVerifierOptions,
 } from "./agent-runtime-reader-summary-story-relation-options";
 import type { VerifiedReaderSummaryExecutionAttestationSink } from "./reader-summary-execution-attestation";
-import type { ReaderSummaryGenerationBackend } from "./active-reader-summary-generation-profile";
 
 
 export type { AgentRuntimeReaderSummaryStoryRelationVerifierOptions } from "./agent-runtime-reader-summary-story-relation-options";
@@ -19,31 +18,14 @@ export { resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions } from "./
 
 export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSummaryStoryRelationVerifierPort {
   private readonly client: AgentRuntimeClientPort;
-  private readonly provider: "codex";
+  private readonly config: ReturnType<typeof resolveStoryRelationVerifierConfig>;
   private readonly providerInstanceId?: string;
-  private readonly model: string;
-  private readonly modelBackend: ReaderSummaryGenerationBackend;
-  private readonly reasoningEffort: string;
-  private readonly promptVersion: string;
-  private readonly relatedTopicPromptVersion: string;
-  private readonly relatedTopicTimeoutMs: number;
-  private readonly timeoutMs: number;
-  private readonly maxOutputTokens: number;
   private readonly verifiedAttestationSink?: VerifiedReaderSummaryExecutionAttestationSink;
 
   constructor(options: AgentRuntimeReaderSummaryStoryRelationVerifierOptions) {
     this.client = options.client;
-    const config = resolveStoryRelationVerifierConfig(options);
-    this.provider = config.provider;
+    this.config = resolveStoryRelationVerifierConfig(options);
     this.providerInstanceId = options.providerInstanceId;
-    this.model = config.model;
-    this.modelBackend = config.modelBackend;
-    this.reasoningEffort = config.reasoningEffort;
-    this.promptVersion = config.promptVersion;
-    this.relatedTopicPromptVersion = config.relatedTopicPromptVersion;
-    this.timeoutMs = config.timeoutMs;
-    this.maxOutputTokens = config.maxOutputTokens;
-    this.relatedTopicTimeoutMs = config.relatedTopicTimeoutMs;
     this.verifiedAttestationSink = options.verifiedAttestationSink;
   }
 
@@ -55,22 +37,14 @@ export class AgentRuntimeReaderSummaryStoryRelationVerifier implements ReaderSum
     }
     const command = buildAgentRuntimeStoryRelationCommand({
       input,
-      provider: this.provider,
+      ...this.config,
       providerInstanceId: this.providerInstanceId,
-      model: this.model,
-      modelBackend: this.modelBackend,
-      reasoningEffort: this.reasoningEffort,
-      promptVersion: this.promptVersion,
-      relatedTopicPromptVersion: this.relatedTopicPromptVersion,
-      timeoutMs: this.timeoutMs,
-      relatedTopicTimeoutMs: this.relatedTopicTimeoutMs,
-      maxOutputTokens: this.maxOutputTokens,
     });
     return executeAgentRuntimeStoryRelationVerification({
       client: this.client,
       input,
       command,
-      modelBackend: this.modelBackend,
+      modelBackend: this.config.modelBackend,
       sink: this.verifiedAttestationSink,
     });
   }
