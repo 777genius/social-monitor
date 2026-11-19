@@ -43,14 +43,14 @@ void main() {
   );
 
   test(
-    'falls back to one generated bootstrap request when the bridge fails',
+    'falls back to one lightweight session request when the bridge fails',
     () async {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       final paths = <String>[];
       server.listen((request) async {
         paths.add(request.uri.path);
         request.response.headers.contentType = ContentType.json;
-        request.response.write(jsonEncode(_bootstrapResponse));
+        request.response.write(jsonEncode(_sessionResponse));
         await request.response.close();
       });
       final runtime = AppFrontendRuntimeConfig(
@@ -64,14 +64,10 @@ void main() {
         earlyBootstrapReader: () async => throw StateError('bridge failed'),
       );
 
-      expect(paths, ['/app/bootstrap']);
+      expect(paths, ['/auth/session']);
       expect(controller.runtime.session.userId, 'guest-1');
       expect(controller.runtime.session.isRestoring, isFalse);
       final scope = controller.runtime.workspace.scope!;
-      expect(
-        controller.takeInitialSummaryBootstrap(scope),
-        isA<ReaderSummaryBootstrapResponseDto>(),
-      );
       expect(controller.takeInitialSummaryBootstrap(scope), isNull);
 
       (runtime.generatedApiRuntime! as GeneratedApiRuntime).close(force: true);
@@ -85,7 +81,7 @@ void main() {
     server.listen((request) async {
       paths.add(request.uri.path);
       request.response.headers.contentType = ContentType.json;
-      request.response.write(jsonEncode(_bootstrapResponse));
+      request.response.write(jsonEncode(_sessionResponse));
       await request.response.close();
     });
     final earlyPayloads = <Map<String, Object?>>[
@@ -121,11 +117,11 @@ void main() {
       (runtime.generatedApiRuntime! as GeneratedApiRuntime).close(force: true);
     }
 
-    expect(paths, ['/app/bootstrap', '/app/bootstrap']);
+    expect(paths, ['/auth/session', '/auth/session']);
     await server.close(force: true);
   });
 
-  test('falls back to session discovery during a split rollout', () async {
+  test('restores a session without repeating an unavailable bootstrap endpoint', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final paths = <String>[];
     server.listen((request) async {
@@ -150,7 +146,7 @@ void main() {
       earlyBootstrapReader: () async => null,
     );
 
-    expect(paths, ['/app/bootstrap', '/auth/session']);
+    expect(paths, ['/auth/session']);
     expect(controller.runtime.session.userId, 'guest-1');
     expect(
       controller.takeInitialSummaryBootstrap(
