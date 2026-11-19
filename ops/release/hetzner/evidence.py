@@ -108,8 +108,15 @@ def package_check_key(key):
     return isinstance(key, str) and re.fullmatch(r'check:[a-zA-Z0-9][a-zA-Z0-9:._-]{0,127}', key) is not None
 
 
+def frontend_source_path(path):
+    """Flutter sources: tsc builds only *.ts (tsconfig.build.json) and the image runs node dist/, so these never
+    change backend behaviour; the frontend ships as its own artifact. Any TypeScript stays a backend path."""
+    return path.startswith('apps/frontend/') and re.search(r'\.[cm]?tsx?$', path) is None
+
+
 def package_ci_path(path):
     return (path == 'package.json' or path in PACKAGE_CI_TS or path.startswith(('docs/', 'ops/release/')) or
+            frontend_source_path(path) or
             re.fullmatch(r'scripts/lib/durable-backend-e2e-[a-z0-9-]+\.ts', path) is not None or
             path.startswith('scripts/') and path.endswith('.mjs') and path not in PACKAGE_COPIED_MJS or
             path.startswith(('scripts/ci/', 'ops/ci/')) and path.endswith('.mts'))
