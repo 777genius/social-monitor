@@ -7772,6 +7772,42 @@
         187
       ],
       "responsibility": "Batch cleanup-pending projection from attested runtime warning/diagnostics, separated from dispatch/retry/output admission; per-result identity and fail-closed paths unchanged"
+    },
+    {
+      "original": "openai-responses-reader-summary-weekly-response-parser.ts",
+      "owner": "openai-responses-reader-summary-weekly-legacy-evidence-policy.ts",
+      "originalPositions": [
+        361,
+        362,
+        364,
+        365,
+        367,
+        368,
+        370,
+        372,
+        376,
+        377,
+        387,
+        388,
+        390,
+        392,
+        393,
+        394,
+        396,
+        398,
+        401,
+        402,
+        411,
+        412,
+        414,
+        415,
+        416,
+        417,
+        419,
+        423,
+        424
+      ],
+      "responsibility": "Retrospective first-use attribution of already-extracted legacy weekly evidence trust: exact citation-array admission, cited chronology non-fabrication, closed claim types, one matching story and cited-observation range; no credit for type-only, generic throw, imports or tests"
     }
   ]
 }
