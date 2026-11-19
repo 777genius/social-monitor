@@ -19,10 +19,10 @@ describe("mapGatewaySchemaTree", () => {
       return { ...node, visited: true };
     });
     expect(order).toEqual(["property", "definition", "union", "tuple", "additional", "not", "root"]);
-    expect((result.properties as Record<string, Record<string, unknown>>).nested.visited).toBe(true);
-    expect((result.$defs as Record<string, Record<string, unknown>>).definition.visited).toBe(true);
-    expect((result.anyOf as Record<string, unknown>[])[0].visited).toBe(true);
-    expect((result.prefixItems as Record<string, unknown>[])[0].visited).toBe(true);
+    expect(result.properties).toMatchObject({ nested: { visited: true } });
+    expect(result.$defs).toMatchObject({ definition: { visited: true } });
+    expect(result.anyOf).toMatchObject([{ visited: true }]);
+    expect(result.prefixItems).toMatchObject([{ visited: true }]);
     expect((result.additionalProperties as Record<string, unknown>).visited).toBe(true);
     expect((result.not as Record<string, unknown>).visited).toBe(true);
     expect(result.extra).toBe(opaque);
