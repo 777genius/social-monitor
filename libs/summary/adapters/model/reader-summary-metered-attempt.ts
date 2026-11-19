@@ -1,4 +1,5 @@
 import type { MetricsRecorderPort } from "@social-monitor/platform-metrics";
+import type { ReaderSummaryUsage } from "../../domain";
 import type { ReaderSummaryModelEstimate, ReaderSummaryModelRoute } from "../../ports";
 import {
   recordReaderSummaryModelRequest,
@@ -11,7 +12,7 @@ type MeteredReaderSummaryAttempt<T> = {
   readonly execute: () => Promise<T>;
   // Each operation owns only its result-to-usage projection; the lifecycle
   // owns the identical success counters for both editor and writer calls.
-  readonly usageOnSuccess: (attempt: T) => ReaderSummaryModelEstimate;
+  readonly usageOnSuccess: (attempt: T) => ReaderSummaryUsage;
   readonly classifyFailure: (error: unknown) => string;
   readonly failedUsage?: (error: unknown) => ReaderSummaryModelEstimate | undefined;
 };
