@@ -76,3 +76,19 @@ it("records exactly one successful attempt for zero-token usage without inventin
     job_type: "reader_summary", model: route.model, provider: route.provider,
   })).toBe(0);
 });
+
+it("preserves unknown token usage as unknown rather than billing fabricated tokens", async () => {
+  const metrics = new InMemoryMetricsRecorder();
+  const result = { usage: { inputTokens: null, outputTokens: null, estimatedCostUsd: 0.15 } };
+  await expect(meterReaderSummaryAttempt({
+    metrics, route, execute: async () => result,
+    usageOnSuccess: (attempt) => attempt.usage,
+    classifyFailure: () => "unused",
+  })).resolves.toBe(result);
+  expect(metrics.counters("summary_model_tokens_total")).toHaveLength(0);
+  expect(metrics.counterValue("summary_model_estimated_cost_usd", {
+    job_type: "reader_summary", model: route.model, provider: route.provider,
+  })).toBeCloseTo(0.15);
+  expect(metrics.counters("summary_model_requests_total").map((entry) => entry.labels.status))
+    .toEqual(["started", "succeeded"]);
+});
