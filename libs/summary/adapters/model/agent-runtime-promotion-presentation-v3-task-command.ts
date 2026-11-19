@@ -13,7 +13,6 @@ import {
   type activeReaderSummaryProvider,
   mimoReaderSummaryBackend,
   activeReaderSummaryPurposes,
-  isGatewayReaderSummaryBackend,
   readerSummaryRouteControls,
   type ReaderSummaryGenerationBackend,
 } from "./active-reader-summary-generation-profile";
@@ -49,8 +48,7 @@ export const createPromotionPresentationTaskCommand = (
     systemPrompt, prompt, outputSchema: schema,
     provider: route.provider, providerInstanceId: route.providerInstanceId ?? null,
     model: route.model, reasoningEffort: route.reasoningEffort,
-    ...(route.modelBackend === mimoReaderSummaryBackend ||
-      isGatewayReaderSummaryBackend(route.modelBackend) ? { modelBackend: route.modelBackend } : {}),
+    ...(sourceCopyWire ? { modelBackend: route.modelBackend } : {}),
     maxOutputTokens: route.maxOutputTokens,
   }));
   const command: AgentRuntimeTaskCommand = {

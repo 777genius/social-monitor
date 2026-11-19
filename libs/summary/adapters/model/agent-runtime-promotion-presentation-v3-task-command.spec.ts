@@ -5,6 +5,11 @@ import { activeReaderSummaryProvider,
   mimoReaderSummaryBackend,
   mimoReaderSummaryModel,
   mimoPresentationReasoningEffort,
+  kimiCodeReaderSummaryBackend,
+  kimiCodeReaderSummaryModel,
+  openRouterReaderSummaryBackend,
+  defaultOpenRouterReaderSummaryModel,
+  gatewayDefaultReasoningEffort,
 } from "./active-reader-summary-generation-profile";
 import { createPromotionPresentationTaskCommand } from "./agent-runtime-promotion-presentation-v3-task-command";
 
@@ -87,6 +92,32 @@ describe("promotion presentation task wire materialization", () => {
       createPromotionPresentationTaskCommand([input], route).command.requestId,
     );
     expect(mimo.command.systemPrompt).toContain("SOURCE_REFERENCE_COPY_OPTIONS=");
+  });
+
+
+  it.each([
+    [kimiCodeReaderSummaryBackend, kimiCodeReaderSummaryModel],
+    [openRouterReaderSummaryBackend, defaultOpenRouterReaderSummaryModel],
+  ] as const)("keeps source-copy schema, controls and sealed digest aligned for %s", (backend, model) => {
+    const input = Object.freeze(fixture());
+    const routeForGateway = Object.freeze({
+      ...route, modelBackend: backend, model,
+      reasoningEffort: gatewayDefaultReasoningEffort,
+    });
+    const first = createPromotionPresentationTaskCommand([input], routeForGateway);
+    const repeated = createPromotionPresentationTaskCommand([input], routeForGateway);
+    const canonical = createPromotionPresentationTaskCommand([input], route);
+    expect(first.sourceCopyWire).toBe(true);
+    expect(first.command.outputSchema).not.toEqual(canonical.command.outputSchema);
+    expect(first.command.systemPrompt).toContain("Return contractVersion mimo_qualified_headline.v1.");
+    expect(first.command.controls).toMatchObject({ modelBackend: backend, model });
+    expect(first.command.requestId).toBe(repeated.command.requestId);
+    expect(first.command.correlationId).toBe(repeated.command.correlationId);
+    expect(first.command.requestId).not.toBe(canonical.command.requestId);
+    expect(first.command.tenantId).toBe(input.tenantId);
+    expect(first.command.workspaceId).toBe(input.workspaceId);
+    expect(Object.isFrozen(input)).toBe(true);
+    expect(Object.isFrozen(routeForGateway)).toBe(true);
   });
 
   it("keeps ordered source candidates and route-specific sealed request identities", () => {
