@@ -21,7 +21,10 @@ export const meterReaderSummaryGeneration = (params: {
     metrics,
     route,
     execute: () => delegate.generate(input, route, budget),
-    usageOnSuccess: (attempt) => attempt.draft.usage,
+    usageOnSuccess: (attempt) => {
+      const usage = attempt.draft.usage;
+      return usage;
+    },
     classifyFailure: (error) => delegate.classifyError(error).kind,
   });
 };
