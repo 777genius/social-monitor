@@ -51,7 +51,8 @@ export const projectReaderSummaryPromptEvidenceItem = (
     score: item.score,
     providerMetrics: item.providerMetricLabels?.slice(0, 8),
     whyImportant: compactStringArray(item.whyImportant, 3, 160),
-    contentQuality: projectReaderSummaryContentQuality(item),
+    contentQuality:
+      projectReaderSummaryContentQuality(item),
     conversationContext:
       item.conversationContext === undefined
         ? undefined
