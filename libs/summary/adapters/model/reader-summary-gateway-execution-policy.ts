@@ -2,7 +2,7 @@ import { gatewayLlmRuntimeEngine } from "@social-monitor/contracts/grpc/agent_ru
 import {
   isCodexGatewayOnlyReaderSummaryModel,
   isCodexGatewayReaderSummaryRoute,
-} from "./codex-reader-summary-route";
+} from "./codex-reader-summary-gateway-route-policy";
 import {
   isGatewayReaderSummaryModel,
   isGatewayReaderSummaryReasoningEffort,

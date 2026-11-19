@@ -2,7 +2,7 @@ import {
   activeReaderSummaryPurposes,
   frozenLegacyReaderSummaryRecoveryContract,
   type FrozenLegacyReaderSummaryRecoveryContract,
-} from "./active-reader-summary-generation-profile";
+} from "./reader-summary-runtime-contract";
 
 /** Purpose authorization for attested task roles, independent of wire identity and sink I/O. */
 export type ReaderSummaryAttestedTaskRole =

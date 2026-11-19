@@ -2,15 +2,19 @@ import type { AgentRuntimeTaskCommand } from "../../ports";
 import type { ReaderSummaryAttestedTaskRole } from "./reader-summary-attested-purpose-policy";
 import {
   activeReaderSummaryModel,
+  isCodexGatewayOnlyReaderSummaryModel,
+} from "./codex-reader-summary-gateway-route-policy";
+import {
+  gatewayDefaultReasoningEffort,
+  isGatewayReaderSummaryBackend,
+} from "./reader-summary-gateway-model-policy";
+import {
   activeReaderSummaryPurposes,
   frozenLegacyReaderSummaryRecoveryContract,
-  gatewayDefaultReasoningEffort,
-  isCodexGatewayOnlyReaderSummaryModel,
-  isGatewayReaderSummaryBackend,
   mimoReaderSummaryBackend,
   mimoReaderSummaryModel,
   type FrozenLegacyReaderSummaryRecoveryContract,
-} from "./active-reader-summary-generation-profile";
+} from "./reader-summary-runtime-contract";
 
 /**
  * Resolve the route the scoped command must attest. This is a pure command

@@ -1,4 +1,4 @@
-import { activeReaderSummaryModel } from "./codex-reader-summary-route";
+import { activeReaderSummaryModel } from "./codex-reader-summary-gateway-route-policy";
 import { mimoReaderSummaryModel } from "./reader-summary-runtime-contract";
 
 /**

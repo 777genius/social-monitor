@@ -9,6 +9,10 @@ on:
       - .github/workflows/model-665-attested-purpose-focused.yml
       - libs/summary/adapters/model/reader-summary-execution-identity-policy.ts
       - libs/summary/adapters/model/reader-summary-execution-route-identity.ts
+      - libs/summary/adapters/model/reader-summary-attested-purpose-policy.ts
+      - libs/summary/adapters/model/reader-summary-gateway-execution-policy.ts
+      - libs/summary/adapters/model/reader-summary-gateway-model-policy.ts
+      - libs/summary/adapters/model/reader-summary-attested-purpose-policy.spec.ts
       - libs/summary/adapters/model/reader-summary-execution-identity-policy.spec.ts
       - libs/summary/adapters/model/reader-summary-mimo-execution-admission.ts
       - libs/summary/adapters/model/reader-summary-mimo-attestation.ts

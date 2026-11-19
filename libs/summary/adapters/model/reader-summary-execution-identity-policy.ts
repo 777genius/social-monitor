@@ -16,10 +16,8 @@ import {
 } from "./reader-summary-attested-purpose-policy";
 export type { ReaderSummaryAttestedTaskRole } from "./reader-summary-attested-purpose-policy";
 
-import {
-  isGatewayReaderSummaryExecution,
-  type FrozenLegacyReaderSummaryRecoveryContract,
-} from "./active-reader-summary-generation-profile";
+import { isGatewayReaderSummaryExecution } from "./reader-summary-gateway-execution-policy";
+import type { FrozenLegacyReaderSummaryRecoveryContract } from "./reader-summary-runtime-contract";
 import { expectedReaderSummaryExecutionRoute } from "./reader-summary-execution-route-identity";
 import { activeReaderSummaryProvider } from "./reader-summary-runtime-contract";
 

@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import {
   activeReaderSummaryPurposes,
   frozenLegacyReaderSummaryRecoveryContract,
@@ -77,5 +80,18 @@ describe("attested reader-summary task-role purpose policy", () => {
     expect(readerSummaryAttestedPurposeMatches(
       "topic_label", "attempt-2", activeReaderSummaryPurposes.topicLabel,
     )).toBe(true);
+  });
+});
+
+describe("reader summary trust-policy dependency direction", () => {
+  it.each([
+    "reader-summary-attested-purpose-policy.ts",
+    "reader-summary-execution-identity-policy.ts",
+    "reader-summary-execution-route-identity.ts",
+    "reader-summary-gateway-model-policy.ts",
+    "reader-summary-gateway-execution-policy.ts",
+  ])("keeps %s independent from public adapter/route facades", (filename) => {
+    const source = readFileSync(join(__dirname, filename), "utf8");
+    expect(source).not.toMatch(/from\s+["']\.\/(?:active-reader-summary-generation-profile|codex-reader-summary-route)["']/u);
   });
 });
