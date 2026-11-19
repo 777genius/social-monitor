@@ -48,4 +48,8 @@ test('runner delegates negative-smoke helpers instead of duplicating bodies', ()
     'childProcessErrorOutput', 'smokeOutputSnippet']) {
     assert.doesNotMatch(source, new RegExp('function\\s+' + name + '\\s*\\('));
   }
+  const packageScripts = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).scripts;
+  for (const command of ['check:architecture', 'check:external-beta-evidence-runner']) {
+    assert.match(packageScripts[command], /scripts\/lib\/external-beta-negative-smoke-runtime\.test\.mjs/);
+  }
 });
