@@ -7524,63 +7524,11 @@
     },
     {
       "original": "gateway-llm/gateway-llm-client.ts",
-      "owner": "gateway-llm/gateway-llm-task-preparation.ts",
-      "originalPositions": [
-        147,
-        191,
-        196,
-        198,
-        199,
-        201,
-        202,
-        204,
-        205,
-        206,
-        207,
-        208
-      ],
-      "responsibility": "SDK task projection, output ceiling and bounded deadline moved from client transport to preparation policy"
-    },
-    {
-      "original": "gateway-llm/gateway-llm-client.ts",
       "owner": "gateway-llm/gateway-llm-dispatch-loop.ts",
       "originalPositions": [
-        85,
-        95,
-        96,
-        97,
-        98,
-        99,
-        100,
-        101,
-        122,
-        123,
-        217,
-        218,
-        219,
-        220,
-        221,
-        276,
-        287,
-        288
+        85
       ],
       "responsibility": "Attempt state, SDK dispatch, account ordering and observation now owned by retry coordinator"
-    },
-    {
-      "original": "gateway-llm/gateway-llm-client.ts",
-      "owner": "gateway-llm/gateway-llm-task-route-admission.ts",
-      "originalPositions": [
-        149,
-        150,
-        151,
-        152,
-        154,
-        155,
-        156,
-        159,
-        160
-      ],
-      "responsibility": "Fail-closed model/backend/effort and positive-timeout route admission before SDK dispatch"
     },
     {
       "original": "gateway-llm/gateway-llm-client.ts",
@@ -7588,19 +7536,7 @@
       "originalPositions": [
         163,
         164,
-        165,
         166,
-        172,
-        173,
-        174,
-        175,
-        177,
-        180,
-        181,
-        182,
-        186,
-        187,
-        188,
         280,
         281,
         282,
@@ -7612,30 +7548,9 @@
       "original": "gateway-llm/gateway-llm-client.ts",
       "owner": "gateway-llm/gateway-llm-task-completion.ts",
       "originalPositions": [
-        230,
-        233,
-        234,
-        235,
         238,
         239,
-        241,
-        242,
-        243,
-        244,
-        251,
-        253,
-        254,
-        255,
-        256,
-        257,
-        258,
-        259,
-        263,
-        264,
-        265,
-        266,
-        268,
-        269
+        259
       ],
       "responsibility": "Provider model matching, settlement warnings, selected output digest and attestation projection"
     },
@@ -7643,24 +7558,9 @@
       "original": "gateway-llm/gateway-llm-client.ts",
       "owner": "gateway-llm/gateway-llm-health.ts",
       "originalPositions": [
-        129,
-        133,
-        136,
         140
       ],
       "responsibility": "Fail-closed health probe response independent of task dispatch"
-    },
-    {
-      "original": "gateway-llm/gateway-llm-client.ts",
-      "owner": "gateway-llm/gateway-llm-task-failure.ts",
-      "originalPositions": [
-        112,
-        113,
-        115,
-        116,
-        117
-      ],
-      "responsibility": "Safe failed-attempt projection with elapsed and deadline metadata"
     },
     {
       "original": "gateway-llm/gateway-llm-client.ts",
