@@ -1,4 +1,5 @@
 import { resolveReaderSummaryDailyTaskIdentityFromEnv as directDailyTask } from "./reader-summary-daily-task-env-resolution";
+import { backendMessage, resolveReaderSummaryBackendSelectionFromEnv } from "./reader-summary-backend-selection";
 import { resolveReaderSummaryDailyTaskIdentityFromEnv as envDailyTask } from "./reader-summary-generation-env-resolution";
 import {
   parseActiveReaderSummaryModel as directModel,
@@ -175,6 +176,59 @@ describe("reader-summary generation identity policy", () => {
     expect(() => directDailyTask(mimo, "gpt-5.6-sol")).toThrow(
       "MiMo reader summary model conflicts with purpose policy",
     );
+  });
+
+  it("uses one fail-closed transport selector for daily tasks and generation", () => {
+    const cli = Object.freeze({
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
+      AGENT_RUNTIME_GATEWAY_LLM_MODEL: "invalid-gateway-model",
+      AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "invalid",
+    });
+    expect(resolveReaderSummaryBackendSelectionFromEnv(cli)).toEqual({ kind: "cli" });
+    expect(directDailyTask(cli, undefined).modelBackend).toBe("openai-chatgpt");
+
+    const codex = Object.freeze({
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
+      AGENT_RUNTIME_TRANSPORT: "gateway-llm",
+    });
+    expect(resolveReaderSummaryBackendSelectionFromEnv(codex)).toMatchObject({
+      kind: "codex-gateway", route: { model: "gpt-6.1-terra", reasoningEffort: "medium" },
+    });
+    expect(resolveReaderSummaryGenerationIdentityFromEnv(codex).model).toBe("gpt-6.1-terra");
+
+    const gateway = Object.freeze({
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openrouter",
+      AGENT_RUNTIME_GATEWAY_LLM_MODEL: "test/model-v2",
+    });
+    expect(resolveReaderSummaryBackendSelectionFromEnv(gateway)).toMatchObject({
+      kind: "gateway", route: { backend: "openrouter", model: "test/model-v2" },
+    });
+    expect(directDailyTask(gateway, "test/model-v2").model).toBe("test/model-v2");
+    expect(resolveReaderSummaryBackendSelectionFromEnv({
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "xiaomi-mimo-token-plan",
+    })).toEqual({ kind: "mimo" });
+    expect(gateway.AGENT_RUNTIME_GATEWAY_LLM_MODEL).toBe("test/model-v2");
+  });
+
+  it("preserves rejection order: invalid shared models precede unknown backend checks", () => {
+    const invalid = Object.freeze({
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "unsupported-backend",
+    });
+    expect(() => resolveReaderSummaryBackendSelectionFromEnv(invalid)).toThrow(backendMessage);
+    expect(() => directDailyTask(invalid, undefined)).toThrow(backendMessage);
+    expect(() => resolveReaderSummaryGenerationIdentityFromEnv(invalid)).toThrow(backendMessage);
+    expect(() => resolveReaderSummaryGenerationIdentityFromEnv({
+      ...invalid, AGENT_RUNTIME_READER_SUMMARY_MODEL: "forged-cli-model",
+    })).toThrow("AGENT_RUNTIME_READER_SUMMARY_MODEL must be");
+    expect(() => resolveReaderSummaryBackendSelectionFromEnv({
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "kimi-code",
+      AGENT_RUNTIME_GATEWAY_LLM_MODEL: "other/model",
+    })).toThrow("AGENT_RUNTIME_GATEWAY_LLM_MODEL must be k3-256k");
+    expect(() => directDailyTask({
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openrouter",
+      AGENT_RUNTIME_GATEWAY_LLM_MODEL: "test/model-v2",
+    }, "other/model")).toThrow("Gateway reader summary model conflicts with purpose policy");
+    expect(invalid.AGENT_RUNTIME_READER_SUMMARY_BACKEND).toBe("unsupported-backend");
   });
 
 });

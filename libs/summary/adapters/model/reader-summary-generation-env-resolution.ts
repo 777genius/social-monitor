@@ -1,8 +1,5 @@
-import { backendMessage } from "./reader-summary-daily-task-env-resolution";
-import {
-  gatewayRouteModel,
-  resolveGatewayReaderSummaryRoute,
-} from "./reader-summary-gateway-route-policy";
+import { resolveReaderSummaryBackendSelectionFromEnv } from "./reader-summary-backend-selection";
+import { gatewayRouteModel } from "./reader-summary-gateway-route-policy";
 import type { ReaderSummaryGenerationBackend } from "./reader-summary-gateway-route-policy";
 import { mimoReaderSummaryBackend, activeReaderSummaryProvider } from "./reader-summary-runtime-contract";
 import {
@@ -40,34 +37,29 @@ export const resolveReaderSummaryGenerationIdentityFromEnv = (
   );
   const generationModel =
     env.AGENT_RUNTIME_READER_SUMMARY_GENERATION_MODEL?.trim() || undefined;
-  const backend = env.AGENT_RUNTIME_READER_SUMMARY_BACKEND?.trim();
-  const codexGateway = resolveCodexGatewayReaderSummaryRoute(env);
-  if (codexGateway !== undefined) {
+  const selection = resolveReaderSummaryBackendSelectionFromEnv(env);
+  if (selection.kind === "codex-gateway") {
     return resolveReaderSummaryGenerationIdentity({
       provider: env.AGENT_RUNTIME_PROVIDER,
-      model: gatewayRouteModel(codexGateway, generationModel),
+      model: gatewayRouteModel(selection.route, generationModel),
     });
   }
-  if (backend === undefined || backend === "" || backend === "openai-chatgpt") {
+  if (selection.kind === "cli") {
     return resolveReaderSummaryGenerationIdentity({
       provider: env.AGENT_RUNTIME_PROVIDER,
       model: generationModel ?? sharedModel,
     });
   }
-  const gateway = resolveGatewayReaderSummaryRoute(env);
-  if (gateway !== undefined) {
+  if (selection.kind === "gateway") {
     return resolveReaderSummaryGenerationIdentity({
       provider: env.AGENT_RUNTIME_PROVIDER,
-      backend: gateway.backend,
-      model: gatewayRouteModel(gateway, generationModel),
+      backend: selection.route.backend,
+      model: gatewayRouteModel(selection.route, generationModel),
     });
-  }
-  if (backend !== mimoReaderSummaryBackend) {
-    throw new Error(backendMessage);
   }
   return resolveReaderSummaryGenerationIdentity({
     provider: env.AGENT_RUNTIME_PROVIDER,
-    backend,
+    backend: mimoReaderSummaryBackend,
     model: generationModel,
   });
 };
