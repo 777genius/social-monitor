@@ -1,10 +1,10 @@
 import type { ReaderPostPresentationCandidate } from "../../domain/services/reader-post-presentation-v3-proposal";
 import { promotionPresentationSourceCopyOptionsJson } from "./promotion-presentation-source-copy-options";
+import { mimoReaderSummaryBackend } from "./reader-summary-runtime-contract";
 import {
-  mimoReaderSummaryBackend,
   isGatewayReaderSummaryBackend,
   type ReaderSummaryGenerationBackend,
-} from "./active-reader-summary-generation-profile";
+} from "./reader-summary-gateway-route-policy";
 
 export const usesSourceCopyOptions = (backend: ReaderSummaryGenerationBackend): boolean =>
   backend === mimoReaderSummaryBackend || isGatewayReaderSummaryBackend(backend);

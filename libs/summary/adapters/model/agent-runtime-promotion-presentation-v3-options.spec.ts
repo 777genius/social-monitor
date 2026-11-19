@@ -1,5 +1,16 @@
 import type { AgentRuntimeClientPort } from "../../ports";
-import { mimoPresentationMaxTimeoutMs } from "./active-reader-summary-generation-profile";
+import {
+  mimoPresentationMaxTimeoutMs,
+  mimoReaderSummaryBackend,
+} from "./reader-summary-runtime-contract";
+import { codexReaderSummaryBackend } from "./codex-reader-summary-gateway-route-policy";
+import {
+  kimiCodeReaderSummaryBackend,
+  openRouterReaderSummaryBackend,
+} from "./reader-summary-gateway-model-policy";
+import { usesSourceCopyOptions } from "./agent-runtime-promotion-presentation-v3-request";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   defaultPresentationTimeoutMs,
   resolvePromotionPresentationV3RuntimeOptions,
@@ -30,5 +41,24 @@ describe("promotion presentation runtime options", () => {
       client, modelBackend: "xiaomi-mimo-token-plan", reasoningEffort: "high",
     })).toThrow("Presentation reasoning effort conflicts with purpose policy");
     expect(client.runTask).not.toHaveBeenCalled();
+  });
+  it("keeps source-copy admission identical across MiMo, gateway and Codex backends", () => {
+    expect(usesSourceCopyOptions(mimoReaderSummaryBackend)).toBe(true);
+    expect(usesSourceCopyOptions(kimiCodeReaderSummaryBackend)).toBe(true);
+    expect(usesSourceCopyOptions(openRouterReaderSummaryBackend)).toBe(true);
+    expect(usesSourceCopyOptions(codexReaderSummaryBackend)).toBe(false);
+    expect(client.runTask).not.toHaveBeenCalled();
+  });
+
+  it("prevents presentation transport and composition from importing the broad generation facade", () => {
+    for (const name of [
+      "agent-runtime-promotion-presentation-v3-options.ts",
+      "agent-runtime-promotion-presentation-v3-request.ts",
+      "agent-runtime-promotion-presentation-v3.builder.ts",
+    ]) {
+      const source = readFileSync(join(__dirname, name), "utf8");
+      expect(source).not.toContain('from "./active-reader-summary-generation-profile"');
+      expect(source).not.toContain("from './active-reader-summary-generation-profile'");
+    }
   });
 });

@@ -5,19 +5,27 @@ import {
 } from "./agent-runtime-model-support";
 import {
   activeReaderSummaryProvider,
-  activeReaderSummaryReasoningEffort,
-  assertActiveReaderSummaryProvider,
-  isCodexGatewayOnlyReaderSummaryModel,
-  isGatewayReaderSummaryBackend,
   mimoPresentationMaxTimeoutMs,
   mimoPresentationReasoningEffort,
   mimoReaderSummaryBackend,
-  resolveReaderSummaryBackendEffort,
-  resolveReaderSummaryDailyTaskIdentityFromEnv,
-  resolveReaderSummaryGenerationIdentity,
-  resolveReaderSummaryReasoningEffortFromEnv,
+} from "./reader-summary-runtime-contract";
+import {
+  activeReaderSummaryReasoningEffort,
+  isCodexGatewayOnlyReaderSummaryModel,
+} from "./codex-reader-summary-gateway-route-policy";
+import {
+  isGatewayReaderSummaryBackend,
   type ReaderSummaryGenerationBackend,
-} from "./active-reader-summary-generation-profile";
+} from "./reader-summary-gateway-route-policy";
+import {
+  assertActiveReaderSummaryProvider,
+  resolveReaderSummaryGenerationIdentity,
+} from "./reader-summary-generation-identity-core";
+import { resolveReaderSummaryBackendEffort } from "./reader-summary-generation-effort-policy";
+import {
+  resolveReaderSummaryDailyTaskIdentityFromEnv,
+  resolveReaderSummaryReasoningEffortFromEnv,
+} from "./reader-summary-generation-env-resolution";
 
 // Runtime configuration is resolved once at the adapter boundary. Execution
 // itself must never re-read environment or reinterpret model/effort policy.
