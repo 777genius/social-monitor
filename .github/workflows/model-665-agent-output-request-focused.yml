@@ -19,6 +19,7 @@ on:
       - libs/summary/adapters/model/grpc-agent-runtime-measurement-decoder.ts
       - libs/summary/adapters/model/grpc-agent-runtime-attestation-decoder.ts
       - libs/summary/adapters/model/grpc-agent-runtime-wire-codec.spec.ts
+      - libs/summary/adapters/model/grpc-agent-runtime-client.ts
       - libs/summary/adapters/model/grpc-agent-runtime-task-request.ts
       - libs/summary/adapters/model/grpc-agent-runtime-task-invocation.ts
       - libs/summary/adapters/model/grpc-agent-runtime-task-lifecycle.ts

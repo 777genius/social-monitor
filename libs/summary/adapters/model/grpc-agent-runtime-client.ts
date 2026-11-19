@@ -1,12 +1,13 @@
 import { invokeGrpcAgentRuntimeHealthCheck } from "./grpc-agent-runtime-health-check";
 import { invokeGrpcAgentRuntimeTask } from "./grpc-agent-runtime-task-invocation";
+import { validateAgentRuntimeDefaultCwd } from "./grpc-agent-runtime-task-request";
+export { validateAgentRuntimeDefaultCwd } from "./grpc-agent-runtime-task-request";
 export { agentRuntimeTaskDeadlineTimeoutMs } from "./grpc-agent-runtime-task-invocation";
 
 import {
   credentials,
   type ChannelCredentials,
 } from "@grpc/grpc-js";
-import { isAbsolute, normalize } from "node:path";
 import {
   AgentRuntimeServiceClient,
 } from "@social-monitor/contracts/generated/grpc/agent_runtime/v1/agent_runtime";
@@ -23,17 +24,6 @@ export type GrpcAgentRuntimeClientOptions = {
   readonly timeoutMs: number;
   readonly serviceToken?: string;
   readonly defaultCwd?: string;
-};
-
-export const validateAgentRuntimeDefaultCwd = (value: string): string => {
-  if (
-    value.length === 0 || value !== value.trim() ||
-    value.includes("\0") || !isAbsolute(value) || normalize(value) !== value ||
-    (value !== "/" && value.endsWith("/"))
-  ) {
-    throw new Error("Agent runtime default cwd must be a lexical absolute path");
-  }
-  return value;
 };
 
 export class GrpcAgentRuntimeClient implements AgentRuntimeClientPort {

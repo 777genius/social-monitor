@@ -14,10 +14,22 @@ import type { AgentRuntimeTaskCommand } from "../../ports";
 import {
   agentRuntimeTaskDeadlineTimeoutMs,
   GrpcAgentRuntimeClient,
+  validateAgentRuntimeDefaultCwd,
 } from "./grpc-agent-runtime-client";
-import { buildGrpcAgentRuntimeTaskRequest } from "./grpc-agent-runtime-task-request";
+import {
+  buildGrpcAgentRuntimeTaskRequest,
+  validateAgentRuntimeDefaultCwd as validateRequestDefaultCwd,
+} from "./grpc-agent-runtime-task-request";
 
 describe("gRPC agent runtime client", () => {
+  it("keeps public default-cwd admission identical to the request owner's policy", () => {
+    expect(validateAgentRuntimeDefaultCwd).toBe(validateRequestDefaultCwd);
+    expect(validateRequestDefaultCwd("/srv/host/project")).toBe("/srv/host/project");
+    expect(validateRequestDefaultCwd("/")).toBe("/");
+    expect(() => validateRequestDefaultCwd("/srv/project\u0000escape"))
+      .toThrow("Agent runtime default cwd must be a lexical absolute path");
+  });
+
   it("sends the configured host cwd only when a command omits cwd", async () => {
     const requests: AgentRuntimeTaskRequest[] = [];
     const transport = {

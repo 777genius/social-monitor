@@ -1,9 +1,21 @@
+import { isAbsolute, normalize } from "node:path";
 import type { AgentRuntimeTaskRequest } from "@social-monitor/contracts/generated/grpc/agent_runtime/v1/agent_runtime";
 import type { AgentRuntimeTaskCommand } from "../../ports";
 import {
   agentRuntimeWireSchemaVersion,
   toGrpcProvider,
 } from "./grpc-agent-runtime-wire-codec";
+
+export const validateAgentRuntimeDefaultCwd = (value: string): string => {
+  if (
+    value.length === 0 || value !== value.trim() ||
+    value.includes("\0") || !isAbsolute(value) || normalize(value) !== value ||
+    (value !== "/" && value.endsWith("/"))
+  ) {
+    throw new Error("Agent runtime default cwd must be a lexical absolute path");
+  }
+  return value;
+};
 
 /** Projects scoped task identity and inputs to the gRPC request without transport side effects. */
 export const buildGrpcAgentRuntimeTaskRequest = (
