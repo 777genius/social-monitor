@@ -1,108 +1,128 @@
-export function createExternalBetaDryRunPlanPolicy({
-  dryRun, runner, plan, dryRunPath, runnerPath, existsSync, assertSameSet, violations,
-}) {
-  function validateDryRunContract() {
-    if (dryRun.schemaVersion !== 1) {
-      violations.push(`${dryRunPath}: schemaVersion must be 1`);
-    }
-    if (dryRun.scope !== 'backend-only') {
-      violations.push(`${dryRunPath}: scope must be backend-only`);
-    }
-    if (dryRun.frontendPolicy !== 'deferred_contract_only') {
-      violations.push(`${dryRunPath}: frontendPolicy must keep frontend deferred`);
-    }
-    if (dryRun.defaultMode !== 'plan_only') {
-      violations.push(`${dryRunPath}: defaultMode must be plan_only`);
-    }
-    if (dryRun.notEvidence !== true) {
-      violations.push(`${dryRunPath}: notEvidence must be true`);
-    }
-    if (dryRun.doesNotUnblockExternalBeta !== true) {
-      violations.push(`${dryRunPath}: doesNotUnblockExternalBeta must be true`);
-    }
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { test } from 'node:test';
+import { createExternalBetaDryRunPlanPolicy } from './external-beta-dry-run-plan-policy.mjs';
 
-    for (const path of [dryRun.sourceRunnerContract, dryRun.sourceReadinessContract, dryRun.envExample]) {
-      if (!existsSync(path ?? '')) {
-        violations.push(`${dryRunPath}: referenced file must exist: ${path}`);
-      }
-    }
-
-    const commandPairs = [
-      ['planJsonCommand', 'jsonPlanCommand'],
-      ['handoffCommand', 'handoffCommand'],
-      ['handoffJsonCommand', 'handoffJsonCommand'],
-      ['summaryCommand', 'summaryCommand'],
-      ['preflightCommand', 'preflightCommand'],
-      ['artifactValidationCommand', 'artifactValidationCommand'],
-      ['currentPackageCommand', 'currentPackageCommand'],
-    ];
-    for (const [dryRunField, runnerField] of commandPairs) {
-      if (dryRun[dryRunField] !== runner[runnerField]) {
-        violations.push(`${dryRunPath}: ${dryRunField} must match runner ${runnerField}`);
-      }
-    }
-
-    if (!String(dryRun.liveExecutionTemplate).includes('EXTERNAL_BETA_EVIDENCE_CONFIRM=run-live')) {
-      violations.push(`${dryRunPath}: liveExecutionTemplate must include explicit live confirmation`);
-    }
-    if (!String(dryRun.liveExecutionTemplate).includes('--execute')) {
-      violations.push(`${dryRunPath}: liveExecutionTemplate must include --execute`);
-    }
-    if (String(dryRun.planJsonCommand).includes('--execute')) {
-      violations.push(`${dryRunPath}: planJsonCommand must not execute live jobs`);
+function fixture() {
+  const runner = {
+    runnerId: 'test-runner',
+    jsonPlanCommand: 'npm run plan-json',
+    handoffCommand: 'npm run handoff',
+    handoffJsonCommand: 'npm run handoff-json',
+    summaryCommand: 'npm run summary',
+    preflightCommand: 'npm run preflight',
+    artifactValidationCommand: 'npm run artifact-validation',
+    currentPackageCommand: 'npm run current',
+  };
+  const dryRun = {
+    schemaVersion: 1, scope: 'backend-only', frontendPolicy: 'deferred_contract_only',
+    defaultMode: 'plan_only', notEvidence: true, doesNotUnblockExternalBeta: true,
+    sourceRunnerContract: 'exists', sourceReadinessContract: 'exists', envExample: 'exists',
+    planJsonCommand: runner.jsonPlanCommand, handoffCommand: runner.handoffCommand,
+    handoffJsonCommand: runner.handoffJsonCommand, summaryCommand: runner.summaryCommand,
+    preflightCommand: runner.preflightCommand,
+    artifactValidationCommand: runner.artifactValidationCommand,
+    currentPackageCommand: runner.currentPackageCommand,
+    liveExecutionTemplate: 'EXTERNAL_BETA_EVIDENCE_CONFIRM=run-live node runner --execute',
+    expectedPlanCountsWithoutCredentials: { jobCount: 1 },
+    requiredJobIds: ['local'], requiredMissingEnvWithoutCredentials: [],
+    requiredReadinessStatesWithoutCredentials: ['local_contract_ready'],
+  };
+  const plan = {
+    runnerId: runner.runnerId, mode: 'plan_only', jobCount: 1, uniqueMissingEnv: [],
+    readinessCounts: { local_contract_ready: 1 },
+    jobs: [{
+      jobId: 'local', blocksExternalBeta: true, owner: 'source-owner',
+      exitCondition: 'validated', validationCommands: ['npm run check:contract'],
+      runPolicy: 'local_contract', executionReadiness: 'local_contract_ready',
+    }],
+  };
+  const violations = [];
+  function assertSameSet(actual, expected, label) {
+    const actualSorted = [...new Set(actual)].sort();
+    const expectedSorted = [...new Set(expected)].sort();
+    if (JSON.stringify(actualSorted) !== JSON.stringify(expectedSorted)) {
+      violations.push(label + ': expected [' + expectedSorted.join(', ') +
+        '], got [' + actualSorted.join(', ') + ']');
     }
   }
-
-  function validatePlanShape() {
-    if (plan.runnerId !== runner.runnerId) {
-      violations.push(`${dryRunPath}: plan runnerId must match ${runnerPath}`);
-    }
-    if (plan.mode !== 'plan_only') {
-      violations.push(`${dryRunPath}: clean-env plan must stay plan_only`);
-    }
-
-    const expectedCounts = dryRun.expectedPlanCountsWithoutCredentials ?? {};
-    for (const [field, expectedValue] of Object.entries(expectedCounts)) {
-      if (plan[field] !== expectedValue) {
-        violations.push(`${dryRunPath}: clean-env plan ${field} must be ${expectedValue}, got ${plan[field]}`);
-      }
-    }
-
-    assertSameSet(plan.jobs?.map((job) => job.jobId) ?? [], dryRun.requiredJobIds ?? [], `${dryRunPath}: requiredJobIds`);
-    assertSameSet(plan.uniqueMissingEnv ?? [], dryRun.requiredMissingEnvWithoutCredentials ?? [], `${dryRunPath}: requiredMissingEnvWithoutCredentials`);
-    assertSameSet(
-      Object.keys(plan.readinessCounts ?? {}),
-      dryRun.requiredReadinessStatesWithoutCredentials ?? [],
-      `${dryRunPath}: requiredReadinessStatesWithoutCredentials`,
-    );
-
-    for (const job of plan.jobs ?? []) {
-      if (job.blocksExternalBeta !== true) {
-        violations.push(`${dryRunPath}: ${job.jobId} must remain an external beta blocker`);
-      }
-      if (typeof job.owner !== 'string' || job.owner.trim().length === 0) {
-        violations.push(`${dryRunPath}: ${job.jobId} must define owner`);
-      }
-      if (typeof job.exitCondition !== 'string' || job.exitCondition.trim().length === 0) {
-        violations.push(`${dryRunPath}: ${job.jobId} must define exitCondition`);
-      }
-      if (!Array.isArray(job.validationCommands) || job.validationCommands.length === 0) {
-        violations.push(`${dryRunPath}: ${job.jobId} must define validationCommands`);
-      }
-      if (job.runPolicy === 'local_contract' && job.executionReadiness !== 'local_contract_ready') {
-        violations.push(`${dryRunPath}: ${job.jobId} local contract must stay local_contract_ready in clean env`);
-      }
-      if (job.runPolicy !== 'local_contract' && job.executionReadiness !== 'blocked_missing_required_env') {
-        violations.push(`${dryRunPath}: ${job.jobId} external evidence job must stay blocked without credentials`);
-      }
-      if (job.runPolicy === 'live_command' && typeof job.runnerCommand !== 'string') {
-        violations.push(`${dryRunPath}: ${job.jobId} live command job must expose runnerCommand`);
-      }
-      if (job.runPolicy === 'manual_artifact_then_validator' && job.runnerCommand !== null) {
-        violations.push(`${dryRunPath}: ${job.jobId} manual artifact job must not expose runnerCommand`);
-      }
-    }
-  }
-
-  return { validateDryRunContract, validatePlanShape };
+  const dependencies = {
+    dryRun, runner, plan, dryRunPath: 'dry-run.json', runnerPath: 'runner.json',
+    existsSync: (path) => path === 'exists', assertSameSet, violations,
+  };
+  const checks = createExternalBetaDryRunPlanPolicy(dependencies);
+  return { dryRun, runner, plan, violations, dependencies, ...checks };
 }
+
+test('missing live dependencies fail immediately with explicit initialization errors', () => {
+  const { dependencies } = fixture();
+  assert.throws(
+    () => createExternalBetaDryRunPlanPolicy(),
+    { name: 'TypeError', message: 'external beta dry-run plan policy requires dryRun' },
+  );
+  for (const name of Object.keys(dependencies)) {
+    for (const value of [undefined, null]) {
+      assert.throws(
+        () => createExternalBetaDryRunPlanPolicy({ ...dependencies, [name]: value }),
+        { name: 'TypeError', message: `external beta dry-run plan policy requires ${name}` },
+      );
+    }
+  }
+});
+
+test('valid clean-env dry-run contract and plan preserve zero diagnostics', () => {
+  const f = fixture();
+  f.validateDryRunContract();
+  f.validatePlanShape();
+  assert.deepEqual(f.violations, []);
+});
+
+test('contract errors retain legacy ordering and no-live-execution policy', () => {
+  const f = fixture();
+  f.dryRun.scope = 'frontend-enabled';
+  f.dryRun.sourceReadinessContract = '/not-present';
+  f.dryRun.liveExecutionTemplate = 'unsafe';
+  f.validateDryRunContract();
+  assert.deepEqual(f.violations, [
+    'dry-run.json: scope must be backend-only',
+    'dry-run.json: referenced file must exist: /not-present',
+    'dry-run.json: liveExecutionTemplate must include explicit live confirmation',
+    'dry-run.json: liveExecutionTemplate must include --execute',
+  ]);
+});
+
+test('plan gates remain fail-closed for live jobs without credentials', () => {
+  const f = fixture();
+  f.plan.jobs[0].runPolicy = 'live_command';
+  f.plan.jobs[0].executionReadiness = 'local_contract_ready';
+  f.plan.jobs[0].runnerCommand = undefined;
+  f.validatePlanShape();
+  assert.deepEqual(f.violations, [
+    'dry-run.json: local external evidence job must stay blocked without credentials',
+    'dry-run.json: local live command job must expose runnerCommand',
+  ]);
+});
+
+test('policy uses live contract objects instead of freezing state at creation', () => {
+  const f = fixture();
+  f.dryRun.defaultMode = 'execute';
+  f.plan.mode = 'execute';
+  f.plan.uniqueMissingEnv.push('SECRET_REFERENCE');
+  f.validateDryRunContract();
+  f.validatePlanShape();
+  assert.ok(f.violations.includes('dry-run.json: defaultMode must be plan_only'));
+  assert.ok(f.violations.includes('dry-run.json: clean-env plan must stay plan_only'));
+  assert.ok(f.violations.some((value) => value.includes('requiredMissingEnvWithoutCredentials')));
+});
+
+test('runner delegates to extracted policy without stale duplicate definitions', () => {
+  const runnerSource = readFileSync(
+    new URL('../check-external-beta-evidence-dry-run.mjs', import.meta.url), 'utf8');
+  assert.match(runnerSource,
+    /import \{ createExternalBetaDryRunPlanPolicy \} from '\.\/lib\/external-beta-dry-run-plan-policy\.mjs'/);
+  assert.match(runnerSource, /createExternalBetaDryRunPlanPolicy\(\{/);
+  assert.doesNotMatch(runnerSource, /^function validate(DryRunContract|PlanShape)\(/m);
+  const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
+  assert.match(pkg.scripts['check:architecture'],
+    /scripts\/lib\/external-beta-dry-run-plan-policy\.test\.mjs/);
+});
