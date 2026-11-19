@@ -1048,10 +1048,6 @@
       "owner": "agent-runtime-promotion-presentation-v3-execution.ts",
       "originalPositions": [
         181,
-        184,
-        185,
-        186,
-        187,
         188,
         189,
         190,
@@ -7765,6 +7761,17 @@
         67
       ],
       "responsibility": "Untrusted non-daily narrative record admission, required secondary coverage veto and approved-citation guard creation are isolated from narrative projection/ordering; missing-record fallback ordering preserved"
+    },
+    {
+      "original": "agent-runtime-promotion-presentation-v3.builder.ts",
+      "owner": "agent-runtime-promotion-presentation-v3-cleanup-policy.ts",
+      "originalPositions": [
+        184,
+        185,
+        186,
+        187
+      ],
+      "responsibility": "Batch cleanup-pending projection from attested runtime warning/diagnostics, separated from dispatch/retry/output admission; per-result identity and fail-closed paths unchanged"
     }
   ]
 }

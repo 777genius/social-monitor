@@ -4,12 +4,10 @@ import type {
 } from "../../domain/services/reader-post-presentation-v3";
 import type { AgentRuntimeClientPort } from "../../ports";
 import { readAgentRuntimeObjectOutput } from "./agent-runtime-model-support";
-import {
-  mimoReaderSummaryBackend,
-  assertMimoReaderSummaryExecution,
-  activeReaderSummaryPurposes,
-  type ReaderSummaryGenerationBackend,
-} from "./active-reader-summary-generation-profile";
+import { mimoReaderSummaryBackend, activeReaderSummaryPurposes } from "./reader-summary-runtime-contract";
+import { assertMimoReaderSummaryExecution } from "./reader-summary-mimo-execution-admission";
+import type { ReaderSummaryGenerationBackend } from "./reader-summary-gateway-route-policy";
+import { projectPromotionPresentationCleanup } from "./agent-runtime-promotion-presentation-v3-cleanup-policy";
 import { presentationRuntimeFailureDisposition } from "./agent-runtime-promotion-presentation-v3-runtime-failure";
 import { presentationRuntimeFailureIdentity } from "./agent-runtime-promotion-presentation-v3-runtime-failure-identity";
 import { parseObject } from "./agent-runtime-promotion-presentation-v3-output-object";
@@ -41,10 +39,7 @@ export const executeAgentRuntimePromotionPresentation = async ({
     if (presentationRuntimeFailureDisposition(result) === "retry") {
       result = await client.runTask(command);
     }
-    const cleanupPending = result.warnings.some(warning => warning.code === "gateway_cleanup_pending") ||
-      result.failure?.details?.gatewayCleanup === "pending";
-    const withCleanup = (value: ReaderPostPresentationV3Result): ReaderPostPresentationV3Result =>
-      cleanupPending ? { ...value, cleanupPending: true } : value;
+    const withCleanup = projectPromotionPresentationCleanup(result);
     if (presentationRuntimeFailureDisposition(result) !== undefined) {
       const runtimeFailure = presentationRuntimeFailureIdentity(result);
       return inputs.map(() => withCleanup({ status: "unavailable", reason: "runtime_failure", runtimeFailure }));
