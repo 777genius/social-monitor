@@ -1,12 +1,12 @@
-import type { LlmFailure, LlmTask } from "@agent-teams/account-gateway/llm";
+import type { LlmFailure } from "@agent-teams/account-gateway/llm";
 import type { AgentRuntimeTaskCommand, AgentRuntimeTaskResult } from "../../../ports";
 import type { GatewayLlmClientOptions } from "./gateway-llm-client-contract";
-import type { GatewayLlmAttemptIdentity } from "./gateway-llm-attempts";
 import type { GatewayLlmPrepared } from "./gateway-llm-task-preparation";
 import { completeGatewayLlmTask } from "./gateway-llm-task-completion";
 import { completeGatewayLlmFailedTask } from "./gateway-llm-task-failure";
 import { gatewayLlmDispatchFreeRetry } from "./gateway-llm-dispatch-retry-policy";
 import { gatewayLlmPostBackoffStop } from "./gateway-llm-post-backoff-admission";
+import { bindGatewayLlmDispatchTask } from "./gateway-llm-dispatch-task";
 
 /** SDK dispatch owns account feedback, attempt identity, safe replay, and settlement.
  * Route/response validation and transport-independent failure projection stay separate. */
@@ -24,7 +24,7 @@ export class GatewayLlmDispatch {
     options?: { readonly signal?: AbortSignal },
   ): Promise<AgentRuntimeTaskResult> {
     let identity = this.options.attempts.next(command.requestId);
-    let task = this.withAttempt(prepared, identity);
+    let task = bindGatewayLlmDispatchTask(prepared, identity, this.options);
     for (let retries = 0; ; retries += 1) {
       const result = await this.options.llm.generate(task, options);
       const now = this.options.clock.now();
@@ -57,20 +57,9 @@ export class GatewayLlmDispatch {
       if (stop !== null) return stop;
       if (retryDecision.replay === "new_attempt") {
         identity = this.options.attempts.next(command.requestId);
-        task = this.withAttempt(prepared, identity);
+        task = bindGatewayLlmDispatchTask(prepared, identity, this.options);
       }
     }
-  }
-
-  private withAttempt(prepared: GatewayLlmPrepared, identity: GatewayLlmAttemptIdentity):
-  LlmTask<Record<string, unknown>> {
-    return {
-      ...prepared.task,
-      taskId: identity.taskId,
-      attempt: identity.attempt,
-      accountRefs: this.options.accounts.order({ taskId: identity.taskId,
-        accountRefs: prepared.route.accountRefs, now: this.options.clock.now() }),
-    };
   }
 
   private observe(accountRef: string | null,
