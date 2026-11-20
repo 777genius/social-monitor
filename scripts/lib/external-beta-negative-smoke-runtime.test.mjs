@@ -68,7 +68,8 @@ function inspectRunnerWiring(source) {
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) calls.add(node.expression.text);
     if (ts.isShorthandPropertyAssignment(node)) provided.add(node.name.text);
     if (ts.isFunctionDeclaration(node) && node.name) declared.add(node.name.text);
-    if (ts.isVariableDeclaration(node) && ts.isObjectBindingPattern(node.name) &&
+    if (ts.isVariableDeclaration(node) && node.parent?.parent?.parent === tree &&
+      ts.isObjectBindingPattern(node.name) &&
       node.initializer && ts.isCallExpression(node.initializer) &&
       ts.isIdentifier(node.initializer.expression) &&
       node.initializer.expression.text === 'createExternalBetaNegativeSmokeRuntime' &&
@@ -121,6 +122,21 @@ test('comment-only factory call and wrong import owner cannot satisfy wiring', (
   assert.ok(commentedCall.includes('createExternalBetaNegativeSmokeRuntime('),
     'the old string guard would still accept the comment-only marker');
   assert.equal(inspectRunnerWiring(commentedCall).factoryBound, false);
+  const originalFactoryBinding = [
+    'const { negativeSmokeOptions, shouldRunNegativeSmoke } = createExternalBetaNegativeSmokeRuntime({',
+    '  strictSemanticNegativeSmokeLabels, representativeSemanticNegativeSmokeLabels,',
+    '});',
+  ].join('\n');
+  const deadFactory = source.replace(
+    originalFactoryBinding,
+    ['function neverInvokedFactory() {', originalFactoryBinding, '}'].join('\n'),
+  );
+  assert.notEqual(deadFactory, source, 'mutation must relocate the real factory');
+  const deadWiring = inspectRunnerWiring(deadFactory);
+  assert.ok(deadWiring.calls.has('shouldRunNegativeSmoke'),
+    'old call-name guard still passes although top-level binding was removed');
+  assert.equal(deadWiring.factoryBound, false,
+    'factory binding in an uninvoked function must not pass E2E wiring');
   const wrongOwner = source.replace(
     "from './lib/external-beta-negative-smoke-runtime.mjs';",
     "from './lib/unrelated-negative-smoke-runtime.mjs';",
