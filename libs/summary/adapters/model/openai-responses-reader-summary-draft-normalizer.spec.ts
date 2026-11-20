@@ -1,3 +1,4 @@
+import { normalizeCitedReaderSummaryStoriesAndNarrative } from "./openai-responses-reader-summary-story-narrative-composition";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 import { dailyEvidenceSelection } from
   "../../domain/policies/reader-summary-publication-evidence-test-fixtures";
@@ -60,6 +61,18 @@ describe("normalizeOpenAiReaderSummaryDraft", () => {
       outputTokens: 0,
       estimatedCostUsd: 0,
     }, "test");
+
+    const modelSections = { topStories: [], narrativeSections: [] };
+    const grounded = normalizeCitedReaderSummaryStoriesAndNarrative(
+      modelSections, input, draft.citationMap, "",
+    );
+    expect(grounded.normalizedTopStories).toEqual(draft.topStories);
+    expect(grounded.narrativeSections).toEqual(
+      normalizeCitedReaderSummaryStoriesAndNarrative(
+        modelSections, input, draft.citationMap, "",
+      ).narrativeSections,
+    );
+    expect(modelSections).toEqual({ topStories: [], narrativeSections: [] });
 
     expect(draft.executiveSummary).toBe(draft.topStories[0]?.summary);
     expect(draft.executiveSummary.trim()).not.toBe("");

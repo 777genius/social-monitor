@@ -7929,6 +7929,18 @@
         331
       ],
       "responsibility": "Standalone trusted normalized-token admission, noise filtering and intersection policy used directly by anchor support with compatibility exports; frozen line 336 is a return-type signature and explicitly excluded by strict audit"
+    },
+    {
+      "original": "openai-responses-reader-summary-draft-normalizer.ts",
+      "owner": "openai-responses-reader-summary-story-narrative-composition.ts",
+      "originalPositions": [
+        72,
+        73,
+        74,
+        78,
+        79
+      ],
+      "responsibility": "Evidence-bound top story interpretation and cited narrative assembly are separated from optional sections, publication copy, and final artifact orchestration; original rejection ordering preserved"
     }
   ]
 }

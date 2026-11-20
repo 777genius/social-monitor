@@ -1,6 +1,7 @@
 import type {
   GeneratedReaderSummaryDraft,
 } from "../../domain";
+import { normalizeCitedReaderSummaryStoriesAndNarrative } from "./openai-responses-reader-summary-story-narrative-composition";
 import { assembleOpenAiReaderSummaryDraft } from "./openai-responses-reader-summary-draft-assembly";
 import { buildOpenAiReaderSummaryLineage } from "./openai-responses-reader-summary-lineage";
 export { buildOpenAiReaderSummaryLineage } from "./openai-responses-reader-summary-lineage";
@@ -9,14 +10,8 @@ import type {
   ReaderSummaryModelInput,
   ReaderSummaryModelRoute,
 } from "../../ports";
-import { normalizeRecordArray } from "./openai-responses-reader-summary-raw-values";
-import { normalizeTopStories } from "./openai-responses-reader-summary-story-normalizer";
-import {
-  normalizeOpenAiReaderSummaryNarrative,
-} from "./openai-responses-reader-summary-narrative";
 import { buildReaderSummaryEvidenceCitationMap,
   readerSummaryCitableEvidence } from "./reader-summary-evidence-citation-map";
-import { buildReaderSummaryStoryNarrativeIndex } from "./openai-responses-reader-summary-story-narrative-index";
 import { normalizeOpenAiReaderSummaryOptionalContent } from "./openai-responses-reader-summary-draft-policy-projection";
 import {
   normalizeOpenAiReaderSummaryLeadCopy,
@@ -34,22 +29,13 @@ export const normalizeOpenAiReaderSummaryDraft = (
     readerSummaryCitableEvidence(input.evidence),
   );
   const { headline, legacyExecutiveSummary } = normalizeOpenAiReaderSummaryLeadCopy(raw);
-  const topStories = normalizeRecordArray(raw.topStories);
-  const normalizedTopStories = normalizeTopStories(
-    topStories,
-    input,
-    citationMap,
-  );
-  const storyIndex = buildReaderSummaryStoryNarrativeIndex(normalizedTopStories);
-  const narrativeSections = normalizeOpenAiReaderSummaryNarrative({
-    rawSections: raw.narrativeSections,
-    legacyExecutiveSummary,
-    input,
-    citationMap,
-    storyTitlesByClusterId: storyIndex.storyTitlesByClusterId,
-    storySummariesByClusterId: storyIndex.storySummariesByClusterId,
-    storySummariesByCitationId: storyIndex.storySummariesByCitationId,
-  });
+  const { normalizedTopStories, narrativeSections } =
+    normalizeCitedReaderSummaryStoriesAndNarrative(
+      raw,
+      input,
+      citationMap,
+      legacyExecutiveSummary,
+    );
   const { noSignalReason, executiveSummary } = resolveOpenAiReaderSummaryPublicationCopy({
     raw,
     legacyExecutiveSummary,

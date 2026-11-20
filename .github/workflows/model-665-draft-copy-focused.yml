@@ -6,6 +6,8 @@ on:
       - refactor/summary-model-adapters-10k-20261108
     paths:
       - libs/summary/adapters/model/openai-responses-reader-summary-draft-normalizer.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-story-narrative-composition.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-draft-normalizer.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-draft-copy-policy.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-draft-copy-policy.spec.ts
       - .github/workflows/model-665-draft-copy-focused.yml
