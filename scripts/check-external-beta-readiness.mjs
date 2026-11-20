@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { validateExternalBetaEvidenceGroups } from './lib/external-beta-readiness-evidence-groups.mjs';
+import { validateExternalBetaCapacityAndExceptions } from './lib/external-beta-readiness-capacity-no-go-policy.mjs';
 
 const contractPath = 'ops/release/external-beta-readiness-contract.json';
 const sourceCertificationPath = 'ops/ingestion/source-provider-certification.json';
@@ -92,32 +93,7 @@ if (contract.externalBetaDecision === 'go') {
   }
 }
 
-const envelope = contract.capacityEnvelope ?? {};
-for (const numericField of [
-  'maxUsers',
-  'maxTopicsPerWorkspace',
-  'maxEnabledSourcesPerTopic',
-  'maxManualScansPerWorkspacePerHour',
-  'maxSummaryRequestsPerWorkspacePerHour',
-  'maxQueueLagSeconds',
-  'maxSummaryEstimatedCostUsdPerWorkspacePerDay',
-  'maxDeliveryAttemptsPerWorkspacePerHour',
-]) {
-  if (!Number.isFinite(envelope[numericField]) || envelope[numericField] <= 0) {
-    violations.push(`${contractPath}: capacityEnvelope.${numericField} must be positive`);
-  }
-}
-
-for (const exception of contract.noGoExceptions ?? []) {
-  if (exception.blocking !== true) {
-    violations.push(`${contractPath}: noGoException "${exception.exceptionId}" must be blocking`);
-  }
-  for (const field of ['exceptionId', 'owner', 'exitCondition']) {
-    if (typeof exception[field] !== 'string' || exception[field].trim().length === 0) {
-      violations.push(`${contractPath}: noGoException must define ${field}`);
-    }
-  }
-}
+validateExternalBetaCapacityAndExceptions({ contract, contractPath, violations });
 
 if (!scripts['check:external-beta-readiness']) {
   violations.push(`${packagePath}: missing check:external-beta-readiness`);
