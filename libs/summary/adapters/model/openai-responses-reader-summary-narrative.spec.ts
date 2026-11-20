@@ -3,6 +3,7 @@ import type { ReaderSummaryCitation } from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
 import { normalizeOpenAiReaderSummaryNarrative } from "./openai-responses-reader-summary-narrative";
 import { admitOpenAiReaderSummaryNarrativeInput } from "./openai-responses-reader-summary-narrative-input-admission";
+import { plannedFallbackNarrativeCitationIds } from "./openai-responses-reader-summary-fallback-evidence-policy";
 
 describe("normalizeOpenAiReaderSummaryNarrative", () => {
 
@@ -157,6 +158,56 @@ describe("normalizeOpenAiReaderSummaryNarrative", () => {
         section("secondary_signal", "database", "c3"),
       ]),
     ).toThrow("must include a cited lead");
+  });
+
+  it("keeps only planned lead evidence in its source order and caps fallback at three citations", () => {
+    const ordered = Object.freeze([
+      citation("outside", "feed-watch"),
+      citation("lead-third", "feed-lead"),
+      citation("lead-first", "feed-lead"),
+      citation("lead-second", "feed-lead"),
+      citation("lead-overflow", "feed-lead"),
+      citation("secondary", "feed-security"),
+    ]);
+    expect(plannedFallbackNarrativeCitationIds({
+      input: modelInput(),
+      citationMap: ordered,
+    })).toEqual(["lead-third", "lead-first", "lead-second"]);
+    expect(ordered.map((item) => item.citationId)).toEqual([
+      "outside", "lead-third", "lead-first", "lead-second", "lead-overflow", "secondary",
+    ]);
+  });
+
+  it("admits secondary feed items for synthesis evidence without accepting unrelated citations", () => {
+    const input = modelInput();
+    const synthesisInput = {
+      ...input,
+      coveragePlan: { ...input.coveragePlan, mode: "daily_synthesis" as const },
+    };
+    const ordered = [
+      citation("security", "feed-security"),
+      citation("unplanned", "feed-watch"),
+      citation("lead", "feed-lead"),
+      citation("database", "feed-database"),
+    ];
+    expect(plannedFallbackNarrativeCitationIds({
+      input: synthesisInput,
+      citationMap: ordered,
+    })).toEqual(["security", "lead", "database"]);
+    expect(input.coveragePlan.mode).toBe("single_story");
+  });
+
+  it("refuses to publish fallback copy when no planned source can be cited", () => {
+    const input = modelInput();
+    expect(normalizeOpenAiReaderSummaryNarrative({
+      rawSections: undefined,
+      legacyExecutiveSummary: "",
+      input: { ...input, coveragePlan: { ...input.coveragePlan, secondary: [] } },
+      citationMap: [citation("unplanned", "feed-watch")],
+      storyTitlesByClusterId: new Map(),
+      storySummariesByClusterId: new Map(),
+      storySummariesByCitationId: new Map(),
+    })).toEqual([]);
   });
 
   it("binds the fallback narrative to the planned lead cluster", () => {

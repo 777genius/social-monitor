@@ -2,6 +2,7 @@ import type { ReaderSummaryCitation, ReaderSummaryNarrativeSection } from "../..
 import type { ReaderSummaryModelInput } from "../../ports";
 import { requiredString } from "./openai-responses-reader-summary-json";
 import { readerSummaryLeadTitle } from "./openai-responses-reader-summary-narrative-title-policy";
+import { plannedFallbackNarrativeCitationIds } from "./openai-responses-reader-summary-fallback-evidence-policy";
 
 // Never synthesize a fallback lead without approved, cited source evidence.
 export const fallbackNarrative = (params: {
@@ -10,18 +11,7 @@ export const fallbackNarrative = (params: {
   readonly citationMap: readonly ReaderSummaryCitation[];
   readonly storyTitlesByClusterId: ReadonlyMap<string, string>;
 }): readonly ReaderSummaryNarrativeSection[] => {
-  const plannedFeedItemIds = new Set(
-    [
-      params.input.coveragePlan.lead,
-      ...(params.input.coveragePlan.mode === "daily_synthesis"
-        ? params.input.coveragePlan.secondary
-        : []),
-    ].flatMap((item) => item?.feedItemIds ?? []),
-  );
-  const citationIds = params.citationMap
-    .filter((item) => plannedFeedItemIds.has(item.feedItemId))
-    .slice(0, 3)
-    .map((item) => item.citationId);
+  const citationIds = plannedFallbackNarrativeCitationIds(params);
   if (citationIds.length === 0) {
     return [];
   }
