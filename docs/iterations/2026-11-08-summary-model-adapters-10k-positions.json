@@ -7907,10 +7907,9 @@
       "originalPositions": [
         329,
         330,
-        331,
-        336
+        331
       ],
-      "responsibility": "Standalone trusted normalized-token admission, noise filtering and intersection policy used directly by anchor support with compatibility exports"
+      "responsibility": "Standalone trusted normalized-token admission, noise filtering and intersection policy used directly by anchor support with compatibility exports; frozen line 336 is a return-type signature and explicitly excluded by strict audit"
     }
   ]
 }
