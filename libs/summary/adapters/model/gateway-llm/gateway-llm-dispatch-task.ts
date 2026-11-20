@@ -5,8 +5,8 @@ import type { GatewayLlmPrepared } from "./gateway-llm-task-preparation";
 
 /**
  * Bind one already-admitted logical gateway task to an execution attempt.
- * The account selector is consulted afresh for every dispatch (including
- * safe replays); only it may prioritize cooled provider accounts.
+ * The account selector is consulted on initial dispatch and on every newly
+ * allocated attempt; same-attempt safe replay preserves the existing binding.
  * This adapter policy has no transport, retry, or settlement decisions.
  */
 export const bindGatewayLlmDispatchTask = (
