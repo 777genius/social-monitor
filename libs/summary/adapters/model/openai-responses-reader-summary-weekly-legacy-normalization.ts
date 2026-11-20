@@ -1,3 +1,4 @@
+import { projectLegacyWeeklyDocument } from "./openai-responses-reader-summary-weekly-document-projection";
 import type { ReaderSummaryWeeklyModelInput } from "../../ports/reader-summary-weekly-model.port";
 import {
   exactStringArray,
@@ -41,19 +42,10 @@ export const normalizeLegacyWeeklyModelOutput = (
     throw new Error("Legacy weekly output fabricates root chronology");
   }
   const sections = normalizeLegacyFlatWeeklySections({ sections: value.sections });
-  return {
-    schemaVersion: value.schemaVersion,
-    sealId: value.sealId,
-    sealSha: value.sealSha,
-    weekStartedOn: value.weekStartedOn,
-    weekEndedOn: value.weekEndedOn,
-    headline: value.headline,
-    headlineCitationIds: [...rootCitationIds],
-    takeaway: value.takeaway,
-    takeawayCitationIds: [...rootCitationIds],
-    synthesis: value.synthesis,
-    synthesisCitationIds: [...rootCitationIds],
-    stories: sections.map((section) => section.story),
-    sections: sections.map((section) => section.section),
-  };
+  return projectLegacyWeeklyDocument(
+    value,
+    rootCitationIds,
+    sections.map((section) => section.story),
+    sections.map((section) => section.section),
+  );
 };

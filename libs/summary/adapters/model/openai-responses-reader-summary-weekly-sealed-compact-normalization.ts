@@ -1,3 +1,4 @@
+import { projectLegacyWeeklyDocument } from "./openai-responses-reader-summary-weekly-document-projection";
 import type { ReaderSummaryWeeklyModelInput } from "../../ports/reader-summary-weekly-model.port";
 import {
   hasExactKeys,
@@ -68,21 +69,7 @@ const normalizeSealedCompactWeeklyModelOutput = (
       citationIds,
     };
   });
-  return {
-    schemaVersion: value.schemaVersion,
-    sealId: value.sealId,
-    sealSha: value.sealSha,
-    weekStartedOn: value.weekStartedOn,
-    weekEndedOn: value.weekEndedOn,
-    headline: value.headline,
-    headlineCitationIds: [...rootCitationIds],
-    takeaway: value.takeaway,
-    takeawayCitationIds: [...rootCitationIds],
-    synthesis: value.synthesis,
-    synthesisCitationIds: [...rootCitationIds],
-    stories,
-    sections,
-  };
+  return projectLegacyWeeklyDocument(value, rootCitationIds, stories, sections);
 };
 
 export { normalizeSealedCompactWeeklyModelOutput };

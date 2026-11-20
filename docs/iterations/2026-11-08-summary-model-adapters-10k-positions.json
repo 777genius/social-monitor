@@ -421,19 +421,7 @@
         87,
         89,
         90,
-        92,
-        142,
-        144,
-        145,
-        146,
-        147,
-        148,
-        149,
-        150,
-        151,
-        152,
-        153,
-        154
+        92
       ],
       "responsibility": "Flat legacy envelope routing, exact root citation chronology and sealed output assembly; section admission moved to specialist"
     },
@@ -515,17 +503,7 @@
         239,
         240,
         241,
-        242,
-        247,
-        249,
-        250,
-        251,
-        252,
-        253,
-        254,
-        255,
-        256,
-        257
+        242
       ],
       "responsibility": "Sealed-compact weekly wire envelope admission, story-to-section headline binding and model status normalization with existing rejection labels/order"
     },
@@ -550,17 +528,7 @@
         294,
         295,
         296,
-        297,
-        340,
-        342,
-        343,
-        344,
-        345,
-        346,
-        347,
-        348,
-        349,
-        350
+        297
       ],
       "responsibility": "Expanded-legacy weekly wire envelope admission, exact story key/claim-type validation and grounded chronology with existing rejection labels/order"
     },
@@ -7969,6 +7937,23 @@
         328
       ],
       "responsibility": "Only tenant/workspace/scope/time-bound request and correlation IDs are now owned with frozen-versus-active purpose selection, independently of mutable task payload, model controls, prompt and attestation policy; 12 already-counted positions transferred once, no new original LOC."
+    },
+    {
+      "original": "openai-responses-reader-summary-weekly-response-parser.ts",
+      "owner": "openai-responses-reader-summary-weekly-document-projection.ts",
+      "originalPositions": [
+        142,
+        144,
+        145,
+        146,
+        147,
+        148,
+        149,
+        150,
+        151,
+        152
+      ],
+      "responsibility": "One shared deterministic admitted weekly root field/citation projection; removes three redundant envelope copies after each independent fail-closed contract check"
     }
   ]
 }
