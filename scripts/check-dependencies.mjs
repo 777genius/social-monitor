@@ -21,7 +21,23 @@ for (const severity of ['high', 'critical']) {
   }
 }
 
+const today = new Date().toISOString().slice(0, 10);
+const exceptionKeys = new Set(['packageName', 'owner', 'expiresAt', 'mitigation', 'advisories']);
+const advisoryId = /^GHSA(-[2-9cfghjmpqrvwx]{4}){3}$/;
+
 for (const exception of policy.allowedExceptions ?? []) {
+  for (const key of Object.keys(exception)) {
+    if (!exceptionKeys.has(key)) {
+      violations.push(`${policyPath}: dependency exception "${exception.packageName}" has unknown field ${key}`);
+    }
+  }
+
+  if (exception.advisories !== undefined &&
+      (!Array.isArray(exception.advisories) || exception.advisories.length === 0 ||
+       !exception.advisories.every((id) => typeof id === 'string' && advisoryId.test(id)))) {
+    violations.push(`${policyPath}: dependency exception "${exception.packageName}" advisories must be a non-empty list of GHSA ids`);
+  }
+
   for (const field of ['packageName', 'owner', 'expiresAt', 'mitigation']) {
     if (typeof exception[field] !== 'string' || exception[field].trim().length === 0) {
       violations.push(`${policyPath}: dependency exception must define ${field}`);
@@ -30,6 +46,8 @@ for (const exception of policy.allowedExceptions ?? []) {
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(exception.expiresAt ?? ''))) {
     violations.push(`${policyPath}: dependency exception "${exception.packageName}" must use YYYY-MM-DD expiresAt`);
+  } else if (exception.expiresAt < today) {
+    violations.push(`${policyPath}: dependency exception "${exception.packageName}" expired on ${exception.expiresAt}`);
   }
 }
 
@@ -56,6 +74,22 @@ for (const [packageName, vulnerability] of Object.entries(audit.vulnerabilities 
   const exception = allowedExceptions.get(packageName);
   if (exception === undefined) {
     violations.push(`${packageName}: ${vulnerability.severity} vulnerability has no approved exception`);
+    continue;
+  }
+
+  // An exception that names advisories covers only those: advisory objects must match by id, and a derived
+  // entry (a package name in `via`) must itself be an excepted package.
+  if (exception.advisories !== undefined) {
+    for (const via of vulnerability.via ?? []) {
+      const covered =
+        typeof via === 'string'
+          ? allowedExceptions.has(via)
+          : exception.advisories.some((id) => String(via.url ?? '').endsWith(`/${id}`));
+      if (!covered) {
+        const label = typeof via === 'string' ? via : (via.url ?? via.title ?? 'unknown advisory');
+        violations.push(`${packageName}: ${label} is not covered by the approved exception`);
+      }
+    }
   }
 }
 
