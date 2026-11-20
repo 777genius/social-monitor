@@ -23,6 +23,8 @@ on:
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-creation.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-creation.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-completion.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-recovery-policy.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-recovery-policy.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-admission.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-admission.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-grounding.ts
@@ -84,6 +86,7 @@ jobs:
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-candidate-anchor-policy.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-integrity.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-admission.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-recovery-policy.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-grounding.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-assignment.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-anchor-keys.spec.ts
