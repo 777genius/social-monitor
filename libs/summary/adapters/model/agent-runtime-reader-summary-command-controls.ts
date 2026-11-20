@@ -11,10 +11,12 @@ export const readerSummaryTaskControls = (params: Readonly<{
   modelBackend: ReaderSummaryGenerationBackend;
   reasoningEffort: string;
   maxOutputTokens: number;
-}>): AgentRuntimeTaskCommand["controls"] => ({
+}>): AgentRuntimeTaskCommand["controls"] => {
+  const { selectedRoute } = params;
+  return {
   interactive: false,
   outputSchemaName: "social_monitor_reader_summary_artifact",
-  schemaVersion: params.selectedRoute.schemaVersion,
+  schemaVersion: selectedRoute.schemaVersion,
   model: params.model,
   ...(params.modelBackend === "xiaomi-mimo-token-plan"
     ? { modelBackend: params.modelBackend }
@@ -23,4 +25,5 @@ export const readerSummaryTaskControls = (params: Readonly<{
   toolsEnabled: false,
   toolPolicy: "none",
   maxOutputTokens: params.maxOutputTokens,
-});
+  };
+};
