@@ -2,7 +2,8 @@ export function createExternalBetaDryRunPlanPolicy(dependencies) {
   for (const name of [
     'dryRun', 'runner', 'plan', 'dryRunPath', 'runnerPath', 'existsSync', 'assertSameSet', 'violations',
   ]) {
-    if (dependencies?.[name] == null) {
+    const dependency = dependencies?.[name];
+    if (dependency === null || dependency === undefined) {
       throw new TypeError(`external beta dry-run plan policy requires ${name}`);
     }
   }
