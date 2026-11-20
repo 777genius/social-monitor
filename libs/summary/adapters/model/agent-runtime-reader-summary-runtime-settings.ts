@@ -4,11 +4,9 @@ import {
   activeReaderSummaryProvider,
   frozenLegacyReaderSummaryRecoveryContract,
 } from "./reader-summary-runtime-contract";
-import { activeReaderSummaryReasoningEffort } from "./codex-reader-summary-route";
-import {
-  resolveReaderSummaryBackendEffort,
-  resolveReaderSummaryGenerationIdentity,
-} from "./reader-summary-generation-identity-policy";
+import { activeReaderSummaryReasoningEffort } from "./codex-reader-summary-gateway-route-policy";
+import { resolveReaderSummaryBackendEffort } from "./reader-summary-generation-effort-policy";
+import { resolveReaderSummaryGenerationIdentity } from "./reader-summary-generation-identity-core";
 import type { ReaderSummaryGenerationBackend } from "./reader-summary-gateway-route-policy";
 
 /** Immutable route/backend/dispatch limits; no client I/O or mutable task state. */

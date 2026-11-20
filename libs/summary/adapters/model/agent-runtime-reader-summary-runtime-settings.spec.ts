@@ -6,10 +6,8 @@ import {
   readerSummaryRouteControls as legacyRouteControls,
   resolveReaderSummaryGenerationIdentity as legacyIdentity,
 } from "./active-reader-summary-generation-profile";
-import {
-  readerSummaryRouteControls as ownedRouteControls,
-  resolveReaderSummaryGenerationIdentity as ownedIdentity,
-} from "./reader-summary-generation-identity-policy";
+import { readerSummaryRouteControls as ownedRouteControls } from "./reader-summary-generation-effort-policy";
+import { resolveReaderSummaryGenerationIdentity as ownedIdentity } from "./reader-summary-generation-identity-core";
 import { defaultTimeoutMs as adapterDefaultTimeoutMs } from "./agent-runtime-reader-summary-model.adapter";
 import {
   defaultTimeoutMs,
@@ -97,7 +95,11 @@ describe("agent runtime reader summary runtime settings", () => {
       const source = readFileSync(join(__dirname, file), "utf8");
       expect(source).not.toContain('from "./active-reader-summary-generation-profile"');
       expect(source).not.toContain("from './active-reader-summary-generation-profile'");
-      expect(source).toContain("./reader-summary-generation-identity-policy");
+      expect(source).not.toContain("./reader-summary-generation-identity-policy");
+      expect(source).toContain("./reader-summary-generation-effort-policy");
+      if (file === "agent-runtime-reader-summary-runtime-settings.ts") {
+        expect(source).toContain("./reader-summary-generation-identity-core");
+      }
     }
   });
 
