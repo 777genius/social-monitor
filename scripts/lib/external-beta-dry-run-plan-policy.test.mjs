@@ -106,6 +106,38 @@ test('plan gates remain fail-closed for live jobs without credentials', () => {
   ]);
 });
 
+test('dry-run references and command parity keep deterministic diagnostics', () => {
+  const f = fixture();
+  f.dryRun.envExample = 'missing-reference';
+  f.dryRun.currentPackageCommand = 'npm run unexpected';
+  f.validateDryRunContract();
+  assert.deepEqual(f.violations, [
+    'dry-run.json: referenced file must exist: missing-reference',
+    'dry-run.json: currentPackageCommand must match runner currentPackageCommand',
+  ]);
+});
+
+test('manual artifact evidence cannot bypass block or expose a live runner', () => {
+  const f = fixture();
+  const job = f.plan.jobs[0];
+  job.blocksExternalBeta = false;
+  job.owner = ' ';
+  job.exitCondition = '';
+  job.validationCommands = [];
+  job.runPolicy = 'manual_artifact_then_validator';
+  job.executionReadiness = 'local_contract_ready';
+  job.runnerCommand = 'node run-live';
+  f.validatePlanShape();
+  assert.deepEqual(f.violations, [
+    'dry-run.json: local must remain an external beta blocker',
+    'dry-run.json: local must define owner',
+    'dry-run.json: local must define exitCondition',
+    'dry-run.json: local must define validationCommands',
+    'dry-run.json: local external evidence job must stay blocked without credentials',
+    'dry-run.json: local manual artifact job must not expose runnerCommand',
+  ]);
+});
+
 test('policy uses live contract objects instead of freezing state at creation', () => {
   const f = fixture();
   f.dryRun.defaultMode = 'execute';
