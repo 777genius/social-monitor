@@ -21,6 +21,8 @@ jobs:
     name: Original-line audit, strict TS and focused Jest
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      DATABASE_URL: postgresql://social_monitor_ci:social_monitor_local_password@127.0.0.1:5432/social_monitor_ci
     steps:
       - name: Checkout exact branch commit
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
