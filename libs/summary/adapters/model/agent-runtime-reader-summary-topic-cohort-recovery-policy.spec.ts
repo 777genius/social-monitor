@@ -24,7 +24,7 @@ const groundedRecovery = () => {
     nodeLabels,
     cohort,
     candidateById: new Map(fixture.candidates.map((candidate) => [candidate.nodeId, candidate] as const)),
-    assignedGroupByNodeId: new Map(
+    assignedGroupByNodeId: new Map<string, string>(
       fixture.candidates.map((candidate) => [candidate.nodeId, READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID] as const),
     ),
     activeGroupIds: new Set<string>(),

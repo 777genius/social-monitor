@@ -15,7 +15,7 @@ export const completeRequiredGroundedTopicCohorts = (
   readonly displayByGroup: ReadonlyMap<string, string>;
   readonly recoveredNodeCount: number;
 } => {
-  let nodeLabels = [...initialNodeLabels];
+  let nodeLabels: ReaderSummaryTopicLabelPlan["nodeLabels"] = [...initialNodeLabels];
   const candidateById = indexUniqueReaderSummaryTopicCandidates(candidates);
   const semanticAnchorsByGroup = new Map<string, readonly string[]>();
   const displayByGroup = new Map<string, string>();
