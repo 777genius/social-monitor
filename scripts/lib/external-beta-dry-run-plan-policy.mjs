@@ -10,6 +10,11 @@ export function createExternalBetaDryRunPlanPolicy(dependencies) {
   const {
     dryRun, runner, plan, dryRunPath, runnerPath, existsSync, assertSameSet, violations,
   } = dependencies;
+  for (const name of ['existsSync', 'assertSameSet']) {
+    if (typeof dependencies[name] !== 'function') {
+      throw new TypeError(`external beta dry-run plan policy requires ${name} to be a function`);
+    }
+  }
   function validateDryRunContract() {
     if (dryRun.schemaVersion !== 1) {
       violations.push(`${dryRunPath}: schemaVersion must be 1`);

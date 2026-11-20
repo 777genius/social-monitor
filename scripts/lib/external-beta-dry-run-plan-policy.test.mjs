@@ -74,6 +74,18 @@ test('missing live dependencies fail immediately with explicit initialization er
   }
 });
 
+test('non-callable plan policy callbacks fail at factory initialization', () => {
+  const { dependencies } = fixture();
+  for (const name of ['existsSync', 'assertSameSet']) {
+    for (const value of [false, 0, 'not callable', {}, []]) {
+      assert.throws(
+        () => createExternalBetaDryRunPlanPolicy({ ...dependencies, [name]: value }),
+        { name: 'TypeError', message: `external beta dry-run plan policy requires ${name} to be a function` },
+      );
+    }
+  }
+});
+
 test('valid clean-env dry-run contract and plan preserve zero diagnostics', () => {
   const f = fixture();
   f.validateDryRunContract();
