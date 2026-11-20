@@ -3,7 +3,7 @@ import { fragmentScore, sourceTerms } from "./openai-responses-reader-summary-fr
 describe("reader summary source fragment lexical relevance policy", () => {
   it("uses normalized Unicode tokens, excludes short terms and stop words", () => {
     expect([...sourceTerms("The ULTRA and enterprise foo-bar 🧪 界AI with v2")])
-      .toEqual(["ultra", "enterprise", "foo", "bar"]);
+      .toEqual(["ultra", "enterprise", "foo", "bar", "界ai"]);
     expect([...sourceTerms("SOME some SOME")]).toEqual(["some"]);
   });
 
