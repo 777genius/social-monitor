@@ -1949,7 +1949,14 @@
         199,
         200,
         201,
-        202,
+        202
+      ],
+      "responsibility": "Bounded selection of the highest-scoring hydrated-source fragments with deterministic tie-breaks and original presentation order; lexical scoring has an independent policy owner"
+    },
+    {
+      "original": "openai-responses-reader-summary-adaptive-evidence.ts",
+      "owner": "openai-responses-reader-summary-fragment-relevance-policy.ts",
+      "originalPositions": [
         253,
         254,
         255,
@@ -1967,7 +1974,7 @@
         273,
         274
       ],
-      "responsibility": "Lexical source relevance, qualifier weighting and deterministic original-order top-fragment selection, distinct from bounded source segmentation; historical import reexports same function"
+      "responsibility": "Provider-local lexical relevance policy: Unicode term normalization, stop-word exclusion, overlap weighting, qualifier boost and stable index score; selection/ranking and chunking remain separate"
     },
     {
       "original": "openai-responses-reader-summary-adaptive-evidence.ts",

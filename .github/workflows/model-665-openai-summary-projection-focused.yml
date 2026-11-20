@@ -16,6 +16,8 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-source-fragments.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-fragment-chunking.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-fragment-ranking.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-fragment-relevance-policy.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-fragment-relevance-policy.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-source-content.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-evidence-projection.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-content-quality-projection.ts
@@ -155,6 +157,7 @@ jobs:
       - name: Verify prompt policy and provider request/response parity
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
+          libs/summary/adapters/model/openai-responses-reader-summary-fragment-relevance-policy.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-source-content.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-adaptive-evidence.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-preview-coverage.spec.ts
