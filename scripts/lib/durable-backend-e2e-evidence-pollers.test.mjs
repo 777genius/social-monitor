@@ -125,8 +125,11 @@ const POLLER_DEPS = [
 ];
 
 function inspectPollerWiring(source) {
-  const tree = ts.createSourceFile("durable-backend-e2e-loop.ts", source,
+  const tree = ts.createSourceFile("capture-durable-backend-e2e-loop.ts", source,
     ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const moduleDeclarations = new Set(tree.statements
+    .filter(ts.isVariableStatement)
+    .flatMap(statement => [...statement.declarationList.declarations]));
   const imported = new Set();
   const called = new Set();
   const declared = new Set();
@@ -149,7 +152,7 @@ function inspectPollerWiring(source) {
     }
     // Require the live module-level binding; a factory in a dead nested function
     // cannot supply the actual top-level polling consumers.
-    if (ts.isVariableDeclaration(node) && node.parent?.parent?.parent === tree &&
+    if (ts.isVariableDeclaration(node) && moduleDeclarations.has(node) &&
       ts.isObjectBindingPattern(node.name) &&
       node.initializer && ts.isCallExpression(node.initializer) &&
       ts.isIdentifier(node.initializer.expression) &&

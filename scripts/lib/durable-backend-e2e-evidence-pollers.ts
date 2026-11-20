@@ -71,6 +71,8 @@ export function createDurableBackendEvidencePollers(deps: {
           );
         }
 
+        // A successful scan without feed items is not acceptable evidence;
+        // retry until a snapshot contains a nonempty feed batch.
         const feedItemCount = readNumber(value, "feedItemCount");
         if (status === "SUCCEEDED" && feedItemCount > 0) {
           return {
