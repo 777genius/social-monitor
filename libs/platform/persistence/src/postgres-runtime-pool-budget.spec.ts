@@ -230,6 +230,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     // its sibling spec spies on the CJS constructor.
     // Catalog seed metadata and the Telegram sandbox checker import Prisma types only;
     // Telegram entrypoints acquire bounded shared factories rather than raw constructors.
+    // The durable E2E evidence adapter imports pg types only and receives the runner-owned Pool.
     expect(rawDependencyFiles).toEqual(expectedSourceList(`
       libs/ingestion/adapters/persistence/prisma/article-capture-postgres.spec-support.ts
       libs/platform/persistence/src/commit-ack-wiring.spec.ts
@@ -283,6 +284,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/import-rss-sep24-verified.postgres.spec.ts
       scripts/import-rss-sep24-verified.spec.ts
       scripts/import-rss-sep24-verified.ts
+      scripts/lib/durable-backend-e2e-pg-evidence.ts
       scripts/lib/github-trending-durable-snapshot-reuse-postgres-fixture.ts
       scripts/lib/github-trending-durable-snapshot-reuse.postgres.spec.ts
       scripts/lib/github-trending-durable-snapshot-reuse.prisma.spec.ts

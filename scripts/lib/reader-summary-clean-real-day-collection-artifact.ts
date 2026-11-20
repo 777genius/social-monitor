@@ -1,3 +1,4 @@
+import { xLateWindowStart } from "./x-late-window";
 import {
   closeSync,
   existsSync,
@@ -116,10 +117,20 @@ export const writeCollectionArtifactAtomically = (params: {
   readonly report: CleanRealDayCollectionReport;
   readonly expectedScope?: ReaderSummaryDailyMaintenanceScope;
   readonly requireExactDatePath?: boolean;
+  readonly allowPartialProviderWindow?: boolean;
 }): void => {
   assertExpectedMaintenanceScope(params.expectedScope);
   assertSafeCollectionArtifactPath(params.path);
-  assertExactDayIdentity(params.report, params.report.run.collectionDate);
+  const window = params.report.inputs.targetPublishedWindow;
+  const partial = params.allowPartialProviderWindow === true &&
+    params.report.inputs.coverage === "PARTIAL_PROVIDER_WINDOW" &&
+    xLateWindowStart(params.report.run.collectionDate) !== undefined &&
+    params.report.inputs.providerKeys.length === 1 &&
+    params.report.inputs.providerKeys[0] === "x-twitter" &&
+    window.startInclusive === xLateWindowStart(params.report.run.collectionDate) &&
+    window.endExclusive === nextUtcDate(params.report.run.collectionDate) &&
+    params.report.blockingPassed === false;
+  if (!partial) assertExactDayIdentity(params.report, params.report.run.collectionDate);
   if (
     (params.expectedScope !== undefined ||
       params.requireExactDatePath === true) &&

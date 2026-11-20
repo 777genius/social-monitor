@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { validateRunnerImplementationMarkers, artifactShapePolicyPath, duplicatePathsPolicyPath, redactionPolicyPath, handoffPolicyPath, displayPolicyPath, consistencyPolicyPath, readinessPolicyPath } from '../lib/external-beta-evidence-runner-markers.mjs';
+import {
+  validateRunnerImplementationMarkers, artifactShapePolicyPath, duplicatePathsPolicyPath,
+  redactionPolicyPath, handoffPolicyPath, displayPolicyPath, consistencyPolicyPath,
+  readinessPolicyPath, valuePolicyPath, planPrinterPath, envFileLoaderPath,
+} from '../lib/external-beta-evidence-runner-markers.mjs';
 
 const runnerFile = 'scripts/external-beta-evidence-runner.mjs';
 const checkFile = 'scripts/check-external-beta-evidence-runner.mjs';
@@ -15,6 +19,9 @@ const sources = {
   readinessPolicySource: readFileSync(readinessPolicyPath, 'utf8'),
   artifactShapePolicySource: readFileSync(artifactShapePolicyPath, 'utf8'),
   duplicatePathsPolicySource: readFileSync(duplicatePathsPolicyPath, 'utf8'),
+  valuePolicySource: readFileSync(valuePolicyPath, 'utf8'),
+  planPrinterSource: readFileSync(planPrinterPath, 'utf8'),
+  envFileLoaderSource: readFileSync(envFileLoaderPath, 'utf8'),
   checkSource: readFileSync(checkFile, 'utf8'),
   selectionHelperSource: readFileSync(selectionHelperPath, 'utf8'),
   redactionPolicySource: readFileSync(redactionPolicyPath, 'utf8'),
@@ -235,4 +242,148 @@ test('runner still invokes both extracted validators, not merely imports them', 
 test('real checker reads the artifact shape policy for implementation marker enforcement', () => {
   const checkerSource = readFileSync(checkFile, 'utf8');
   assert.match(checkerSource, /artifactShapePolicySource:\s*readFileSync\(artifactShapePolicyPath,\s*'utf8'\)/);
+});
+
+test('moved typed input markers fail closed at actual policy source', () => {
+  for (const marker of [
+    'criticalEnvValuesMustBeTyped', 'immutable sha256 image digest',
+    'valid https URL', 'valid PostgreSQL URL', 'valid RabbitMQ URL',
+    'validateTypedUrlEnv', 'validateHttpsEvidenceUrlEnv',
+    'validateSecretTokenEnv', 'validateSecretReferenceEnv',
+    'isPlaceholderSecretValue', 'isRawSecretValueReference',
+    'realEvidenceIdentityEnvNames', 'isFixtureLikeEnvValue',
+  ]) {
+    const violations = validateRunnerImplementationMarkers({
+      ...sources,
+      valuePolicySource: sources.valuePolicySource.replaceAll(marker, 'removed-value-marker'),
+    });
+    assert.deepEqual(violations, [
+      valuePolicyPath + ': extracted typed input policy must preserve "' + marker + '"',
+    ]);
+  }
+  const checker = readFileSync(checkFile, 'utf8');
+  assert.match(checker, /valuePolicySource:\s*readFileSync\(valuePolicyPath,\s*'utf8'\)/);
+});
+
+test('typed value policy must be bound to live env and invoked in every safety path', () => {
+  const binding = 'createExternalBetaEvidenceValueValidator({ contract, env: process.env, jobInputEnvNames });';
+  const invocation = 'validateEvidenceValueEnv(job, missingEnvSet, violations);';
+  for (const candidate of [
+    sources.runnerSource.replace(binding, 'createExternalBetaEvidenceValueValidator({ contract, env: {}, jobInputEnvNames });'),
+    sources.runnerSource.replace(binding, '/* ' + binding + ' */'),
+    sources.runnerSource.replace("import { localRuntimeEnvNames, isLocalRuntimeEnvValue, createExternalBetaEvidenceValueValidator }",
+      "// import { localRuntimeEnvNames, isLocalRuntimeEnvValue, createExternalBetaEvidenceValueValidator }"),
+  ]) {
+    assert.ok(validateRunnerImplementationMarkers({ ...sources, runnerSource: candidate })
+      .includes(runnerFile + ': runner must bind typed evidence value policy to live env and original job names'));
+  }
+  for (const candidate of [
+    sources.runnerSource.replace(invocation, ''),
+    sources.runnerSource.replace(invocation, '// ' + invocation),
+    sources.runnerSource.replace(invocation, 'void 0; // ' + invocation),
+  ]) {
+    assert.ok(validateRunnerImplementationMarkers({ ...sources, runnerSource: candidate })
+      .includes(runnerFile + ': runner must enforce typed evidence value validation in all three paths'));
+  }
+});
+
+test('relocated plan printer markers fail closed at the actual formatter owner', () => {
+  for (const name of [
+    'function printPlan(plan)',
+    'requiredEnvAlternatives:',
+    'formatRequiredEnvAlternatives(job)',
+    'formatOutputArtifacts(job)',
+    'Missing required env count:',
+    'Missing optional env count:',
+  ]) {
+    const violations = validateRunnerImplementationMarkers({
+      ...sources,
+      planPrinterSource: sources.planPrinterSource.replaceAll(name, 'removed-plan-printer-marker'),
+    });
+    assert.deepEqual(violations, [
+      `${planPrinterPath}: extracted plan printer must preserve "${name}"`,
+    ]);
+  }
+});
+
+test('runner must bind and invoke extracted plan printer, not just import it', () => {
+  const binding = 'const { printPlan } = createExternalBetaPlanPrinter({ contract, formatRequiredEnvAlternatives, formatOutputArtifacts });';
+  const invocation = 'printPlan(plan);';
+  for (const mutatedRunner of [
+    sources.runnerSource.replace(binding, '// ' + binding),
+    sources.runnerSource.replace(binding, 'const { printPlan } = createExternalBetaPlanPrinter({ contract, formatRequiredEnvAlternatives: () => "none", formatOutputArtifacts });'),
+    sources.runnerSource.replace(invocation, '// ' + invocation),
+    sources.runnerSource.replace("import { createExternalBetaPlanPrinter }", "// import { createExternalBetaPlanPrinter }"),
+  ]) {
+    assert.ok(validateRunnerImplementationMarkers({ ...sources, runnerSource: mutatedRunner })
+      .includes(`${runnerFile}: runner must bind and invoke extracted plan printer`));
+  }
+});
+
+test('real checker reads the extracted plan printer before accepting runner markers', () => {
+  assert.match(sources.checkSource, /planPrinterSource:\s*readFileSync\(planPrinterPath,\s*'utf8'\)/);
+});
+
+test('relocated private env admission markers fail closed at their actual owner', () => {
+  for (const name of [
+    'function loadExternalBetaEnvFiles(paths)',
+    'validateExternalBetaEnvFilePath(path, label, violations)',
+    "parseDotenv(readFileSync(path, 'utf8'))",
+    'EXTERNAL_BETA_EVIDENCE_CONFIRM must be set explicitly in the operator shell',
+    'const existingValue = env[name]?.trim()',
+    'conflicts with',
+    'refusing to merge evidence from different runs',
+    'env[name] = value',
+  ]) {
+    const violations = validateRunnerImplementationMarkers({
+      ...sources,
+      envFileLoaderSource: sources.envFileLoaderSource.replaceAll(name, 'missing-private-env-marker'),
+    });
+    assert.deepEqual(violations, [
+      envFileLoaderPath + ': extracted private env-file admission must preserve "' + name + '"',
+    ]);
+  }
+});
+
+test('inline comments cannot spoof executable private env-file admission', () => {
+  for (const [line, forged, marker] of [
+    ['      validateExternalBetaEnvFilePath(path, label, violations);',
+      '      void path; // validateExternalBetaEnvFilePath(path, label, violations)',
+      'validateExternalBetaEnvFilePath(path, label, violations)'],
+    ["      const parsed = parseDotenv(readFileSync(path, 'utf8'));",
+      "      const parsed = {}; // parseDotenv(readFileSync(path, 'utf8'))",
+      "parseDotenv(readFileSync(path, 'utf8'))"],
+    ['        const existingValue = env[name]?.trim();',
+      '        const existingValue = undefined; // const existingValue = env[name]?.trim()',
+      'const existingValue = env[name]?.trim()'],
+    ['        env[name] = value;',
+      '        void value; // env[name] = value',
+      'env[name] = value'],
+  ]) {
+    assert.ok(sources.envFileLoaderSource.includes(line), 'fixture must match live source: ' + marker);
+    const tampered = sources.envFileLoaderSource.replace(line, forged);
+    assert.ok(tampered.includes(marker), 'previous substring-only check would accept marker');
+    assert.deepEqual(validateRunnerImplementationMarkers({
+      ...sources, envFileLoaderSource: tampered,
+    }), [
+      envFileLoaderPath + ': extracted private env-file admission must preserve "' + marker + '"',
+    ]);
+  }
+});
+
+test('runner cannot bypass live private env admission by commenting out its binding', () => {
+  for (const needle of [
+    "import { createExternalBetaEnvFileLoader } from './lib/external-beta-evidence-env-file-loader.mjs';",
+    'const { loadExternalBetaEnvFiles } = createExternalBetaEnvFileLoader({ parseDotenv, readFileSync, validateExternalBetaEnvFilePath, env: process.env });',
+    'const envFileViolations = loadExternalBetaEnvFiles(envFileSelection.paths);',
+  ]) {
+    const violations = validateRunnerImplementationMarkers({
+      ...sources, runnerSource: sources.runnerSource.replace(needle, '// ' + needle),
+    });
+    assert.ok(violations.includes(runnerFile + ': runner must bind and invoke private env-file admission against live env'), needle);
+  }
+});
+
+test('real checker reads the extracted private env-file policy for owner-marker enforcement', () => {
+  assert.match(sources.checkSource, /envFileLoaderSource:\s*readFileSync\(envFileLoaderPath,\s*'utf8'\)/);
 });

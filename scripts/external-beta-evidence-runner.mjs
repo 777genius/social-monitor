@@ -5,10 +5,11 @@ import { createExternalBetaJobReadiness } from './lib/external-beta-evidence-job
 import { execFileSync } from 'node:child_process';
 import { accessSync, constants, existsSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, relative } from 'node:path';
-import { URL } from 'node:url';
 import { parse as parseDotenv } from 'dotenv';
 import { readEnvFileSelection, readSelectedJobSelection } from './lib/external-beta-evidence-selections.mjs';
 import { buildExternalBetaPlan } from './lib/external-beta-evidence-plan.mjs';
+import { createExternalBetaPlanPrinter } from './lib/external-beta-evidence-plan-printer.mjs';
+import { createExternalBetaEnvFileLoader } from './lib/external-beta-evidence-env-file-loader.mjs';
 import { buildExternalBetaHandoff } from './lib/external-beta-evidence-handoff.mjs';
 import { createExternalBetaDisplayFormatters } from './lib/external-beta-evidence-display-formatters.mjs';
 import {
@@ -18,19 +19,7 @@ import {
   isStructuredJsonEvidence,
 } from './lib/external-beta-evidence-artifact-redaction.mjs';
 
-import {
-  postgresUrlEnvNames,
-  rabbitmqUrlEnvNames,
-  localRuntimeEnvNames,
-  isLocalRuntimeEnvValue,
-  httpsEvidenceUrlEnvNames,
-  tokenEvidenceEnvNames,
-  secretReferenceEnvNames,
-  realEvidenceIdentityEnvNames,
-  isFixtureLikeEnvValue,
-  isPlaceholderSecretValue,
-  isRawSecretValueReference
-} from './lib/external-beta-evidence-input-value-policy.mjs';
+import { localRuntimeEnvNames, isLocalRuntimeEnvValue, createExternalBetaEvidenceValueValidator } from './lib/external-beta-evidence-input-value-policy.mjs';
 
 const contractPath = 'ops/release/external-beta-evidence-runner.json';
 const inputMatrixPath = 'ops/release/external-beta-evidence-input-matrix.json';
@@ -45,10 +34,12 @@ const {
   missingRequiredEnv, missingOptionalEnvNames, requiredEnvAlternativeCoveredEnvNames,
   jobInputEnvNames, hasEnv, jobExecutionReadiness, formatMissingRequiredEnvViolation,
 } = createExternalBetaJobReadiness({ process, localRuntimeEnvNames, isLocalRuntimeEnvValue });
+const { validateEvidenceValueEnv } = createExternalBetaEvidenceValueValidator({ contract, env: process.env, jobInputEnvNames });
 const {
   formatOutputArtifacts, formatRequiredEnvAlternatives, formatHandoffArtifacts,
   handoffAction, handoffRunner, artifactExamplePathByFormat, inputMetadataByEnv,
 } = createExternalBetaDisplayFormatters({ contract, inputMatrix });
+const { printPlan } = createExternalBetaPlanPrinter({ contract, formatRequiredEnvAlternatives, formatOutputArtifacts });
 const forbiddenEvidencePathFragments = ['/fixtures/', '\\fixtures\\', '.example.', '-examples', '_examples', '/example-', '\\example-'];
 const args = process.argv.slice(2);
 const execute = args.includes('--execute');
@@ -80,6 +71,7 @@ if (handoffJson && (execute || validateArtifacts || json || summary || handoff))
   process.exit(1);
 }
 
+const { loadExternalBetaEnvFiles } = createExternalBetaEnvFileLoader({ parseDotenv, readFileSync, validateExternalBetaEnvFilePath, env: process.env });
 const envFileSelection = readEnvFileSelection(args);
 if (envFileSelection.errors.length > 0) {
   console.error('Invalid external beta evidence env file selection:');
@@ -220,46 +212,6 @@ function buildPlan(planJobs) {
   });
 }
 
-function printPlan(plan) {
-  console.log(`External beta evidence plan (${contract.runnerId})`);
-  console.log(`Mode: ${plan.mode}`);
-  console.log(`Jobs: ${plan.jobCount}`);
-  console.log(
-    `Run policies: local=${plan.localContractJobCount}, live=${plan.liveCommandJobCount}, manual=${plan.manualArtifactJobCount}`,
-  );
-  console.log(`Executable live jobs: ${plan.executableLiveJobCount}`);
-  console.log(`Live artifact ready jobs: ${plan.liveArtifactReadyForValidationJobCount}`);
-  console.log(`External beta blocker jobs: ${plan.externalBlockerJobCount}`);
-
-  for (const job of plan.jobs) {
-    console.log('');
-    console.log(`${job.jobId}`);
-    console.log(`  group: ${job.evidenceGroupId}`);
-    console.log(`  mode: ${job.mode}`);
-    console.log(`  runPolicy: ${job.runPolicy}`);
-    console.log(`  readiness: ${job.executionReadiness}`);
-    console.log(`  owner: ${job.owner}`);
-    console.log(`  runner: ${job.runnerCommand ?? 'manual artifact / validators only'}`);
-    console.log(`  validators: ${job.validationCommands.join(' && ')}`);
-    console.log(`  requiredEnv: ${job.requiredEnv.length === 0 ? 'none' : job.requiredEnv.join(', ')}`);
-    console.log(`  requiredEnvAlternatives: ${formatRequiredEnvAlternatives(job)}`);
-    console.log(`  optionalEnv: ${job.optionalEnv.length === 0 ? 'none' : job.optionalEnv.join(', ')}`);
-    console.log(`  missingEnv: ${job.missingEnv.length === 0 ? 'none' : job.missingEnv.join(', ')}`);
-    console.log(`  missingOptionalEnv: ${job.missingOptionalEnv.length === 0 ? 'none' : job.missingOptionalEnv.join(', ')}`);
-    console.log(`  preflightViolations: ${job.preflightViolations.length === 0 ? 'none' : job.preflightViolations.join(' | ')}`);
-    console.log(`  outputArtifacts: ${formatOutputArtifacts(job)}`);
-    console.log(`  exit: ${job.exitCondition}`);
-  }
-
-  if (plan.missingEnvCount > 0) {
-    console.log('');
-    console.log(`Missing required env count: ${plan.missingEnvCount}`);
-  }
-  if (plan.missingOptionalEnvCount > 0) {
-    console.log(`Missing optional env count: ${plan.missingOptionalEnvCount}`);
-  }
-}
-
 function printSummary(plan) {
   console.log(`External beta evidence summary (${contract.runnerId})`);
   console.log(`Jobs: ${plan.jobCount}`);
@@ -371,47 +323,6 @@ function percent(numerator, denominator) {
     return 0;
   }
   return Math.round((numerator / denominator) * 100);
-}
-
-function loadExternalBetaEnvFiles(paths) {
-  const violations = [];
-  const loadedSources = new Map();
-  for (const path of paths) {
-    const label = `--env-file ${path}`;
-    validateExternalBetaEnvFilePath(path, label, violations);
-    if (violations.some((violation) => violation.startsWith(`${label}:`))) {
-      continue;
-    }
-
-    const parsed = parseDotenv(readFileSync(path, 'utf8'));
-    for (const [name, rawValue] of Object.entries(parsed)) {
-      if (!/^[A-Z_][A-Z0-9_]*$/.test(name)) {
-        violations.push(`${label}: env name ${name} is not a valid uppercase env var name`);
-        continue;
-      }
-
-      const value = String(rawValue).trim();
-      if (value.length === 0) {
-        continue;
-      }
-      if (name === 'EXTERNAL_BETA_EVIDENCE_CONFIRM') {
-        violations.push(`${label}: EXTERNAL_BETA_EVIDENCE_CONFIRM must be set explicitly in the operator shell, not loaded from --env-file`);
-        continue;
-      }
-
-      const existingValue = process.env[name]?.trim();
-      if (existingValue !== undefined && existingValue.length > 0 && existingValue !== value) {
-        const existingSource = loadedSources.get(name) ?? 'the shell environment';
-        violations.push(`${label}: env ${name} conflicts with ${existingSource}; refusing to merge evidence from different runs`);
-        continue;
-      }
-
-      process.env[name] = value;
-      loadedSources.set(name, label);
-    }
-  }
-
-  return violations;
 }
 
 function validateExternalBetaEnvFilePath(path, label, violations) {
@@ -594,79 +505,6 @@ function validateExecutableOutputArtifactPathEnv(job, missingEnvSet, violations)
   }
 }
 
-function validateEvidenceValueEnv(job, missingEnvSet, violations, options = {}) {
-  const enabled = options.enabled ?? contract.executionSafety?.criticalEnvValuesMustBeTyped === true;
-  if (!enabled) {
-    return;
-  }
-
-  const envNames = new Set(jobInputEnvNames(job));
-  for (const envName of envNames) {
-    if (missingEnvSet.has(envName) || envName.endsWith('_PATH')) {
-      continue;
-    }
-
-    const value = process.env[envName]?.trim();
-    if (value === undefined || value === '') {
-      continue;
-    }
-
-    if (envName === 'BACKEND_IMAGE_DIGEST' && !/^sha256:[0-9a-f]{64}$/.test(value)) {
-      violations.push(`${job.jobId}: env ${envName} must be an immutable sha256 image digest`);
-      continue;
-    }
-    if (envName === 'BACKEND_GIT_COMMIT_SHA' && !/^[0-9a-f]{40}$/.test(value)) {
-      violations.push(`${job.jobId}: env ${envName} must be a full 40-character lowercase git commit SHA`);
-      continue;
-    }
-    if (envName === 'API_BASE_URL') {
-      validateHttpsEvidenceUrlEnv(job, envName, value, violations);
-      continue;
-    }
-    if (postgresUrlEnvNames().has(envName)) {
-      validateTypedUrlEnv(job, envName, value, {
-        expectedDescription: 'valid PostgreSQL URL',
-        protocols: ['postgres:', 'postgresql:'],
-      }, violations);
-      continue;
-    }
-    if (rabbitmqUrlEnvNames().has(envName)) {
-      validateTypedUrlEnv(job, envName, value, {
-        expectedDescription: 'valid RabbitMQ URL',
-        protocols: ['amqp:', 'amqps:'],
-      }, violations);
-      continue;
-    }
-    if (httpsEvidenceUrlEnvNames().has(envName)) {
-      validateHttpsEvidenceUrlEnv(job, envName, value, violations);
-      continue;
-    }
-    if (tokenEvidenceEnvNames().has(envName)) {
-      validateSecretTokenEnv(job, envName, value, violations);
-      continue;
-    }
-    if (secretReferenceEnvNames().has(envName)) {
-      validateSecretReferenceEnv(job, envName, value, violations);
-      continue;
-    }
-    if (realEvidenceIdentityEnvNames().has(envName) && isFixtureLikeEnvValue(value)) {
-      violations.push(`${job.jobId}: env ${envName} must not use local, fixture, example, mock or test identifiers`);
-    }
-  }
-}
-
-function validateSecretTokenEnv(job, envName, value, violations) {
-  if (isPlaceholderSecretValue(value) || value.length < 20 || /\s/.test(value)) {
-    violations.push(`${job.jobId}: env ${envName} must be a non-placeholder secret value`);
-  }
-}
-
-function validateSecretReferenceEnv(job, envName, value, violations) {
-  if (isPlaceholderSecretValue(value) || value.length < 8 || isRawSecretValueReference(value)) {
-    violations.push(`${job.jobId}: env ${envName} must be a non-placeholder secret reference, not a raw secret value`);
-  }
-}
-
 function validatePlannedEvidencePathEnv(job, missingEnvSet, violations) {
   if (contract.executionSafety?.preflightRequiresEvidencePathValidation !== true) {
     return;
@@ -752,30 +590,6 @@ function validatePlannedEvidencePathEnv(job, missingEnvSet, violations) {
     if (isGitTrackedPath(realPath)) {
       violations.push(`${job.jobId}: evidence path env ${envName} realpath must not point to a git-tracked file before preflight`);
     }
-  }
-}
-
-function validateHttpsEvidenceUrlEnv(job, envName, value, violations) {
-  validateTypedUrlEnv(job, envName, value, {
-    expectedDescription: 'valid https URL',
-    protocols: ['https:'],
-  }, violations);
-}
-
-function validateTypedUrlEnv(job, envName, value, options, violations) {
-  let parsed;
-  try {
-    parsed = new URL(value);
-  } catch {
-    violations.push(`${job.jobId}: env ${envName} must be a ${options.expectedDescription}`);
-    return;
-  }
-  if (!options.protocols.includes(parsed.protocol)) {
-    violations.push(`${job.jobId}: env ${envName} must be a ${options.expectedDescription}`);
-    return;
-  }
-  if (isFixtureLikeEnvValue(parsed.hostname)) {
-    violations.push(`${job.jobId}: env ${envName} must not use local, fixture, example, mock or test hostnames`);
   }
 }
 

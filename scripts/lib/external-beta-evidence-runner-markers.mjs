@@ -5,6 +5,9 @@ export const consistencyPolicyPath = 'scripts/lib/external-beta-artifact-consist
 export const readinessPolicyPath = 'scripts/lib/external-beta-evidence-job-readiness.mjs';
 export const artifactShapePolicyPath = 'scripts/lib/external-beta-evidence-artifact-shape-policy.mjs';
 export const duplicatePathsPolicyPath = 'scripts/lib/external-beta-evidence-duplicate-paths.mjs';
+export const valuePolicyPath = 'scripts/lib/external-beta-evidence-input-value-policy.mjs';
+export const planPrinterPath = 'scripts/lib/external-beta-evidence-plan-printer.mjs';
+export const envFileLoaderPath = 'scripts/lib/external-beta-evidence-env-file-loader.mjs';
 
 export function validateRunnerImplementationMarkers({
   runnerSource,
@@ -14,6 +17,9 @@ export function validateRunnerImplementationMarkers({
   readinessPolicySource,
   artifactShapePolicySource,
   duplicatePathsPolicySource,
+  valuePolicySource,
+  planPrinterSource,
+  envFileLoaderSource,
   checkSource,
   selectionHelperSource,
   redactionPolicySource,
@@ -56,13 +62,9 @@ export function validateRunnerImplementationMarkers({
     'Invalid external beta evidence env file selection:',
     'loadExternalBetaEnvFiles',
     'parseDotenv',
-    'EXTERNAL_BETA_EVIDENCE_CONFIRM must be set explicitly in the operator shell',
-    'conflicts with',
-    'refusing to merge evidence from different runs',
     'Load env files: append --env-file',
     'missingOptionalEnvCount',
     'uniqueMissingOptionalEnv',
-    'requiredEnvAlternatives',
     'requiredEnvAlternativeCoveredEnvNames',
     'jobInputEnvNames',
     'allowCapturedArtifactAlternatives',
@@ -90,28 +92,6 @@ export function validateRunnerImplementationMarkers({
     'liveExecutionValidatesOutputPathsBeforeRun',
     'before live execution',
     'validateEvidenceValueEnv',
-    'criticalEnvValuesMustBeTyped',
-    'immutable sha256 image digest',
-    'valid https URL',
-    'valid PostgreSQL URL',
-    'valid RabbitMQ URL',
-    'validateTypedUrlEnv',
-    'validateHttpsEvidenceUrlEnv',
-    'validateSecretTokenEnv',
-    'validateSecretReferenceEnv',
-    'postgresUrlEnvNames',
-    'rabbitmqUrlEnvNames',
-    'httpsEvidenceUrlEnvNames',
-    'tokenEvidenceEnvNames',
-    'secretReferenceEnvNames',
-    'isPlaceholderSecretValue',
-    'isRawSecretValueReference',
-    'non-placeholder secret value',
-    'non-placeholder secret reference',
-    'postgresql:',
-    'amqps:',
-    'realEvidenceIdentityEnvNames',
-    'isFixtureLikeEnvValue',
     'output artifact env',
     'readJsonArtifact',
     'valid JSON artifact',
@@ -188,6 +168,50 @@ export function validateRunnerImplementationMarkers({
     }
   }
 
+  // The human-readable plan fields moved with printPlan; guard the implementation owner.
+  for (const name of [
+    'function printPlan(plan)',
+    'requiredEnvAlternatives:',
+    'formatRequiredEnvAlternatives(job)',
+    'formatOutputArtifacts(job)',
+    'Missing required env count:',
+    'Missing optional env count:',
+  ]) {
+    if (!planPrinterSource.includes(name)) {
+      violations.push(`${planPrinterPath}: extracted plan printer must preserve "${name}"`);
+    }
+  }
+
+  // Typed env values now belong to the existing input-value policy, not to CLI orchestration.
+  for (const marker of [
+    'criticalEnvValuesMustBeTyped',
+    'immutable sha256 image digest',
+    'valid https URL',
+    'valid PostgreSQL URL',
+    'valid RabbitMQ URL',
+    'validateTypedUrlEnv',
+    'validateHttpsEvidenceUrlEnv',
+    'validateSecretTokenEnv',
+    'validateSecretReferenceEnv',
+    'postgresUrlEnvNames',
+    'rabbitmqUrlEnvNames',
+    'httpsEvidenceUrlEnvNames',
+    'tokenEvidenceEnvNames',
+    'secretReferenceEnvNames',
+    'isPlaceholderSecretValue',
+    'isRawSecretValueReference',
+    'non-placeholder secret value',
+    'non-placeholder secret reference',
+    'postgresql:',
+    'amqps:',
+    'realEvidenceIdentityEnvNames',
+    'isFixtureLikeEnvValue',
+  ]) {
+    if (!valuePolicySource.includes(marker)) {
+      violations.push(`${valuePolicyPath}: extracted typed input policy must preserve "${marker}"`);
+    }
+  }
+
   // Moved duplicate-path checks must remain enforced at their actual module owner.
   for (const marker of [
     'evidencePathEnvForbidsDuplicatePaths',
@@ -218,6 +242,58 @@ export function validateRunnerImplementationMarkers({
   const activeRunnerSource = runnerSource
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^[ \t]*\/\/.*$/gm, '');
+  // Relocated private file admission is independently guarded at the actual owner.
+  const activeEnvFileLoaderSource = envFileLoaderSource
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^[ \t]*\/\/.*$/gm, '');
+  // These executable admission statements must exist outside inline comments.
+  const executableEnvMarkers = new Map([
+    ['validateExternalBetaEnvFilePath(path, label, violations)',
+      /^[ \t]*validateExternalBetaEnvFilePath\(path, label, violations\);[ \t]*(?:\/\/[^\n]*)?$/m],
+    ["parseDotenv(readFileSync(path, 'utf8'))",
+      /^[ \t]*const parsed = parseDotenv\(readFileSync\(path, 'utf8'\)\);[ \t]*(?:\/\/[^\n]*)?$/m],
+    ['const existingValue = env[name]?.trim()',
+      /^[ \t]*const existingValue = env\[name\]\?\.trim\(\);[ \t]*(?:\/\/[^\n]*)?$/m],
+    ['env[name] = value',
+      /^[ \t]*env\[name\] = value;[ \t]*(?:\/\/[^\n]*)?$/m],
+  ]);
+  for (const name of [
+    'function loadExternalBetaEnvFiles(paths)',
+    'validateExternalBetaEnvFilePath(path, label, violations)',
+    "parseDotenv(readFileSync(path, 'utf8'))",
+    'EXTERNAL_BETA_EVIDENCE_CONFIRM must be set explicitly in the operator shell',
+    'const existingValue = env[name]?.trim()',
+    'conflicts with',
+    'refusing to merge evidence from different runs',
+    'env[name] = value',
+  ]) {
+    const executable = executableEnvMarkers.get(name);
+    if (!activeEnvFileLoaderSource.includes(name)
+      || (executable && !executable.test(activeEnvFileLoaderSource))) {
+      violations.push(envFileLoaderPath + ': extracted private env-file admission must preserve "' + name + '"');
+    }
+  }
+  if (!/^[ \t]*import \{ createExternalBetaEnvFileLoader \} from '\.\/lib\/external-beta-evidence-env-file-loader\.mjs';[ \t]*$/m.test(activeRunnerSource)
+    || !/^[ \t]*const \{ loadExternalBetaEnvFiles \} = createExternalBetaEnvFileLoader\(\{ parseDotenv, readFileSync, validateExternalBetaEnvFilePath, env: process\.env \}\);[ \t]*$/m.test(activeRunnerSource)
+    || !/^[ \t]*const envFileViolations = loadExternalBetaEnvFiles\(envFileSelection\.paths\);[ \t]*$/m.test(activeRunnerSource)) {
+    violations.push(runnerFile + ': runner must bind and invoke private env-file admission against live env');
+  }
+
+  // Retain the real CLI delegation, not merely an import or commented-out call.
+  if (!/^[ \t]*import \{ createExternalBetaPlanPrinter \} from '\.\/lib\/external-beta-evidence-plan-printer\.mjs';[ \t]*$/m.test(activeRunnerSource)
+    || !/^[ \t]*const \{ printPlan \} = createExternalBetaPlanPrinter\(\{ contract, formatRequiredEnvAlternatives, formatOutputArtifacts \}\);[ \t]*$/m.test(activeRunnerSource)
+    || !/^[ \t]*printPlan\(plan\);[ \t]*$/m.test(activeRunnerSource)) {
+    violations.push(runnerFile + ': runner must bind and invoke extracted plan printer');
+  }
+  // A marker in an import or comment is insufficient: the runtime must bind the live env
+  // and invoke typed policy on all three existing execution/preflight/artifact paths.
+  if (!/^[ \t]*import \{[^\n]*\bcreateExternalBetaEvidenceValueValidator\b[^\n]*\} from '\.\/lib\/external-beta-evidence-input-value-policy\.mjs';[ \t]*$/m.test(activeRunnerSource)
+    || !/^[ \t]*const \{ validateEvidenceValueEnv \} = createExternalBetaEvidenceValueValidator\(\{ contract, env: process\.env, jobInputEnvNames \}\);[ \t]*$/m.test(activeRunnerSource)) {
+    violations.push(`${runnerFile}: runner must bind typed evidence value policy to live env and original job names`);
+  }
+  if ((activeRunnerSource.match(/^[ \t]*validateEvidenceValueEnv\(job\s*,/gm) ?? []).length !== 3) {
+    violations.push(`${runnerFile}: runner must enforce typed evidence value validation in all three paths`);
+  }
   // Import-only wiring cannot satisfy the security check: enforce live env and all entry points.
   if (!/^\s*import \{ createExternalBetaDuplicateEvidencePaths \} from '\.\/lib\/external-beta-evidence-duplicate-paths\.mjs';/m.test(activeRunnerSource)
     || !/^[ \t]*\}\s*=\s*createExternalBetaDuplicateEvidencePaths\(\{\s*contract,\s*env:\s*process\.env\s*\}\);[ \t]*$/m.test(activeRunnerSource)) {

@@ -205,3 +205,31 @@ const withArgs = <T>(args: readonly string[], run: () => T): T => {
     process.argv = original;
   }
 };
+
+describe("bounded late X recovery", () => {
+  const args = ["--update", "--date", "2026-11-07", "--x-late-window",
+    "--production-scheduled-scope", "--exact-date-artifact-directory", "/tmp/partial-x",
+    "--allow-historical-provider-collection", "--providers", "x-twitter"];
+
+  it("uses only the bounded late interval", () => {
+    const cli = withArgs(args, () => readCli());
+    expect(cli.targetPublishedWindow).toEqual({ startInclusive: "2026-11-07T22:00:00.000Z", endExclusive: "2026-11-08T00:00:00.000Z" });
+    expect(cli.xLateWindow).toBe(true);
+  });
+
+  it.each(["2026-11-04", "2026-11-08", "2026-11-10", "2026-11-11", "2026-11-12", "2026-11-13"])("uses the confirmed three-hour interval on %s", (day) => {
+    const cli = withArgs(args.map((value) => value === "2026-11-07" ? day : value), () => readCli());
+    const end = new Date(`${day}T00:00:00.000Z`);
+    end.setUTCDate(end.getUTCDate() + 1);
+    expect(cli.targetPublishedWindow).toEqual({ startInclusive: `${day}T21:00:00.000Z`, endExclusive: end.toISOString() });
+  });
+
+  it.each([
+    args.filter((value) => value !== "--production-scheduled-scope"),
+    args.map((value) => value === "x-twitter" ? "reddit,x-twitter" : value),
+    args.map((value) => value === "2026-11-07" ? "2026-11-06" : value),
+    [...args, "--provider-catch-up"],
+  ])("rejects unscoped, multi-provider, wrong-date, and catch-up calls", (...input) => {
+    expect(() => withArgs(input, () => readCli())).toThrow();
+  });
+});

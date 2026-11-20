@@ -6,6 +6,7 @@ import {
   isLocalRuntimeEnvValue, httpsEvidenceUrlEnvNames, tokenEvidenceEnvNames,
   secretReferenceEnvNames, realEvidenceIdentityEnvNames,
   isFixtureLikeEnvValue, isPlaceholderSecretValue, isRawSecretValueReference,
+  createExternalBetaEvidenceValueValidator,
 } from './external-beta-evidence-input-value-policy.mjs';
 
 test('each URL and credential category preserves the exact original env membership', () => {
@@ -58,10 +59,96 @@ test('raw secret reference prefixes and embedded markers remain prohibited', () 
   assert.equal(isRawSecretValueReference('vault://production/reference'), false);
 });
 
-test('extracted named exports are the sole implementations and the runner still calls them', () => {
+test('value validation preserves accepted immutable digests, URLs, secret references and real identifiers', () => {
+  const env = {
+    BACKEND_IMAGE_DIGEST: 'sha256:' + 'a'.repeat(64),
+    BACKEND_GIT_COMMIT_SHA: 'b'.repeat(40),
+    API_BASE_URL: 'https://api.production.tld',
+    DATABASE_URL: 'postgresql://db.production.tld/app',
+    RABBITMQ_URL: 'amqps://mq.production.tld',
+    WEBHOOK_TEST_ENDPOINT: 'https://hooks.production.tld',
+    GITHUB_ACCESS_TOKEN: 'opaque123456789012345678901',
+    DATABASE_URL_SECRET_REF: 'vault://app/production/main',
+    STAGING_ENVIRONMENT_ID: 'release_2026',
+  };
+  const validator = createExternalBetaEvidenceValueValidator({
+    contract: { executionSafety: { criticalEnvValuesMustBeTyped: true } }, env,
+    jobInputEnvNames: () => Object.keys(env),
+  });
+  const violations = [];
+  validator.validateEvidenceValueEnv({ jobId: 'release' }, new Set(), violations);
+  assert.deepEqual(violations, []);
+});
+
+test('value validation rejects invalid typed inputs with unchanged ordered and redacted diagnostics', () => {
+  const env = {
+    BACKEND_IMAGE_DIGEST: 'sha256:abc',
+    BACKEND_GIT_COMMIT_SHA: 'A'.repeat(40),
+    API_BASE_URL: 'http://api.production.tld',
+    DATABASE_URL: 'postgres://localhost/db',
+    RABBITMQ_URL: 'https://mq.production.tld',
+    GITHUB_ACCESS_TOKEN: 'changeme',
+    DATABASE_URL_SECRET_REF: 'ghp_fake_private',
+    STAGING_ENVIRONMENT_ID: 'live_test',
+  };
+  const validator = createExternalBetaEvidenceValueValidator({
+    contract: { executionSafety: { criticalEnvValuesMustBeTyped: true } }, env,
+    jobInputEnvNames: () => Object.keys(env),
+  });
+  const violations = [];
+  validator.validateEvidenceValueEnv({ jobId: 'release' }, new Set(), violations);
+  assert.deepEqual(violations, [
+    'release: env BACKEND_IMAGE_DIGEST must be an immutable sha256 image digest',
+    'release: env BACKEND_GIT_COMMIT_SHA must be a full 40-character lowercase git commit SHA',
+    'release: env API_BASE_URL must be a valid https URL',
+    'release: env DATABASE_URL must not use local, fixture, example, mock or test hostnames',
+    'release: env RABBITMQ_URL must be a valid RabbitMQ URL',
+    'release: env GITHUB_ACCESS_TOKEN must be a non-placeholder secret value',
+    'release: env DATABASE_URL_SECRET_REF must be a non-placeholder secret reference, not a raw secret value',
+    'release: env STAGING_ENVIRONMENT_ID must not use local, fixture, example, mock or test identifiers',
+  ]);
+  assert.equal(violations.join('\n').includes(env.DATABASE_URL_SECRET_REF), false);
+});
+
+test('contract and explicit preflight options retain enable, disable and skip semantics', () => {
+  const env = { BACKEND_IMAGE_DIGEST: 'invalid', IGNORED_PATH: '/example/fixture.json', SKIP_ME: 'invalid' };
+  const validator = createExternalBetaEvidenceValueValidator({
+    contract: { executionSafety: { criticalEnvValuesMustBeTyped: false } }, env,
+    jobInputEnvNames: () => ['BACKEND_IMAGE_DIGEST', 'BACKEND_IMAGE_DIGEST', 'IGNORED_PATH', 'SKIP_ME', 'EMPTY'],
+  });
+  const job = { jobId: 'plan' }, violations = [];
+  validator.validateEvidenceValueEnv(job, new Set(['SKIP_ME']), violations);
+  assert.deepEqual(violations, []);
+  validator.validateEvidenceValueEnv(job, new Set(['SKIP_ME']), violations, { enabled: true });
+  assert.deepEqual(violations, ['plan: env BACKEND_IMAGE_DIGEST must be an immutable sha256 image digest']);
+  validator.validateEvidenceValueEnv(job, new Set(), violations, { enabled: false });
+  assert.equal(violations.length, 1);
+});
+
+test('value validator observes live env mutations after construction and preserves URL rejection', () => {
+  const env = { API_BASE_URL: 'https://api.production.tld' };
+  const validator = createExternalBetaEvidenceValueValidator({
+    contract: { executionSafety: { criticalEnvValuesMustBeTyped: true } }, env,
+    jobInputEnvNames: () => ['API_BASE_URL'],
+  });
+  const violations = [];
+  validator.validateEvidenceValueEnv({ jobId: 'plan' }, new Set(), violations);
+  assert.deepEqual(violations, []);
+  env.API_BASE_URL = 'https://localhost';
+  validator.validateEvidenceValueEnv({ jobId: 'plan' }, new Set(), violations);
+  assert.deepEqual(violations, ['plan: env API_BASE_URL must not use local, fixture, example, mock or test hostnames']);
+});
+
+test('the sole typed-value validator is called from execution, preflight and artifact validation', () => {
   const runner = readFileSync(new URL('../external-beta-evidence-runner.mjs', import.meta.url), 'utf8');
   const policy = readFileSync(new URL('./external-beta-evidence-input-value-policy.mjs', import.meta.url), 'utf8');
-  assert.match(runner, /from '.\/lib\/external-beta-evidence-input-value-policy\.mjs'/);
+  assert.match(runner, /createExternalBetaEvidenceValueValidator\(\{ contract, env: process\.env, jobInputEnvNames \}\)/);
+  assert.match(policy, /export function createExternalBetaEvidenceValueValidator\(/);
+  assert.equal((runner.match(/\bvalidateEvidenceValueEnv\(/g) ?? []).length, 3);
+  for (const name of ['validateEvidenceValueEnv', 'validateSecretTokenEnv', 'validateSecretReferenceEnv', 'validateHttpsEvidenceUrlEnv', 'validateTypedUrlEnv']) {
+    assert.match(policy, new RegExp('^  function ' + name + '\\(', 'm'));
+    assert.doesNotMatch(runner, new RegExp('^function ' + name + '\\(', 'm'));
+  }
   for (const name of [
     'postgresUrlEnvNames', 'rabbitmqUrlEnvNames', 'localRuntimeEnvNames', 'isLocalRuntimeEnvValue',
     'httpsEvidenceUrlEnvNames', 'tokenEvidenceEnvNames', 'secretReferenceEnvNames',
@@ -69,11 +156,10 @@ test('extracted named exports are the sole implementations and the runner still 
   ]) {
     assert.match(policy, new RegExp('^export function ' + name + '\\(', 'm'));
     assert.doesNotMatch(runner, new RegExp('^function ' + name + '\\(', 'm'));
-    assert.match(runner, new RegExp('\\b' + name + '\\b'));
   }
 });
 
-test('original bounded checker remains after policy tests and source cap ratchets', () => {
+test('original bounded checker remains and the runner graduates to the hard 1000-line cap', () => {
   const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
   const command = pkg.scripts['check:external-beta-evidence-runner'];
   assert.ok(command.includes('scripts/lib/external-beta-evidence-input-value-policy.test.mjs && node scripts/run-with-timeout.mjs'));
@@ -81,5 +167,6 @@ test('original bounded checker remains after policy tests and source cap ratchet
   assert.ok(pkg.scripts['check:architecture'].includes('node --test scripts/lib/external-beta-evidence-input-value-policy.test.mjs'), 'Draft Static must run the new policy tests directly');
   const cap = readFileSync(new URL('../check-source-line-cap.mjs', import.meta.url), 'utf8');
   const runner = readFileSync(new URL('../external-beta-evidence-runner.mjs', import.meta.url), 'utf8');
-  assert.match(cap, new RegExp('"scripts/external-beta-evidence-runner.mjs", ' + (runner.trimEnd().split('\n').length) + '\\]'));
+  assert.ok(runner.trimEnd().split('\n').length <= 1000, 'runner must remain within hard cap');
+  assert.doesNotMatch(cap, /"scripts\/external-beta-evidence-runner\.mjs", \d+/);
 });

@@ -144,11 +144,14 @@ final class PublishedSummaryStore extends ChangeNotifier {
           _rememberSummary(summary);
           _selectPeriod(summary.period);
           availablePeriods = mergeSummaryPeriods(
-            history?.availablePeriods ?? const [],
+            [...availablePeriods, ...?history?.availablePeriods],
             [...snapshot.availablePeriods, summary.period],
           );
           availableSummaryReferences = mergePublishedSummaryReferences(
-            history?.availableSummaryReferences ?? const [],
+            [
+              ...availableSummaryReferences,
+              ...?history?.availableSummaryReferences,
+            ],
             [
               ...snapshot.availableSummaryReferences,
               PublishedSummaryReference(

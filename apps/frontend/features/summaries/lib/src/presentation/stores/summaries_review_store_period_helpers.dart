@@ -120,7 +120,7 @@ WorkspaceSummarySnapshot? _summarySnapshotForSelectedDailyWindow(
 }
 
 /// Explicit daily navigation must never reuse a different day's article.
+/// The implicit latest day also uses exact-day content in source-post mode.
 bool _requiresExactUnpublishedDay(SummariesReviewStore store) =>
     store.allowUnpublishedDays &&
-    store.selectedSummaryPeriodPreset == SummaryPeriodPreset.daily &&
-    store._selectedSummaryPeriodEndedAt != null;
+    store.selectedSummaryPeriodPreset == SummaryPeriodPreset.daily;

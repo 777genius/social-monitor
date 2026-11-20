@@ -15,6 +15,8 @@ const A: typeof import('./hetzner-release-authority.mjs') =
   createRequire(resolve('scripts/ci/hetzner-release-observe.mts'))('./hetzner-release-authority.mts');
 const R: typeof import('./candidate-runtime-contract.mts') =
   createRequire(resolve('scripts/ci/hetzner-release-observe.mts'))('./candidate-runtime-contract.mts');
+const D: typeof import('./hetzner-release-host-denials.mts') =
+  createRequire(resolve('scripts/ci/hetzner-release-observe.mts'))('./hetzner-release-host-denials.mts');
 const MACHINE = 'b28fc7b17042414386eb9b114046e50c';
 const FILES = ['candidate.tar', 'candidate.tar.sha256', 'manifest.json', 'phases.json', 'image-id.txt', 'source-sha.txt'];
 const LIMIT = 10_000_000_000;
@@ -355,10 +357,7 @@ export function safePreflightDiagnostic(action: string | undefined, error: unkno
   const allowed = new Set(['ssh-host-key', 'ssh-publickey', 'ssh-private-key', 'ssh-timeout', 'ssh-network', 'ssh-unknown']);
   return action === 'preflight' && error instanceof ClientError && allowed.has(error.code) ? error.code : undefined;
 }
-const HOST_DENIALS = new Set(['busy', 'latched', 'grammar', 'machine-id', 'invalid-host-state',
-  'untrusted-installation', 'unfinished-release', 'unfinished-backend-release', 'unfinished-cohort-release',
-  'github-auth-mode', 'github-auth-count', 'github-auth-token', 'github-auth-file', 'github-auth-expired',
-  'operator-input-deadline', 'operator-input-size', 'backend-sensitive-files']);
+const HOST_DENIALS = new Set(D.HOST_DENIAL_CODES);
 class CohortUnstartedError extends A.AuthorityError {
   readonly activationDenial: string | undefined;
   constructor(denial: string | undefined) {

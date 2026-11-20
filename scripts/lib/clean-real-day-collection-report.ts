@@ -31,6 +31,7 @@ export type CleanRealDayCollectionReport = {
     readonly scope?: ReaderSummaryDailyMaintenanceScope;
     readonly providerKeys: readonly CleanRealDayCollectionProviderKey[];
     readonly xCollectorConfigured: boolean;
+    readonly coverage?: "PARTIAL_PROVIDER_WINDOW";
     readonly targetPublishedWindow: {
       readonly startInclusive: string;
       readonly endExclusive: string;
