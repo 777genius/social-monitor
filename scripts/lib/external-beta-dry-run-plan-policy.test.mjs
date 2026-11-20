@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { test } from 'node:test';
 import { createExternalBetaDryRunPlanPolicy } from './external-beta-dry-run-plan-policy.mjs';
+import { createExternalBetaDryRunHandoffPolicy } from './external-beta-dry-run-handoff-policy.mjs';
 
 const ts = createRequire(import.meta.url)('typescript');
 
@@ -288,6 +289,8 @@ function dryRunCliFixture() {
     join(root, 'scripts', 'check-external-beta-evidence-dry-run.mjs'));
   copyFileSync(new URL('./external-beta-dry-run-plan-policy.mjs', import.meta.url),
     join(root, 'scripts', 'lib', 'external-beta-dry-run-plan-policy.mjs'));
+  copyFileSync(new URL('./external-beta-dry-run-handoff-policy.mjs', import.meta.url),
+    join(root, 'scripts', 'lib', 'external-beta-dry-run-handoff-policy.mjs'));
   writeFileSync(join(root, 'scripts', 'external-beta-evidence-runner.mjs'),
     "import { readFileSync } from 'node:fs';\n" +
     "const args = process.argv.slice(2).join(' ');\n" +
@@ -383,7 +386,7 @@ function dryRunCliFixture() {
       env: { PATH: process.env.PATH ?? '' },
     });
   };
-  return { dryRun, plan, handoff, run, cleanup: () => rmSync(root, { recursive: true, force: true }) };
+  return { runner, dryRun, plan, handoff, run, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 }
 
 test('real dry-run CLI accepts a clean-env plan/handoff without executing live jobs', () => {
@@ -448,4 +451,125 @@ test('real CLI rejects nonblocking, noncredentialed live jobs without invoking t
   } finally {
     f.cleanup();
   }
+});
+
+
+test('extracted JSON handoff policy preserves exact root diagnostic order', () => {
+  const f = dryRunCliFixture();
+  try {
+    const violations = [];
+    const assertSameSet = (actual, expected, label) => {
+      assert.deepEqual([...new Set(actual)].sort(), [...new Set(expected)].sort(), label);
+    };
+    const { validateHandoffShape } = createExternalBetaDryRunHandoffPolicy({
+      handoff: f.handoff, runner: f.runner, dryRun: f.dryRun,
+      dryRunPath: 'dry-run.json', runnerPath: 'runner.json',
+      plan: f.plan, violations, assertSameSet,
+    });
+    validateHandoffShape();
+    assert.deepEqual(violations, [], 'valid synthetic handoff must be accepted');
+    f.handoff.inputMatrix.secretValuePolicy = 'committed_values';
+    f.handoff.safety.envValuePolicy = 'committed_values';
+    f.handoff.readiness.totalJobs = 9;
+    validateHandoffShape();
+    assert.deepEqual(violations, [
+      'dry-run.json: JSON handoff input matrix must preserve secret value policy',
+      'dry-run.json: JSON handoff safety.envValuePolicy must be names_only',
+      'dry-run.json: JSON handoff readiness.totalJobs must be 0, got 9',
+    ]);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('extracted JSON handoff policy retains fail-closed per-job diagnostics', () => {
+  const f = dryRunCliFixture();
+  try {
+    f.dryRun.requiredJobIds = ['evidence-one'];
+    f.plan.jobs = [{ jobId: 'evidence-one', executionReadiness: 'blocked_missing_required_env' }];
+    f.handoff.jobs = [{
+      jobId: 'evidence-one', executionReadiness: 'local_contract_ready',
+      operatorAction: [], outputArtifacts: [], requiredInputs: [], requiredEnv: [],
+      optionalInputs: [], optionalEnv: [],
+    }];
+    const violations = [];
+    const assertSameSet = (actual, expected, label) => {
+      assert.deepEqual([...new Set(actual)].sort(), [...new Set(expected)].sort(), label);
+    };
+    createExternalBetaDryRunHandoffPolicy({
+      handoff: f.handoff, runner: f.runner, dryRun: f.dryRun,
+      dryRunPath: 'dry-run.json', runnerPath: 'runner.json',
+      plan: f.plan, violations, assertSameSet,
+    }).validateHandoffShape();
+    assert.deepEqual(violations, [
+      'dry-run.json: JSON handoff evidence-one readiness must match plan',
+      'dry-run.json: JSON handoff evidence-one must include operatorAction',
+      'dry-run.json: JSON handoff evidence-one must include outputArtifacts',
+    ]);
+  } finally {
+    f.cleanup();
+  }
+});
+
+function inspectHandoffDelegation(source) {
+  const tree = ts.createSourceFile('check-external-beta-evidence-dry-run.mjs', source,
+    ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  const factoryName = 'createExternalBetaDryRunHandoffPolicy';
+  const importFound = tree.statements.some((statement) =>
+    ts.isImportDeclaration(statement) &&
+    ts.isStringLiteral(statement.moduleSpecifier) &&
+    statement.moduleSpecifier.text === './lib/external-beta-dry-run-handoff-policy.mjs' &&
+    statement.importClause?.namedBindings &&
+    ts.isNamedImports(statement.importClause.namedBindings) &&
+    statement.importClause.namedBindings.elements.some((element) =>
+      !element.propertyName && element.name.text === factoryName));
+  let bound = false;
+  for (const statement of tree.statements) {
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const node of statement.declarationList.declarations) {
+      if (!ts.isObjectBindingPattern(node.name) ||
+        !node.initializer || !ts.isCallExpression(node.initializer) ||
+        !ts.isIdentifier(node.initializer.expression) ||
+        node.initializer.expression.text !== factoryName ||
+        node.initializer.arguments.length !== 1 ||
+        !ts.isObjectLiteralExpression(node.initializer.arguments[0])) continue;
+      const bindings = new Set(node.name.elements
+        .filter((element) => !element.propertyName && ts.isIdentifier(element.name))
+        .map((element) => element.name.text));
+      const injected = new Set(node.initializer.arguments[0].properties
+        .filter(ts.isShorthandPropertyAssignment).map((property) => property.name.text));
+      bound ||= bindings.has('validateHandoffShape') &&
+        ['handoff', 'runner', 'dryRun', 'dryRunPath', 'runnerPath', 'plan',
+          'violations', 'assertSameSet'].every((name) => injected.has(name));
+    }
+  }
+  const calledAtTopLevel = tree.statements.some((statement) =>
+    ts.isExpressionStatement(statement) &&
+    ts.isCallExpression(statement.expression) &&
+    ts.isIdentifier(statement.expression.expression) &&
+    statement.expression.expression.text === 'validateHandoffShape');
+  const localDefinition = tree.statements.some((statement) =>
+    ts.isFunctionDeclaration(statement) && statement.name?.text === 'validateHandoffShape');
+  return { importFound, bound, calledAtTopLevel, localDefinition };
+}
+
+test('real JSON handoff delegation rejects dead/comment-only and wrong-owner wiring', () => {
+  const source = readFileSync(
+    new URL('../check-external-beta-evidence-dry-run.mjs', import.meta.url), 'utf8');
+  assert.deepEqual(inspectHandoffDelegation(source), {
+    importFound: true, bound: true, calledAtTopLevel: true, localDefinition: false,
+  });
+  const binding = 'const { validateHandoffShape } = createExternalBetaDryRunHandoffPolicy({\n' +
+    '  handoff, runner, dryRun, dryRunPath, runnerPath, plan, violations, assertSameSet,\n' +
+    '});';
+  assert.ok(source.includes(binding), 'positive fixture must contain real binding');
+  const dead = source.replace(binding, 'function dead() {\n' + binding + '\n}');
+  assert.equal(inspectHandoffDelegation(dead).bound, false);
+  assert.equal(inspectHandoffDelegation(dead).calledAtTopLevel, true);
+  const commented = source.replace('createExternalBetaDryRunHandoffPolicy({',
+    'unrelated(/* createExternalBetaDryRunHandoffPolicy({ */ {');
+  assert.equal(inspectHandoffDelegation(commented).bound, false);
+  const wrongOwner = source.replace("from './lib/external-beta-dry-run-handoff-policy.mjs';",
+    "from './lib/unrelated-handoff-policy.mjs';");
+  assert.equal(inspectHandoffDelegation(wrongOwner).importFound, false);
 });
