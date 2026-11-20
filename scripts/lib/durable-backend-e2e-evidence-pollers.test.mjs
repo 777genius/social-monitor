@@ -146,16 +146,18 @@ function inspectPollerWiring(source) {
     if (ts.isFunctionDeclaration(node) && node.name) declared.add(node.name.text);
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
       called.add(node.expression.text);
-      if (node.expression.text === "createDurableBackendEvidencePollers" &&
-        node.arguments.length === 1 && ts.isObjectLiteralExpression(node.arguments[0])) {
-        factoryDeps = new Set(node.arguments[0].properties
-          .filter(ts.isShorthandPropertyAssignment).map(property => property.name.text));
-      }
     }
-    if (ts.isVariableDeclaration(node) && ts.isObjectBindingPattern(node.name) &&
+    // Require the live module-level binding; a factory in a dead nested function
+    // cannot supply the actual top-level polling consumers.
+    if (ts.isVariableDeclaration(node) && node.parent?.parent?.parent === tree &&
+      ts.isObjectBindingPattern(node.name) &&
       node.initializer && ts.isCallExpression(node.initializer) &&
       ts.isIdentifier(node.initializer.expression) &&
-      node.initializer.expression.text === "createDurableBackendEvidencePollers") {
+      node.initializer.expression.text === "createDurableBackendEvidencePollers" &&
+      node.initializer.arguments.length === 1 &&
+      ts.isObjectLiteralExpression(node.initializer.arguments[0])) {
+      factoryDeps = new Set(node.initializer.arguments[0].properties
+        .filter(ts.isShorthandPropertyAssignment).map(property => property.name.text));
       boundPollers = new Set(node.name.elements.map(element => element.name.getText(tree)));
     }
     ts.forEachChild(node, visit);
@@ -200,4 +202,23 @@ test("comment-only factory call and wrong import owner fail structural inspectio
   assert.notEqual(wrongOwner, source, "mutation must target the real import");
   assert.ok(!inspectPollerWiring(wrongOwner).imported.has("createDurableBackendEvidencePollers"),
     "wrong import source must not satisfy the extracted-owner contract");
+});
+
+test("dead nested poller factory cannot satisfy module-level binding or dependencies", () => {
+  const source = readFileSync(new URL("../capture-durable-backend-e2e-loop.ts", import.meta.url), "utf8");
+  const originalFactory = [
+    "const { pollScheduledScanEvidence, pollAutoSummaryEvidence } = createDurableBackendEvidencePollers({",
+    "  pool, scheduledScanEvidenceSnapshot, autoSummaryEvidenceSnapshot, readString, readNumber, readStringArray, delay,",
+    "});",
+  ].join("\n");
+  const deadFactory = source.replace(originalFactory,
+    "function neverInvokedEvidenceFactory() {\n" + originalFactory + "\n}");
+  assert.notEqual(deadFactory, source, "mutation must relocate the real factory declaration");
+  const mutated = inspectPollerWiring(deadFactory);
+  assert.ok(mutated.called.has("createDurableBackendEvidencePollers"),
+    "dead factory still contains a real AST call");
+  assert.ok(mutated.called.has("pollScheduledScanEvidence"),
+    "top-level downstream call remains, but its binding is now undefined");
+  assert.equal(mutated.boundPollers, undefined, "dead nested binding must not count");
+  assert.equal(mutated.factoryDeps, undefined, "dead nested dependencies must not count");
 });
