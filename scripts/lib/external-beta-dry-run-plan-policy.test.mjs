@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import { createExternalBetaDryRunPlanPolicy } from './external-beta-dry-run-plan-policy.mjs';
 import { createExternalBetaDryRunHandoffPolicy } from './external-beta-dry-run-handoff-policy.mjs';
 import { createExternalBetaDryRunSafetyLinkagePolicy } from './external-beta-dry-run-safety-linkage-policy.mjs';
+import { createExternalBetaDryRunPackageAdmission } from './external-beta-dry-run-package-admission.mjs';
 
 const ts = createRequire(import.meta.url)('typescript');
 
@@ -306,6 +307,8 @@ function dryRunCliFixture() {
     join(root, 'scripts', 'lib', 'external-beta-dry-run-handoff-policy.mjs'));
   copyFileSync(new URL('./external-beta-dry-run-safety-linkage-policy.mjs', import.meta.url),
     join(root, 'scripts', 'lib', 'external-beta-dry-run-safety-linkage-policy.mjs'));
+  copyFileSync(new URL('./external-beta-dry-run-package-admission.mjs', import.meta.url),
+    join(root, 'scripts', 'lib', 'external-beta-dry-run-package-admission.mjs'));
   writeFileSync(join(root, 'scripts', 'external-beta-evidence-runner.mjs'),
     "import { readFileSync } from 'node:fs';\n" +
     "const args = process.argv.slice(2).join(' ');\n" +
@@ -774,4 +777,149 @@ test('AST E2E admission guard catches dead binding, commented call, omitted inje
     'validateReadinessLinkage();\nvalidateRunnerSafety();');
   assert.deepEqual(inspectSafetyLinkageDelegation(reversed).calls,
     ['validateReadinessLinkage', 'validateRunnerSafety']);
+});
+
+function packageAdmissionFixture() {
+  const f = fixture();
+  f.dryRun.envExample = 'example.env';
+  f.dryRun.requiredArtifactFormats = ['json'];
+  f.dryRun.requiredMissingEnvWithoutCredentials = ['REPORT_ENV'];
+  f.plan.uniqueMissingOptionalEnv = ['OPTIONAL_ENV'];
+  f.runner.artifactExamples = [{ format: 'json' }];
+  f.runner.jobs = [{ jobId: 'external', runPolicy: 'live_command',
+    outputArtifacts: [{ env: 'REPORT_ENV', format: 'json' }] }];
+  const dependencies = {
+    ...f.dependencies,
+    packageScripts: { 'check:external-beta-evidence-dry-run':
+      'node scripts/check-external-beta-evidence-dry-run.mjs' },
+    backendScripts: new Set(['check:external-beta-evidence-dry-run']),
+    baselineScripts: new Set(['check:external-beta-evidence-dry-run']),
+    baselineArtifacts: new Set(['dry-run.json']),
+    packagePath: 'package.json', backendSafePath: 'backend-safe.json',
+    baselinePath: 'baseline.json', readFileSync: () => 'REPORT_ENV=\nOPTIONAL_ENV=\n',
+  };
+  return { ...f, dependencies, ...createExternalBetaDryRunPackageAdmission(dependencies) };
+}
+
+test('real original package admission accepts complete artifact/env/baseline contracts', () => {
+  const f = packageAdmissionFixture();
+  f.validateArtifactCoverage();
+  f.validateEnvExample();
+  f.validateWiring();
+  assert.deepStrictEqual(f.violations, []);
+});
+
+test('package artifact/env checks preserve exact fail-closed diagnostic ordering', () => {
+  const f = packageAdmissionFixture();
+  f.runner.artifactExamples = [];
+  f.runner.jobs[0].outputArtifacts[0].env = 'BAD_ENV';
+  f.validateArtifactCoverage();
+  assert.deepStrictEqual(f.violations, [
+    'runner.json: artifactExamples must include dry-run required format json',
+    'dry-run.json: BAD_ENV must stay required in clean-env dry-run output',
+  ]);
+  const g = packageAdmissionFixture();
+  createExternalBetaDryRunPackageAdmission({
+    ...g.dependencies, readFileSync: () => 'REPORT_ENV=secret\n',
+  }).validateEnvExample();
+  assert.deepStrictEqual(g.violations, [
+    'example.env: REPORT_ENV must not have a committed value',
+    'example.env: must include OPTIONAL_ENV=',
+  ]);
+});
+
+test('package wiring diagnostics remain ordered across npm/backend/baseline owners', () => {
+  const f = packageAdmissionFixture();
+  f.dependencies.packageScripts['check:external-beta-evidence-dry-run'] = 'node wrong';
+  f.dependencies.backendScripts.clear();
+  f.dependencies.baselineScripts.clear();
+  f.dependencies.baselineArtifacts.clear();
+  f.validateWiring();
+  assert.deepStrictEqual(f.violations, [
+    'package.json: check:external-beta-evidence-dry-run must run the dry-run checker',
+    'backend-safe.json: backendScripts must include check:external-beta-evidence-dry-run',
+    'baseline.json: requiredGreenScripts must include check:external-beta-evidence-dry-run',
+    'baseline.json: trackedArtifacts must include dry-run.json',
+  ]);
+});
+
+test('package admission rejects missing/null and noncallable live dependencies', () => {
+  const f = packageAdmissionFixture();
+  for (const name of [
+    'runner', 'dryRun', 'plan', 'runnerPath', 'dryRunPath', 'packageScripts', 'backendScripts',
+    'baselineScripts', 'baselineArtifacts', 'packagePath', 'backendSafePath', 'baselinePath',
+    'violations', 'readFileSync', 'assertSameSet',
+  ]) {
+    for (const value of [undefined, null]) {
+      assert.throws(() => createExternalBetaDryRunPackageAdmission({ ...f.dependencies, [name]: value }),
+        { name: 'TypeError', message: 'external beta dry-run package admission requires ' + name });
+    }
+  }
+  for (const name of ['readFileSync', 'assertSameSet']) {
+    assert.throws(() => createExternalBetaDryRunPackageAdmission({ ...f.dependencies, [name]: 1 }),
+      { name: 'TypeError', message:
+        'external beta dry-run package admission requires callable readFileSync and assertSameSet' });
+  }
+});
+
+test('real CLI enforces extracted artifact and env checks after other policies', () => {
+  const f = dryRunCliFixture();
+  try {
+    f.dryRun.requiredArtifactFormats = ['json'];
+    f.plan.uniqueMissingOptionalEnv = ['OPTIONAL_ENV'];
+    f.handoff.readiness.uniqueMissingOptionalEnv = ['OPTIONAL_ENV'];
+    const result = f.run();
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, 1, result.stderr);
+    assert.equal(result.stdout, '');
+    assert.deepStrictEqual(result.stderr.trimEnd().split('\n'), [
+      'ops/release/external-beta-evidence-dry-run.json: requiredArtifactFormats: expected [json], got []',
+      'ops/release/external-beta-evidence-runner.json: artifactExamples must include dry-run required format json',
+      'ops/release/example.env: must include OPTIONAL_ENV=',
+    ]);
+  } finally { f.cleanup(); }
+});
+
+function realPackageWiring(source) {
+  const tree = ts.createSourceFile('dry-run.mjs', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  const deps = [
+    'runner', 'dryRun', 'plan', 'runnerPath', 'dryRunPath', 'packageScripts', 'backendScripts',
+    'baselineScripts', 'baselineArtifacts', 'packagePath', 'backendSafePath', 'baselinePath',
+    'violations', 'readFileSync', 'assertSameSet',
+  ];
+  const imported = tree.statements.some((s) => ts.isImportDeclaration(s) &&
+    s.moduleSpecifier.text === './lib/external-beta-dry-run-package-admission.mjs' &&
+    ts.isNamedImports(s.importClause?.namedBindings) &&
+    s.importClause.namedBindings.elements.some((e) =>
+      e.name.text === 'createExternalBetaDryRunPackageAdmission' && !e.propertyName));
+  const bound = tree.statements.some((s) => ts.isVariableStatement(s) &&
+    s.declarationList.declarations.some((d) =>
+      ts.isObjectBindingPattern(d.name) && ts.isCallExpression(d.initializer) &&
+      d.initializer.expression.getText(tree) === 'createExternalBetaDryRunPackageAdmission' &&
+      ['validateArtifactCoverage', 'validateEnvExample', 'validateWiring'].every((n) =>
+        d.name.elements.some((e) => e.name.text === n && !e.propertyName)) &&
+      d.initializer.arguments.length === 1 && ts.isObjectLiteralExpression(d.initializer.arguments[0]) &&
+      deps.every((n) => d.initializer.arguments[0].properties.some((p) =>
+        ts.isShorthandPropertyAssignment(p) && p.name.text === n))));
+  const calls = tree.statements.filter((s) => ts.isExpressionStatement(s) &&
+    ts.isCallExpression(s.expression) && ts.isIdentifier(s.expression.expression))
+    .map((s) => s.expression.expression.text);
+  const first = calls.indexOf('validateArtifactCoverage');
+  return imported && bound && first >= 0 &&
+    calls.slice(first, first + 3).join(',') === 'validateArtifactCoverage,validateEnvExample,validateWiring' &&
+    calls.lastIndexOf('validateArtifactCoverage') === first;
+}
+
+test('package AST E2E guard detects commented, nested, missing-dependency and wrong-owner bypass', () => {
+  const source = readFileSync(new URL('../check-external-beta-evidence-dry-run.mjs', import.meta.url), 'utf8');
+  assert.equal(realPackageWiring(source), true);
+  assert.equal(realPackageWiring(source.replace('validateArtifactCoverage();',
+    '// validateArtifactCoverage();')), false);
+  assert.equal(realPackageWiring(source.replace('validateEnvExample();',
+    'function unreachable() { validateEnvExample(); }')), false);
+  assert.equal(realPackageWiring(source.replace('violations, readFileSync, assertSameSet,',
+    'violations, assertSameSet,')), false);
+  assert.equal(realPackageWiring(source.replace(
+    "from './lib/external-beta-dry-run-package-admission.mjs'",
+    "from './lib/not-the-admission-policy.mjs'")), false);
 });
