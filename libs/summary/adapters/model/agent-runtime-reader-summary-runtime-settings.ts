@@ -1,13 +1,15 @@
 import type { AgentRuntimeReaderSummaryModelAdapterOptions } from "./agent-runtime-reader-summary-options";
 import { nonEmptyOrFallback, positiveIntegerOrFallback } from "./agent-runtime-model-support";
 import {
-  type activeReaderSummaryProvider,
-  activeReaderSummaryReasoningEffort,
+  activeReaderSummaryProvider,
+  frozenLegacyReaderSummaryRecoveryContract,
+} from "./reader-summary-runtime-contract";
+import { activeReaderSummaryReasoningEffort } from "./codex-reader-summary-route";
+import {
   resolveReaderSummaryBackendEffort,
   resolveReaderSummaryGenerationIdentity,
-  type ReaderSummaryGenerationBackend,
-  frozenLegacyReaderSummaryRecoveryContract,
-} from "./active-reader-summary-generation-profile";
+} from "./reader-summary-generation-identity-policy";
+import type { ReaderSummaryGenerationBackend } from "./reader-summary-gateway-route-policy";
 
 /** Immutable route/backend/dispatch limits; no client I/O or mutable task state. */
 export type AgentRuntimeReaderSummaryRuntimeSettings = {

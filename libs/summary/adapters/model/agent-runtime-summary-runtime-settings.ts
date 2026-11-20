@@ -1,5 +1,5 @@
 import type { AgentRuntimeProvider } from "../../ports";
-import { readerSummaryRouteControls } from "./active-reader-summary-generation-profile";
+import { readerSummaryRouteControls } from "./reader-summary-generation-identity-policy";
 import { nonEmptyOrFallback, positiveIntegerOrFallback } from "./agent-runtime-model-support";
 import { defaultAgentRuntimeSummaryModel, type AgentRuntimeSummaryModelAdapterOptions } from "./agent-runtime-summary-options";
 

@@ -22,6 +22,10 @@ on:
       - libs/summary/adapters/model/reader-summary-backend-selection.ts
       - libs/summary/adapters/model/reader-summary-daily-task-env-resolution.ts
       - libs/summary/adapters/model/reader-summary-generation-identity-policy.spec.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-runtime-settings.ts
+      - libs/summary/adapters/model/agent-runtime-summary-runtime-settings.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-runtime-settings.spec.ts
+      - libs/summary/adapters/model/agent-runtime-summary-model.adapter.spec.ts
       - libs/summary/adapters/model/codex-reader-summary-route.ts
       - libs/summary/adapters/model/codex-reader-summary-gateway-env-admission.ts
       - libs/summary/adapters/model/codex-reader-summary-gateway-route-policy.ts
@@ -68,3 +72,5 @@ jobs:
           libs/summary/adapters/model/reader-summary-gateway-route-policy.spec.ts
           libs/summary/adapters/model/codex-reader-summary-gateway-route-policy.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-model.adapter.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-runtime-settings.spec.ts
+          libs/summary/adapters/model/agent-runtime-summary-model.adapter.spec.ts

@@ -1,5 +1,15 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { AgentRuntimeClientPort } from "../../ports";
-import { frozenLegacyReaderSummaryRecoveryContract } from "./active-reader-summary-generation-profile";
+import {
+  frozenLegacyReaderSummaryRecoveryContract,
+  readerSummaryRouteControls as legacyRouteControls,
+  resolveReaderSummaryGenerationIdentity as legacyIdentity,
+} from "./active-reader-summary-generation-profile";
+import {
+  readerSummaryRouteControls as ownedRouteControls,
+  resolveReaderSummaryGenerationIdentity as ownedIdentity,
+} from "./reader-summary-generation-identity-policy";
 import { defaultTimeoutMs as adapterDefaultTimeoutMs } from "./agent-runtime-reader-summary-model.adapter";
 import {
   defaultTimeoutMs,
@@ -76,4 +86,18 @@ describe("agent runtime reader summary runtime settings", () => {
       model: "gpt-5.6-sol",
     })).toThrow("conflicts with purpose policy");
   });
+  it("retains exact legacy export identity while both settings consume the policy owner", () => {
+    expect(legacyRouteControls).toBe(ownedRouteControls);
+    expect(legacyIdentity).toBe(ownedIdentity);
+
+    for (const file of [
+      "agent-runtime-reader-summary-runtime-settings.ts",
+      "agent-runtime-summary-runtime-settings.ts",
+    ]) {
+      const source = readFileSync(join(__dirname, file), "utf8");
+      expect(source).not.toMatch(/from ["']\\.\\/active-reader-summary-generation-profile["']/);
+      expect(source).toContain("./reader-summary-generation-identity-policy");
+    }
+  });
+
 });
