@@ -427,6 +427,9 @@
   },
   "overrides": {
     "@eslint/eslintrc": "3.3.6",
+    "@prisma/config": {
+      "effect": "3.22.5"
+    },
     "@istanbuljs/load-nyc-config": {
       "js-yaml": "4.3.2"
     },
