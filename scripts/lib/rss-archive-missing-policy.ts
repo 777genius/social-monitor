@@ -4,7 +4,7 @@ export { archiveHash, archiveNeed, canonicalJson };
 
 export type RssArchiveScope = HnArchiveScope;
 export type RssArchiveItem = Readonly<{
-  guid: string; publishedUtcDate: string; title: string;
+  guid: string; publishedUtcDate: string; publishedAt?: string; title: string;
   provenance: Readonly<Record<string, unknown>>; link: string | null; description: string | null;
 }>;
 export type RssArchiveManifest = Readonly<{
@@ -69,7 +69,7 @@ export function qualifyRssArchiveItem(input: unknown, day: string, ordinal: numb
   archiveNeed(dayPattern.test(day), 'RSS packet day invalid');
   const value = object(input, `RSS item ${ordinal} invalid`);
   const required = ['guid','publishedUtcDate','title','provenance'];
-  const allowed = ['guid','publishedUtcDate','title','provenance','link','description'];
+  const allowed = ['guid','publishedUtcDate','publishedAt','title','provenance','link','description'];
   archiveNeed(required.every(key => key in value) && Object.keys(value).every(key => allowed.includes(key)),
     `RSS item ${ordinal} shape invalid`);
   archiveNeed(typeof value.guid === 'string' && value.guid.trim().length > 0 &&
@@ -77,6 +77,12 @@ export function qualifyRssArchiveItem(input: unknown, day: string, ordinal: numb
     typeof value.title === 'string' && value.title.trim().length > 0 &&
     (value.description === undefined || typeof value.description === 'string'),
     `RSS item ${ordinal} identity invalid`);
+  if (value.publishedAt !== undefined) {
+    archiveNeed(typeof value.publishedAt === 'string' && utcPattern.test(value.publishedAt) &&
+      Number.isFinite(Date.parse(value.publishedAt)) &&
+      new Date(value.publishedAt).toISOString().slice(0, 10) === day,
+      `RSS item ${ordinal} timestamp invalid`);
+  }
   archiveNeed(value.link === undefined || value.link === null ||
     (typeof value.link === 'string' && ['http:','https:'].includes(new URL(value.link).protocol)),
     `RSS item ${ordinal} link invalid`);

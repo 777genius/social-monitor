@@ -92,6 +92,20 @@ test('RSS refuses packet day mismatch and preserves guid-only day precision', ()
   assert.equal(result.items[1].metadata.canonicalUrlSource, 'google-news-guid-fallback');
 });
 
+test('RSS preserves source publication timestamp and rejects invalid or out-of-day timestamps', () => {
+  const item = { ...manifest.items[0], publishedAt: '2026-10-17T14:32:01Z' };
+  const exact = { ...manifest, items: [item] };
+  const result = normalizeRssArchiveMissing(exact, plan.day, [item.guid]).items[0];
+  assert.equal(result.publishedAt.toISOString(), '2026-10-17T14:32:01.000Z');
+  assert.equal(result.metadata.publishedPrecision, 'instant');
+  assert.equal(result.metadata.publishedAtSource, 'source-pub-date');
+  assert.deepEqual(result.metadata.provenance, item.provenance);
+  for (const publishedAt of ['2026-10-18T00:00:00Z', '2026-10-17T25:00:00Z', 'not-a-date']) {
+    assert.throws(() => normalizeRssArchiveMissing(
+      { ...exact, items: [{ ...item, publishedAt }] }, plan.day, [item.guid]));
+  }
+});
+
 test('RSS accepts key-omitted guid-only items and canonicalizes nulls', () => {
   const raw = {
     generatedAt: '2026-10-17T09:00:00.000Z', jobId: 'retained-rss',
@@ -153,15 +167,20 @@ test('RSS fallback URL percent-encodes raw GUIDs', () => {
 });
 
 test('RSS planner pins packetSha256 to exact packet.json file bytes', async () => {
-  const { writeRssArchiveMissingPackets } = await import('../plan-rss-archive-missing-packets.ts');
+  const { writeRssArchiveMissingPackets, planRssArchiveMissingPackets } = await import('../plan-rss-archive-missing-packets.ts');
   process.env.MISSING_IMPORT_SCOPE_JSON = JSON.stringify(scope);
   process.env.MISSING_IMPORT_BINDING_CONFIG = '{}';
   const root = await mkdtemp(join(tmpdir(), 'rss-packets-'));
   const manifestPath = join(root, 'manifest.json');
-  await writeFile(manifestPath, JSON.stringify(manifest));
+  const precise = { ...manifest, items: [{ ...manifest.items[0], publishedAt: '2026-10-17T14:32:01Z' }, manifest.items[1]] };
+  await writeFile(manifestPath, JSON.stringify(precise));
   const [directory] = await writeRssArchiveMissingPackets(manifestPath, join(root, 'packets'));
   const packetBytes = await readFile(join(directory, 'packet.json'));
   const planned = JSON.parse(await readFile(join(directory, 'plan.json'), 'utf8'));
   assert.equal(sha(packetBytes), planned.packetSha256);
   assert.equal(planned.semanticKey, plan.semanticKey);
+  assert.equal(JSON.parse(packetBytes).items[0].publishedAt, '2026-10-17T14:32:01Z');
+  assert.throws(() => planRssArchiveMissingPackets({ ...precise, items: [
+    { ...precise.items[0], publishedAt: '2026-10-18T00:00:00Z' }, precise.items[1],
+  ] }));
 });
