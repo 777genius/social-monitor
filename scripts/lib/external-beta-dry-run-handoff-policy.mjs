@@ -1,7 +1,19 @@
 // Preserve the legacy JSON handoff admission contract and its diagnostic ordering.
-export function createExternalBetaDryRunHandoffPolicy({
-  handoff, runner, dryRun, dryRunPath, runnerPath, plan, violations, assertSameSet,
-}) {
+export function createExternalBetaDryRunHandoffPolicy(dependencies) {
+  for (const name of [
+    'handoff', 'runner', 'dryRun', 'dryRunPath', 'runnerPath', 'plan', 'violations', 'assertSameSet',
+  ]) {
+    const dependency = dependencies?.[name];
+    if (dependency === null || dependency === undefined) {
+      throw new TypeError(`external beta dry-run handoff policy requires ${name}`);
+    }
+  }
+  const {
+    handoff, runner, dryRun, dryRunPath, runnerPath, plan, violations, assertSameSet,
+  } = dependencies;
+  if (typeof assertSameSet !== 'function') {
+    throw new TypeError('external beta dry-run handoff policy requires assertSameSet to be a function');
+  }
   function validateHandoffShape() {
     if (handoff.runnerId !== runner.runnerId) {
       violations.push(`${dryRunPath}: JSON handoff runnerId must match ${runnerPath}`);

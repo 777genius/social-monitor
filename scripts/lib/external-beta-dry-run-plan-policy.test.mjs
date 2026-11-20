@@ -573,3 +573,27 @@ test('real JSON handoff delegation rejects dead/comment-only and wrong-owner wir
     "from './lib/unrelated-handoff-policy.mjs';");
   assert.equal(inspectHandoffDelegation(wrongOwner).importFound, false);
 });
+
+test('JSON handoff factory rejects absent and non-callable injected dependencies before validation', () => {
+  const { dependencies } = fixture();
+  const valid = { ...dependencies, handoff: {} };
+  assert.equal(typeof createExternalBetaDryRunHandoffPolicy(valid).validateHandoffShape, 'function');
+  assert.throws(
+    () => createExternalBetaDryRunHandoffPolicy(),
+    { name: 'TypeError', message: 'external beta dry-run handoff policy requires handoff' },
+  );
+  for (const name of [
+    'handoff', 'runner', 'dryRun', 'dryRunPath', 'runnerPath', 'plan', 'violations', 'assertSameSet',
+  ]) {
+    for (const value of [null, undefined]) {
+      assert.throws(
+        () => createExternalBetaDryRunHandoffPolicy({ ...valid, [name]: value }),
+        { name: 'TypeError', message: `external beta dry-run handoff policy requires ${name}` },
+      );
+    }
+  }
+  assert.throws(
+    () => createExternalBetaDryRunHandoffPolicy({ ...valid, assertSameSet: 42 }),
+    { name: 'TypeError', message: 'external beta dry-run handoff policy requires assertSameSet to be a function' },
+  );
+});
