@@ -95,7 +95,8 @@ describe("agent runtime reader summary runtime settings", () => {
       "agent-runtime-summary-runtime-settings.ts",
     ]) {
       const source = readFileSync(join(__dirname, file), "utf8");
-      expect(source).not.toMatch(/from ["']\\.\\/active-reader-summary-generation-profile["']/);
+      expect(source).not.toContain('from "./active-reader-summary-generation-profile"');
+      expect(source).not.toContain("from './active-reader-summary-generation-profile'");
       expect(source).toContain("./reader-summary-generation-identity-policy");
     }
   });
