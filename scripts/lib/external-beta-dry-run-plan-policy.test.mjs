@@ -179,7 +179,8 @@ function inspectRunnerWiring(source) {
   }
   function visit(node) {
     if (ts.isFunctionDeclaration(node) && node.name) declared.add(node.name.text);
-    if (ts.isVariableDeclaration(node) && ts.isObjectBindingPattern(node.name) &&
+    if (ts.isVariableDeclaration(node) && node.parent?.parent?.parent === tree &&
+      ts.isObjectBindingPattern(node.name) &&
       node.initializer && ts.isCallExpression(node.initializer) &&
       ts.isIdentifier(node.initializer.expression) &&
       node.initializer.expression.text === 'createExternalBetaDryRunPlanPolicy' &&
@@ -229,6 +230,21 @@ test('comment-only wiring markers and wrong import owner cannot pass', () => {
   assert.ok(commentOnlyFactory.includes('createExternalBetaDryRunPlanPolicy({'),
     'old regex would falsely accept factory marker inside a comment');
   assert.equal(inspectRunnerWiring(commentOnlyFactory).factoryBound, false);
+  const originalFactoryBinding =
+    'const { validateDryRunContract, validatePlanShape } = createExternalBetaDryRunPlanPolicy({\n' +
+    '  dryRun, runner, plan, dryRunPath, runnerPath, existsSync, assertSameSet, violations,\n' +
+    '});';
+  const neverInvokedFactory = source.replace(
+    originalFactoryBinding,
+    'function neverInvokedFactory() {\n' + originalFactoryBinding + '\n}',
+  );
+  assert.notEqual(neverInvokedFactory, source, 'mutation must relocate factory binding');
+  const nestedWiring = inspectRunnerWiring(neverInvokedFactory);
+  assert.deepEqual(nestedWiring.topLevelValidatorCalls,
+    ['validateDryRunContract', 'validatePlanShape'],
+    'top-level calls remain but their factory-provided bindings are unavailable');
+  assert.equal(nestedWiring.factoryBound, false,
+    'factory binding in a never-invoked nested function must not pass E2E wiring');
   const wrongOwner = source.replace(
     "from './lib/external-beta-dry-run-plan-policy.mjs';",
     "from './lib/unrelated-dry-run-policy.mjs';",
