@@ -7,7 +7,7 @@ import {
 export { resolveAgentRuntimeReaderSummaryModelOptions } from "./agent-runtime-reader-summary-options";
 export type { AgentRuntimeReaderSummaryModelAdapterOptions } from "./agent-runtime-reader-summary-options";
 import { buildAgentRuntimeReaderSummaryTaskCommand } from "./agent-runtime-reader-summary-task-command";
-import { runAgentRuntimeDailyEditor } from "./agent-runtime-reader-summary-daily-editorial";
+import { dispatchAgentRuntimeReaderSummaryDailyPlan } from "./agent-runtime-reader-summary-daily-plan-dispatch";
 import { primaryReaderSummaryEvidence } from "../../domain";
 import type {
   AgentRuntimeClientPort,
@@ -69,12 +69,15 @@ export class AgentRuntimeReaderSummaryModelAdapter implements ReaderSummaryModel
 
   async planDaily(input: ReaderSummaryModelInput, route: ReaderSummaryModelRoute):
     Promise<ReaderSummaryDailyEditorialAttempt> {
-    if (this.settings.legacyRecovery || input.evidence.dailyGenerationInput === undefined)
-      throw new Error("Daily editorial planning is not available for this profile");
-    return runAgentRuntimeDailyEditor({ input, client: this.client,
-      baseCommand: this.buildTaskCommand(input, route, "primary"),
-      inputTokenDivisor: this.settings.inputTokenDivisor, maxOutputTokens: this.settings.maxOutputTokens,
-      sink: this.verifiedAttestationSink });
+    return dispatchAgentRuntimeReaderSummaryDailyPlan({
+      input,
+      client: this.client,
+      legacyRecovery: this.settings.legacyRecovery,
+      buildPrimaryCommand: () => this.buildTaskCommand(input, route, "primary"),
+      inputTokenDivisor: this.settings.inputTokenDivisor,
+      maxOutputTokens: this.settings.maxOutputTokens,
+      sink: this.verifiedAttestationSink,
+    });
   }
   async generate(input: ReaderSummaryModelInput,
     selectedRoute: ReaderSummaryModelRoute, writerBudget?: ReaderSummaryModelBudget,

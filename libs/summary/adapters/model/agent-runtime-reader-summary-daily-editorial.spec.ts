@@ -1,4 +1,5 @@
 import { AgentRuntimeReaderSummaryModelAdapter } from "./agent-runtime-reader-summary-model.adapter";
+import { dispatchAgentRuntimeReaderSummaryDailyPlan } from "./agent-runtime-reader-summary-daily-plan-dispatch";
 import { CapturingAgentRuntimeClient } from "./agent-runtime-reader-summary-model.spec-support";
 import { dailyDigestFixture } from "./reader-summary-daily-digest.fixture";
 import { readFailedDailyEditorUsage } from "./reader-summary-failed-daily-editor-usage";
@@ -90,4 +91,38 @@ it("does not charge a predispatch gateway rejection even when it carries estimat
   expect(rejected).toBeInstanceOf(Error);
   expect(readFailedDailyEditorUsage(rejected)).toBeUndefined();
   expect(client.commands).toHaveLength(1);
+});
+
+it.each([
+  { label: "legacy recovery", legacyRecovery: true, missingFrozenInput: false },
+  { label: "missing frozen daily input", legacyRecovery: false, missingFrozenInput: true },
+])("rejects $label before a primary command or paid task is dispatched", async ({
+  legacyRecovery,
+  missingFrozenInput,
+}) => {
+  const { input } = await dailyDigestFixture();
+  const scopedInput = missingFrozenInput
+    ? { ...input, evidence: { ...input.evidence, dailyGenerationInput: undefined } }
+    : input;
+  const client = new CapturingAgentRuntimeClient({
+    status: "completed",
+    structuredOutput: {},
+    warnings: [],
+    usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCostUsd: 0 },
+  });
+  const buildPrimaryCommand = jest.fn((): never => {
+    throw new Error("No command should be constructed for a rejected daily lane");
+  });
+
+  await expect(dispatchAgentRuntimeReaderSummaryDailyPlan({
+    input: scopedInput,
+    client,
+    legacyRecovery,
+    buildPrimaryCommand,
+    inputTokenDivisor: 4,
+    maxOutputTokens: 16_000,
+  })).rejects.toThrow("Daily editorial planning is not available for this profile");
+
+  expect(buildPrimaryCommand).not.toHaveBeenCalled();
+  expect(client.commands).toHaveLength(0);
 });

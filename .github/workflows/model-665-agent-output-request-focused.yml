@@ -29,6 +29,8 @@ on:
       - libs/summary/adapters/model/agent-runtime-reader-summary-route-admission.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-attested-draft.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-generation.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-daily-plan-dispatch.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-daily-editorial.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-repair-admission.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-paid-attempt.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-generation.spec.ts
@@ -85,5 +87,6 @@ jobs:
           libs/summary/adapters/model/agent-runtime-reader-summary-gateway-violations.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-model.gateway-repair.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-generation.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-daily-editorial.spec.ts
           libs/summary/adapters/model/grpc-agent-runtime-wire-codec.spec.ts
           libs/summary/adapters/model/grpc-agent-runtime-client.spec.ts

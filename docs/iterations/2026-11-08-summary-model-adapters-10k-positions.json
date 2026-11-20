@@ -7954,6 +7954,14 @@
         244
       ],
       "responsibility": "Previously audited settlement cleanup/grace diagnostics now have a pure, directly exercised policy owner outside gateway task completion; exact source positions transferred once, no additional original LOC credited."
+    },
+    {
+      "original": "agent-runtime-reader-summary-model.adapter.ts",
+      "owner": "agent-runtime-reader-summary-daily-plan-dispatch.ts",
+      "originalPositions": [
+        213
+      ],
+      "responsibility": "Independent daily editorial admission refuses legacy or missing frozen-input work before command construction/paid dispatch; adapter retains routing, stable error and trusted client/attestation injection."
     }
   ]
 }
