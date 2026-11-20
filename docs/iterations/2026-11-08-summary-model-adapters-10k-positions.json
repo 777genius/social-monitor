@@ -7848,6 +7848,18 @@
         91
       ],
       "responsibility": "Admit provider JSON-object syntax independently of wire-text traversal and token usage, preserving redacted parse exceptions and fail-closed rejection"
+    },
+    {
+      "original": "openai-responses-summary-draft-normalizer.ts",
+      "owner": "openai-responses-summary-lineage.ts",
+      "originalPositions": [
+        59,
+        60,
+        61,
+        62,
+        63
+      ],
+      "responsibility": "Model/prompt/schema/rules/evaluation provenance projection isolated from provider evidence and claim normalization with exact legacy named export identity"
     }
   ]
 }

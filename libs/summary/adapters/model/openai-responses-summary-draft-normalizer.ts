@@ -13,6 +13,7 @@ import {
   assertOpenAiSummaryDraftShape,
 } from './openai-responses-summary-draft-shape';
 
+import { buildOpenAiSummaryLineage } from "./openai-responses-summary-lineage";
 import { normalizeKeyPoints } from './openai-responses-summary-key-points';
 import { normalizeRisks } from './openai-responses-summary-risks';
 import { normalizeConfidence } from './openai-responses-summary-confidence';
@@ -20,20 +21,7 @@ import { normalizeQualityFlags, normalizeNoSignalReason } from './openai-respons
 import { normalizeSafeStringArray, fallbackHeadline, fallbackExecutiveSummary, stringOrFallback } from './openai-responses-summary-text';
 
 export { assertOpenAiSummaryDraftShape } from './openai-responses-summary-draft-shape';
-
-export const buildOpenAiSummaryLineage = (
-  input: SummaryModelInput,
-  selectedRoute: SummaryModelRoute,
-  evalDatasetVersion: string,
-) =>
-  ({
-    promptVersion: selectedRoute.promptVersion,
-    schemaVersion: selectedRoute.schemaVersion,
-    modelVersion: selectedRoute.model,
-    providerVersion: selectedRoute.provider,
-    rulesVersion: input.policy.rulesVersion,
-    evalDatasetVersion,
-  }) as const;
+export { buildOpenAiSummaryLineage } from "./openai-responses-summary-lineage";
 
 export const normalizeOpenAiSummaryDraft = (
   raw: Record<string, unknown>,

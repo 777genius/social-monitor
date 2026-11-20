@@ -80,6 +80,8 @@ on:
       - libs/summary/adapters/model/openai-responses-summary-risks.ts
       - libs/summary/adapters/model/openai-responses-summary-confidence.ts
       - libs/summary/adapters/model/openai-responses-summary-draft-normalizer.ts
+      - libs/summary/adapters/model/openai-responses-summary-lineage.ts
+      - libs/summary/adapters/model/openai-responses-summary-lineage.spec.ts
       - libs/summary/adapters/model/openai-responses-summary-trusted-citation-context.ts
       - libs/summary/adapters/model/openai-responses-summary-quality.spec.ts
       - libs/summary/adapters/model/openai-responses-summary-json-boundaries.spec.ts
@@ -172,6 +174,7 @@ jobs:
           libs/summary/adapters/model/openai-responses-summary-citations.spec.ts
           libs/summary/adapters/model/openai-responses-summary-draft-shape.spec.ts
           libs/summary/adapters/model/openai-responses-summary-quality.spec.ts
+          libs/summary/adapters/model/openai-responses-summary-lineage.spec.ts
           libs/summary/adapters/model/openai-responses-summary-json-boundaries.spec.ts
           libs/summary/adapters/model/openai-responses-summary-response-parser-split.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-value-boundaries.spec.ts
