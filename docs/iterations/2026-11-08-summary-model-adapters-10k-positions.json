@@ -2951,20 +2951,8 @@
         310,
         311,
         312,
-        314,
-        315,
-        316,
-        317,
-        318,
-        319,
         321,
         322,
-        323,
-        324,
-        325,
-        326,
-        327,
-        328,
         332,
         334,
         335,
@@ -7962,6 +7950,25 @@
         213
       ],
       "responsibility": "Independent daily editorial admission refuses legacy or missing frozen-input work before command construction/paid dispatch; adapter retains routing, stable error and trusted client/attestation injection."
+    },
+    {
+      "original": "agent-runtime-reader-summary-model.adapter.ts",
+      "owner": "agent-runtime-reader-summary-command-identity.ts",
+      "originalPositions": [
+        314,
+        315,
+        316,
+        317,
+        318,
+        319,
+        323,
+        324,
+        325,
+        326,
+        327,
+        328
+      ],
+      "responsibility": "Only tenant/workspace/scope/time-bound request and correlation IDs are now owned with frozen-versus-active purpose selection, independently of mutable task payload, model controls, prompt and attestation policy; 12 already-counted positions transferred once, no new original LOC."
     }
   ]
 }

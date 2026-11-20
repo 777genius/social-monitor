@@ -1,4 +1,3 @@
-import { readerSummaryScopeKey } from "../../domain";
 import type {
   AgentRuntimeProvider,
   AgentRuntimeTaskCommand,
@@ -11,15 +10,13 @@ import {
   buildOpenAiReaderSummaryPromptPayload,
 } from "./openai-responses-reader-summary-prompt";
 import { readerSummaryWriterSchema } from "./openai-responses-reader-summary-schema";
-import { buildAgentRuntimeRequestId } from "./agent-runtime-model-support";
 import {
-  activeReaderSummaryPurposes,
-  frozenLegacyReaderSummaryRecoveryContract,
   isGatewayReaderSummaryBackend,
   readerSummaryRouteControls,
   type ReaderSummaryGenerationBackend,
 } from "./active-reader-summary-generation-profile";
 import { gatewayOutputHardLimits } from "./gateway-llm/gateway-llm-schema-limits";
+import { readerSummaryCommandIdentity } from "./agent-runtime-reader-summary-command-identity";
 
 export const buildAgentRuntimeReaderSummaryTaskCommand = (
   params: Readonly<{
@@ -39,37 +36,20 @@ export const buildAgentRuntimeReaderSummaryTaskCommand = (
 ): AgentRuntimeTaskCommand => {
   const { input, selectedRoute, attempt, schemaViolations } = params;
   const isRepair = attempt === "repair";
+  const identity = readerSummaryCommandIdentity({ input, attempt, legacyRecovery: params.legacyRecovery });
   const selectedSchema = readerSummaryWriterSchema(input);
   const hardLimits = isGatewayReaderSummaryBackend(params.modelBackend)
     ? `\n${gatewayOutputHardLimits(selectedSchema)}` : "";
   const repairInstruction = !isRepair ? ""
     : `\n${readerSummaryRepairInstruction(input, schemaViolations)}`;
   return {
-    requestId: buildAgentRuntimeRequestId(
-      isRepair ? "reader-summary-repair" : "reader-summary",
-      input.tenantId,
-      input.workspaceId,
-      readerSummaryScopeKey(input.scope),
-      input.requestedAt,
-    ),
+    requestId: identity.requestId,
     tenantId: input.tenantId,
     workspaceId: input.workspaceId,
-    correlationId: buildAgentRuntimeRequestId(
-      "reader-summary-correlation",
-      input.tenantId,
-      input.workspaceId,
-      readerSummaryScopeKey(input.scope),
-      input.requestedAt,
-    ),
+    correlationId: identity.correlationId,
     provider: params.agentProvider,
     providerInstanceId: params.providerInstanceId,
-    purpose: isRepair
-      ? params.legacyRecovery
-        ? frozenLegacyReaderSummaryRecoveryContract.purposes.repair
-        : activeReaderSummaryPurposes.repair
-      : params.legacyRecovery
-        ? frozenLegacyReaderSummaryRecoveryContract.purposes.generate
-        : activeReaderSummaryPurposes.generate,
+    purpose: identity.purpose,
     systemPrompt: `${buildOpenAiReaderSummaryInstructions(input)}${hardLimits}${repairInstruction}`,
     prompt: buildOpenAiReaderSummaryPromptPayload(input),
     outputSchema: selectedSchema,
