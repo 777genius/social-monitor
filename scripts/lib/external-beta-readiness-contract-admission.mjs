@@ -1,3 +1,9 @@
+/**
+ * Validate a parsed external-beta readiness contract and append legacy-order findings.
+ * The CLI supplies the parsed contract, npm scripts, filesystem probe and accumulator.
+ * Preserves original malformed-input/exception behavior while migrating ownership.
+ * @param {{contract: object, contractPath: string, scripts: Record<string, string>, existsSync: (path: string) => boolean, violations: string[]}} dependencies
+ */
 export function validateExternalBetaContractAdmission({ contract, contractPath, scripts, existsSync, violations }) {
   const requiredGoDecisionCriteriaFragments = new Set([
     'durable runtime proof',

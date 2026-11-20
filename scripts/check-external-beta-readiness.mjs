@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { validateExternalBetaContractAdmission } from './lib/external-beta-readiness-contract-admission.mjs';
 import { validateExternalBetaEvidenceGroups } from './lib/external-beta-readiness-evidence-groups.mjs';
 import { validateExternalBetaCapacityAndExceptions } from './lib/external-beta-readiness-capacity-no-go-policy.mjs';
+import { validateExternalBetaGoCrossEvidence } from './lib/external-beta-readiness-go-cross-evidence.mjs';
 
 const contractPath = 'ops/release/external-beta-readiness-contract.json';
 const sourceCertificationPath = 'ops/ingestion/source-provider-certification.json';
@@ -26,17 +27,7 @@ validateExternalBetaContractAdmission({ contract, contractPath, scripts, existsS
 
 validateExternalBetaEvidenceGroups({ contract, scripts, existsSync, contractPath, violations });
 
-if (contract.externalBetaDecision === 'go') {
-  if (sourceCertification.certifiedProviders.some((provider) => provider.liveBetaReady !== true)) {
-    violations.push(`${contractPath}: go requires every certified provider to be liveBetaReady`);
-  }
-  if (feedback.evidenceMode !== 'redacted_beta_samples') {
-    violations.push(`${contractPath}: go requires redacted beta feedback samples`);
-  }
-  if (decision.decision !== 'go') {
-    violations.push(`${contractPath}: go requires beta ring decision to be go`);
-  }
-}
+validateExternalBetaGoCrossEvidence({ contract, sourceCertification, feedback, decision, contractPath, violations });
 
 validateExternalBetaCapacityAndExceptions({ contract, contractPath, violations });
 
