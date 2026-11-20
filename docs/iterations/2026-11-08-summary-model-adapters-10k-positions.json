@@ -2921,20 +2921,9 @@
         312,
         321,
         322,
-        332,
-        334,
-        335,
-        337,
-        338,
         339,
         340,
         341,
-        342,
-        343,
-        344,
-        345,
-        351,
-        352,
         356,
         357,
         358
@@ -7934,9 +7923,14 @@
         325,
         326,
         327,
-        328
+        328,
+        332,
+        334,
+        335,
+        337,
+        338
       ],
-      "responsibility": "Only tenant/workspace/scope/time-bound request and correlation IDs are now owned with frozen-versus-active purpose selection, independently of mutable task payload, model controls, prompt and attestation policy; 12 already-counted positions transferred once, no new original LOC."
+      "responsibility": "Only tenant/workspace/scope/time-bound request and correlation IDs are now owned with frozen-versus-active purpose selection, independently of mutable task payload, model controls, prompt and attestation policy; 12 already-counted positions transferred once, no new original LOC. Five original purpose-selection statements, formerly misattributed to task assembly, re-owned once by the identity policy."
     },
     {
       "original": "openai-responses-reader-summary-weekly-response-parser.ts",
@@ -7963,6 +7957,18 @@
         68
       ],
       "responsibility": "Strict untrusted provider JSON object admission and wrapped fail-closed error identity, isolated from envelope selection, usage and citation validation; original non-sanitized SyntaxError text is not credited"
+    },
+    {
+      "original": "agent-runtime-reader-summary-model.adapter.ts",
+      "owner": "agent-runtime-reader-summary-command-controls.ts",
+      "originalPositions": [
+        343,
+        344,
+        345,
+        351,
+        352
+      ],
+      "responsibility": "Execution controls and no-tools provider policy are separate from task identity, schema preparation, prompts and command assembly; five previously recorded original executable coordinates re-owned once, no newly credited positions."
     }
   ]
 }

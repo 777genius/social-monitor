@@ -12,11 +12,11 @@ import {
 import { readerSummaryWriterSchema } from "./openai-responses-reader-summary-schema";
 import {
   isGatewayReaderSummaryBackend,
-  readerSummaryRouteControls,
   type ReaderSummaryGenerationBackend,
 } from "./active-reader-summary-generation-profile";
 import { gatewayOutputHardLimits } from "./gateway-llm/gateway-llm-schema-limits";
 import { readerSummaryCommandIdentity } from "./agent-runtime-reader-summary-command-identity";
+import { readerSummaryTaskControls } from "./agent-runtime-reader-summary-command-controls";
 
 export const buildAgentRuntimeReaderSummaryTaskCommand = (
   params: Readonly<{
@@ -53,19 +53,13 @@ export const buildAgentRuntimeReaderSummaryTaskCommand = (
     systemPrompt: `${buildOpenAiReaderSummaryInstructions(input)}${hardLimits}${repairInstruction}`,
     prompt: buildOpenAiReaderSummaryPromptPayload(input),
     outputSchema: selectedSchema,
-    controls: {
-      interactive: false,
-      outputSchemaName: "social_monitor_reader_summary_artifact",
-      schemaVersion: selectedRoute.schemaVersion,
+    controls: readerSummaryTaskControls({
+      selectedRoute,
       model: params.model,
-      ...(params.modelBackend === "xiaomi-mimo-token-plan"
-        ? { modelBackend: params.modelBackend }
-        : {}),
-      ...readerSummaryRouteControls(params.modelBackend, params.reasoningEffort),
-      toolsEnabled: false,
-      toolPolicy: "none",
+      modelBackend: params.modelBackend,
+      reasoningEffort: params.reasoningEffort,
       maxOutputTokens: params.maxOutputTokens,
-    },
+    }),
     timeoutMs: params.timeoutMs,
     metadata: {
       adapter: "agent-runtime-reader-summary",
