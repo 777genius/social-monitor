@@ -1,4 +1,5 @@
 import { AgentRuntimeReaderSummaryModelAdapter } from "./agent-runtime-reader-summary-model.adapter";
+import { admitAgentRuntimeReaderSummaryRepair } from "./agent-runtime-reader-summary-repair-admission";
 import { runAgentRuntimeReaderSummaryPaidAttempt } from "./agent-runtime-reader-summary-paid-attempt";
 import { buildAgentRuntimeReaderSummaryTaskCommand } from "./agent-runtime-reader-summary-task-command";
 import {
@@ -155,5 +156,51 @@ describe("agent-runtime reader summary attempt lifecycle", () => {
     })).rejects.toThrow("synthetic paid transport rejection");
     expect(client.commands).toEqual([command]);
     expect(estimate).not.toHaveBeenCalled();
+  });
+});
+
+describe("agent-runtime reader summary repair admission", () => {
+  const spent = { inputTokens: 20, outputTokens: 10, estimatedCostUsd: 0.125 };
+  const estimate = { inputTokens: 30, outputTokens: 20, estimatedCostUsd: 0.125 };
+  const exactBudget = { remainingTokens: 80, remainingCostUsd: 0.25 };
+
+  it("admits a primary gateway violation at the exact shared budget boundary", () => {
+    expect(admitAgentRuntimeReaderSummaryRepair({
+      attempt: "primary", cause: { kind: "gateway_schema" },
+      spent, estimate, writerBudget: exactBudget,
+    })).toBe(true);
+    expect(() => admitAgentRuntimeReaderSummaryRepair({
+      attempt: "primary", cause: { kind: "gateway_schema" },
+      spent, estimate, writerBudget: { ...exactBudget, remainingTokens: 79 },
+    })).toThrow("Daily editorial writer cannot repair within the shared model budget");
+  });
+
+  it("admits recognized narrative failures but rejects unknown trust failures before budget checks", () => {
+    expect(admitAgentRuntimeReaderSummaryRepair({
+      attempt: "primary",
+      cause: { kind: "narrative", error: new Error("Reader summary narrative is incomplete") },
+      spent, estimate, writerBudget: exactBudget,
+    })).toBe(true);
+    expect(() => admitAgentRuntimeReaderSummaryRepair({
+      attempt: "primary",
+      cause: { kind: "narrative", error: new Error("Reader summary narrative is incomplete") },
+      spent, estimate, writerBudget: { ...exactBudget, remainingCostUsd: 0.125 },
+    })).toThrow("Daily editorial writer cannot repair within the shared model budget");
+    expect(admitAgentRuntimeReaderSummaryRepair({
+      attempt: "primary", cause: { kind: "narrative", error: new Error("attestation missing") },
+      spent, estimate, writerBudget: { remainingTokens: 0, remainingCostUsd: 0 },
+    })).toBe(false);
+  });
+
+  it("never authorizes a third transport attempt for either repair cause", () => {
+    for (const cause of [
+      { kind: "gateway_schema" } as const,
+      { kind: "narrative", error: new Error("Reader summary narrative is incomplete") } as const,
+    ]) {
+      expect(admitAgentRuntimeReaderSummaryRepair({
+        attempt: "repair", cause, spent, estimate,
+        writerBudget: { remainingTokens: 0, remainingCostUsd: 0 },
+      })).toBe(false);
+    }
   });
 });

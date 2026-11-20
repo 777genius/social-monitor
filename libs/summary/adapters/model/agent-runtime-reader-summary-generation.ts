@@ -8,12 +8,9 @@ import type {
   ReaderSummaryModelRoute,
 } from "../../ports";
 import { extractReaderSummaryGatewaySchemaViolations } from "./agent-runtime-reader-summary-gateway-violations";
-import {
-  assertReaderSummaryRepairWithinBudget,
-  sumReaderSummaryUsage,
-} from "./agent-runtime-model-support";
+import { sumReaderSummaryUsage } from "./agent-runtime-model-usage";
+import { admitAgentRuntimeReaderSummaryRepair } from "./agent-runtime-reader-summary-repair-admission";
 import { readAttestedAgentRuntimeReaderSummaryDraft } from "./agent-runtime-reader-summary-attested-draft";
-import { isRepairableNarrativeError } from "./reader-summary-narrative-repair-contract";
 import { runAgentRuntimeReaderSummaryPaidAttempt } from "./agent-runtime-reader-summary-paid-attempt";
 import type { VerifiedReaderSummaryExecutionAttestationSink } from "./reader-summary-execution-attestation";
 
@@ -47,8 +44,13 @@ export const runAgentRuntimeReaderSummaryGeneration = async (params: Readonly<{
     logicalRunUsage = sumReaderSummaryUsage(logicalRunUsage, attemptUsage);
     if (attempt === "primary") {
       schemaViolations = extractReaderSummaryGatewaySchemaViolations(result);
-      if (schemaViolations !== undefined) {
-        assertReaderSummaryRepairWithinBudget(logicalRunUsage, estimate, params.writerBudget);
+      if (schemaViolations !== undefined && admitAgentRuntimeReaderSummaryRepair({
+        attempt,
+        cause: { kind: "gateway_schema" },
+        spent: logicalRunUsage,
+        estimate,
+        writerBudget: params.writerBudget,
+      })) {
         continue;
       }
     }
@@ -67,8 +69,13 @@ export const runAgentRuntimeReaderSummaryGeneration = async (params: Readonly<{
 
       return { route: selectedRoute, draft, ...(dailyGenerationReceipt === undefined ? {} : { dailyGenerationReceipt }) };
     } catch (error) {
-      if (attempt === "primary" && isRepairableNarrativeError(error)) {
-        assertReaderSummaryRepairWithinBudget(logicalRunUsage, estimate, params.writerBudget);
+      if (admitAgentRuntimeReaderSummaryRepair({
+        attempt,
+        cause: { kind: "narrative", error },
+        spent: logicalRunUsage,
+        estimate,
+        writerBudget: params.writerBudget,
+      })) {
         continue;
       }
       throw error;
