@@ -1,13 +1,10 @@
 import type { ReaderSummaryCitation, ReaderSummaryTopStory } from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
-import { knownStringSubset, uniqueNonEmptyStrings } from "./openai-responses-reader-summary-json";
+import { knownStringSubset } from "./openai-responses-reader-summary-json";
 import { normalizeTopStory } from "./openai-responses-reader-summary-story-input";
 import { clusterIdByFeedItemId } from "./openai-responses-reader-summary-cluster-citations";
 import { admitCitedStoryClusterId } from "./openai-responses-reader-summary-story-cluster-admission";
-import {
-  completeClusterCitationCoverage,
-  providerKeysCoveredByCitations,
-} from "./openai-responses-reader-summary-citation-coverage";
+import { projectTrustedModelStoryCitations } from "./openai-responses-reader-summary-story-citation-projection";
 
 // Historical direct-import surface remains the same function objects.
 export {
@@ -65,36 +62,14 @@ export const reconcileModelTopStoriesWithCitations = (
       if (cluster === undefined) {
         return [];
       }
-      const providerKeys = uniqueNonEmptyStrings([
-        ...story.providerKeys,
-        ...cluster.providerKeys,
-      ]);
-      const completedCitationIds = completeClusterCitationCoverage({
-        citationIds,
-        providerKeys,
+      const projected = projectTrustedModelStoryCitations(
+        story,
+        storyClusterId,
         cluster,
+        citationIds,
         citationById,
-      });
-      if (completedCitationIds.length === 0) {
-        return [];
-      }
-
-      return [
-        {
-          ...story,
-          storyClusterId,
-          interestIds: uniqueNonEmptyStrings([
-            ...story.interestIds,
-            ...cluster.interestIds,
-          ]),
-          providerKeys: providerKeysCoveredByCitations(
-            providerKeys,
-            completedCitationIds,
-            citationById,
-          ),
-          citationIds: completedCitationIds,
-        },
-      ];
+      );
+      return projected === undefined ? [] : [projected];
     });
 
   return repaired;

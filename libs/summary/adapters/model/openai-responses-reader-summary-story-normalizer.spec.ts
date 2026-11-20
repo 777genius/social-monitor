@@ -3,10 +3,12 @@ import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 import {
   READER_SUMMARY_EDITORIAL_SLATE_VERSION,
   type ReaderSummaryCitation,
+  type ReaderSummaryTopStory,
   type ReaderSummaryEditorialSlateEntry,
 } from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
 import { normalizeTopStories } from "./openai-responses-reader-summary-story-normalizer";
+import { projectTrustedModelStoryCitations } from "./openai-responses-reader-summary-story-citation-projection";
 import {
   reconcileModelTopStoriesWithCitations,
   clusterIdByFeedItemId,
@@ -314,6 +316,42 @@ describe("trusted citation cluster and provider coverage owners", () => {
       citationIds,
       citationById,
     )).toEqual(["hacker-news", "reddit"]);
+  });
+});
+
+describe("trusted story citation projection boundary", () => {
+  it("adds only same-cluster cited providers without mutating the model story or evidence", () => {
+    const input = modelInputWithCrossProviderDuplicate();
+    const cluster = input.evidence.clusters[0]!;
+    const first = citationMap(1)[0]!;
+    const trusted = [first, {
+      ...first, citationId: "c-hn", feedItemId: "feed-1-hn",
+      providerKey: "hacker-news",
+    }];
+    const byId = new Map(trusted.map((item) => [item.citationId, item] as const));
+    const story: ReaderSummaryTopStory = {
+      storyClusterId: "story:1", title: "Selected story",
+      summary: "Grounded by cited sources", interestIds: ["model-interest"],
+      providerKeys: ["forged-provider"], citationIds: ["c1"],
+    };
+    const before = JSON.stringify({ story, cluster, trusted });
+    expect(projectTrustedModelStoryCitations(story, "story:1", cluster, ["c1"], byId))
+      .toEqual({
+        ...story, interestIds: ["model-interest", "ai-developer-tools"],
+        providerKeys: ["reddit", "hacker-news"], citationIds: ["c1", "c-hn"],
+      });
+    expect(JSON.stringify({ story, cluster, trusted })).toBe(before);
+  });
+
+  it("does not project a story with no trusted cluster citations", () => {
+    const cluster = modelInput(1).evidence.clusters[0]!;
+    const story: ReaderSummaryTopStory = {
+      storyClusterId: "story:1", title: "Unsupported", summary: "Unsupported",
+      interestIds: [], providerKeys: ["reddit"], citationIds: [],
+    };
+    expect(projectTrustedModelStoryCitations(
+      story, "story:1", cluster, [], new Map(),
+    )).toBeUndefined();
   });
 });
 

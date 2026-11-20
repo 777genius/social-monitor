@@ -1245,15 +1245,7 @@
         61,
         80,
         84,
-        85,
-        88,
-        89,
-        92,
-        98,
-        107,
-        110,
-        112,
-        115
+        85
       ],
       "responsibility": "Reconcile untrusted model story claims against trusted cluster and citation IDs; reject unknown or cross-cluster assertions before projection"
     },
@@ -7823,6 +7815,24 @@
         431
       ],
       "responsibility": "JSON lexical admission and redacted syntax failures now owned independently from trusted weekly artifact/schema/citation validation; same public parse-error class identity and fail-closed order"
+    },
+    {
+      "original": "openai-responses-reader-summary-story-normalizer.ts",
+      "owner": "openai-responses-reader-summary-story-citation-projection.ts",
+      "originalPositions": [
+        88,
+        89,
+        90,
+        92,
+        98,
+        106,
+        107,
+        108,
+        110,
+        112,
+        115
+      ],
+      "responsibility": "Trusted same-cluster citation completion, cap and provider/interest projection isolated from untrusted model story identity admission; eight prior positions reassigned once, three conservative new implementation positions; provisional provenance only."
     }
   ]
 }

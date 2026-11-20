@@ -14,6 +14,7 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-repeated-signals.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-evidence-relations.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-story-citations.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-story-citation-projection.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-story-cluster-admission.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-story-cluster-admission.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-cluster-citations.ts
