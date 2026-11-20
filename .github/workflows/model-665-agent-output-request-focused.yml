@@ -16,6 +16,7 @@ on:
       - libs/summary/adapters/model/agent-runtime-model-boundaries.spec.ts
       - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
       - libs/summary/adapters/model/grpc-agent-runtime-wire-codec.ts
+      - libs/summary/adapters/model/grpc-agent-runtime-failure-projection.ts
       - libs/summary/adapters/model/grpc-agent-runtime-output-trust.ts
       - libs/summary/adapters/model/grpc-agent-runtime-measurement-decoder.ts
       - libs/summary/adapters/model/grpc-agent-runtime-attestation-decoder.ts

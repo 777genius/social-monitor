@@ -7,6 +7,7 @@ import {
 } from "@social-monitor/contracts/generated/grpc/agent_runtime/v1/agent_runtime";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 import type { AgentRuntimeTaskCommand } from "../../ports";
+import { readGrpcTaskFailure } from "./grpc-agent-runtime-failure-projection";
 import { readExecutionAttestation } from "./grpc-agent-runtime-attestation-decoder";
 import { readGrpcUsage, readOptionalDurationMs } from "./grpc-agent-runtime-measurement-decoder";
 import {
@@ -124,6 +125,23 @@ describe("Agent runtime gRPC wire codec", () => {
       ...response,
       status: AgentRuntimeTaskStatus.AGENT_RUNTIME_TASK_STATUS_FAILED,
     }, command)).toThrow("Non-completed agent runtime response must not be attested");
+  });
+
+  it("projects failure transport fields without changing original input or retry metadata", () => {
+    const failure = Object.freeze({
+      code: "UPSTREAM_UNAVAILABLE",
+      safeMessage: "Upstream unavailable",
+      retryable: true,
+      reconnectRequired: false,
+      causeCategory: "provider",
+      details: "synthetic",
+    });
+    const wire = Object.freeze({ failure }) as unknown as AgentRuntimeTaskResponse;
+    expect(readGrpcTaskFailure(wire)).toEqual(failure);
+    expect(readGrpcTaskFailure(wire)).not.toBe(failure);
+    expect(readGrpcTaskFailure({ failure: undefined } as AgentRuntimeTaskResponse))
+      .toBeUndefined();
+    expect(wire.failure).toBe(failure);
   });
 
   it("rejects non-object JSON roots while keeping optional text and JSON admission independent", () => {

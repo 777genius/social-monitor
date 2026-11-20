@@ -543,15 +543,6 @@
         222,
         223,
         224,
-        225,
-        226,
-        234,
-        237,
-        238,
-        239,
-        240,
-        241,
-        242,
         244,
         372,
         376,
@@ -566,7 +557,7 @@
         396,
         397
       ],
-      "responsibility": "Decode response schema/status/output/failure and health transport enums, then enforce cross-field attestation-output consistency without owning attestation admission or accounting validation. Previously counted frozen coordinates only."
+      "responsibility": "Provider enum, strict response/status/health mapping, usage/attestation orchestration and output trust delegation; projection of failure fields is separately owned and invalid historical 225/226 aliases were retired."
     },
     {
       "original": "grpc-agent-runtime-client.ts",
@@ -7997,6 +7988,20 @@
         293
       ],
       "responsibility": "Frozen-plan feed-item admission, stable source citation order and three-citation cap separated from fallback publication; 9 previously counted original implementation positions re-owned exactly once"
+    },
+    {
+      "original": "grpc-agent-runtime-client.ts",
+      "owner": "grpc-agent-runtime-failure-projection.ts",
+      "originalPositions": [
+        234,
+        237,
+        238,
+        239,
+        240,
+        241,
+        242
+      ],
+      "responsibility": "Independent gRPC failure metadata projection retains the exact code/safe message/retryable/reconnect/cause/details fields and wire undefined behavior, with seven already credited frozen original coordinates re-owned, zero new credit."
     }
   ]
 }

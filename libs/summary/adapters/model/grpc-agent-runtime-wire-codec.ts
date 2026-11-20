@@ -9,6 +9,7 @@ import {
   readGrpcOptionalOutputText,
   readGrpcOptionalStructuredOutput,
 } from "./grpc-agent-runtime-output-trust";
+import { readGrpcTaskFailure } from "./grpc-agent-runtime-failure-projection";
 import { readExecutionAttestation } from "./grpc-agent-runtime-attestation-decoder";
 import { readGrpcUsage, readOptionalDurationMs } from "./grpc-agent-runtime-measurement-decoder";
 import type {
@@ -51,17 +52,7 @@ export const fromGrpcTaskResponse = (
     })),
     usage,
     durationMs,
-    failure:
-      response.failure === undefined
-        ? undefined
-        : {
-            code: response.failure.code,
-            safeMessage: response.failure.safeMessage,
-            retryable: response.failure.retryable,
-            reconnectRequired: response.failure.reconnectRequired,
-            causeCategory: response.failure.causeCategory,
-            details: response.failure.details,
-          },
+    failure: readGrpcTaskFailure(response),
     executionAttestation: readExecutionAttestation(response, command),
   };
   assertGrpcTaskOutputTrust(result);
