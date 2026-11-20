@@ -8,7 +8,8 @@
   "exceptionPolicy": {
     "requiresOwner": true,
     "requiresExpiryDate": true,
-    "requiresMitigation": true
+    "requiresMitigation": true,
+    "advisoryScope": "listed advisories at blocking severity only; advisories below blockSeverities are ignored"
   },
   "allowedExceptions": [
     {
