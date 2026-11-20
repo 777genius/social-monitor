@@ -7833,6 +7833,21 @@
         115
       ],
       "responsibility": "Trusted same-cluster citation completion, cap and provider/interest projection isolated from untrusted model story identity admission; eight prior positions reassigned once, three conservative new implementation positions; provisional provenance only."
+    },
+    {
+      "original": "openai-responses-summary-response-parser.ts",
+      "owner": "openai-responses-summary-json-admission.ts",
+      "originalPositions": [
+        83,
+        85,
+        86,
+        87,
+        88,
+        89,
+        90,
+        91
+      ],
+      "responsibility": "Admit provider JSON-object syntax independently of wire-text traversal and token usage, preserving redacted parse exceptions and fail-closed rejection"
     }
   ]
 }

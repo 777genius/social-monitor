@@ -1,27 +1,5 @@
-import { SummaryModelProviderError } from "./openai-responses-summary-model-error";
-import { requiredRecord } from "./openai-responses-summary-required-json";
-
-// Preserve the historical direct-import surface; new consumers use the owning modules.
+// Compatibility entrypoint: provider JSON admission, usage and output-text
+// traversal are independently owned policies with stable function exports.
 export { resolveOpenAiSummaryUsage } from "./openai-responses-summary-usage";
 export { extractOpenAiSummaryOutputText } from "./openai-responses-summary-output-text";
-
-export const parseOpenAiSummaryJsonObject = (
-  value: string,
-): Record<string, unknown> => {
-  try {
-    return requiredRecord(JSON.parse(value), 'OpenAI summary output');
-  } catch (error) {
-    throw new SummaryModelProviderError({
-      kind: 'invalid_schema',
-      retryable: false,
-      // V8 JSON.parse diagnostics can quote raw provider text, which must
-      // never leak into error logs or downstream failure messages.
-      message:
-        error instanceof SyntaxError
-          ? 'OpenAI summary output must be JSON'
-          : error instanceof Error
-            ? error.message
-            : 'OpenAI summary output must be JSON',
-    });
-  }
-};
+export { parseOpenAiSummaryJsonObject } from "./openai-responses-summary-json-admission";

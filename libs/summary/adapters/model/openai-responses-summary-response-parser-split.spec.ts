@@ -1,4 +1,5 @@
 import { SummaryModelProviderError } from "./openai-responses-summary-model-error";
+import { parseOpenAiSummaryJsonObject as admittedJsonObject } from "./openai-responses-summary-json-admission";
 import {
   extractOpenAiSummaryOutputText as legacyOutputText,
   parseOpenAiSummaryJsonObject,
@@ -10,6 +11,7 @@ import { resolveOpenAiSummaryUsage } from "./openai-responses-summary-usage";
 describe("ordinary OpenAI response admission responsibilities", () => {
   it("retains identical historical export objects and exact missing-usage estimate identity", () => {
     expect(legacyOutputText).toBe(extractOpenAiSummaryOutputText);
+    expect(parseOpenAiSummaryJsonObject).toBe(admittedJsonObject);
     expect(legacyUsage).toBe(resolveOpenAiSummaryUsage);
 
     const estimate = Object.freeze({
@@ -52,5 +54,17 @@ describe("ordinary OpenAI response admission responsibilities", () => {
     expect(rejected).toBeInstanceOf(SummaryModelProviderError);
     expect((rejected as Error).message).toBe('OpenAI summary output must be JSON');
     expect((rejected as Error).message).not.toContain(secret);
+  });
+
+  it("keeps strict provider-object rejection independent of response traversal", () => {
+    for (const value of ["null", "true", "42", '"text"', "[]"]) {
+      expect(() => admittedJsonObject(value)).toThrow(SummaryModelProviderError);
+    }
+    const payload = '{"tenantSecret":"SYNTHETIC_NOT_A_CREDENTIAL",';
+    let failure: unknown;
+    try { admittedJsonObject(payload); } catch (error) { failure = error; }
+    expect(failure).toBeInstanceOf(SummaryModelProviderError);
+    expect((failure as Error).message).toBe("OpenAI summary output must be JSON");
+    expect((failure as Error).message).not.toContain("tenantSecret");
   });
 });

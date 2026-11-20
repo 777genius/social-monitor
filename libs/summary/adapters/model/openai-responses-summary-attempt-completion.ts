@@ -7,7 +7,7 @@ import type {
 import { normalizeOpenAiSummaryDraft } from "./openai-responses-summary-draft-normalizer";
 import { SummaryModelProviderError } from "./openai-responses-summary-model-error";
 import { extractOpenAiSummaryOutputText } from "./openai-responses-summary-output-text";
-import { parseOpenAiSummaryJsonObject } from "./openai-responses-summary-response-parser";
+import { parseOpenAiSummaryJsonObject } from "./openai-responses-summary-json-admission";
 import { resolveOpenAiSummaryUsage } from "./openai-responses-summary-usage";
 import { openAiResponsesCompletionIssue } from "./openai-responses-completion-state";
 

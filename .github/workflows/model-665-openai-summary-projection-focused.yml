@@ -102,6 +102,7 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-generation-admission.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-response-parser.spec.ts
       - libs/summary/adapters/model/openai-responses-summary-response-parser.ts
+      - libs/summary/adapters/model/openai-responses-summary-json-admission.ts
       - libs/summary/adapters/model/openai-responses-summary-output-text.ts
       - libs/summary/adapters/model/openai-responses-summary-usage.ts
       - libs/summary/adapters/model/openai-responses-summary-response-parser-split.spec.ts
