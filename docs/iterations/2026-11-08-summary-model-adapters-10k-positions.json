@@ -553,13 +553,6 @@
         241,
         242,
         244,
-        247,
-        248,
-        249,
-        252,
-        256,
-        257,
-        260,
         372,
         376,
         378,
@@ -571,7 +564,21 @@
         393,
         395,
         396,
-        397,
+        397
+      ],
+      "responsibility": "Decode response schema/status/output/failure and health transport enums, then enforce cross-field attestation-output consistency without owning attestation admission or accounting validation. Previously counted frozen coordinates only."
+    },
+    {
+      "original": "grpc-agent-runtime-client.ts",
+      "owner": "grpc-agent-runtime-output-trust.ts",
+      "originalPositions": [
+        247,
+        248,
+        249,
+        252,
+        256,
+        257,
+        260,
         403,
         408,
         409,
@@ -580,7 +587,7 @@
         416,
         419
       ],
-      "responsibility": "Decode response schema/status/output/failure and health transport enums, then enforce cross-field attestation-output consistency without owning attestation admission or accounting validation. Previously counted frozen coordinates only."
+      "responsibility": "Trusted gRPC optional text and JSON-object root admission plus completed/noncompleted execution-attestation/output consistency; original source positions transferred once from the previously credited wire codec, no new original LOC claimed"
     },
     {
       "original": "grpc-agent-runtime-client.ts",

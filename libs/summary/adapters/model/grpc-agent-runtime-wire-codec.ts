@@ -5,8 +5,10 @@ import {
   type AgentRuntimeTaskResponse,
 } from "@social-monitor/contracts/generated/grpc/agent_runtime/v1/agent_runtime";
 import {
-  executionAttestationOutputMatches,
-} from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
+  assertGrpcTaskOutputTrust,
+  readGrpcOptionalOutputText,
+  readGrpcOptionalStructuredOutput,
+} from "./grpc-agent-runtime-output-trust";
 import { readExecutionAttestation } from "./grpc-agent-runtime-attestation-decoder";
 import { readGrpcUsage, readOptionalDurationMs } from "./grpc-agent-runtime-measurement-decoder";
 import type {
@@ -41,8 +43,8 @@ export const fromGrpcTaskResponse = (
   const durationMs = readOptionalDurationMs(response.durationMs);
   const result: AgentRuntimeTaskResult = {
     status: fromGrpcTaskStatus(response.status),
-    outputText: optionalOutputText(response.outputText),
-    structuredOutput: parseOptionalJsonObject(response.structuredOutputJson),
+    outputText: readGrpcOptionalOutputText(response.outputText),
+    structuredOutput: readGrpcOptionalStructuredOutput(response.structuredOutputJson),
     warnings: response.warnings.map((warning) => ({
       code: warning.code,
       message: warning.message,
@@ -62,23 +64,7 @@ export const fromGrpcTaskResponse = (
           },
     executionAttestation: readExecutionAttestation(response, command),
   };
-  if (
-    result.status === "completed" &&
-    (result.executionAttestation === undefined ||
-      !executionAttestationOutputMatches(result.executionAttestation, result))
-  ) {
-    throw new Error(
-      "Completed agent runtime response has an invalid output attestation",
-    );
-  }
-  if (
-    result.status !== "completed" &&
-    result.executionAttestation !== undefined
-  ) {
-    throw new Error(
-      "Non-completed agent runtime response must not be attested",
-    );
-  }
+  assertGrpcTaskOutputTrust(result);
   return result;
 };
 
@@ -110,24 +96,4 @@ export const fromGrpcHealthStatus = (
     case GrpcAgentRuntimeHealthStatus.UNRECOGNIZED:
       return "not_serving";
   }
-};
-
-const optionalOutputText = (value: string): string | undefined =>
-  value.trim().length === 0 ? undefined : value;
-
-const parseOptionalJsonObject = (
-  value: string,
-): Record<string, unknown> | undefined => {
-  const trimmed = value.trim();
-  if (trimmed.length === 0) {
-    return undefined;
-  }
-
-  const parsed = JSON.parse(trimmed);
-
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("Agent runtime structured output must be a JSON object");
-  }
-
-  return parsed as Record<string, unknown>;
 };

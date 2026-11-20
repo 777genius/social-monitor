@@ -11,9 +11,14 @@ import { readExecutionAttestation } from "./grpc-agent-runtime-attestation-decod
 import { readGrpcUsage, readOptionalDurationMs } from "./grpc-agent-runtime-measurement-decoder";
 import {
   agentRuntimeWireSchemaVersion,
+  fromGrpcTaskResponse,
   fromGrpcHealthStatus,
   toGrpcProvider,
 } from "./grpc-agent-runtime-wire-codec";
+import {
+  readGrpcOptionalOutputText,
+  readGrpcOptionalStructuredOutput,
+} from "./grpc-agent-runtime-output-trust";
 
 describe("Agent runtime gRPC wire codec", () => {
   it("preserves the pinned wire schema version", () => {
@@ -113,5 +118,25 @@ describe("Agent runtime gRPC wire codec", () => {
         selectedOutputKind: AgentRuntimeSelectedOutputKind.AGENT_RUNTIME_SELECTED_OUTPUT_KIND_UNSPECIFIED,
       },
     }, command)).toThrow("Attested agent runtime output kind is unspecified");
+    expect(() => fromGrpcTaskResponse({ ...response, executionAttestation: undefined }, command))
+      .toThrow("Completed agent runtime response has an invalid output attestation");
+    expect(() => fromGrpcTaskResponse({
+      ...response,
+      status: AgentRuntimeTaskStatus.AGENT_RUNTIME_TASK_STATUS_FAILED,
+    }, command)).toThrow("Non-completed agent runtime response must not be attested");
+  });
+
+  it("rejects non-object JSON roots while keeping optional text and JSON admission independent", () => {
+    expect(readGrpcOptionalOutputText(" \t ")).toBeUndefined();
+    expect(readGrpcOptionalOutputText("  cited text  ")).toBe("  cited text  ");
+    expect(readGrpcOptionalStructuredOutput(" \n ")).toBeUndefined();
+    const frozenJson = Object.freeze({ value: '{"source":"trusted","count":2}' });
+    expect(readGrpcOptionalStructuredOutput(frozenJson.value)).toEqual({ source: "trusted", count: 2 });
+    expect(frozenJson.value).toBe('{"source":"trusted","count":2}');
+    for (const invalid of ["null", "[]", "true", "3", '"text"']) {
+      expect(() => readGrpcOptionalStructuredOutput(invalid))
+        .toThrow("Agent runtime structured output must be a JSON object");
+    }
+    expect(() => readGrpcOptionalStructuredOutput("{")).toThrow(SyntaxError);
   });
 });
