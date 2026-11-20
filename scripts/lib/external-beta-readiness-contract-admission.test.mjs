@@ -162,3 +162,139 @@ test('runner delegates once at module scope with five live dependencies', () => 
     assert.equal(inspectEntrypoint(altered), false);
   }
 });
+
+// Exercise the actual CLI with isolated filesystem contracts, not only policy functions.
+// Production evidence and deployment credentials are never read or modified.
+test('readiness CLI preserves successful HOLD/GO and ordered fail-closed diagnostics end-to-end', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const { mkdtempSync, mkdirSync, rmSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { dirname, join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+
+  const entrypoint = fileURLToPath(new URL('../check-external-beta-readiness.mjs', import.meta.url));
+  const prefix = 'ops/release/external-beta-readiness-contract.json';
+  const requiredGroups = [
+    'release-baseline-freeze', 'durable-runtime-proof', 'production-auth-finalization',
+    'source-provider-live-certification', 'credential-secret-runtime-flow',
+    'rabbitmq-staging-reliability-drill', 'postgres-restore-migration-drill',
+    'durable-backend-e2e-loop', 'summary-quality-feedback-hardening',
+    'operational-support-package', 'capacity-envelope-beta-ring-decision',
+    'release-artifact-evidence', 'security-final-sweep', 'no-go-cleanup',
+  ];
+  const criteria = [
+    'durable runtime proof', 'live source provider certification',
+    'credential and secret runtime flow', 'RabbitMQ and Postgres staging drills',
+    'backend durable E2E loop', 'summary blocker feedback', 'security final sweep',
+    'release artifact evidence', 'capacity envelope and no-go cleanup',
+  ];
+  const numericFields = [
+    'maxUsers', 'maxTopicsPerWorkspace', 'maxEnabledSourcesPerTopic',
+    'maxManualScansPerWorkspacePerHour', 'maxSummaryRequestsPerWorkspacePerHour',
+    'maxQueueLagSeconds', 'maxSummaryEstimatedCostUsdPerWorkspacePerDay',
+    'maxDeliveryAttemptsPerWorkspacePerHour',
+  ];
+  const runnerCommands = [
+    'checkCommand', 'planCommand', 'jsonPlanCommand', 'summaryCommand',
+    'preflightCommand', 'artifactValidationCommand',
+    'dockerBundleImportCommand', 'currentPackageCommand',
+  ];
+  const fixture = () => ({
+    contract: {
+      schemaVersion: 1, scope: 'backend-only',
+      frontendPolicy: 'deferred_contract_only',
+      evidenceMode: 'fixture_contract_with_external_evidence_required',
+      externalBetaDecision: 'hold', goDecisionExitCriteria: criteria,
+      evidenceRunner: {
+        contract: 'fixture-evidence.json',
+        ...Object.fromEntries(runnerCommands.map(field => [field, 'npm run check:evidence'])),
+      },
+      requiredEvidenceGroups: requiredGroups.map(groupId => ({
+        groupId, status: 'passed', blocksExternalBeta: true,
+        owner: 'test-owner', verificationCommands: ['npm run check:evidence'],
+        requiredArtifacts: [], exitCondition: 'verified',
+      })),
+      capacityEnvelope: Object.fromEntries(numericFields.map(field => [field, 1])),
+      noGoExceptions: [{ exceptionId: 'must-block', blocking: true, owner: 'owner', exitCondition: 'resolved' }],
+    },
+    certification: { certifiedProviders: [{ liveBetaReady: true }] },
+    feedback: { evidenceMode: 'redacted_beta_samples' },
+    decision: { decision: 'go' },
+    pkg: { scripts: {
+      'check:evidence': 'node evidence.mjs',
+      'check:external-beta-readiness': 'node scripts/check-external-beta-readiness.mjs',
+      verify: 'npm run check:external-beta-readiness',
+    } },
+  });
+  const scenarios = [
+    { name: 'hold with complete evidence', mutate() {}, expected: [] },
+    { name: 'go with complete evidence', mutate(f) { f.contract.externalBetaDecision = 'go'; }, expected: [] },
+    { name: 'hold with pending evidence', mutate(f) { f.contract.requiredEvidenceGroups[0].status = 'hold'; }, expected: [] },
+    {
+      name: 'go with unfinished external evidence',
+      mutate(f) {
+        f.contract.externalBetaDecision = 'go';
+        f.contract.requiredEvidenceGroups[0].status = 'hold';
+        f.certification.certifiedProviders[0].liveBetaReady = false;
+        f.feedback.evidenceMode = 'fixture';
+        f.decision.decision = 'hold';
+      },
+      expected: [
+        `${prefix}: externalBetaDecision cannot be go while blocking evidence is not passed`,
+        `${prefix}: go requires every certified provider to be liveBetaReady`,
+        `${prefix}: go requires redacted beta feedback samples`,
+        `${prefix}: go requires beta ring decision to be go`,
+      ],
+    },
+    {
+      name: 'contract/verification/capacity failures stay ordered',
+      mutate(f) {
+        f.contract.evidenceRunner.contract = 'nonexistent-evidence.json';
+        f.contract.evidenceRunner.planCommand = 'npm run nonexistent';
+        f.contract.capacityEnvelope.maxUsers = 0;
+        f.contract.noGoExceptions[0].blocking = false;
+        delete f.pkg.scripts['check:external-beta-readiness'];
+        f.pkg.scripts.verify = 'echo no-readiness-check';
+      },
+      expected: [
+        `${prefix}: evidenceRunner.contract must reference an existing contract`,
+        `${prefix}: evidenceRunner.planCommand must reference an existing npm script`,
+        `${prefix}: capacityEnvelope.maxUsers must be positive`,
+        `${prefix}: noGoException "must-block" must be blocking`,
+        'package.json: missing check:external-beta-readiness',
+        'package.json: npm run verify or verify:backend must include check:external-beta-readiness',
+      ],
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    const root = mkdtempSync(join(tmpdir(), 'social-monitor-readiness-'));
+    try {
+      const f = fixture();
+      scenario.mutate(f);
+      const write = (path, value) => {
+        const absolute = join(root, path);
+        mkdirSync(dirname(absolute), { recursive: true });
+        writeFileSync(absolute, JSON.stringify(value));
+      };
+      write('ops/release/external-beta-readiness-contract.json', f.contract);
+      write('ops/ingestion/source-provider-certification.json', f.certification);
+      write('ops/release/beta-feedback-classification-report.json', f.feedback);
+      write('ops/release/beta-ring-expansion-decision-record.json', f.decision);
+      write('ops/release/backend-safe-verify-contract.json', { backendScripts: [] });
+      write('package.json', f.pkg);
+      write('fixture-evidence.json', {});
+
+      const run = spawnSync(process.execPath, [entrypoint], {
+        cwd: root, encoding: 'utf8', timeout: 10_000,
+        env: { ...process.env, NODE_ENV: 'test' },
+      });
+      assert.equal(run.error, undefined, `${scenario.name}: subprocess error`);
+      assert.equal(run.status, scenario.expected.length ? 1 : 0, `${scenario.name}: exit ${run.stderr}`);
+      assert.equal(run.stdout, scenario.expected.length ? '' : 'External beta readiness contract OK\n', scenario.name);
+      assert.equal(run.stderr, scenario.expected.length ? `${scenario.expected.join('\n')}\n` : '', scenario.name);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+});
