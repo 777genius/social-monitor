@@ -1,3 +1,4 @@
+import { uniqueRecoveredGroupId as ownedRecoveredGroupId } from "./agent-runtime-reader-summary-topic-group-id-policy";
 import type { ReaderSummaryTopicNodeLabel } from "../../domain";
 import type { ReaderSummaryTopicLabelerInput } from "../../ports";
 import {
@@ -11,6 +12,13 @@ describe("reader-summary topic anchor boundary", () => {
     expect(intersects(new Set(["runtime"]), new Set(["runtime"]))).toBe(true);
     expect(intersects(new Set(["runtime"]), new Set(["editor"]))).toBe(false);
     expect(intersects(undefined, new Set(["runtime"]))).toBe(false);
+  });
+
+  it("retains the legacy export identity and never mutates occupied group IDs", () => {
+    const occupied = new Set(["group:open-agents", "group:open-agents-2"]);
+    expect(uniqueRecoveredGroupId).toBe(ownedRecoveredGroupId);
+    expect(ownedRecoveredGroupId("Open Agents", occupied)).toBe("group:open-agents-3");
+    expect([...occupied]).toEqual(["group:open-agents", "group:open-agents-2"]);
   });
 
   it("creates deterministic conflict-free recovered group ids", () => {

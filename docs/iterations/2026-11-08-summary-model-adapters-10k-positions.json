@@ -7866,6 +7866,21 @@
         63
       ],
       "responsibility": "Model/prompt/schema/rules/evaluation provenance projection isolated from provider evidence and claim normalization with exact legacy named export identity"
+    },
+    {
+      "original": "agent-runtime-reader-summary-topic-group-recovery.ts",
+      "owner": "agent-runtime-reader-summary-topic-group-id-policy.ts",
+      "originalPositions": [
+        342,
+        343,
+        344,
+        345,
+        348,
+        349,
+        350,
+        353
+      ],
+      "responsibility": "Collision-safe stable recovered group identity and ordered suffix admission own domain policy rather than evidence anchor token lookup; original anchor-keys public export remains an identical reexport, assignment imports direct owner"
     }
   ]
 }

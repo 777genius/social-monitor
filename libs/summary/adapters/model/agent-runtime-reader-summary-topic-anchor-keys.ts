@@ -59,23 +59,7 @@ export const intersects = (
   right: ReadonlySet<string>,
 ): boolean => left !== undefined && [...left].some((value) => right.has(value));
 
-export const uniqueRecoveredGroupId = (
-  label: string,
-  existing: ReadonlySet<string>,
-): string => {
-  const base = `group:${normalizeTopicLabel(label)
-    .replace(/[^a-z0-9]+/gu, "-")
-    .replace(/^-|-$/gu, "")}`;
-  if (!existing.has(base)) {
-    return base;
-  }
-  let suffix = 2;
-  while (existing.has(`${base}-${suffix}`)) {
-    suffix += 1;
-  }
-
-  return `${base}-${suffix}`;
-};
+export { uniqueRecoveredGroupId } from "./agent-runtime-reader-summary-topic-group-id-policy";
 
 export const genericAnchors = new Set([
   "agent",

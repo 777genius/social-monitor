@@ -30,6 +30,7 @@ on:
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-grounding.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-cohort-assignment.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-anchor-keys.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-id-policy.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-policy.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-support-policy.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-support-policy.spec.ts

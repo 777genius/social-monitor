@@ -2,7 +2,7 @@ import {
   READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID,
   type ReaderSummaryTopicNodeLabel,
 } from "../../domain";
-import { uniqueRecoveredGroupId } from "./agent-runtime-reader-summary-topic-anchor-keys";
+import { uniqueRecoveredGroupId } from "./agent-runtime-reader-summary-topic-group-id-policy";
 
 /**
  * Assign only new, evidence-supported groups. Recovery orchestration determines
