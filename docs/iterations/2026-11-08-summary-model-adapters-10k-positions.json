@@ -6155,11 +6155,7 @@
         229,
         230,
         233,
-        234,
-        241,
-        242,
-        243,
-        244
+        234
       ],
       "responsibility": "Previously extracted completed SDK result: observed-model veto, settlement/cleanup warnings and integrity-bound execution attestation; retrospective disjoint original-coordinate provenance only."
     },
@@ -7947,6 +7943,17 @@
         269
       ],
       "responsibility": "Previously credited exact original completion/selected-output and integrity-attestation expressions now owned by isolated request/receipt sealing policy; one obsolete inline wrapper expression withdrawn, no new source credit or behavioral change."
+    },
+    {
+      "original": "gateway-llm/gateway-llm-client.ts",
+      "owner": "gateway-llm/gateway-llm-settlement-warnings.ts",
+      "originalPositions": [
+        241,
+        242,
+        243,
+        244
+      ],
+      "responsibility": "Previously audited settlement cleanup/grace diagnostics now have a pure, directly exercised policy owner outside gateway task completion; exact source positions transferred once, no additional original LOC credited."
     }
   ]
 }

@@ -5,6 +5,7 @@ import type { AgentRuntimeTaskCommand, AgentRuntimeTaskResult } from "../../../p
 import type { GatewayLlmAttemptIdentity } from "./gateway-llm-attempts";
 import { gatewayLlmModelMismatch } from "./gateway-llm-failure";
 import { gatewayLlmCompletionAttestation } from "./gateway-llm-completion-attestation";
+import { gatewayLlmCompletionWarnings } from "./gateway-llm-settlement-warnings";
 import type { GatewayLlmSdkIdentity } from "./gateway-llm-sdk-identity";
 import type { GatewayLlmPrepared } from "./gateway-llm-task-preparation";
 import { gatewayLlmUsage } from "./gateway-llm-usage";
@@ -30,12 +31,7 @@ export const completeGatewayLlmTask = (
   return {
     status: "completed",
     ...output,
-    warnings: [
-      ...(result.cleanup === "pending" ? [{ code: "gateway_cleanup_pending",
-        message: "Gateway execution close was not acknowledged" }] : []),
-      ...(durationMs > command.timeoutMs ? [{ code: "gateway_settlement_grace_used",
-        message: "Gateway task settled after its nominal timeout" }] : []),
-    ],
+    warnings: gatewayLlmCompletionWarnings(result, command, durationMs),
     ...gatewayLlmUsage(result.usage),
     durationMs,
     executionAttestation: gatewayLlmCompletionAttestation(

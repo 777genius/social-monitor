@@ -12,6 +12,8 @@ on:
       - libs/summary/adapters/model/gateway-llm/gateway-llm-client.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-client-contract.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-task-completion.ts
+      - libs/summary/adapters/model/gateway-llm/gateway-llm-settlement-warnings.ts
+      - libs/summary/adapters/model/gateway-llm/gateway-llm-settlement-warnings.spec.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-completion-attestation.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-account-selector.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-account-order-policy.ts
@@ -74,6 +76,7 @@ jobs:
           libs/summary/adapters/model/gateway-llm/gateway-llm-dispatch-retry-policy.spec.ts
           libs/summary/adapters/model/gateway-llm/gateway-llm-post-backoff-admission.spec.ts
           libs/summary/adapters/model/gateway-llm/gateway-llm-client.spec.ts
+          libs/summary/adapters/model/gateway-llm/gateway-llm-settlement-warnings.spec.ts
           libs/summary/adapters/model/gateway-llm/gateway-llm-account-selector.spec.ts
           libs/summary/adapters/model/gateway-llm/gateway-llm-task-route-admission.spec.ts
           libs/summary/adapters/model/gateway-llm/gateway-llm-failure-policies.spec.ts
