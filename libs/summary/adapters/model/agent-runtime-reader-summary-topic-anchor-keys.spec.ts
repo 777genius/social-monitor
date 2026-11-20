@@ -1,3 +1,6 @@
+import { anchorKeys as ownedAnchorKeys, intersects as ownedIntersects, genericAnchors as ownedGenericAnchors, noiseAnchors as ownedNoiseAnchors } from "./agent-runtime-reader-summary-topic-anchor-token-policy";
+import { buildGroundedTopicRecoveryAnchorMaps as ownedBuildGroundedTopicRecoveryAnchorMaps, groundedNodeAnchors as ownedGroundedNodeAnchors, identityAnchors as ownedIdentityAnchors } from "./agent-runtime-reader-summary-topic-recovery-anchor-maps";
+import { anchorKeys as legacyAnchorKeys, groundedNodeAnchors as legacyGroundedNodeAnchors, identityAnchors as legacyIdentityAnchors, genericAnchors as legacyGenericAnchors, noiseAnchors as legacyNoiseAnchors } from "./agent-runtime-reader-summary-topic-anchor-keys";
 import { uniqueRecoveredGroupId as ownedRecoveredGroupId } from "./agent-runtime-reader-summary-topic-group-id-policy";
 import type { ReaderSummaryTopicNodeLabel } from "../../domain";
 import type { ReaderSummaryTopicLabelerInput } from "../../ports";
@@ -64,4 +67,29 @@ describe("reader-summary topic anchor boundary", () => {
     expect(result.identityAnchorsByNodeId.get("topic:claude")?.has("claude")).toBe(true);
   });
 
+});
+
+describe("direct topic anchor policies", () => {
+  it("retains every legacy export as the identical implementation object", () => {
+    expect(legacyAnchorKeys).toBe(ownedAnchorKeys);
+    expect(intersects).toBe(ownedIntersects);
+    expect(buildGroundedTopicRecoveryAnchorMaps).toBe(ownedBuildGroundedTopicRecoveryAnchorMaps);
+    expect(legacyGroundedNodeAnchors).toBe(ownedGroundedNodeAnchors);
+    expect(legacyIdentityAnchors).toBe(ownedIdentityAnchors);
+    expect(legacyGenericAnchors).toBe(ownedGenericAnchors);
+    expect(legacyNoiseAnchors).toBe(ownedNoiseAnchors);
+  });
+
+  it("excludes noisy tokens without expanding identity from candidate evidence", () => {
+    expect(ownedAnchorKeys("Reddit AI Acme")).toContain("acme");
+    expect(ownedAnchorKeys("Reddit AI Acme")).not.toContain("reddit");
+    expect(ownedGenericAnchors.has("ai")).toBe(true);
+    const node = { nodeId: "topic:one", label: "Acme", keywords: [] };
+    const candidate = { nodeId: "topic:one", storyClusterId: "story:one", fallbackLabel: "Foreign Brand", score: 1, evidenceCount: 1, providerKeys: ["rss"], interestIds: ["ai"], keywords: ["foreign"], labelCandidates: [] };
+    const maps = ownedBuildGroundedTopicRecoveryAnchorMaps({ nodeLabels: [node], candidates: [candidate] });
+    expect(maps.anchorsByNodeId.get(node.nodeId)?.has("foreign")).toBe(true);
+    expect(maps.identityAnchorsByNodeId.get(node.nodeId)?.has("foreign")).toBe(false);
+    expect(node.keywords).toEqual([]);
+    expect(candidate.keywords).toEqual(["foreign"]);
+  });
 });

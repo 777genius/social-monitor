@@ -4,7 +4,7 @@ import {
   type ReaderSummaryTopicNodeLabel,
 } from "../../domain";
 import type { ReaderSummaryTopicLabelerInput } from "../../ports";
-import { buildGroundedTopicRecoveryAnchorMaps } from "./agent-runtime-reader-summary-topic-anchor-keys";
+import { buildGroundedTopicRecoveryAnchorMaps } from "./agent-runtime-reader-summary-topic-recovery-anchor-maps";
 import { assignNewGroundedTopicGroups } from "./agent-runtime-reader-summary-topic-group-creation";
 import {
   recoverIntoExistingGroups,

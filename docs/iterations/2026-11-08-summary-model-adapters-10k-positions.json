@@ -2777,7 +2777,7 @@
     },
     {
       "original": "agent-runtime-reader-summary-topic-group-recovery.ts",
-      "owner": "agent-runtime-reader-summary-topic-anchor-keys.ts",
+      "owner": "agent-runtime-reader-summary-topic-recovery-anchor-maps.ts",
       "originalPositions": [
         30,
         31,
@@ -2786,7 +2786,7 @@
         36,
         37
       ],
-      "responsibility": "Pure node-ID-to-candidate grounding, distinct evidence-dependent versus identity anchor maps, now owned alongside anchor-token policy instead of recovery/group assignment orchestration; original-line provenance only, not independently accepted meaningful LOC"
+      "responsibility": "Evidence-to-node anchor map assembly belongs to read-only specialist; the recovery orchestrator imports direct owner, legacy facade only reexports"
     },
     {
       "original": "agent-runtime-reader-summary-topic-labeler.adapter.ts",
@@ -7881,6 +7881,36 @@
         353
       ],
       "responsibility": "Collision-safe stable recovered group identity and ordered suffix admission own domain policy rather than evidence anchor token lookup; original anchor-keys public export remains an identical reexport, assignment imports direct owner"
+    },
+    {
+      "original": "agent-runtime-reader-summary-topic-group-recovery.ts",
+      "owner": "agent-runtime-reader-summary-topic-recovery-anchor-maps.ts",
+      "originalPositions": [
+        307,
+        308,
+        309,
+        310,
+        311,
+        312,
+        313,
+        321,
+        322,
+        323,
+        324,
+        325
+      ],
+      "responsibility": "Separate grounded candidate evidence anchors from a node's identity anchors, preserving exact admitted source expressions without mutable input or provider influence"
+    },
+    {
+      "original": "agent-runtime-reader-summary-topic-group-recovery.ts",
+      "owner": "agent-runtime-reader-summary-topic-anchor-token-policy.ts",
+      "originalPositions": [
+        329,
+        330,
+        331,
+        336
+      ],
+      "responsibility": "Standalone trusted normalized-token admission, noise filtering and intersection policy used directly by anchor support with compatibility exports"
     }
   ]
 }

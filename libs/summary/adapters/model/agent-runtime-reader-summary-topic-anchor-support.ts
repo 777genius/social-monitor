@@ -5,7 +5,7 @@ import {
 } from "../../domain";
 import type { ReaderSummaryTopicLabelerInput } from "../../ports";
 import { formatReaderSummaryTopicToken } from "../../domain/services/reader-summary-topic-map-text";
-import { anchorKeys, genericAnchors } from "./agent-runtime-reader-summary-topic-anchor-keys";
+import { anchorKeys, genericAnchors } from "./agent-runtime-reader-summary-topic-anchor-token-policy";
 
 export const supportedAnchors = (
   nodeIds: readonly string[],
