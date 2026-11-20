@@ -6156,24 +6156,10 @@
         230,
         233,
         234,
-        235,
         241,
         242,
         243,
-        244,
-        251,
-        253,
-        254,
-        255,
-        256,
-        257,
-        258,
-        263,
-        264,
-        265,
-        266,
-        268,
-        269
+        244
       ],
       "responsibility": "Previously extracted completed SDK result: observed-model veto, settlement/cleanup warnings and integrity-bound execution attestation; retrospective disjoint original-coordinate provenance only."
     },
@@ -7531,8 +7517,7 @@
       "owner": "gateway-llm/gateway-llm-task-completion.ts",
       "originalPositions": [
         238,
-        239,
-        259
+        239
       ],
       "responsibility": "Provider model matching, settlement warnings, selected output digest and attestation projection"
     },
@@ -7941,6 +7926,27 @@
         79
       ],
       "responsibility": "Evidence-bound top story interpretation and cited narrative assembly are separated from optional sections, publication copy, and final artifact orchestration; original rejection ordering preserved"
+    },
+    {
+      "original": "gateway-llm/gateway-llm-client.ts",
+      "owner": "gateway-llm/gateway-llm-completion-attestation.ts",
+      "originalPositions": [
+        235,
+        253,
+        254,
+        255,
+        256,
+        257,
+        258,
+        259,
+        263,
+        264,
+        265,
+        266,
+        268,
+        269
+      ],
+      "responsibility": "Previously credited exact original completion/selected-output and integrity-attestation expressions now owned by isolated request/receipt sealing policy; one obsolete inline wrapper expression withdrawn, no new source credit or behavioral change."
     }
   ]
 }

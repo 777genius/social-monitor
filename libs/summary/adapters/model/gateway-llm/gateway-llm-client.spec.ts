@@ -4,7 +4,7 @@ import { GatewayError } from "@agent-teams/account-gateway/http";
 import type { NativeResponse } from "@agent-teams/account-gateway/http";
 import { createLlmClient, LLM_DEFAULT_OUTPUT_BYTES, LLM_MAX_OUTPUT_BYTES } from "@agent-teams/account-gateway/llm";
 import type { ConsumerControlPort, ExecutionPort } from "@agent-teams/account-gateway/llm";
-import { isAttestedRuntimeIdentity } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
+import { isAttestedRuntimeIdentity, selectedAgentRuntimeOutput } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import type { AgentRuntimeTaskCommand, ReaderSummaryTopicLabelerInput } from "../../../ports";
@@ -636,7 +636,13 @@ describe("gateway usage accounting across outcome boundaries", () => {
     expect(result).toMatchObject({ status: "completed",
       usage: { inputTokens: 40, outputTokens: 9, totalTokens: 49,
         cachedInputTokens: 12, reasoningTokens: 3 } });
-    expect(result.executionAttestation).toBeDefined();
+    const selected = selectedAgentRuntimeOutput({ structuredOutput: { label: "AI agents" } });
+    expect(result.executionAttestation).toMatchObject({
+      selectedOutputKind: selected.kind,
+      selectedOutputSha256: selected.sha256,
+      canonicalRequestSha256: gatewayLlmCanonicalRequestSha256(command(), kimiRoute),
+      gateway: { observedModel: "k3-256k", profileId: kimiRoute.profileId },
+    });
     expect(fake.requests()).toBe(1);
   });
 
