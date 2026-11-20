@@ -159,7 +159,12 @@ function inspectRunnerWiring(source) {
   const tree = ts.createSourceFile('check-external-beta-evidence-dry-run.mjs', source,
     ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
   const imports = new Set();
-  const calls = new Set();
+  const topLevelValidatorCalls = tree.statements
+    .filter((statement) => ts.isExpressionStatement(statement) &&
+      ts.isCallExpression(statement.expression) &&
+      ts.isIdentifier(statement.expression.expression))
+    .map((statement) => statement.expression.expression.text)
+    .filter((name) => name === 'validateDryRunContract' || name === 'validatePlanShape');
   const declared = new Set();
   let factoryBound = false;
   for (const statement of tree.statements) {
@@ -173,9 +178,6 @@ function inspectRunnerWiring(source) {
     }
   }
   function visit(node) {
-    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-      calls.add(node.expression.text);
-    }
     if (ts.isFunctionDeclaration(node) && node.name) declared.add(node.name.text);
     if (ts.isVariableDeclaration(node) && ts.isObjectBindingPattern(node.name) &&
       node.initializer && ts.isCallExpression(node.initializer) &&
@@ -196,7 +198,7 @@ function inspectRunnerWiring(source) {
     ts.forEachChild(node, visit);
   }
   visit(tree);
-  return { imports, calls, declared, factoryBound };
+  return { imports, topLevelValidatorCalls, declared, factoryBound };
 }
 
 test('runner delegates real policy imports, bindings and invoked validators', () => {
@@ -206,8 +208,9 @@ test('runner delegates real policy imports, bindings and invoked validators', ()
   assert.ok(wiring.imports.has('createExternalBetaDryRunPlanPolicy'),
     'runner must import the extracted policy from its real owner');
   assert.ok(wiring.factoryBound, 'runner must bind validators to the eight live dependencies');
+  assert.deepEqual(wiring.topLevelValidatorCalls, ['validateDryRunContract', 'validatePlanShape'],
+    'runner must invoke both validators at top level, exactly once, in legacy order');
   for (const name of ['validateDryRunContract', 'validatePlanShape']) {
-    assert.ok(wiring.calls.has(name), name + ' must actually be called');
     assert.ok(!wiring.declared.has(name), name + ' must not be locally redefined');
   }
   const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
@@ -236,5 +239,20 @@ test('comment-only wiring markers and wrong import owner cannot pass', () => {
     'validatePlanShape();', 'void 0; // validatePlanShape();',
   );
   assert.notEqual(commentOnlyValidator, source, 'mutation must replace validator call');
-  assert.equal(inspectRunnerWiring(commentOnlyValidator).calls.has('validatePlanShape'), false);
+  assert.deepEqual(inspectRunnerWiring(commentOnlyValidator).topLevelValidatorCalls,
+    ['validateDryRunContract']);
+  const deadFunction = source.replace(
+    'validateDryRunContract();\nvalidatePlanShape();',
+    'function neverCalled() {\n  validateDryRunContract();\n  validatePlanShape();\n}',
+  );
+  assert.notEqual(deadFunction, source, 'mutation must move both calls off the top level');
+  assert.deepEqual(inspectRunnerWiring(deadFunction).topLevelValidatorCalls, [],
+    'validator calls in a never-invoked nested function must not satisfy runner delegation');
+  const reversedCalls = source.replace(
+    'validateDryRunContract();\nvalidatePlanShape();',
+    'validatePlanShape();\nvalidateDryRunContract();',
+  );
+  assert.notEqual(reversedCalls, source, 'mutation must reverse validator calls');
+  assert.deepEqual(inspectRunnerWiring(reversedCalls).topLevelValidatorCalls,
+    ['validatePlanShape', 'validateDryRunContract'], 'legacy validator order must be observable');
 });
