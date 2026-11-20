@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { test } from 'node:test';
 import { createExternalBetaDryRunPlanPolicy } from './external-beta-dry-run-plan-policy.mjs';
 import { createExternalBetaDryRunHandoffPolicy } from './external-beta-dry-run-handoff-policy.mjs';
+import { createExternalBetaDryRunSafetyLinkagePolicy } from './external-beta-dry-run-safety-linkage-policy.mjs';
 
 const ts = createRequire(import.meta.url)('typescript');
 
@@ -303,6 +304,8 @@ function dryRunCliFixture() {
     join(root, 'scripts', 'lib', 'external-beta-dry-run-plan-policy.mjs'));
   copyFileSync(new URL('./external-beta-dry-run-handoff-policy.mjs', import.meta.url),
     join(root, 'scripts', 'lib', 'external-beta-dry-run-handoff-policy.mjs'));
+  copyFileSync(new URL('./external-beta-dry-run-safety-linkage-policy.mjs', import.meta.url),
+    join(root, 'scripts', 'lib', 'external-beta-dry-run-safety-linkage-policy.mjs'));
   writeFileSync(join(root, 'scripts', 'external-beta-evidence-runner.mjs'),
     "import { readFileSync } from 'node:fs';\n" +
     "const args = process.argv.slice(2).join(' ');\n" +
@@ -398,7 +401,7 @@ function dryRunCliFixture() {
       env: { PATH: process.env.PATH ?? '' },
     });
   };
-  return { runner, dryRun, plan, handoff, run, cleanup: () => rmSync(root, { recursive: true, force: true }) };
+  return { runner, dryRun, readiness, plan, handoff, run, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 }
 
 test('real dry-run CLI accepts a clean-env plan/handoff without executing live jobs', () => {
@@ -608,4 +611,167 @@ test('JSON handoff factory rejects absent and non-callable injected dependencies
     () => createExternalBetaDryRunHandoffPolicy({ ...valid, assertSameSet: 42 }),
     { name: 'TypeError', message: 'external beta dry-run handoff policy requires assertSameSet to be a function' },
   );
+});
+
+test('safety policy preserves original forbidden-target, blocker, and command diagnostics order', () => {
+  const runner = {
+    executionSafety: { forbiddenTargets: [] },
+    jobs: [{
+      jobId: 'live-demo', blocksExternalBeta: false, runPolicy: 'local_contract',
+      runnerCommand: 'curl prod-internal', validationCommands: ['echo prod-internal'],
+    }],
+  };
+  const dryRun = { forbiddenTargets: ['prod-internal'], checkCommand: 'curl prod-internal' };
+  const violations = [];
+  createExternalBetaDryRunSafetyLinkagePolicy({
+    runner, dryRun, readiness: {}, runnerPath: 'runner.json',
+    dryRunPath: 'dry-run.json', readinessPath: 'readiness.json', violations,
+  }).validateRunnerSafety();
+  assert.deepEqual(violations, [
+    'runner.json: executionSafety.forbiddenTargets must include prod-internal',
+    'dry-run.json: dry-run commands must not target prod-internal',
+    'runner.json: live-demo must block external beta',
+    'runner.json: live-demo command must not target prod-internal: curl prod-internal',
+    'runner.json: live-demo command must not target prod-internal: echo prod-internal',
+  ]);
+});
+
+test('readiness linkage policy preserves all six diagnostic checks and ordering', () => {
+  const dryRun = {
+    planJsonCommand: 'node plan', handoffJsonCommand: 'node handoff',
+    currentPackageCommand: 'node package',
+  };
+  const readiness = {
+    externalBetaDecision: 'go', evidenceMode: 'unverified',
+    evidenceRunner: {
+      contract: 'wrong.json', jsonPlanCommand: 'wrong plan',
+      handoffJsonCommand: 'wrong handoff', currentPackageCommand: 'wrong package',
+    },
+  };
+  const violations = [];
+  createExternalBetaDryRunSafetyLinkagePolicy({
+    runner: {}, dryRun, readiness, runnerPath: 'runner.json',
+    dryRunPath: 'dry-run.json', readinessPath: 'readiness.json', violations,
+  }).validateReadinessLinkage();
+  assert.deepEqual(violations, [
+    'readiness.json: externalBetaDecision must stay hold until live evidence is attached',
+    'readiness.json: evidenceMode must require external evidence',
+    'readiness.json: evidenceRunner.contract must point at runner.json',
+    'readiness.json: evidenceRunner.jsonPlanCommand must match dry-run plan command',
+    'readiness.json: evidenceRunner.handoffJsonCommand must match dry-run JSON handoff command',
+    'readiness.json: evidenceRunner.currentPackageCommand must match dry-run current package command',
+  ]);
+});
+
+test('safety policy fails fast on missing injected dependencies', () => {
+  const live = {
+    runner: {}, dryRun: {}, readiness: {},
+    runnerPath: 'runner.json', dryRunPath: 'dry-run.json',
+    readinessPath: 'readiness.json', violations: [],
+  };
+  assert.deepEqual(Object.keys(createExternalBetaDryRunSafetyLinkagePolicy(live)),
+    ['validateRunnerSafety', 'validateReadinessLinkage']);
+  assert.throws(() => createExternalBetaDryRunSafetyLinkagePolicy(),
+    { name: 'TypeError', message: 'external beta dry-run safety linkage policy requires runner' });
+  for (const name of Object.keys(live)) {
+    for (const value of [null, undefined]) {
+      assert.throws(
+        () => createExternalBetaDryRunSafetyLinkagePolicy({ ...live, [name]: value }),
+        { name: 'TypeError', message: 'external beta dry-run safety linkage policy requires ' + name },
+      );
+    }
+  }
+});
+
+test('real CLI rejects unsafe runner commands and premature GO without running live jobs', () => {
+  const f = dryRunCliFixture();
+  try {
+    f.dryRun.forbiddenTargets = ['prod-internal'];
+    f.dryRun.checkCommand = 'curl prod-internal';
+    f.runner.jobs.push({
+      jobId: 'live-demo', blocksExternalBeta: false, runPolicy: 'local_contract',
+      runnerCommand: 'curl prod-internal', validationCommands: ['echo prod-internal'],
+    });
+    f.readiness.externalBetaDecision = 'go';
+    const result = f.run();
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, 1, result.stderr);
+    assert.equal(result.stdout, '');
+    assert.deepEqual(result.stderr.trimEnd().split('\n'), [
+      'ops/release/external-beta-evidence-runner.json: executionSafety.forbiddenTargets must include prod-internal',
+      'ops/release/external-beta-evidence-dry-run.json: dry-run commands must not target prod-internal',
+      'ops/release/external-beta-evidence-runner.json: live-demo must block external beta',
+      'ops/release/external-beta-evidence-runner.json: live-demo command must not target prod-internal: curl prod-internal',
+      'ops/release/external-beta-evidence-runner.json: live-demo command must not target prod-internal: echo prod-internal',
+      'ops/release/external-beta-readiness-contract.json: externalBetaDecision must stay hold until live evidence is attached',
+    ]);
+  } finally {
+    f.cleanup();
+  }
+});
+
+function inspectSafetyLinkageDelegation(source) {
+  const tree = ts.createSourceFile('check-external-beta-evidence-dry-run.mjs', source,
+    ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  const imported = tree.statements.some((statement) =>
+    ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier) &&
+    statement.moduleSpecifier.text === './lib/external-beta-dry-run-safety-linkage-policy.mjs' &&
+    statement.importClause?.namedBindings &&
+    ts.isNamedImports(statement.importClause.namedBindings) &&
+    statement.importClause.namedBindings.elements.some((element) =>
+      !element.propertyName && element.name.text === 'createExternalBetaDryRunSafetyLinkagePolicy'));
+  const bound = tree.statements.some((statement) =>
+    ts.isVariableStatement(statement) &&
+    statement.declarationList.declarations.some((decl) => {
+      if (!ts.isObjectBindingPattern(decl.name) ||
+        !decl.initializer || !ts.isCallExpression(decl.initializer) ||
+        !ts.isIdentifier(decl.initializer.expression) ||
+        decl.initializer.expression.text !== 'createExternalBetaDryRunSafetyLinkagePolicy' ||
+        decl.initializer.arguments.length !== 1 ||
+        !ts.isObjectLiteralExpression(decl.initializer.arguments[0])) return false;
+      const names = decl.name.elements.filter((node) => !node.propertyName)
+        .map((node) => node.name.text);
+      const supplied = decl.initializer.arguments[0].properties
+        .filter(ts.isShorthandPropertyAssignment).map((node) => node.name.text);
+      return ['validateRunnerSafety', 'validateReadinessLinkage'].every((x) => names.includes(x)) &&
+        ['runner', 'dryRun', 'readiness', 'runnerPath', 'dryRunPath',
+          'readinessPath', 'violations'].every((x) => supplied.includes(x));
+    }));
+  const calls = tree.statements
+    .filter((statement) => ts.isExpressionStatement(statement) &&
+      ts.isCallExpression(statement.expression) &&
+      ts.isIdentifier(statement.expression.expression))
+    .map((statement) => statement.expression.expression.text)
+    .filter((name) => name === 'validateRunnerSafety' || name === 'validateReadinessLinkage');
+  const locallyDefined = tree.statements.some((statement) =>
+    ts.isFunctionDeclaration(statement) &&
+    ['validateRunnerSafety', 'validateReadinessLinkage'].includes(statement.name?.text));
+  return { imported: !!imported, bound, calls, locallyDefined };
+}
+
+test('AST E2E admission guard catches dead binding, commented call, omitted injection, and wrong owner', () => {
+  const source = readFileSync(new URL('../check-external-beta-evidence-dry-run.mjs', import.meta.url), 'utf8');
+  const binding = 'const { validateRunnerSafety, validateReadinessLinkage } = createExternalBetaDryRunSafetyLinkagePolicy({\n' +
+    '  runner, dryRun, readiness, runnerPath, dryRunPath, readinessPath, violations,\n});';
+  assert.ok(source.includes(binding), 'real source must contain exact top-level factory injection');
+  assert.deepEqual(inspectSafetyLinkageDelegation(source), {
+    imported: true, bound: true,
+    calls: ['validateRunnerSafety', 'validateReadinessLinkage'], locallyDefined: false,
+  });
+  const dead = source.replace(binding, 'function neverInvoked() {\n' + binding + '\n}');
+  assert.equal(inspectSafetyLinkageDelegation(dead).bound, false);
+  const omitted = source.replace(
+    '  runner, dryRun, readiness, runnerPath, dryRunPath, readinessPath, violations,\n});',
+    '  runner, dryRun, readiness, runnerPath, dryRunPath, violations,\n});');
+  assert.equal(inspectSafetyLinkageDelegation(omitted).bound, false);
+  const commented = source.replace('validateRunnerSafety();', 'void 0; // validateRunnerSafety();');
+  assert.deepEqual(inspectSafetyLinkageDelegation(commented).calls, ['validateReadinessLinkage']);
+  const wrongOwner = source.replace(
+    "from './lib/external-beta-dry-run-safety-linkage-policy.mjs';",
+    "from './lib/unrelated-policy.mjs';");
+  assert.equal(inspectSafetyLinkageDelegation(wrongOwner).imported, false);
+  const reversed = source.replace('validateRunnerSafety();\nvalidateReadinessLinkage();',
+    'validateReadinessLinkage();\nvalidateRunnerSafety();');
+  assert.deepEqual(inspectSafetyLinkageDelegation(reversed).calls,
+    ['validateReadinessLinkage', 'validateRunnerSafety']);
 });
