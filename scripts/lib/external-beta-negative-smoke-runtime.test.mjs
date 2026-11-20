@@ -47,12 +47,21 @@ const EXTRACTED_IMPORTS = [
   'createExternalBetaNegativeSmokeRuntime', 'childProcessErrorOutput', 'smokeOutputSnippet',
 ];
 
+// Verify each actual downstream factory receives diagnostics, rather than
+// accepting a same-named shorthand from any unrelated object in the runner.
+const DIAGNOSTIC_FACTORY_INJECTIONS = new Map([
+  ['createExternalBetaArtifactValidationSmokes', ['childProcessErrorOutput']],
+  ['createExternalBetaRuntimePlanSmokes', ['childProcessErrorOutput', 'smokeOutputSnippet']],
+  ['createExternalBetaPreflightCommandSmokes', ['childProcessErrorOutput', 'smokeOutputSnippet']],
+  ['createExternalBetaOutputSafetySmokes', ['childProcessErrorOutput', 'smokeOutputSnippet']],
+]);
+
 function inspectRunnerWiring(source) {
   const tree = ts.createSourceFile('check-external-beta-evidence-runner.mjs', source,
     ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
   const imports = new Set();
   const calls = new Set();
-  const provided = new Set();
+  const diagnosticInjections = new Map();
   const declared = new Set();
   let factoryBound = false;
   for (const statement of tree.statements) {
@@ -64,9 +73,19 @@ function inspectRunnerWiring(source) {
       if (!element.propertyName) imports.add(element.name.text);
     }
   }
+  for (const statement of tree.statements) {
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      const call = declaration.initializer;
+      if (!call || !ts.isCallExpression(call) || !ts.isIdentifier(call.expression) ||
+        !DIAGNOSTIC_FACTORY_INJECTIONS.has(call.expression.text) ||
+        call.arguments.length !== 1 || !ts.isObjectLiteralExpression(call.arguments[0])) continue;
+      diagnosticInjections.set(call.expression.text, new Set(call.arguments[0].properties
+        .filter(ts.isShorthandPropertyAssignment).map(property => property.name.text)));
+    }
+  }
   function visit(node) {
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) calls.add(node.expression.text);
-    if (ts.isShorthandPropertyAssignment(node)) provided.add(node.name.text);
     if (ts.isFunctionDeclaration(node) && node.name) declared.add(node.name.text);
     if (ts.isVariableDeclaration(node) && node.parent?.parent?.parent === tree &&
       ts.isObjectBindingPattern(node.name) &&
@@ -87,7 +106,7 @@ function inspectRunnerWiring(source) {
     ts.forEachChild(node, visit);
   }
   visit(tree);
-  return { imports, calls, provided, declared, factoryBound };
+  return { imports, calls, diagnosticInjections, declared, factoryBound };
 }
 
 test('runner delegates real imported functions, live bindings and diagnostic consumers', () => {
@@ -100,8 +119,12 @@ test('runner delegates real imported functions, live bindings and diagnostic con
   for (const name of ['negativeSmokeOptions', 'shouldRunNegativeSmoke', 'smokeOutputSnippet']) {
     assert.ok(wiring.calls.has(name), name + ' must be invoked, not mentioned in a comment');
   }
-  assert.ok(wiring.provided.has('childProcessErrorOutput'),
-    'runner must inject its error normalizer into downstream smoke factories');
+  for (const [factory, dependencies] of DIAGNOSTIC_FACTORY_INJECTIONS) {
+    for (const dependency of dependencies) {
+      assert.ok(wiring.diagnosticInjections.get(factory)?.has(dependency),
+        factory + ' must receive live ' + dependency + ' injection');
+    }
+  }
   for (const name of ['negativeSmokeOptions', 'shouldRunNegativeSmoke',
     'childProcessErrorOutput', 'smokeOutputSnippet']) {
     assert.ok(!wiring.declared.has(name), name + ' must not be locally redefined');
@@ -110,6 +133,23 @@ test('runner delegates real imported functions, live bindings and diagnostic con
   for (const command of ['check:architecture', 'check:external-beta-evidence-runner']) {
     assert.match(scripts[command], /scripts\/lib\/external-beta-negative-smoke-runtime\.test\.mjs/);
   }
+});
+
+test('a diagnostic omitted from one smoke factory cannot hide behind other injections', () => {
+  const source = readFileSync(new URL('../check-external-beta-evidence-runner.mjs', import.meta.url), 'utf8');
+  const missing = source.replace(
+    '  releaseDeploySmokeImageDigest,\n  childProcessErrorOutput,\n});',
+    '  releaseDeploySmokeImageDigest,\n  // childProcessErrorOutput,\n});',
+  );
+  assert.notEqual(missing, source, 'mutation must remove one real factory injection');
+  assert.ok(missing.includes('  // childProcessErrorOutput,'),
+    'diagnostic name remains in a comment, while other legitimate factories still inject it');
+  const wiring = inspectRunnerWiring(missing);
+  assert.equal(wiring.diagnosticInjections.get('createExternalBetaArtifactValidationSmokes')
+    ?.has('childProcessErrorOutput'), false,
+  'artifact factory must not pass from a comment or another factory');
+  assert.equal(wiring.diagnosticInjections.get('createExternalBetaRuntimePlanSmokes')
+    ?.has('childProcessErrorOutput'), true, 'independent runtime factory remains wired');
 });
 
 test('comment-only factory call and wrong import owner cannot satisfy wiring', () => {
