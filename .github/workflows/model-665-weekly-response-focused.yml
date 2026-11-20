@@ -9,6 +9,8 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-flat-section-normalization.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-legacy-normalization.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-legacy-evidence-policy.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-weekly-legacy-claim-policy.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-weekly-legacy-claim-policy.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-legacy-evidence-policy.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-legacy-normalization.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-expanded-normalization.ts
@@ -87,6 +89,7 @@ jobs:
           libs/summary/adapters/model/openai-responses-reader-summary-weekly-envelope-boundaries.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-weekly-legacy-normalization.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-weekly-legacy-evidence-policy.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-weekly-legacy-claim-policy.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-contract.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-weekly-model.adapter.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-weekly-failure-policy.spec.ts

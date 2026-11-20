@@ -7,10 +7,8 @@ import {
   sealedCompactStoryKeys,
   sealedCompactStoryKeysWithHeadline,
 } from "./openai-responses-reader-summary-weekly-response-shapes";
-import {
-  exactLegacyCitationRange,
-  exactLegacyClaimType,
-} from "./openai-responses-reader-summary-weekly-legacy-evidence-policy";
+import { exactLegacyCitationRange } from "./openai-responses-reader-summary-weekly-legacy-evidence-policy";
+import { exactLegacyClaimType } from "./openai-responses-reader-summary-weekly-legacy-claim-policy";
 import { normalizeExpandedWeeklySection } from "./openai-responses-reader-summary-weekly-section-normalization";
 
 // Sealed compact owns story-to-section headline reconciliation.

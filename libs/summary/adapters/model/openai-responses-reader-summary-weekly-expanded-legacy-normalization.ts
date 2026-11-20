@@ -6,10 +6,8 @@ import {
   hasExactKeys,
   normalizeExpandedLegacyStoryStatus,
 } from "./openai-responses-reader-summary-weekly-response-shapes";
-import {
-  exactLegacyCitationRange,
-  exactLegacyClaimType,
-} from "./openai-responses-reader-summary-weekly-legacy-evidence-policy";
+import { exactLegacyCitationRange } from "./openai-responses-reader-summary-weekly-legacy-evidence-policy";
+import { exactLegacyClaimType } from "./openai-responses-reader-summary-weekly-legacy-claim-policy";
 import { normalizeExpandedWeeklySection } from "./openai-responses-reader-summary-weekly-section-normalization";
 
 // Expanded legacy owns its own exact story keys and validation sequence.

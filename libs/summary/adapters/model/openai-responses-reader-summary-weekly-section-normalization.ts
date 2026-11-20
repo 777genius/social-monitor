@@ -5,11 +5,8 @@ import {
   hasExactKeys,
   normalizeExpandedLegacySectionKind,
 } from "./openai-responses-reader-summary-weekly-response-shapes";
-import {
-  exactLegacyCitationRange,
-  exactLegacyClaimType,
-  legacyClaimTypeFromStories,
-} from "./openai-responses-reader-summary-weekly-legacy-evidence-policy";
+import { exactLegacyCitationRange } from "./openai-responses-reader-summary-weekly-legacy-evidence-policy";
+import { exactLegacyClaimType, legacyClaimTypeFromStories } from "./openai-responses-reader-summary-weekly-legacy-claim-policy";
 
 // The two wire envelopes share only section admission, not story validation.
 export const normalizeExpandedWeeklySection = (

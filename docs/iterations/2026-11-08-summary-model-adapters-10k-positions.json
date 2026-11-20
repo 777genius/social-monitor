@@ -7734,18 +7734,6 @@
         368,
         370,
         372,
-        376,
-        377,
-        387,
-        388,
-        390,
-        392,
-        393,
-        394,
-        396,
-        398,
-        401,
-        402,
         411,
         412,
         414,
@@ -7757,6 +7745,25 @@
         424
       ],
       "responsibility": "Retrospective first-use attribution of already-extracted legacy weekly evidence trust: exact citation-array admission, cited chronology non-fabrication, closed claim types, one matching story and cited-observation range; no credit for type-only, generic throw, imports or tests"
+    },
+    {
+      "original": "openai-responses-reader-summary-weekly-response-parser.ts",
+      "owner": "openai-responses-reader-summary-weekly-legacy-claim-policy.ts",
+      "originalPositions": [
+        376,
+        377,
+        387,
+        388,
+        390,
+        392,
+        393,
+        394,
+        396,
+        398,
+        401,
+        402
+      ],
+      "responsibility": "Closed legacy claim-type admission and exactly-one-story claim inheritance isolated from citation chronology; historical function identities preserved"
     },
     {
       "original": "openai-responses-reader-summary-weekly-response-parser.ts",
