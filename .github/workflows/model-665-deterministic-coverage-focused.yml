@@ -8,6 +8,9 @@ on:
       - .github/workflows/model-665-deterministic-coverage-focused.yml
       - libs/summary/adapters/model/deterministic-reader-summary-model.adapter.ts
       - libs/summary/adapters/model/deterministic-reader-summary-generation.ts
+      - libs/summary/adapters/model/deterministic-reader-summary-document.ts
+      - libs/summary/adapters/model/deterministic-reader-summary-headline-evidence.ts
+      - libs/summary/adapters/model/deterministic-reader-summary-publication-assessment.ts
       - libs/summary/adapters/model/deterministic-reader-summary-story-projection.ts
       - libs/summary/adapters/model/deterministic-reader-summary-interest-highlights.ts
       - libs/summary/adapters/model/deterministic-reader-summary-repeated-signals.ts

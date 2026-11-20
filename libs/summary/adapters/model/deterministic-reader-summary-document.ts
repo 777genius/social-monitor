@@ -5,6 +5,8 @@ import type {
 } from "../../ports";
 import { buildReaderSummary } from "../../domain";
 import { buildReaderHeadline } from "./deterministic-reader-summary-headline";
+import { selectDeterministicReaderSummaryHeadlineEvidence } from "./deterministic-reader-summary-headline-evidence";
+import { deterministicReaderSummaryPublicationAssessment } from "./deterministic-reader-summary-publication-assessment";
 import { buildDeterministicReaderSummaryNarrative } from "./deterministic-reader-summary-narrative";
 import { buildExecutiveSummary } from "./deterministic-reader-summary-text";
 import type { buildDeterministicReaderSummaryStoryProjection } from "./deterministic-reader-summary-story-projection";
@@ -30,16 +32,7 @@ export const buildDeterministicReaderSummaryDocument = ({
   readonly usage: ProviderReaderSummaryAttempt["draft"]["usage"];
 }): ProviderReaderSummaryAttempt => {
   const { citationMap, topStories, interestHighlights, repeatedSignals } = projection;
-    const headlineEvidence = input.evidence.editorialSlate === undefined
-      ? selectedEvidence
-      : input.evidence.editorialSlate.orderedCandidateIds.flatMap(
-          (candidateId) => {
-            const item = input.evidence.selectedEvidence.find(
-              (evidence) => evidence.feedItemId === candidateId,
-            );
-            return item === undefined ? [] : [item];
-          },
-        );
+    const headlineEvidence = selectDeterministicReaderSummaryHeadlineEvidence(input, selectedEvidence);
     const headline = buildReaderHeadline(input, headlineEvidence);
     const executiveSummary = buildExecutiveSummary(input);
     const narrativeSections = buildDeterministicReaderSummaryNarrative({
@@ -48,32 +41,17 @@ export const buildDeterministicReaderSummaryDocument = ({
       citationMap,
       topStories,
     });
+    const assessment = deterministicReaderSummaryPublicationAssessment(input, selectedEvidence);
     const draft = {
       headline,
       executiveSummary,
       topStories,
       interestHighlights,
       repeatedSignals,
-      risksAndUnknowns: input.policy.includeRisks
-        ? [
-            {
-              description:
-                "This deterministic reader summary only uses selected primary evidence titles.",
-              citationIds: ["c1"],
-              reason: "source_limit" as const,
-            },
-          ]
-        : [],
+      risksAndUnknowns: assessment.risksAndUnknowns,
       citationMap,
-      qualityFlags:
-        selectedEvidence.length < 3 ? ["limited_sources" as const] : [],
-      confidence: {
-        level:
-          selectedEvidence.length < 3 ? ("low" as const) : ("medium" as const),
-        score: selectedEvidence.length < 3 ? 0.35 : 0.65,
-        rationale:
-          "Confidence is derived from selected primary evidence count in this deterministic adapter.",
-      },
+      qualityFlags: assessment.qualityFlags,
+      confidence: assessment.confidence,
       lineage,
       usage,
     };

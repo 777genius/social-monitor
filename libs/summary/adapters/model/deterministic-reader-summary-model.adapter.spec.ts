@@ -13,6 +13,9 @@ import type {
   ReaderSummaryModelRoute,
 } from "../../ports";
 import { DeterministicReaderSummaryModelAdapter } from "./deterministic-reader-summary-model.adapter";
+import { selectDeterministicReaderSummaryHeadlineEvidence } from "./deterministic-reader-summary-headline-evidence";
+import { deterministicReaderSummaryPublicationAssessment } from "./deterministic-reader-summary-publication-assessment";
+
 import { projectDeterministicReaderSummaryAttempt } from "./deterministic-reader-summary-generation";
 import {
   selectClustersForEvidence,
@@ -33,6 +36,58 @@ import {
 } from "../evidence/reader-summary-editorial-slate";
 
 describe("DeterministicReaderSummaryModelAdapter", () => {
+  it("keeps trusted editorial headline ordering, missing IDs, duplicate IDs, and immutable evidence", () => {
+    const input = dailySynthesisReaderSummaryInput();
+    const evidence = input.evidence.selectedEvidence;
+    const first = evidence[0];
+    const second = evidence[1];
+    const slate = input.evidence.editorialSlate;
+    if (first === undefined || second === undefined || slate === undefined) {
+      throw new Error("Headline provenance fixture needs two evidence items and a slate");
+    }
+    const unslated: ReaderSummaryModelInput = {
+      ...input, evidence: { ...input.evidence, editorialSlate: undefined },
+    };
+    expect(selectDeterministicReaderSummaryHeadlineEvidence(unslated, evidence)).toBe(evidence);
+    const ordered: ReaderSummaryModelInput = {
+      ...input,
+      evidence: {
+        ...input.evidence,
+        editorialSlate: {
+          ...slate,
+          orderedCandidateIds: [second.feedItemId, "missing-evidence", first.feedItemId, first.feedItemId],
+        },
+      },
+    };
+    const before = JSON.stringify(ordered);
+    expect(selectDeterministicReaderSummaryHeadlineEvidence(ordered, [first]))
+      .toEqual([second, first, first]);
+    expect(JSON.stringify(ordered)).toBe(before);
+  });
+
+  it("keeps risk, limited-source and confidence admission independent from document assembly", () => {
+    const input = dailySynthesisReaderSummaryInput();
+    const evidence = input.evidence.selectedEvidence;
+    const first = evidence[0];
+    if (first === undefined || evidence.length < 3) {
+      throw new Error("Publication assessment fixture needs three primary items");
+    }
+    const limited = deterministicReaderSummaryPublicationAssessment(input, [first]);
+    expect(limited.risksAndUnknowns).toEqual([{
+      description: "This deterministic reader summary only uses selected primary evidence titles.",
+      citationIds: ["c1"], reason: "source_limit",
+    }]);
+    expect(limited.qualityFlags).toEqual(["limited_sources"]);
+    expect(limited.confidence).toMatchObject({ level: "low", score: 0.35 });
+    const full = deterministicReaderSummaryPublicationAssessment({
+      ...input, policy: { ...input.policy, includeRisks: false },
+    }, evidence.slice(0, 3));
+    expect(full.risksAndUnknowns).toEqual([]);
+    expect(full.qualityFlags).toEqual([]);
+    expect(full.confidence).toMatchObject({ level: "medium", score: 0.65 });
+  });
+
+
   it.each(["no_signal", "daily_synthesis"] as const)(
     "keeps direct and public deterministic generation identical for %s",
     async (kind) => {
