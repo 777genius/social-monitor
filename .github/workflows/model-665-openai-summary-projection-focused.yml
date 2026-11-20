@@ -88,6 +88,7 @@ on:
       - libs/summary/adapters/model/openai-responses-summary-required-json.ts
       - libs/summary/adapters/model/openai-responses-summary-optional-json.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-response-parser.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-output-json-admission.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-output-text.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-model-support.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-route-admission.ts

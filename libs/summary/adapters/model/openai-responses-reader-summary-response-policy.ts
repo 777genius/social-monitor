@@ -8,9 +8,9 @@ import {
   assertOpenAiReaderSummaryClaimCitationIds,
   extractOpenAiOutputText,
   normalizeOpenAiReaderSummaryDraft,
-  parseOpenAiReaderSummaryJsonObject,
   resolveOpenAiReaderSummaryUsage,
 } from "./openai-responses-reader-summary-model-support";
+import { parseOpenAiReaderSummaryJsonObject } from "./openai-responses-reader-summary-output-json-admission";
 import { ReaderSummaryModelProviderError } from "./openai-responses-reader-summary-provider-error";
 import { openAiResponsesCompletionIssue } from "./openai-responses-completion-state";
 

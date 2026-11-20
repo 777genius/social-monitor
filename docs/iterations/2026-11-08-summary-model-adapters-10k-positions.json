@@ -7954,6 +7954,15 @@
         152
       ],
       "responsibility": "One shared deterministic admitted weekly root field/citation projection; removes three redundant envelope copies after each independent fail-closed contract check"
+    },
+    {
+      "original": "openai-responses-reader-summary-response-parser.ts",
+      "owner": "openai-responses-reader-summary-output-json-admission.ts",
+      "originalPositions": [
+        64,
+        68
+      ],
+      "responsibility": "Strict untrusted provider JSON object admission and wrapped fail-closed error identity, isolated from envelope selection, usage and citation validation; original non-sanitized SyntaxError text is not credited"
     }
   ]
 }
