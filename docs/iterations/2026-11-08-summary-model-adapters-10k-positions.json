@@ -5301,7 +5301,14 @@
         167,
         168,
         169,
-        171,
+        171
+      ],
+      "responsibility": "Exact response root/batch shape, candidate-set identity and complete-set admission. Item-level untrusted evidence qualification checks are independently owned."
+    },
+    {
+      "original": "openai-promotion-presentation-v3.builder.ts",
+      "owner": "openai-promotion-presentation-v3-item-contract.ts",
+      "originalPositions": [
         175,
         176,
         177,
@@ -5334,7 +5341,7 @@
         211,
         212
       ],
-      "responsibility": "Exact proposal shape, candidate-set identity, evidence reference and qualification admission with fail-closed rejection."
+      "responsibility": "Fail-closed per-proposal scalar shape, qualification and source reference admission; called before candidate identity binding, exact historical rejection strings."
     },
     {
       "original": "openai-promotion-presentation-v3.builder.ts",
