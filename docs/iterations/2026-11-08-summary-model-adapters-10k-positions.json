@@ -2937,12 +2937,10 @@
         231,
         237,
         238,
-        240,
-        272,
         276,
         280
       ],
-      "responsibility": "Bounded primary/repair execution, usage and attestation; retrospective frozen-text provenance only, not independently accepted meaningful LOC"
+      "responsibility": "Bounded primary/repair execution, usage and attestation. Frozen original conditional coordinates 240/272 were removed from eligibility responsibility after a further SRP split: they no longer match any exact owner text and are conservatively excluded, not double-counted."
     },
     {
       "original": "agent-runtime-reader-summary-model.adapter.ts",
