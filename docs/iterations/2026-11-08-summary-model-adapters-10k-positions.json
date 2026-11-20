@@ -3600,28 +3600,19 @@
       "owner": "gateway-llm/gateway-llm-dispatch-loop.ts",
       "originalPositions": [
         95,
-        96,
         97,
         98,
         99,
         100,
         101,
         122,
-        123,
-        135,
-        215,
-        217,
-        218,
-        219,
-        220,
-        221,
         274,
         275,
         276,
         287,
         288
       ],
-      "responsibility": "Account-gateway SDK dispatch/retry lifecycle now owns task-attempt identity, account ordering/feedback, bounded replay and settlement; adapter retains route preflight, health and outer port composition; same SDK result/attestation/fail-closed behavior"
+      "responsibility": "Account SDK dispatch/retry lifecycle coordinates still source-exact after dedicated attempt/account binding extraction; changed call sites and generic wrapper positions excluded from frozen credit."
     },
     {
       "original": "agent-runtime-reader-summary-topic-grounded-cohorts.ts",
@@ -8002,6 +7993,16 @@
         242
       ],
       "responsibility": "Independent gRPC failure metadata projection retains the exact code/safe message/retryable/reconnect/cause/details fields and wire undefined behavior, with seven already credited frozen original coordinates re-owned, zero new credit."
+    },
+    {
+      "original": "gateway-llm/gateway-llm-client.ts",
+      "owner": "gateway-llm/gateway-llm-dispatch-task.ts",
+      "originalPositions": [
+        217,
+        218,
+        219
+      ],
+      "responsibility": "Attempt task ID, attempt number, and ordered account binding now belong to the narrow attempt-task specialist; original positions 217–219 were already credited and reowned once; other changed call sites/shape wrappers retired."
     }
   ]
 }
