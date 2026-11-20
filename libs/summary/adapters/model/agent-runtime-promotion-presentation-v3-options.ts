@@ -1,8 +1,5 @@
 import type { AgentRuntimeClientPort, AgentRuntimeProvider } from "../../ports";
-import {
-  parsePositiveInteger,
-  positiveIntegerOrFallback,
-} from "./agent-runtime-model-support";
+import { positiveIntegerOrFallback } from "./agent-runtime-model-support";
 import {
   activeReaderSummaryProvider,
   mimoPresentationMaxTimeoutMs,
@@ -22,10 +19,6 @@ import {
   resolveReaderSummaryGenerationIdentity,
 } from "./reader-summary-generation-identity-core";
 import { resolveReaderSummaryBackendEffort } from "./reader-summary-generation-effort-policy";
-import {
-  resolveReaderSummaryDailyTaskIdentityFromEnv,
-  resolveReaderSummaryReasoningEffortFromEnv,
-} from "./reader-summary-generation-env-resolution";
 
 // Runtime configuration is resolved once at the adapter boundary. Execution
 // itself must never re-read environment or reinterpret model/effort policy.
@@ -72,27 +65,4 @@ export const resolvePromotionPresentationV3RuntimeOptions = (
   return { client, provider, providerInstanceId, model, modelBackend, reasoningEffort, timeoutMs, maxOutputTokens };
 };
 
-/** Environment parsing remains a composition concern, separate from task execution. */
-export const resolveAgentRuntimePromotionPresentationV3BuilderOptions = (
-  env: NodeJS.ProcessEnv,
-  client: AgentRuntimeClientPort,
-): AgentRuntimePromotionPresentationV3BuilderOptions => {
-  const identity = resolveReaderSummaryDailyTaskIdentityFromEnv(env,
-    env.AGENT_RUNTIME_READER_SUMMARY_PRESENTATION_MODEL);
-  const sharedEffort = resolveReaderSummaryReasoningEffortFromEnv(env);
-  return {
-    client,
-    agentProvider: assertActiveReaderSummaryProvider(env.AGENT_RUNTIME_PROVIDER),
-    providerInstanceId: env.AGENT_RUNTIME_PROVIDER_INSTANCE_ID,
-    ...identity,
-    reasoningEffort: identity.modelBackend === mimoReaderSummaryBackend
-      ? mimoPresentationReasoningEffort : sharedEffort,
-    timeoutMs: parsePositiveInteger(
-      env.AGENT_RUNTIME_READER_SUMMARY_PRESENTATION_TIMEOUT_MS ??
-        env.AGENT_RUNTIME_TIMEOUT_MS,
-    ),
-    maxOutputTokens: parsePositiveInteger(
-      env.AGENT_RUNTIME_READER_SUMMARY_PRESENTATION_MAX_OUTPUT_TOKENS,
-    ),
-  };
-};
+export { resolveAgentRuntimePromotionPresentationV3BuilderOptions } from "./agent-runtime-promotion-presentation-v3-env-options";

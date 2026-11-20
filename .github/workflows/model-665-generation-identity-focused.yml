@@ -19,6 +19,9 @@ on:
       - libs/summary/adapters/model/reader-summary-generation-effort-policy.ts
       - libs/summary/adapters/model/reader-summary-generation-effort-policy.spec.ts
       - libs/summary/adapters/model/reader-summary-generation-env-resolution.ts
+      - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-options.ts
+      - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-env-options.ts
+      - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-options.spec.ts
       - libs/summary/adapters/model/reader-summary-backend-selection.ts
       - libs/summary/adapters/model/reader-summary-daily-task-env-resolution.ts
       - libs/summary/adapters/model/reader-summary-generation-identity-policy.spec.ts
@@ -74,3 +77,4 @@ jobs:
           libs/summary/adapters/model/agent-runtime-reader-summary-model.adapter.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-runtime-settings.spec.ts
           libs/summary/adapters/model/agent-runtime-summary-model.adapter.spec.ts
+          libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-options.spec.ts

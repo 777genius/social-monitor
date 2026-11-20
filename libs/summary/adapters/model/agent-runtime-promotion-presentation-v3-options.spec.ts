@@ -14,11 +14,38 @@ import { join } from "node:path";
 import {
   defaultPresentationTimeoutMs,
   resolvePromotionPresentationV3RuntimeOptions,
+  resolveAgentRuntimePromotionPresentationV3BuilderOptions,
 } from "./agent-runtime-promotion-presentation-v3-options";
+import {
+  resolveAgentRuntimePromotionPresentationV3BuilderOptions as resolvePresentationEnvOptions,
+} from "./agent-runtime-promotion-presentation-v3-env-options";
 
 const client = { runTask: jest.fn() } as unknown as AgentRuntimeClientPort;
 
 describe("promotion presentation runtime options", () => {
+  it("preserves legacy environment export identity and precedence without dispatch", () => {
+    expect(resolveAgentRuntimePromotionPresentationV3BuilderOptions).toBe(resolvePresentationEnvOptions);
+    const env: NodeJS.ProcessEnv = {
+      AGENT_RUNTIME_READER_SUMMARY_PRESENTATION_TIMEOUT_MS: "45000",
+      AGENT_RUNTIME_TIMEOUT_MS: "120000",
+      AGENT_RUNTIME_READER_SUMMARY_PRESENTATION_MAX_OUTPUT_TOKENS: "2048",
+      AGENT_RUNTIME_PROVIDER_INSTANCE_ID: "test-instance",
+    };
+    const configured = resolvePresentationEnvOptions(env, client);
+    expect(configured.client).toBe(client);
+    expect(configured.timeoutMs).toBe(45_000);
+    expect(configured.maxOutputTokens).toBe(2_048);
+    expect(configured.providerInstanceId).toBe("test-instance");
+    expect(client.runTask).not.toHaveBeenCalled();
+  });
+
+  it("forbids environment parsing inside runtime settings admission", () => {
+    const source = readFileSync(join(__dirname, "agent-runtime-promotion-presentation-v3-options.ts"), "utf8");
+    expect(source).not.toContain("NodeJS.ProcessEnv");
+    expect(source).not.toContain("env.AGENT_RUNTIME");
+    expect(source).toContain('from "./agent-runtime-promotion-presentation-v3-env-options"');
+  });
+
   it("keeps default timeout/token budget and the injected client without dispatch", () => {
     const options = resolvePromotionPresentationV3RuntimeOptions({ client });
     expect(options.client).toBe(client);

@@ -987,7 +987,14 @@
         93,
         94,
         98,
-        100,
+        100
+      ],
+      "responsibility": "Validated runtime backend, model, effort, and MiMo deadline admission; environment composition belongs to a separate module"
+    },
+    {
+      "original": "agent-runtime-promotion-presentation-v3.builder.ts",
+      "owner": "agent-runtime-promotion-presentation-v3-env-options.ts",
+      "originalPositions": [
         248,
         249,
         250,
@@ -1001,7 +1008,7 @@
         262,
         263
       ],
-      "responsibility": "Explicit runtime configuration and MiMo purpose policy separated from V3 port orchestration; no model/effort/deadline defaults changed"
+      "responsibility": "Environment-sourced identity, provider and effort selection, timeouts and output budget at the adapter composition boundary"
     },
     {
       "original": "agent-runtime-promotion-presentation-v3.builder.ts",
