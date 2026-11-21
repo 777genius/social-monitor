@@ -8,6 +8,7 @@ import type {
   ReaderSummaryTopicMapAttemptContext,
 } from "../../ports";
 import { buildGroundedTopicCohortsForCandidates } from "./agent-runtime-reader-summary-topic-grounded-cohorts";
+import { projectAgentRuntimeTopicLabelRetryFeedback } from "./agent-runtime-reader-summary-topic-labeler-retry-feedback";
 
 // This is the trusted taxonomy/coverage contract. The prompt adapter owns
 // serialization and the separate evidence module owns untrusted node data.
@@ -20,18 +21,7 @@ export const buildAgentRuntimeTopicLabelerPromptPolicy = (
   );
 
   return {
-    retryFeedback:
-      attemptContext?.retryFeedback === undefined
-        ? null
-        : {
-            ...attemptContext.retryFeedback,
-            minimumGroupedNodeCount: Math.ceil(
-              candidates.length *
-                attemptContext.retryFeedback.minimumGroupedCoverage,
-            ),
-            instruction:
-              "The previous map was rejected only for low grouped coverage. Rebuild the global taxonomy, keep distinct stories as distinct topicId values, and group at least the minimum node count when grounded broad domains support it.",
-          },
+    retryFeedback: projectAgentRuntimeTopicLabelRetryFeedback(candidates, attemptContext),
     constraints: {
       maxLabelWords: 4,
       maxGroups: READER_SUMMARY_TOPIC_MAP_MAX_SEMANTIC_GROUPS,

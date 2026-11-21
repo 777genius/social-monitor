@@ -37,6 +37,11 @@ on:
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-support-policy.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-support-policy.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-label-plan-normalizer.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-labeler-policy.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-labeler-retry-feedback.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-labeler-retry-feedback.spec.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-labeler-prompt.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-labeler-response-schema.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-relation-decisions.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-relation-command.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-relation-pair-coverage.ts
@@ -98,6 +103,9 @@ jobs:
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-assignment.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-support-policy.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-labeler.adapter.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-topic-labeler-policy.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-topic-labeler-retry-feedback.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-topic-labeler-prompt.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-recovery.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-cohort-grouping.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-relation-decisions.spec.ts
