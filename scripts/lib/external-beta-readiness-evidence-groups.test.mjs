@@ -96,6 +96,8 @@ test('missing group collection emits required group violations in original order
 const DELEGATE = 'validateExternalBetaEvidenceGroups';
 const DEPS = ['contract', 'scripts', 'existsSync', 'contractPath', 'violations'];
 const IMPORT_PATH = './lib/external-beta-readiness-evidence-groups.mjs';
+const SNAPSHOT_PATH = './lib/external-beta-readiness-input-snapshot.mjs';
+const SNAPSHOT_FACTORY = 'loadExternalBetaReadinessSnapshot';
 
 // An imported name or text marker is not proof of a live delegation. Verify that
 // the actual top-level call passes dependencies bound earlier in this runner.
@@ -103,6 +105,8 @@ function inspectReadinessRunner(source) {
   const tree = ts.createSourceFile('check-external-beta-readiness.mjs', source,
     ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
   let imports = 0;
+  let snapshotImports = 0;
+  let snapshotBindings = 0;
   const liveBindings = new Set();
   const calls = [];
   for (const statement of tree.statements) {
@@ -111,6 +115,10 @@ function inspectReadinessRunner(source) {
       const names = statement.importClause.namedBindings.elements;
       if (statement.moduleSpecifier.text === IMPORT_PATH) {
         imports += names.filter(element => !element.propertyName && element.name.text === DELEGATE).length;
+      }
+      if (statement.moduleSpecifier.text === SNAPSHOT_PATH) {
+        snapshotImports += names.filter(element =>
+          !element.propertyName && element.name.text === SNAPSHOT_FACTORY).length;
       }
       if (statement.moduleSpecifier.text === 'node:fs') {
         for (const element of names) {
@@ -122,6 +130,22 @@ function inspectReadinessRunner(source) {
       for (const declaration of statement.declarationList.declarations) {
         if (ts.isIdentifier(declaration.name) && declaration.initializer) {
           liveBindings.add(declaration.name.text);
+        }
+        if (ts.isObjectBindingPattern(declaration.name) && declaration.initializer &&
+          ts.isCallExpression(declaration.initializer) &&
+          ts.isIdentifier(declaration.initializer.expression) &&
+          declaration.initializer.expression.text === SNAPSHOT_FACTORY &&
+          declaration.initializer.arguments.length === 1 &&
+          ts.isIdentifier(declaration.initializer.arguments[0]) &&
+          declaration.initializer.arguments[0].text === 'readFileSync' &&
+          liveBindings.has('readFileSync')) {
+          snapshotBindings += 1;
+          for (const element of declaration.name.elements) {
+            if (ts.isIdentifier(element.name) && !element.propertyName &&
+              !element.dotDotDotToken && !element.initializer) {
+              liveBindings.add(element.name.text);
+            }
+          }
         }
       }
     }
@@ -135,7 +159,8 @@ function inspectReadinessRunner(source) {
         DEPS.every(name => names.includes(name) && liveBindings.has(name)) });
     }
   }
-  return imports === 1 && calls.length === 1 && calls[0].valid;
+  return imports === 1 && snapshotImports === 1 && snapshotBindings === 1 &&
+    calls.length === 1 && calls[0].valid;
 }
 
 test('runner actually delegates once at module level with live evidence dependencies', () => {
@@ -147,12 +172,23 @@ test('comments, dead functions and omitted dependencies cannot fake delegation',
   const source = readFileSync(new URL('../check-external-beta-readiness.mjs', import.meta.url), 'utf8');
   const call = 'validateExternalBetaEvidenceGroups({ contract, scripts, existsSync, contractPath, violations });';
   assert.ok(source.includes(call), 'test mutation must target the actual runner call');
+  const snapshotBinding = `const {
+  contractPath, packagePath, contract, sourceCertification, feedback, decision,
+  scripts, verifyScript, backendSafeScripts,
+} = loadExternalBetaReadinessSnapshot(readFileSync);`;
+  assert.ok(source.includes(snapshotBinding), 'test mutation must target the actual snapshot binding');
   const variants = [
     source.replace(call, '// ' + call),
     source.replace(call, 'function neverInvoked() { ' + call + ' }'),
     source.replace(call,
       'validateExternalBetaEvidenceGroups({ contract, /* scripts, */ existsSync, contractPath, violations });'),
     source.replace(IMPORT_PATH, './lib/unrelated-readiness-policy.mjs'),
+    source.replace(SNAPSHOT_PATH, './lib/unrelated-readiness-snapshot.mjs'),
+    source.replace(snapshotBinding, 'function neverInvokedSnapshot() { ' + snapshotBinding + ' }'),
+    source.replace('loadExternalBetaReadinessSnapshot(readFileSync)',
+      'loadExternalBetaReadinessSnapshot(() => "{}")'),
+    source.replace('contractPath, packagePath, contract, sourceCertification, feedback, decision,',
+      'packagePath, contract, sourceCertification, feedback, decision,'),
   ];
   for (const variant of variants) {
     assert.notEqual(variant, source, 'mutation must change the real source');
