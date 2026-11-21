@@ -239,6 +239,36 @@ test('real readiness entrypoint delegates npm admission; AST mutations fail clos
   }
 });
 
+
+function moduleLevelReadinessPolicyCalls(source) {
+  const root = ts.createSourceFile('check-external-beta-readiness.mjs',
+    source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  return root.statements.flatMap(statement => {
+    if (!ts.isExpressionStatement(statement) || !ts.isCallExpression(statement.expression)) return [];
+    const target = statement.expression.expression;
+    return ts.isIdentifier(target) && target.text.startsWith('validateExternalBeta') ? [target.text] : [];
+  });
+}
+
+test('all five live readiness policy calls preserve original top-level diagnostic order', () => {
+  const source = readFileSync(new URL('../check-external-beta-readiness.mjs', import.meta.url), 'utf8');
+  const expected = [
+    'validateExternalBetaContractAdmission',
+    'validateExternalBetaEvidenceGroups',
+    'validateExternalBetaGoCrossEvidence',
+    'validateExternalBetaCapacityAndExceptions',
+    'validateExternalBetaNpmVerification',
+  ];
+  assert.deepStrictEqual(moduleLevelReadinessPolicyCalls(source), expected);
+  const first = 'validateExternalBetaGoCrossEvidence({ contract, sourceCertification, feedback, decision, contractPath, violations });';
+  const second = 'validateExternalBetaCapacityAndExceptions({ contract, contractPath, violations });';
+  assert.ok(source.includes(first) && source.includes(second));
+  const reordered = source.replace(first, '__READINESS_POLICY_SLOT__')
+    .replace(second, first).replace('__READINESS_POLICY_SLOT__', second);
+  assert.notEqual(reordered, source);
+  assert.notDeepStrictEqual(moduleLevelReadinessPolicyCalls(reordered), expected);
+});
+
 // Exercise the actual CLI with isolated filesystem contracts, not only policy functions.
 // Production evidence and deployment credentials are never read or modified.
 test('readiness CLI preserves successful HOLD/GO and ordered fail-closed diagnostics end-to-end', async () => {
@@ -328,6 +358,39 @@ test('readiness CLI preserves successful HOLD/GO and ordered fail-closed diagnos
         `${prefix}: go requires every certified provider to be liveBetaReady`,
         `${prefix}: go requires redacted beta feedback samples`,
         `${prefix}: go requires beta ring decision to be go`,
+      ],
+    },
+    {
+      name: 'malformed evidence groups and artifacts reject in legacy cross-policy order',
+      mutate(f) {
+        f.contract.evidenceRunner.planCommand = 'npm run missing-plan';
+        const first = f.contract.requiredEvidenceGroups[0];
+        first.groupId = 'foreign-evidence';
+        first.status = 'unverified';
+        first.owner = '';
+        first.blocksExternalBeta = false;
+        first.verificationCommands = ['npm run missing-check'];
+        first.requiredArtifacts = ['missing-artifact'];
+        first.exitCondition = '';
+        f.contract.requiredEvidenceGroups[1].groupId = 'foreign-evidence';
+        f.contract.capacityEnvelope.maxUsers = 0;
+        f.contract.noGoExceptions[0].blocking = false;
+      },
+      expected: [
+        prefix + ': evidenceRunner.planCommand must reference an existing npm script',
+        prefix + ': unsupported evidence group "foreign-evidence"',
+        prefix + ': evidence group "foreign-evidence" has unsupported status "unverified"',
+        prefix + ': evidence group "foreign-evidence" must define owner',
+        prefix + ': evidence group "foreign-evidence" must block external beta until passed',
+        prefix + ': evidence group "foreign-evidence" references missing script "missing-check"',
+        prefix + ': evidence group "foreign-evidence" references missing artifact "missing-artifact"',
+        prefix + ': evidence group "foreign-evidence" must define exitCondition',
+        prefix + ': duplicate evidence group "foreign-evidence"',
+        prefix + ': unsupported evidence group "foreign-evidence"',
+        prefix + ': missing required evidence group "release-baseline-freeze"',
+        prefix + ': missing required evidence group "durable-runtime-proof"',
+        prefix + ': capacityEnvelope.maxUsers must be positive',
+        prefix + ': noGoException "must-block" must be blocking',
       ],
     },
     {
