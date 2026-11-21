@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { test } from 'node:test';
 import { validateExternalBetaContractAdmission } from './external-beta-readiness-contract-admission.mjs';
 import { validateExternalBetaNpmVerification } from './external-beta-readiness-npm-verification.mjs';
+import { loadExternalBetaReadinessSnapshot } from './external-beta-readiness-input-snapshot.mjs';
 
 const ts = createRequire(import.meta.url)('typescript');
 const fragments = [
@@ -465,5 +466,106 @@ test('readiness CLI preserves successful HOLD/GO and ordered fail-closed diagnos
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  }
+});
+
+const snapshotReadPaths = [
+  'ops/release/external-beta-readiness-contract.json',
+  'ops/ingestion/source-provider-certification.json',
+  'ops/release/beta-feedback-classification-report.json',
+  'ops/release/beta-ring-expansion-decision-record.json',
+  'package.json',
+  'ops/release/backend-safe-verify-contract.json',
+];
+const snapshotPayloads = [
+  { schemaVersion: 1 },
+  { certifiedProviders: [1] },
+  { evidenceMode: 'fixture' },
+  { decision: 'hold' },
+  { scripts: { verify: 'npm run check:external-beta-readiness' } },
+  { backendScripts: ['check:external-beta-readiness'] },
+];
+
+test('readiness input I/O preserves six read paths, utf8, order and downstream values', () => {
+  const reads = [];
+  const snapshot = loadExternalBetaReadinessSnapshot((path, encoding) => {
+    reads.push([path, encoding]);
+    return JSON.stringify(snapshotPayloads[snapshotReadPaths.indexOf(path)]);
+  });
+  assert.deepStrictEqual(reads, snapshotReadPaths.map(path => [path, 'utf8']));
+  assert.equal(snapshot.contractPath, snapshotReadPaths[0]);
+  assert.equal(snapshot.packagePath, snapshotReadPaths[4]);
+  for (const [key, index] of [['contract', 0], ['sourceCertification', 1],
+    ['feedback', 2], ['decision', 3]]) {
+    assert.deepStrictEqual(snapshot[key], snapshotPayloads[index]);
+  }
+  assert.deepStrictEqual(snapshot.scripts, snapshotPayloads[4].scripts);
+  assert.equal(snapshot.verifyScript, 'npm run check:external-beta-readiness');
+  assert.deepStrictEqual([...snapshot.backendSafeScripts], ['check:external-beta-readiness']);
+});
+
+test('readiness input I/O preserves native JSON errors and aborts before later reads', () => {
+  const reads = [];
+  assert.throws(() => loadExternalBetaReadinessSnapshot((path, encoding) => {
+    reads.push([path, encoding]);
+    return path === snapshotReadPaths[2]
+      ? '{invalid json'
+      : JSON.stringify(snapshotPayloads[snapshotReadPaths.indexOf(path)]);
+  }), SyntaxError);
+  assert.deepStrictEqual(reads, snapshotReadPaths.slice(0, 3).map(path => [path, 'utf8']));
+});
+
+test('readiness input I/O preserves omitted npm script and backend script fallbacks', () => {
+  const snapshot = loadExternalBetaReadinessSnapshot(path => JSON.stringify(
+    path === snapshotReadPaths[4] || path === snapshotReadPaths[5]
+      ? {} : snapshotPayloads[snapshotReadPaths.indexOf(path)]));
+  assert.deepStrictEqual(snapshot.scripts, {});
+  assert.equal(snapshot.verifyScript, '');
+  assert.deepStrictEqual([...snapshot.backendSafeScripts], []);
+});
+
+function inspectReadinessSnapshotWiring(source) {
+  const root = ts.createSourceFile('check-external-beta-readiness.mjs',
+    source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  const fields = ['contractPath', 'packagePath', 'contract', 'sourceCertification',
+    'feedback', 'decision', 'scripts', 'verifyScript', 'backendSafeScripts'];
+  let imports = 0;
+  let binds = 0;
+  for (const statement of root.statements) {
+    if (ts.isImportDeclaration(statement) &&
+      statement.moduleSpecifier.text === './lib/external-beta-readiness-input-snapshot.mjs' &&
+      ts.isNamedImports(statement.importClause?.namedBindings)) {
+      imports += statement.importClause.namedBindings.elements.filter(e =>
+        !e.propertyName && e.name.text === 'loadExternalBetaReadinessSnapshot').length;
+    }
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (!ts.isObjectBindingPattern(declaration.name) ||
+        !ts.isCallExpression(declaration.initializer) ||
+        !ts.isIdentifier(declaration.initializer.expression) ||
+        declaration.initializer.expression.text !== 'loadExternalBetaReadinessSnapshot' ||
+        declaration.initializer.arguments.length !== 1 ||
+        !ts.isIdentifier(declaration.initializer.arguments[0]) ||
+        declaration.initializer.arguments[0].text !== 'readFileSync') continue;
+      const names = declaration.name.elements.map(e => e.name.text);
+      if (names.length === fields.length && fields.every(name => names.includes(name))) binds++;
+    }
+  }
+  return imports === 1 && binds === 1;
+}
+
+test('readiness input loader is one real module-scope binding, not a dead/commented call', () => {
+  const source = readFileSync(new URL('../check-external-beta-readiness.mjs', import.meta.url), 'utf8');
+  const binding = 'loadExternalBetaReadinessSnapshot(readFileSync);';
+  assert.ok(source.includes(binding));
+  assert.equal(inspectReadinessSnapshotWiring(source), true);
+  for (const mutant of [
+    source.replace(binding, '// ' + binding),
+    source.replace(binding, 'loadExternalBetaReadinessSnapshot();'),
+    source.replace(binding, 'function dead() { ' + binding + ' }'),
+    source.replace('./lib/external-beta-readiness-input-snapshot.mjs', './lib/wrong-owner.mjs'),
+  ]) {
+    assert.notEqual(mutant, source);
+    assert.equal(inspectReadinessSnapshotWiring(mutant), false);
   }
 });
