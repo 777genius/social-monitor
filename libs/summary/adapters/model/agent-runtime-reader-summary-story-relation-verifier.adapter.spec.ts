@@ -619,6 +619,62 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
     expect(JSON.stringify(frozen)).toBe(before);
   });
 
+  it("keeps multiple candidate bindings isolated when evidence is shared", () => {
+    const original = input();
+    const third = Object.freeze({
+      ...original.evidence[0]!,
+      feedItemId: "feed:third",
+      sourceItemId: "source:third",
+      sourceBindingId: "binding:third",
+      providerKey: "reddit",
+      title: "Unrelated local event",
+      sourceText: "Only this source describes the third event.",
+    });
+    const first = Object.freeze({ ...original.candidates[0]! });
+    const second = Object.freeze({
+      ...original.candidates[0]!,
+      leftFeedItemId: "feed:third",
+      rightFeedItemId: "feed:rss",
+      leftClusterId: "story:third",
+      sharedTopicTokens: Object.freeze(["third"]),
+      sharedAnchorTokens: Object.freeze([]),
+      sharedEventTokens: Object.freeze([]),
+      sharedSpecificProductTokens: Object.freeze(["third"]),
+    });
+    const scoped = {
+      ...original,
+      evidence: Object.freeze([...original.evidence.map((item) => Object.freeze({ ...item })), third]),
+      candidates: Object.freeze([first, second]),
+    };
+    const before = JSON.stringify(scoped);
+    const pairs = projectDirectPairs(scoped);
+    expect(pairs).toHaveLength(2);
+    expect(pairs[0]).toMatchObject({
+      leftFeedItemId: "feed:hn",
+      rightFeedItemId: "feed:rss",
+      left: { providerKey: "hacker-news", title: "TypeScript compiler rewrite moves to Go" },
+      retrievalSignals: { sharedTopicTokens: ["compiler", "rewrite", "typescript"] },
+    });
+    expect(pairs[1]).toMatchObject({
+      leftFeedItemId: "feed:third",
+      rightFeedItemId: "feed:rss",
+      left: { providerKey: "reddit", title: "Unrelated local event" },
+      right: { providerKey: "rss", title: "Go rewrite changes the TypeScript compiler" },
+      retrievalSignals: { sharedTopicTokens: ["third"], sharedSpecificProductTokens: ["third"] },
+    });
+    expect(JSON.parse(buildAgentRuntimeReaderSummaryStoryRelationVerifierPrompt(scoped)).pairs)
+      .toEqual(pairs);
+    expect(JSON.stringify(scoped)).toBe(before);
+
+    const missingLater = { ...scoped, candidates: Object.freeze([
+      first, Object.freeze({ ...second, rightFeedItemId: "feed:missing" }),
+    ]) };
+    expect(() => projectDirectPairs(missingLater))
+      .toThrow("Unknown story relation evidence feed:missing");
+    expect(() => buildAgentRuntimeReaderSummaryStoryRelationVerifierPrompt(missingLater))
+      .toThrow("Unknown story relation evidence feed:missing");
+  });
+
   it("never substitutes another feed's evidence for a missing candidate identity", () => {
     const scoped = input();
     const candidate = scoped.candidates[0]!;
