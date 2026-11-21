@@ -1,9 +1,9 @@
 import { projectLegacyWeeklyDocument } from "./openai-responses-reader-summary-weekly-document-projection";
 import type { ReaderSummaryWeeklyModelInput } from "../../ports/reader-summary-weekly-model.port";
-import { sealedCompactOutputKeys, sealedCompactStoryKeys, sealedCompactStoryKeysWithHeadline } from "./openai-responses-reader-summary-weekly-sealed-shape-keys";
-import { hasExactKeys, normalizeExpandedLegacyStoryStatus } from "./openai-responses-reader-summary-weekly-response-shapes";
+import { sealedCompactOutputKeys } from "./openai-responses-reader-summary-weekly-sealed-shape-keys";
+import { normalizeSealedCompactWeeklyStory } from "./openai-responses-reader-summary-weekly-sealed-story-normalization";
 import { exactLegacyCitationRange } from "./openai-responses-reader-summary-weekly-legacy-evidence-policy";
-import { exactLegacyClaimType } from "./openai-responses-reader-summary-weekly-legacy-claim-policy";
+
 import { normalizeExpandedWeeklySection } from "./openai-responses-reader-summary-weekly-section-normalization";
 
 // Sealed compact owns story-to-section headline reconciliation.
@@ -25,42 +25,7 @@ const normalizeSealedCompactWeeklyModelOutput = (
     ),
   );
   const stories = value.stories.map((rawStory, index) => {
-    const story = hasExactKeys(rawStory, sealedCompactStoryKeys)
-      ? rawStory
-      : hasExactKeys(rawStory, sealedCompactStoryKeysWithHeadline)
-        ? rawStory
-        : undefined;
-    if (story === undefined) {
-      throw new Error(
-        `Sealed compact weekly story ${index + 1} must contain exactly the supported fields`,
-      );
-    }
-    const citationIds = exactLegacyCitationRange(
-      input,
-      story,
-      `sealed compact weekly story ${index + 1}`,
-    );
-    exactLegacyClaimType(
-      story.claimType,
-      `sealed compact weekly story ${index + 1}`,
-    );
-    const heading = sections.find(
-      (section) => section.storyId === story.storyId,
-    )?.heading;
-    if (typeof heading !== "string") {
-      throw new Error(
-        `Sealed compact weekly story ${index + 1} lacks a matching section headline`,
-      );
-    }
-    return {
-      storyId: story.storyId,
-      headline: heading,
-      summary: story.synthesis,
-      status: normalizeExpandedLegacyStoryStatus(story.status),
-      observedFrom: story.observedFrom,
-      observedThrough: story.observedThrough,
-      citationIds,
-    };
+    return normalizeSealedCompactWeeklyStory(input, rawStory, sections, index);
   });
   return projectLegacyWeeklyDocument(value, rootCitationIds, stories, sections);
 };

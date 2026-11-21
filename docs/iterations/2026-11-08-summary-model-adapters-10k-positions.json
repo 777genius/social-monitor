@@ -488,22 +488,7 @@
         165,
         168,
         188,
-        208,
-        209,
-        211,
-        214,
-        216,
-        222,
-        226,
-        228,
-        229,
-        231,
-        233,
-        237,
-        239,
-        240,
-        241,
-        242
+        208
       ],
       "responsibility": "Sealed-compact weekly wire envelope admission, story-to-section headline binding and model status normalization with existing rejection labels/order"
     },
@@ -8194,6 +8179,28 @@
         45
       ],
       "responsibility": "Sealed compact envelope and story strict exact-key admission contracts are version-isolated from legacy vocabulary, with consumers importing only their sealed contract; exact schema and rejection preserved"
+    },
+    {
+      "original": "openai-responses-reader-summary-weekly-response-parser.ts",
+      "owner": "openai-responses-reader-summary-weekly-sealed-story-normalization.ts",
+      "originalPositions": [
+        209,
+        211,
+        214,
+        216,
+        222,
+        226,
+        228,
+        229,
+        231,
+        233,
+        237,
+        239,
+        240,
+        241,
+        242
+      ],
+      "responsibility": "Sealed compact per-story exact-key, grounded chronology, closed claim type and admitted section-headline trust boundary; root and section admission remain in their independent owners"
     }
   ]
 }
