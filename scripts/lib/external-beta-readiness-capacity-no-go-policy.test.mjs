@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { test } from 'node:test';
+import { liveReadinessEntrypointBindings } from './external-beta-readiness-entrypoint-test-bindings.mjs';
 
 const ts = createRequire(import.meta.url)('typescript');
 import { validateExternalBetaCapacityAndExceptions } from './external-beta-readiness-capacity-no-go-policy.mjs';
@@ -94,7 +95,8 @@ function hasLiveEntrypointDelegation(source) {
     ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
   let imports = 0;
   let calls = 0;
-  const live = new Set();
+  const live = liveReadinessEntrypointBindings(ts, tree);
+  if (!live) return false;
   for (const statement of tree.statements) {
     if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier) &&
       statement.moduleSpecifier.text === './lib/external-beta-readiness-capacity-no-go-policy.mjs' &&
@@ -132,6 +134,9 @@ test('the real readiness runner delegates to the specialized owner at module sco
     source.replace(call, 'function unused() { ' + call + ' }'),
     source.replace(call, 'validateExternalBetaCapacityAndExceptions({ contract, /* contractPath, */ violations });'),
     source.replace('./lib/external-beta-readiness-capacity-no-go-policy.mjs', './lib/unrelated-policy.mjs'),
+    source.replace('./lib/external-beta-readiness-input-snapshot.mjs', './lib/unrelated-snapshot.mjs'),
+    source.replace('loadExternalBetaReadinessSnapshot(readFileSync)', 'loadExternalBetaReadinessSnapshot(() => "{}")'),
+    source.replace('contractPath, packagePath, contract, sourceCertification', 'packagePath, contract, sourceCertification'),
   ];
   for (const m of mutated) {
     assert.notEqual(m, source);

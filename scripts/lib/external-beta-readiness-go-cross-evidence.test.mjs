@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { test } from 'node:test';
+import { liveReadinessEntrypointBindings } from './external-beta-readiness-entrypoint-test-bindings.mjs';
 import { validateExternalBetaGoCrossEvidence } from './external-beta-readiness-go-cross-evidence.mjs';
 
 const ts = createRequire(import.meta.url)('typescript');
@@ -65,7 +66,8 @@ test('GO preserves strict true provider readiness and preceding findings', () =>
 
 function inspectRunner(source) {
   const root = ts.createSourceFile('check-external-beta-readiness.mjs', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
-  const live = new Set();
+  const live = liveReadinessEntrypointBindings(ts, root);
+  if (!live) return false;
   let imports = 0;
   let calls = 0;
   for (const statement of root.statements) {
@@ -101,6 +103,9 @@ test('actual runner delegates GO evidence once at top level, not just text marke
     source.replace(call, 'function neverCalled() { ' + call + ' }'),
     source.replace(call, call.replace('sourceCertification, ', '')),
     source.replace(path, './lib/unrelated-policy.mjs'),
+    source.replace('./lib/external-beta-readiness-input-snapshot.mjs', './lib/unrelated-snapshot.mjs'),
+    source.replace('loadExternalBetaReadinessSnapshot(readFileSync)', 'loadExternalBetaReadinessSnapshot(() => "{}")'),
+    source.replace('contractPath, packagePath, contract, sourceCertification', 'packagePath, contract, sourceCertification'),
   ]) {
     assert.notEqual(altered, source);
     assert.equal(inspectRunner(altered), false, 'fake delegation must fail');

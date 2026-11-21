@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { test } from 'node:test';
+import { liveReadinessEntrypointBindings } from './external-beta-readiness-entrypoint-test-bindings.mjs';
 import { validateExternalBetaContractAdmission } from './external-beta-readiness-contract-admission.mjs';
 import { validateExternalBetaNpmVerification } from './external-beta-readiness-npm-verification.mjs';
 import { loadExternalBetaReadinessSnapshot } from './external-beta-readiness-input-snapshot.mjs';
@@ -139,7 +140,8 @@ function inspectEntrypoint(source) {
   const root = ts.createSourceFile('check-external-beta-readiness.mjs',
     source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
   const required = ['contract', 'contractPath', 'scripts', 'existsSync', 'violations'];
-  const live = new Set();
+  const live = liveReadinessEntrypointBindings(ts, root);
+  if (!live) return false;
   let imports = 0;
   let calls = 0;
   for (const statement of root.statements) {
@@ -184,6 +186,8 @@ test('runner delegates once at module scope with five live dependencies', () => 
     source.replace(call,
       'validateExternalBetaContractAdmission({ contract, contractPath, /* scripts, */ existsSync, violations });'),
     source.replace('./lib/external-beta-readiness-contract-admission.mjs', './lib/unrelated-admission.mjs'),
+    source.replace('./lib/external-beta-readiness-input-snapshot.mjs', './lib/unrelated-snapshot.mjs'),
+    source.replace('loadExternalBetaReadinessSnapshot(readFileSync)', 'loadExternalBetaReadinessSnapshot(() => "{}")'),
   ];
   for (const altered of mutations) {
     assert.notEqual(altered, source);
@@ -198,7 +202,8 @@ function inspectNpmReadinessWiring(source) {
   const owner = './lib/external-beta-readiness-npm-verification.mjs';
   const name = 'validateExternalBetaNpmVerification';
   const deps = ['scripts', 'verifyScript', 'backendSafeScripts', 'packagePath', 'violations'];
-  const live = new Set();
+  const live = liveReadinessEntrypointBindings(ts, tree);
+  if (!live) return false;
   let imports = 0;
   let calls = 0;
   for (const statement of tree.statements) {
@@ -234,6 +239,8 @@ test('real readiness entrypoint delegates npm admission; AST mutations fail clos
     source.replace(call, 'function dead() { ' + call + ' }'),
     source.replace(call, call.replace('backendSafeScripts, ', '')),
     source.replace('./lib/external-beta-readiness-npm-verification.mjs', './lib/other-owner.mjs'),
+    source.replace('./lib/external-beta-readiness-input-snapshot.mjs', './lib/unrelated-snapshot.mjs'),
+    source.replace('loadExternalBetaReadinessSnapshot(readFileSync)', 'loadExternalBetaReadinessSnapshot(() => "{}")'),
   ]) {
     assert.notEqual(mutated, source);
     assert.equal(inspectNpmReadinessWiring(mutated), false);
