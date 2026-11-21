@@ -3,6 +3,7 @@ import { validateExternalBetaContractAdmission } from './lib/external-beta-readi
 import { validateExternalBetaEvidenceGroups } from './lib/external-beta-readiness-evidence-groups.mjs';
 import { validateExternalBetaCapacityAndExceptions } from './lib/external-beta-readiness-capacity-no-go-policy.mjs';
 import { validateExternalBetaGoCrossEvidence } from './lib/external-beta-readiness-go-cross-evidence.mjs';
+import { validateExternalBetaNpmVerification } from './lib/external-beta-readiness-npm-verification.mjs';
 
 const contractPath = 'ops/release/external-beta-readiness-contract.json';
 const sourceCertificationPath = 'ops/ingestion/source-provider-certification.json';
@@ -19,8 +20,6 @@ const backendSafe = JSON.parse(readFileSync(backendSafePath, 'utf8'));
 const scripts = packageJson.scripts ?? {};
 const verifyScript = String(scripts.verify ?? '');
 const backendSafeScripts = new Set(backendSafe.backendScripts ?? []);
-const hasVerificationScript = (scriptName) =>
-  verifyScript.includes(`npm run ${scriptName}`) || backendSafeScripts.has(scriptName);
 const violations = [];
 
 validateExternalBetaContractAdmission({ contract, contractPath, scripts, existsSync, violations });
@@ -31,12 +30,7 @@ validateExternalBetaGoCrossEvidence({ contract, sourceCertification, feedback, d
 
 validateExternalBetaCapacityAndExceptions({ contract, contractPath, violations });
 
-if (!scripts['check:external-beta-readiness']) {
-  violations.push(`${packagePath}: missing check:external-beta-readiness`);
-}
-if (!hasVerificationScript('check:external-beta-readiness')) {
-  violations.push(`${packagePath}: npm run verify or verify:backend must include check:external-beta-readiness`);
-}
+validateExternalBetaNpmVerification({ scripts, verifyScript, backendSafeScripts, packagePath, violations });
 
 if (violations.length > 0) {
   console.error(violations.join('\n'));

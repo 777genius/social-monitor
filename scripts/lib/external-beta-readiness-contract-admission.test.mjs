@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { test } from 'node:test';
 import { validateExternalBetaContractAdmission } from './external-beta-readiness-contract-admission.mjs';
+import { validateExternalBetaNpmVerification } from './external-beta-readiness-npm-verification.mjs';
 
 const ts = createRequire(import.meta.url)('typescript');
 const fragments = [
@@ -106,6 +107,32 @@ test('original admission policy never mutates input contracts or scripts', () =>
   assert.deepStrictEqual(x.violations, []);
 });
 
+
+test('npm admission preserves verification through either verify or backend-safe script', () => {
+  const scripts = { 'check:external-beta-readiness': 'node scripts/check-external-beta-readiness.mjs' };
+  const validate = (verifyScript, backend = [], actualScripts = scripts) => {
+    const violations = [];
+    validateExternalBetaNpmVerification({
+      scripts: actualScripts, verifyScript, backendSafeScripts: new Set(backend),
+      packagePath: 'package.json', violations,
+    });
+    return violations;
+  };
+  assert.deepStrictEqual(validate('npm run check:external-beta-readiness'), []);
+  assert.deepStrictEqual(validate('echo noop', ['check:external-beta-readiness']), []);
+  assert.deepStrictEqual(validate('npm run check:external-beta-readiness-extra'), []);
+  assert.deepStrictEqual(validate('echo noop'), [
+    'package.json: npm run verify or verify:backend must include check:external-beta-readiness',
+  ]);
+  assert.deepStrictEqual(validate('echo noop', [], {}), [
+    'package.json: missing check:external-beta-readiness',
+    'package.json: npm run verify or verify:backend must include check:external-beta-readiness',
+  ]);
+  assert.deepStrictEqual(validate('npm run check:external-beta-readiness', [], {}), [
+    'package.json: missing check:external-beta-readiness',
+  ]);
+});
+
 // Guard actual module-scope delegation, not a comment or dead nested factory.
 function inspectEntrypoint(source) {
   const root = ts.createSourceFile('check-external-beta-readiness.mjs',
@@ -160,6 +187,55 @@ test('runner delegates once at module scope with five live dependencies', () => 
   for (const altered of mutations) {
     assert.notEqual(altered, source);
     assert.equal(inspectEntrypoint(altered), false);
+  }
+});
+
+
+function inspectNpmReadinessWiring(source) {
+  const tree = ts.createSourceFile('check-external-beta-readiness.mjs', source,
+    ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  const owner = './lib/external-beta-readiness-npm-verification.mjs';
+  const name = 'validateExternalBetaNpmVerification';
+  const deps = ['scripts', 'verifyScript', 'backendSafeScripts', 'packagePath', 'violations'];
+  const live = new Set();
+  let imports = 0;
+  let calls = 0;
+  for (const statement of tree.statements) {
+    if (ts.isImportDeclaration(statement) && ts.isNamedImports(statement.importClause?.namedBindings) &&
+      statement.moduleSpecifier.text === owner) {
+      imports += statement.importClause.namedBindings.elements.filter(e =>
+        !e.propertyName && e.name.text === name).length;
+    }
+    if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        if (ts.isIdentifier(declaration.name) && declaration.initializer) live.add(declaration.name.text);
+      }
+    }
+    if (ts.isExpressionStatement(statement) && ts.isCallExpression(statement.expression) &&
+      ts.isIdentifier(statement.expression.expression) && statement.expression.expression.text === name) {
+      const args = statement.expression.arguments;
+      const props = args.length === 1 && ts.isObjectLiteralExpression(args[0]) ? args[0].properties : [];
+      const names = props.filter(ts.isShorthandPropertyAssignment).map(p => p.name.text);
+      if (props.length === deps.length && names.length === deps.length &&
+        deps.every(dep => names.includes(dep) && live.has(dep))) calls++;
+    }
+  }
+  return imports === 1 && calls === 1;
+}
+
+test('real readiness entrypoint delegates npm admission; AST mutations fail closed', () => {
+  const source = readFileSync(new URL('../check-external-beta-readiness.mjs', import.meta.url), 'utf8');
+  const call = 'validateExternalBetaNpmVerification({ scripts, verifyScript, backendSafeScripts, packagePath, violations });';
+  assert.equal(inspectNpmReadinessWiring(source), true);
+  assert.ok(source.includes(call));
+  for (const mutated of [
+    source.replace(call, '// ' + call),
+    source.replace(call, 'function dead() { ' + call + ' }'),
+    source.replace(call, call.replace('backendSafeScripts, ', '')),
+    source.replace('./lib/external-beta-readiness-npm-verification.mjs', './lib/other-owner.mjs'),
+  ]) {
+    assert.notEqual(mutated, source);
+    assert.equal(inspectNpmReadinessWiring(mutated), false);
   }
 });
 
@@ -220,6 +296,7 @@ test('readiness CLI preserves successful HOLD/GO and ordered fail-closed diagnos
     certification: { certifiedProviders: [{ liveBetaReady: true }] },
     feedback: { evidenceMode: 'redacted_beta_samples' },
     decision: { decision: 'go' },
+    backendSafe: { backendScripts: [] },
     pkg: { scripts: {
       'check:evidence': 'node evidence.mjs',
       'check:external-beta-readiness': 'node scripts/check-external-beta-readiness.mjs',
@@ -230,6 +307,13 @@ test('readiness CLI preserves successful HOLD/GO and ordered fail-closed diagnos
     { name: 'hold with complete evidence', mutate() {}, expected: [] },
     { name: 'go with complete evidence', mutate(f) { f.contract.externalBetaDecision = 'go'; }, expected: [] },
     { name: 'hold with pending evidence', mutate(f) { f.contract.requiredEvidenceGroups[0].status = 'hold'; }, expected: [] },
+    { name: 'backend-safe admission without npm verify', mutate(f) {
+      delete f.pkg.scripts.verify;
+      f.backendSafe.backendScripts.push('check:external-beta-readiness');
+    }, expected: [] },
+    { name: 'missing both verification paths', mutate(f) {
+      delete f.pkg.scripts.verify;
+    }, expected: ['package.json: npm run verify or verify:backend must include check:external-beta-readiness'] },
     {
       name: 'go with unfinished external evidence',
       mutate(f) {
@@ -281,7 +365,7 @@ test('readiness CLI preserves successful HOLD/GO and ordered fail-closed diagnos
       write('ops/ingestion/source-provider-certification.json', f.certification);
       write('ops/release/beta-feedback-classification-report.json', f.feedback);
       write('ops/release/beta-ring-expansion-decision-record.json', f.decision);
-      write('ops/release/backend-safe-verify-contract.json', { backendScripts: [] });
+      write('ops/release/backend-safe-verify-contract.json', f.backendSafe);
       write('package.json', f.pkg);
       write('fixture-evidence.json', {});
 
