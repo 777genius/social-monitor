@@ -20,7 +20,7 @@ export const selectProviderDiverseRankedEvidence = (
     evidence.map((item, index) => [item.feedItemId, index] as const),
   );
 
-  return selected.sort(
+  return [...selected].sort(
     (left, right) =>
       (originalIndexByFeedItemId.get(left.feedItemId) ?? 0) -
       (originalIndexByFeedItemId.get(right.feedItemId) ?? 0),

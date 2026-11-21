@@ -85,4 +85,14 @@ describe("deterministic reader summary provider diversity policy", () => {
       .map((item) => item.feedItemId)).toEqual(["a", "b", "c"]);
   });
 
+  it("orders a copied result without mutating frozen input evidence", () => {
+    const all = Object.freeze(evidence(
+      ["a", "rss"], ["b", "rss"], ["c", "github"], ["d", "reddit"],
+    ));
+    const selected = selectProviderDiverseRankedEvidence(all, 3);
+    expect(selected.map((item) => item.feedItemId)).toEqual(["a", "c", "d"]);
+    expect(all.map((item) => item.feedItemId)).toEqual(["a", "b", "c", "d"]);
+    expect(Object.isFrozen(all)).toBe(true);
+  });
+
 });
