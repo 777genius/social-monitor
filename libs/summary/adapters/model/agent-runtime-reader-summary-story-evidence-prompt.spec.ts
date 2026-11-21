@@ -1,6 +1,13 @@
+import { evidenceSample as sampleDirect } from "./agent-runtime-reader-summary-story-evidence-sample";
+import {
+  buildAgentRuntimeStoryRelationEvidencePairs as pairsDirect,
+  normalizedAuthor as authorDirect,
+  requiredEvidence as evidenceDirect,
+} from "./agent-runtime-reader-summary-story-relation-pair-binding";
 import { boundedRelevantSourceExcerpt as excerptDirect, relationExcerptTerms as termsDirect } from "./agent-runtime-reader-summary-story-source-excerpt";
 import {
   boundedRelevantSourceExcerpt,
+  buildAgentRuntimeStoryRelationEvidencePairs,
   evidenceSample,
   normalizedAuthor,
   requiredEvidence,
@@ -36,6 +43,29 @@ describe("Reader-summary story verifier evidence presentation", () => {
       canonicalUrl: "https://example.test/story",
       publishedAt: new Date("2026-06-01T00:00:00.000Z"),
     }).bodyPreview).toBe("x".repeat(640));
+  });
+
+  it("preserves direct-import identities across scoped pair binding and evidence sampling", () => {
+    expect(evidenceSample).toBe(sampleDirect);
+    expect(requiredEvidence).toBe(evidenceDirect);
+    expect(normalizedAuthor).toBe(authorDirect);
+    expect(buildAgentRuntimeStoryRelationEvidencePairs).toBe(pairsDirect);
+    const frozenSource = Object.freeze({
+      providerKey: "rss",
+      title: "Fixture",
+      bodyPreview: "x".repeat(700),
+      sourceText: "Public excerpt",
+      canonicalUrl: "https://example.test/evidence",
+      publishedAt: new Date("2026-11-01T00:00:00.000Z"),
+    });
+    const projected = evidenceSample(frozenSource);
+    expect(Object.keys(projected)).toEqual([
+      "providerKey", "title", "bodyPreview", "sourceText",
+      "authorHandle", "canonicalUrl", "publishedAt",
+    ]);
+    expect(projected.bodyPreview).toBe("x".repeat(640));
+    expect(projected.sourceText).toBe("Public excerpt");
+    expect(frozenSource.bodyPreview).toHaveLength(700);
   });
 
   it("retains legacy export identity and ordered relevance tokens", () => {

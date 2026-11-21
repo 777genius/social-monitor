@@ -3036,7 +3036,7 @@
     },
     {
       "original": "agent-runtime-reader-summary-story-relation-verifier-prompt.ts",
-      "owner": "agent-runtime-reader-summary-story-evidence-prompt.ts",
+      "owner": "agent-runtime-reader-summary-story-relation-pair-binding.ts",
       "originalPositions": [
         32,
         33,
@@ -3059,7 +3059,7 @@
         70,
         71
       ],
-      "responsibility": "Pair-specific trusted evidence binding, source/author sampling and retrieval signals; pure excerpt policy lives in a distinct owner"
+      "responsibility": "Trusted pair-level feed identity admission, author equality and candidate-specific retrieval binding; distinct source sampling and excerpt owners"
     },
     {
       "original": "openai-responses-reader-summary-draft-normalizer.ts",
@@ -8092,6 +8092,35 @@
         320
       ],
       "responsibility": "Pure provider/schema route identity and exact budget gating before ordinary OpenAI summary dispatch; three previously unclaimed pinned identity statements re-owned, with provider, model, prompt, rejection order preserved"
+    },
+    {
+      "original": "agent-runtime-reader-summary-story-relation-verifier-prompt.ts",
+      "owner": "agent-runtime-reader-summary-story-evidence-sample.ts",
+      "originalPositions": [
+        188,
+        189,
+        190,
+        191,
+        192,
+        193,
+        194
+      ],
+      "responsibility": "Bounded source metadata, body preview and publication sampling separated from scoped pair identity and matching"
+    },
+    {
+      "original": "agent-runtime-reader-summary-story-relation-verifier-prompt.ts",
+      "owner": "agent-runtime-reader-summary-story-relation-pair-binding.ts",
+      "originalPositions": [
+        234,
+        235,
+        236,
+        238,
+        242,
+        243,
+        244,
+        245
+      ],
+      "responsibility": "Fail-closed missing selected feed evidence and normalized same-author identity, distinct from source presentation"
     }
   ]
 }

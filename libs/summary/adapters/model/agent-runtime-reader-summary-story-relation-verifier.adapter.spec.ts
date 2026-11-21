@@ -1,3 +1,4 @@
+import { buildAgentRuntimeStoryRelationEvidencePairs as projectDirectPairs } from "./agent-runtime-reader-summary-story-relation-pair-binding";
 import { createHash } from "node:crypto";
 import { projectAgentRuntimeStoryRelationLaneContract } from "./agent-runtime-reader-summary-story-relation-lane-policy";
 import { readerSummaryScopeKey } from "../../domain";
@@ -594,6 +595,28 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
     expect(pairs[0]?.left).toMatchObject({
       sourceText: expect.stringContaining("bounded incident evidence"),
     });
+  });
+
+  it("keeps scoped pair evidence and prompt serialization identical for frozen inputs", () => {
+    const original = input();
+    const frozen = {
+      ...original,
+      evidence: Object.freeze(original.evidence.map((item) => Object.freeze({ ...item }))),
+      candidates: Object.freeze(original.candidates.map((item) => Object.freeze({ ...item }))),
+    };
+    const before = JSON.stringify(frozen);
+    const projected = projectDirectPairs(frozen);
+    expect(projected).toEqual(buildAgentRuntimeStoryRelationEvidencePairs(frozen));
+    expect(JSON.parse(buildAgentRuntimeReaderSummaryStoryRelationVerifierPrompt(frozen)).pairs)
+      .toEqual(projected);
+    expect(projected[0]).toMatchObject({
+      leftFeedItemId: "feed:hn",
+      rightFeedItemId: "feed:rss",
+      retrievalSignals: { sameProvider: false, sameAuthor: false },
+      left: { providerKey: "hacker-news" },
+      right: { providerKey: "rss" },
+    });
+    expect(JSON.stringify(frozen)).toBe(before);
   });
 
   it("never substitutes another feed's evidence for a missing candidate identity", () => {
