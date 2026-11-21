@@ -1,4 +1,6 @@
 import { register } from 'node:module';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 // Resolve this test suite's TypeScript sources without a generated JS tree.
 register(`data:text/javascript,${encodeURIComponent(`
@@ -12,4 +14,4 @@ register(`data:text/javascript,${encodeURIComponent(`
       throw error;
     }
   }
-`)}`, import.meta.url);
+`)}`, pathToFileURL(resolve(process.cwd(), 'scripts/lib/hn-archive-test-loader.mts')));

@@ -1,24 +1,8 @@
 import assert from 'node:assert/strict';
-import { register } from 'node:module';
-import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import test from 'node:test';
-
-// The repository's Node contract tests use the same extensionless TS resolver.
-register(`data:text/javascript,${encodeURIComponent(`
-  export async function resolve(specifier, context, nextResolve) {
-    try { return await nextResolve(specifier, context); }
-    catch (error) {
-      if (specifier.startsWith('./') && !specifier.endsWith('.ts')) return nextResolve(specifier + '.ts', context);
-      throw error;
-    }
-  }
-`)}`, import.meta.url);
-
-const source = (path: string) => pathToFileURL(resolve(process.cwd(), path)).href;
-const { generateHnArchiveManifest } = await import(source('scripts/lib/hn-archive-manifest-generation.ts'));
-const { planHnArchiveMissingPackets } = await import(source('scripts/plan-hn-archive-missing-packets.ts'));
-const { executeHnArchiveMissingImport } = await import(source('scripts/lib/hn-archive-missing-normalizer.ts'));
+import { generateHnArchiveManifest } from './hn-archive-manifest-generation.js';
+import { planHnArchiveMissingPackets } from '../plan-hn-archive-missing-packets.js';
+import { executeHnArchiveMissingImport } from './hn-archive-missing-normalizer.js';
 
 test('generated archive passes the real planner and missing-only import contract', async () => {
   const createdAt = '2026-11-18T12:00:00.000Z';
@@ -36,18 +20,18 @@ test('generated archive passes the real planner and missing-only import contract
   const packets = planHnArchiveMissingPackets(manifest, { MISSING_IMPORT_SCOPE_JSON: JSON.stringify(scope),
     MISSING_IMPORT_BINDING_CONFIG: '{}' });
   assert.equal(packets.length, 1);
-  const plan = packets[0].plan;
+  const plan = packets[0]!.plan as Parameters<typeof executeHnArchiveMissingImport>[0];
   const present = new Set<string>();
   const projected: unknown[] = [];
   const dependencies = {
-    existingIds: async (ids: string[]) => ids.filter(id => present.has(id)),
-    insertMissing: async (items: Array<{ externalId: string; publishedAt: Date }>) => {
+    existingIds: async (ids: readonly string[]) => ids.filter(id => present.has(id)),
+    insertMissing: async (items: readonly { externalId: string; publishedAt: Date }[]) => {
       assert.equal(items[0]!.publishedAt.toISOString(), createdAt);
       items.forEach(item => present.add(item.externalId));
       return items.length;
     },
-    present: async (ids: string[]) => ids.filter(id => present.has(id)).length,
-    projectComments: async (items: unknown[]) => { projected.push(...items); return items.length; },
+    present: async (ids: readonly string[]) => ids.filter(id => present.has(id)).length,
+    projectComments: async (items: readonly unknown[]) => { projected.push(...items); return items.length; },
   };
   const first = await executeHnArchiveMissingImport(plan, manifest, dependencies);
   const second = await executeHnArchiveMissingImport(plan, manifest, dependencies);
