@@ -30,6 +30,8 @@ on:
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-result-policy.ts
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-result-policy.spec.ts
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-execution.ts
+      - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-task-attempts.ts
+      - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-task-attempts.spec.ts
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-cleanup-policy.ts
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-cleanup-policy.spec.ts
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-batching.ts
@@ -86,6 +88,7 @@ jobs:
           libs/summary/adapters/model/agent-runtime-promotion-presentation-v3.builder.spec.ts
           libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-task-command.spec.ts
           libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-execution.spec.ts
+          libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-task-attempts.spec.ts
           libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-cleanup-policy.spec.ts
           libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-batching.spec.ts
           libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-request-boundaries.spec.ts

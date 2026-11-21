@@ -14,6 +14,7 @@ import { parseObject } from "./agent-runtime-promotion-presentation-v3-output-ob
 import type { createPromotionPresentationTaskCommand } from "./agent-runtime-promotion-presentation-v3-task-command";
 import { runtimePresentationValidationRejection } from "./agent-runtime-promotion-presentation-v3-runtime-output-rejection";
 import { completedPromotionPresentationResults } from "./agent-runtime-promotion-presentation-v3-result-policy";
+import { runPromotionPresentationTaskAttempts } from "./agent-runtime-promotion-presentation-v3-task-attempts";
 
 type PresentationExecutionInput = ReturnType<typeof createPromotionPresentationTaskCommand> & {
   readonly client: AgentRuntimeClientPort;
@@ -29,16 +30,7 @@ type PresentationExecutionInput = ReturnType<typeof createPromotionPresentationT
 export const executeAgentRuntimePromotionPresentation = async ({
   client, command, inputs, catalogCandidates, sourceCopyWire, modelBackend,
 }: PresentationExecutionInput): Promise<readonly ReaderPostPresentationV3Result[]> => {
-    let result = await client.runTask(command);
-    // A transient runtime failure (cancellation, crashed run, empty failure,
-    // timeout) says nothing about the stories on either backend: resend the same
-    // request once unless it already used its deadline (a runtime that has
-    // exhausted this request answers at once), then skip only this batch under
-    // its own runtime_failure reason. The promotion run discloses the gap and
-    // stops when runtime failures repeat.
-    if (presentationRuntimeFailureDisposition(result) === "retry") {
-      result = await client.runTask(command);
-    }
+    const result = await runPromotionPresentationTaskAttempts(client, command);
     const withCleanup = projectPromotionPresentationCleanup(result);
     if (presentationRuntimeFailureDisposition(result) !== undefined) {
       const runtimeFailure = presentationRuntimeFailureIdentity(result);

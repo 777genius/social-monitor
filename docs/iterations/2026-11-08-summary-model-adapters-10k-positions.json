@@ -1011,7 +1011,6 @@
       "original": "agent-runtime-promotion-presentation-v3.builder.ts",
       "owner": "agent-runtime-promotion-presentation-v3-execution.ts",
       "originalPositions": [
-        181,
         188,
         189,
         190,
@@ -8075,6 +8074,14 @@
         90
       ],
       "responsibility": "Project Kimi/provider-specific string headroom, copied identifiers, numeric ranges and array/empty boundaries independent of schema graph reference traversal. Reattribute existing frozen original positions only, without double counting."
+    },
+    {
+      "original": "agent-runtime-promotion-presentation-v3.builder.ts",
+      "owner": "agent-runtime-promotion-presentation-v3-task-attempts.ts",
+      "originalPositions": [
+        181
+      ],
+      "responsibility": "Paid runtime dispatch and bounded identical-command retry isolated from result validation, attestation, and per-story cleanup; first-use credit +0, original line reowned"
     }
   ]
 }
