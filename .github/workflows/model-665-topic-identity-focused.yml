@@ -18,6 +18,8 @@ on:
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-recovery.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-consensus.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-existing-admission.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-active-anchors.ts
+      - libs/summary/adapters/model/agent-runtime-reader-summary-topic-active-anchors.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-anchor-support.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-anchor-support.spec.ts
       - libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-creation.ts
@@ -109,6 +111,7 @@ jobs:
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-labeler-retry-feedback.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-labeler-taxonomy-policy.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-labeler-prompt.spec.ts
+          libs/summary/adapters/model/agent-runtime-reader-summary-topic-active-anchors.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-group-recovery.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-cohort-grouping.spec.ts
           libs/summary/adapters/model/agent-runtime-reader-summary-topic-relation-decisions.spec.ts

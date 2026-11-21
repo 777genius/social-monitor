@@ -5704,24 +5704,9 @@
         185,
         186,
         187,
-        192,
-        200,
-        201,
-        202,
-        205,
-        206,
-        208,
-        210,
-        213,
-        214,
-        215,
-        216,
-        217,
-        218,
-        220,
-        224
+        192
       ],
-      "responsibility": "New independent existing-membership corroboration and active-group supported-anchor projection, separate from recovery/creation; reject incidental matches and unsupported singleton groups"
+      "responsibility": "Admission of existing topic-group membership using corroborating node identity and supporting anchors; unmatched and singleton labels fail closed"
     },
     {
       "original": "agent-runtime-reader-summary-topic-group-recovery.ts",
@@ -8227,6 +8212,28 @@
         49
       ],
       "responsibility": "Frozen run-scoped gateway attempt policy split: maximum attempt admission, request-ID rejection and budget veto are pure and owned apart from the mutable issued-count source; exact one-to-one original statements, no hash declaration credit. The new NUL-delimiter hardening prevents distinct identity pairs sharing the same serialized digest; it is new code and earns no baseline credit."
+    },
+    {
+      "original": "agent-runtime-reader-summary-topic-group-recovery.ts",
+      "owner": "agent-runtime-reader-summary-topic-active-anchors.ts",
+      "originalPositions": [
+        200,
+        201,
+        202,
+        205,
+        206,
+        208,
+        210,
+        213,
+        214,
+        215,
+        216,
+        217,
+        218,
+        220,
+        224
+      ],
+      "responsibility": "Independent read-only publication projection of corroborated anchors for final active groups; no membership mutation or promotion of unsupported singleton/explicit-only groups"
     }
   ]
 }
