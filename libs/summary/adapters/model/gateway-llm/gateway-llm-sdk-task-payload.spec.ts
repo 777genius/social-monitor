@@ -1,3 +1,4 @@
+import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 import type { AgentRuntimeTaskCommand } from "../../../ports";
 import { activeReaderSummaryPurposes } from "../reader-summary-runtime-contract";
 import type { GatewayLlmClientOptions, GatewayLlmRoute } from "./gateway-llm-client-contract";
@@ -10,15 +11,27 @@ const route: GatewayLlmRoute = Object.freeze({
   model: "fixture-kimi",
   accountRefs: Object.freeze(["fixture-account"]),
   minOutputTokens: 32768,
-  reasoningEffort: "high",
+  reasoningEffort: "high" as const,
 });
 const policy: GatewayLlmClientOptions["policy"] = Object.freeze({
   subjectRef: "fixture-subject", policyRevision: 1, bindingRevision: 1,
 });
-const command = (purpose: string, maxOutputTokens: number) => Object.freeze({
-  purpose, controls: Object.freeze({ maxOutputTokens }),
-  systemPrompt: "Strict fixture instructions", prompt: "Fixture input", timeoutMs: 60000,
-}) as AgentRuntimeTaskCommand;
+const command = (
+  purpose: string, maxOutputTokens: number, selectedRoute: GatewayLlmRoute = route,
+): AgentRuntimeTaskCommand => Object.freeze({
+  requestId: "fixture-request",
+  tenantId: tenantId("00000000-0000-7000-8000-000000000901"),
+  workspaceId: workspaceId("00000000-0000-7000-8000-000000000902"),
+  correlationId: "fixture-correlation", provider: "codex", purpose,
+  controls: Object.freeze({
+    model: selectedRoute.model, modelBackend: selectedRoute.modelBackend,
+    ...(selectedRoute.reasoningEffort === undefined ? {} :
+      { reasoningEffort: selectedRoute.reasoningEffort }),
+    maxOutputTokens,
+  }),
+  systemPrompt: "Strict fixture instructions", prompt: "Fixture input",
+  outputSchema: {}, timeoutMs: 60000,
+});
 
 describe("gateway SDK task projection after trusted admission", () => {
   it("keeps exact SDK field order, output references, effort, floor and deadline", () => {
@@ -50,8 +63,11 @@ describe("gateway SDK task projection after trusted admission", () => {
     const textOnly: GatewayLlmPreparedOutput = Object.freeze({
       structured: false, output: { mode: "text" }, outputViolations: () => undefined,
     });
-    const plainRoute = Object.freeze({ ...route, reasoningEffort: undefined });
-    const input = command(activeReaderSummaryPurposes.topicLabel, 40000);
+    const plainRoute: GatewayLlmRoute = Object.freeze({
+      profileId: route.profileId, modelBackend: route.modelBackend, model: route.model,
+      accountRefs: route.accountRefs, minOutputTokens: route.minOutputTokens,
+    });
+    const input = command(activeReaderSummaryPurposes.topicLabel, 40000, plainRoute);
     const first = gatewayLlmSdkTaskPayload(input, 0, plainRoute, policy, textOnly);
     const second = gatewayLlmSdkTaskPayload(input, 0, plainRoute, policy, textOnly);
     expect(Object.keys(first)).toEqual([
@@ -63,5 +79,6 @@ describe("gateway SDK task projection after trusted admission", () => {
     expect(first.output).toBe(textOnly.output);
     expect(first.policy).toBe(policy);
     expect(plainRoute.reasoningEffort).toBeUndefined();
+    expect(input.controls.reasoningEffort).toBeUndefined();
   });
 });
