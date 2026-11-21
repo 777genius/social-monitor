@@ -1,10 +1,9 @@
-import type { LlmFailure } from "@agent-teams/account-gateway/llm";
 import type { AgentRuntimeTaskCommand, AgentRuntimeTaskResult } from "../../../ports";
 import type { GatewayLlmClientOptions } from "./gateway-llm-client-contract";
 import type { GatewayLlmPrepared } from "./gateway-llm-task-preparation";
 import { completeGatewayLlmTask } from "./gateway-llm-task-completion";
 import { completeGatewayLlmFailedTask } from "./gateway-llm-task-failure";
-import { gatewayLlmDispatchFreeRetry } from "./gateway-llm-dispatch-retry-policy";
+import { projectGatewayLlmFailedDispatch } from "./gateway-llm-failed-dispatch-policy";
 import { gatewayLlmPostBackoffStop } from "./gateway-llm-post-backoff-admission";
 import { bindGatewayLlmDispatchTask } from "./gateway-llm-dispatch-task";
 
@@ -32,15 +31,15 @@ export class GatewayLlmDispatch {
         this.observe(result.receipt.accountRef, "completed", 0, now);
         return completeGatewayLlmTask(command, prepared, identity, result, now.getTime() - startedAt, this.options.sdk);
       }
-      const retryDecision = gatewayLlmDispatchFreeRetry({
-        retry: result.retry,
+      const { retryDecision, accountOutcome } = projectGatewayLlmFailedDispatch({
+        failure: result,
         retries,
         maxRetries: this.maxRetries,
-        deadlineMs: prepared.task.deadline.getTime(),
-        nowMs: now.getTime(),
+        deadline: prepared.task.deadline,
+        now,
         signal: options?.signal,
       });
-      this.observe(result.execution?.accountRef ?? null, observation(result), retryDecision.afterMs, now);
+      this.observe(result.execution?.accountRef ?? null, accountOutcome, retryDecision.afterMs, now);
       if (retryDecision.replay === null) {
         return completeGatewayLlmFailedTask({
           command, prepared, identity, result, now, startedAt,
@@ -68,5 +67,3 @@ export class GatewayLlmDispatch {
   }
 }
 
-const observation = (failure: LlmFailure): "busy" | "unauthorized" | "other" =>
-  failure.code === "busy" ? "busy" : failure.code === "unauthorized" ? "unauthorized" : "other";

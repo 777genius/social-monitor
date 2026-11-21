@@ -3608,11 +3608,9 @@
         122,
         274,
         275,
-        276,
-        287,
-        288
+        276
       ],
-      "responsibility": "Account SDK dispatch/retry lifecycle coordinates still source-exact after dedicated attempt/account binding extraction; changed call sites and generic wrapper positions excluded from frozen credit."
+      "responsibility": "Account SDK dispatch/retry lifecycle coordinates still source-exact after dedicated attempt/account binding extraction; changed call sites and generic wrapper positions excluded from frozen credit. Two account-feedback code positions were reowned by the pure failure-evidence policy; no new credit."
     },
     {
       "original": "agent-runtime-reader-summary-topic-grounded-cohorts.ts",
@@ -8003,6 +8001,15 @@
         219
       ],
       "responsibility": "Attempt task ID, attempt number, and ordered account binding now belong to the narrow attempt-task specialist; original positions 217–219 were already credited and reowned once; other changed call sites/shape wrappers retired."
+    },
+    {
+      "original": "gateway-llm/gateway-llm-client.ts",
+      "owner": "gateway-llm/gateway-llm-failed-dispatch-policy.ts",
+      "originalPositions": [
+        287,
+        288
+      ],
+      "responsibility": "Pure rejected-result account outcome from trusted gateway failure evidence; former dispatch-loop coordinates moved to policy once, while the loop retains observation I/O and retry effects; zero newly credited original LOC."
     }
   ]
 }

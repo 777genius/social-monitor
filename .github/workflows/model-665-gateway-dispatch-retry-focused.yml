@@ -24,6 +24,8 @@ on:
       - libs/summary/adapters/model/gateway-llm/gateway-llm-task-route-admission.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-task-route-admission.spec.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-dispatch-loop.ts
+      - libs/summary/adapters/model/gateway-llm/gateway-llm-failed-dispatch-policy.ts
+      - libs/summary/adapters/model/gateway-llm/gateway-llm-failed-dispatch-policy.spec.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-dispatch-task.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-dispatch-task.spec.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-post-backoff-admission.ts
@@ -76,6 +78,7 @@ jobs:
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
           libs/summary/adapters/model/gateway-llm/gateway-llm-dispatch-retry-policy.spec.ts
+          libs/summary/adapters/model/gateway-llm/gateway-llm-failed-dispatch-policy.spec.ts
           libs/summary/adapters/model/gateway-llm/gateway-llm-dispatch-task.spec.ts
           libs/summary/adapters/model/gateway-llm/gateway-llm-post-backoff-admission.spec.ts
           libs/summary/adapters/model/gateway-llm/gateway-llm-client.spec.ts
