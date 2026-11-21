@@ -1,4 +1,4 @@
-import { READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID } from "../../domain";
+import { READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID, type ReaderSummaryTopicNodeLabel } from "../../domain";
 import {
   supportedAnchorsForActiveGroups,
 } from "./agent-runtime-reader-summary-topic-active-anchors";
@@ -16,7 +16,7 @@ describe("active topic group anchor projection", () => {
   });
 
   it("publishes only corroborated group anchors in stable group order without mutating evidence", () => {
-    const labels = Object.freeze([
+    const labels: readonly ReaderSummaryTopicNodeLabel[] = Object.freeze([
       Object.freeze({ nodeId: "n1", groupId: "group:acme" }),
       Object.freeze({ nodeId: "n2", groupId: "group:acme" }),
       Object.freeze({ nodeId: "n3", groupId: "group:solo" }),
