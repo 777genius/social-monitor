@@ -60,8 +60,9 @@ describe("gateway SDK task projection after trusted admission", () => {
   });
 
   it("omits optional effort/decode without changing output or inputs", () => {
+    const output: GatewayLlmPreparedOutput["output"] = Object.freeze({ mode: "text" });
     const textOnly: GatewayLlmPreparedOutput = Object.freeze({
-      structured: false, output: { mode: "text" }, outputViolations: () => undefined,
+      structured: false, output, outputViolations: () => undefined,
     });
     const plainRoute: GatewayLlmRoute = Object.freeze({
       profileId: route.profileId, modelBackend: route.modelBackend, model: route.model,
