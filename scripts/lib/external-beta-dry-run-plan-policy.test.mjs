@@ -9,7 +9,7 @@ import { createExternalBetaDryRunPackageAdmission } from './external-beta-dry-ru
 
 const ts = createRequire(import.meta.url)('typescript');
 
-function fixture() {
+function fixture(existingPaths = new Set(['exists'])) {
   const runner = {
     runnerId: 'test-runner',
     jsonPlanCommand: 'npm run plan-json',
@@ -54,7 +54,7 @@ function fixture() {
   }
   const dependencies = {
     dryRun, runner, plan, dryRunPath: 'dry-run.json', runnerPath: 'runner.json',
-    existsSync: (path) => path === 'exists', assertSameSet, violations,
+    existsSync: (path) => existingPaths.has(path), assertSameSet, violations,
   };
   const checks = createExternalBetaDryRunPlanPolicy(dependencies);
   return { dryRun, runner, plan, violations, dependencies, ...checks };
@@ -103,7 +103,10 @@ test('plan policy rejects invalid structured dependencies before entering valida
 });
 
 test('valid clean-env dry-run contract and plan preserve zero diagnostics', () => {
-  const f = fixture();
+  const f = fixture(new Set(['config/runner.json', '/tmp/readiness.json', 'fixtures/.env']));
+  f.dryRun.sourceRunnerContract = 'config/runner.json';
+  f.dryRun.sourceReadinessContract = '/tmp/readiness.json';
+  f.dryRun.envExample = 'fixtures/.env';
   f.validateDryRunContract();
   f.validatePlanShape();
   assert.deepEqual(f.violations, []);
