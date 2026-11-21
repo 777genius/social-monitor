@@ -956,19 +956,9 @@
       "owner": "agent-runtime-promotion-presentation-v3-task-command.ts",
       "originalPositions": [
         124,
-        135,
-        136,
-        137,
-        138,
         145,
-        146,
-        147,
-        148,
         150,
         151,
-        152,
-        153,
-        154,
         158,
         161,
         163,
@@ -8200,6 +8190,23 @@
         242
       ],
       "responsibility": "Sealed compact per-story exact-key, grounded chronology, closed claim type and admitted section-headline trust boundary; root and section admission remain in their independent owners"
+    },
+    {
+      "original": "agent-runtime-promotion-presentation-v3.builder.ts",
+      "owner": "agent-runtime-promotion-presentation-v3-request-identity.ts",
+      "originalPositions": [
+        135,
+        136,
+        137,
+        138,
+        146,
+        147,
+        148,
+        152,
+        153,
+        154
+      ],
+      "responsibility": "Canonical tenant/workspace-bound request digest and deterministic task/correlation IDs are owned independently of wire-command fields and dispatch; ten already credited frozen baseline statements transferred once with zero new original LOC"
     }
   ]
 }

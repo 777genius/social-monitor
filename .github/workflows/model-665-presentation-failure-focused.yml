@@ -13,6 +13,7 @@ on:
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-run-wide-failure-policy.spec.ts
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3.builder.spec.ts
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-task-command.ts
+      - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-request-identity.ts
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-wire-contract.ts
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-task-command.spec.ts
       - libs/summary/adapters/model/agent-runtime-promotion-presentation-v3-request.ts

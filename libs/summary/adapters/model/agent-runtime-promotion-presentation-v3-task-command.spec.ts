@@ -150,4 +150,29 @@ describe("promotion presentation task wire materialization", () => {
     expect(copied.command.systemPrompt).not.toContain(first.trustedIntent);
     expect(before).toEqual([first, second]);
   });
+
+  it("keeps timeout out of sealed identity but binds provider instance and scope", () => {
+    const input = Object.freeze(fixture());
+    const frozenRoute = Object.freeze({ ...route });
+    const first = createPromotionPresentationTaskCommand([input], frozenRoute);
+    const extendedTimeout = createPromotionPresentationTaskCommand([input], {
+      ...frozenRoute, timeoutMs: 120_000,
+    });
+    const instanceA = createPromotionPresentationTaskCommand([input], {
+      ...frozenRoute, providerInstanceId: "presentation-instance-a",
+    });
+    const instanceB = createPromotionPresentationTaskCommand([input], {
+      ...frozenRoute, providerInstanceId: "presentation-instance-b",
+    });
+    expect(first.command.requestId).toBe(extendedTimeout.command.requestId);
+    expect(first.command.correlationId).toBe(extendedTimeout.command.correlationId);
+    expect(extendedTimeout.command.timeoutMs).toBe(120_000);
+    expect(instanceA.command.requestId).not.toBe(first.command.requestId);
+    expect(instanceA.command.requestId).not.toBe(instanceB.command.requestId);
+    expect(instanceA.command.correlationId).not.toBe(instanceB.command.correlationId);
+    expect(instanceA.command.tenantId).toBe(input.tenantId);
+    expect(instanceA.command.workspaceId).toBe(input.workspaceId);
+    expect(Object.isFrozen(input)).toBe(true);
+    expect(Object.isFrozen(frozenRoute)).toBe(true);
+  });
 });

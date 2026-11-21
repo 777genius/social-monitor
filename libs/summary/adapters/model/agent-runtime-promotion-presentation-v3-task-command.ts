@@ -1,14 +1,9 @@
-import {
-  readerPostPresentationV3InputDigest,
-  type ReaderPostPresentationV3Input,
-} from "../../domain/services/reader-post-presentation-v3";
+import type { ReaderPostPresentationV3Input } from "../../domain/services/reader-post-presentation-v3";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
-import { canonicalPromotionPayload, promotionPayloadDigest } from
-  "../../domain/services/reader-post-promotion-attestation";
 import type { AgentRuntimeTaskCommand } from "../../ports";
 import { buildPromotionPresentationWireContract } from "./agent-runtime-promotion-presentation-v3-wire-contract";
 import { assertPromotionPresentationBatchScope } from "./promotion-presentation-batch-scope";
-import { buildAgentRuntimeRequestId } from "./agent-runtime-model-support";
+import { promotionPresentationRequestIdentity } from "./agent-runtime-promotion-presentation-v3-request-identity";
 import {
   type activeReaderSummaryProvider,
   mimoReaderSummaryBackend,
@@ -42,26 +37,14 @@ export const createPromotionPresentationTaskCommand = (
   const first = inputs[0]!;
   const { prompt, catalogCandidates, sourceCopyWire, schema, systemPrompt } =
     buildPromotionPresentationWireContract(inputs, route.modelBackend);
-  const requestDigest = promotionPayloadDigest(canonicalPromotionPayload({
-    purpose: activeReaderSummaryPurposes.promotionPresentation,
-    inputs: inputs.map(readerPostPresentationV3InputDigest),
-    systemPrompt, prompt, outputSchema: schema,
-    provider: route.provider, providerInstanceId: route.providerInstanceId ?? null,
-    model: route.model, reasoningEffort: route.reasoningEffort,
-    ...(sourceCopyWire ? { modelBackend: route.modelBackend } : {}),
-    maxOutputTokens: route.maxOutputTokens,
-  }));
+  const { requestId, correlationId } = promotionPresentationRequestIdentity(
+    inputs, route, { systemPrompt, prompt, schema, sourceCopyWire },
+  );
   const command: AgentRuntimeTaskCommand = {
-    requestId: buildAgentRuntimeRequestId(
-      "reader-summary-promotion-presentation", first.tenantId,
-      first.workspaceId, requestDigest, new Date(0),
-    ),
+    requestId,
     tenantId: tenantId(first.tenantId),
     workspaceId: workspaceId(first.workspaceId),
-    correlationId: buildAgentRuntimeRequestId(
-      "reader-summary-promotion-presentation-correlation", first.tenantId,
-      first.workspaceId, requestDigest, new Date(0),
-    ),
+    correlationId,
     provider: route.provider,
     providerInstanceId: route.providerInstanceId,
     purpose: activeReaderSummaryPurposes.promotionPresentation,
