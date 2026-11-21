@@ -1,3 +1,4 @@
+import { rebalanceReaderSummaryProviderCoverage } from "./deterministic-reader-summary-provider-coverage-policy";
 import type { ReaderSummaryModelInput } from "../../ports";
 import {
   normalizeReaderSummaryStoryLimit as legacyStoryLimit,
@@ -59,4 +60,29 @@ describe("deterministic reader summary provider diversity policy", () => {
     );
     expect(selected.map((item) => item.feedItemId)).toEqual(["a", "c"]);
   });
+  it("separates provider-coverage rebalancing from ranked presentation without mutating inputs", () => {
+    const all = evidence(["a", "rss"], ["b", "rss"], ["c", "github"], ["d", "reddit"]);
+    const page = all.slice(0, 3);
+    Object.freeze(page);
+    const originalFeedIds = all.map((item) => item.feedItemId);
+
+    const replacementOrder = rebalanceReaderSummaryProviderCoverage(all, page);
+    expect(replacementOrder.map((item) => item.feedItemId)).toEqual(["a", "d", "c"]);
+    expect(page.map((item) => item.feedItemId)).toEqual(["a", "b", "c"]);
+    expect(all.map((item) => item.feedItemId)).toEqual(originalFeedIds);
+    expect(replacementOrder).not.toBe(page);
+    expect(selectProviderDiverseRankedEvidence(all, 3).map((item) => item.feedItemId))
+      .toEqual(["a", "c", "d"]);
+  });
+
+  it("does not replay a duplicate feed item to claim a missing provider or evict singletons", () => {
+    const repeatedId = evidence(["a", "rss"], ["b", "rss"], ["c", "github"], ["b", "reddit"]);
+    expect(rebalanceReaderSummaryProviderCoverage(repeatedId, repeatedId.slice(0, 3))
+      .map((item) => item.feedItemId)).toEqual(["a", "b", "c"]);
+
+    const singletonProviders = evidence(["a", "rss"], ["b", "github"], ["c", "reddit"], ["d", "hn"]);
+    expect(rebalanceReaderSummaryProviderCoverage(singletonProviders, singletonProviders.slice(0, 3))
+      .map((item) => item.feedItemId)).toEqual(["a", "b", "c"]);
+  });
+
 });
