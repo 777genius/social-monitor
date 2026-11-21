@@ -5584,8 +5584,6 @@
       "original": "gateway-llm/gateway-llm-schema-limits.ts",
       "owner": "gateway-llm/gateway-llm-schema-limit-collector.ts",
       "originalPositions": [
-        8,
-        10,
         18,
         19,
         20,
@@ -5597,23 +5595,6 @@
         42,
         43,
         44,
-        46,
-        47,
-        48,
-        51,
-        52,
-        53,
-        54,
-        55,
-        57,
-        58,
-        59,
-        60,
-        62,
-        63,
-        64,
-        65,
-        66,
         68,
         70,
         71,
@@ -5622,10 +5603,7 @@
         79,
         80,
         81,
-        85,
-        88,
-        89,
-        90
+        88
       ],
       "responsibility": "Bounded schema traversal, local-only ref recursion, copied-identifier text limits, numeric/array constraint admission separated from the prompt prose renderer; previously implemented in existing PR, now first-use traced without double count"
     },
@@ -8061,6 +8039,35 @@
         208
       ],
       "responsibility": "Pure SDK request payload after route/schema trust, separate from paid task identity/account selection; seven already-credited original statements re-owned once, no new LOC credit"
+    },
+    {
+      "original": "gateway-llm/gateway-llm-schema-limits.ts",
+      "owner": "gateway-llm/gateway-llm-schema-prompt-constraint-policy.ts",
+      "originalPositions": [
+        8,
+        10,
+        46,
+        47,
+        48,
+        51,
+        52,
+        53,
+        54,
+        55,
+        57,
+        58,
+        59,
+        60,
+        62,
+        63,
+        64,
+        65,
+        66,
+        85,
+        89,
+        90
+      ],
+      "responsibility": "Project Kimi/provider-specific string headroom, copied identifiers, numeric ranges and array/empty boundaries independent of schema graph reference traversal. Reattribute existing frozen original positions only, without double counting."
     }
   ]
 }

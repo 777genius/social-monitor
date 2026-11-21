@@ -1,13 +1,8 @@
+import { projectGatewaySchemaPromptNodeConstraints } from "./gateway-llm-schema-prompt-constraint-policy";
+export { promptLengthShare } from "./gateway-llm-schema-prompt-constraint-policy";
+
 type SchemaNode = Record<string, unknown>;
 
-/**
- * Share of a schema maxLength the prompt asks for. Models count characters
- * loosely, and Kimi does not reliably enforce maxLength itself, so the
- * prompt keeps about 15% headroom below the limit the decode checks.
- */
-export const promptLengthShare = 0.85;
-/** Copied identifiers and URLs: their limits are not something to write towards. */
-const copiedValue = /(?:Id|Ids|Key|Keys|Url|Urls)$/u;
 
 /** Interpret a bounded provider response schema without owning the prompt copy. */
 export const collectGatewaySchemaLimits = (schema: SchemaNode): {
@@ -38,28 +33,9 @@ const walk = (ctx: Context, node: SchemaNode, path: string): void => {
     const branches = node[key];
     if (Array.isArray(branches)) for (const branch of branches) if (isNode(branch)) walk(ctx, branch, path);
   }
-  const name = path.replace(/\[\]$/u, "").split(".").at(-1) ?? "";
-  if (typesOf(node).includes("string") && count(node.maxLength) && !copiedValue.test(name)) {
-    ctx.lines.add(`- ${path}: at most ${Math.floor(node.maxLength * promptLengthShare)} characters`);
-  }
-  // Kimi never enforces number ranges, so they are spelled out exactly.
-  if (typesOf(node).some((type) => type === "number" || type === "integer") &&
-      (finite(node.minimum) || finite(node.maximum))) {
-    ctx.lines.add(`- ${path}: ${finite(node.minimum) && finite(node.maximum)
-      ? `a number from ${node.minimum} to ${node.maximum}`
-      : finite(node.minimum) ? `a number of at least ${node.minimum}` : `a number of at most ${node.maximum}`}`);
-  }
-  if (typesOf(node).includes("array")) {
-    if (node.maxItems === 0) {
-      ctx.empty.add(path);
-      return;
-    }
-    const min = count(node.minItems) && node.minItems > 0 ? node.minItems : undefined;
-    if (count(node.maxItems)) {
-      ctx.lines.add(`- ${path}: ${min === undefined ? "at most" : `${min} to`} ${node.maxItems} items`);
-    } else if (min !== undefined) {
-      ctx.lines.add(`- ${path}: at least ${min} items`);
-    }
+  const visitArrayItems = projectGatewaySchemaPromptNodeConstraints(ctx, node, path);
+  if (visitArrayItems === undefined) return;
+  if (visitArrayItems) {
     if (isNode(node.items)) walk(ctx, node.items, `${path}[]`);
   }
   if (isNode(node.properties)) {
@@ -76,10 +52,5 @@ const resolve = (root: SchemaNode, ref: string): SchemaNode | undefined => {
   return isNode(target) ? target : undefined;
 };
 
-const typesOf = (node: SchemaNode): readonly unknown[] =>
-  node.type === undefined ? [] : Array.isArray(node.type) ? node.type : [node.type];
-
 const isNode = (value: unknown): value is SchemaNode =>
   value !== null && typeof value === "object" && !Array.isArray(value);
-const count = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0;
-const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
