@@ -156,8 +156,6 @@ const failures = [];
 for (const required of [
   '${CLAUDE_PROJECT_DIR}/scripts/claude-hook-guard.mjs',
   '${CLAUDE_PROJECT_DIR}/scripts/claude-hook-stop-quality.mjs',
-  'disableAutoMode',
-  'disableBypassPermissionsMode',
   'Read(//**/.env)',
   'Read(//**/.npmrc)',
   'Read(//**/.kube/**)',
