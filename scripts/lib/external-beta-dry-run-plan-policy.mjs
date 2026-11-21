@@ -15,6 +15,19 @@ export function createExternalBetaDryRunPlanPolicy(dependencies) {
       throw new TypeError(`external beta dry-run plan policy requires ${name} to be a function`);
     }
   }
+  for (const name of ['dryRun', 'runner', 'plan']) {
+    if (typeof dependencies[name] !== 'object' || Array.isArray(dependencies[name])) {
+      throw new TypeError(`external beta dry-run plan policy requires ${name} to be an object`);
+    }
+  }
+  for (const name of ['dryRunPath', 'runnerPath']) {
+    if (typeof dependencies[name] !== 'string') {
+      throw new TypeError(`external beta dry-run plan policy requires ${name} to be a string`);
+    }
+  }
+  if (!Array.isArray(violations)) {
+    throw new TypeError('external beta dry-run plan policy requires violations to be an array');
+  }
   function validateDryRunContract() {
     if (dryRun.schemaVersion !== 1) {
       violations.push(`${dryRunPath}: schemaVersion must be 1`);

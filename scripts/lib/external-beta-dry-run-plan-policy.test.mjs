@@ -88,6 +88,20 @@ test('non-callable plan policy callbacks fail at factory initialization', () => 
   }
 });
 
+test('plan policy rejects invalid structured dependencies before entering validation', () => {
+  const { dependencies } = fixture();
+  const cases = [
+    ...['dryRun', 'runner', 'plan'].flatMap((name) =>
+      [false, [], 'invalid'].map((value) => [name, value, 'an object'])),
+    ...['dryRunPath', 'runnerPath'].map((name) => [name, 42, 'a string']),
+    ['violations', {}, 'an array'],
+  ];
+  for (const [name, value, type] of cases) {
+    assert.throws(() => createExternalBetaDryRunPlanPolicy({ ...dependencies, [name]: value }),
+      { name: 'TypeError', message: `external beta dry-run plan policy requires ${name} to be ${type}` });
+  }
+});
+
 test('valid clean-env dry-run contract and plan preserve zero diagnostics', () => {
   const f = fixture();
   f.validateDryRunContract();
