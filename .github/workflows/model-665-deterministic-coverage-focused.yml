@@ -42,6 +42,10 @@ on:
       - libs/summary/adapters/model/deterministic-summary-no-signal-attempt.ts
       - libs/summary/adapters/model/deterministic-summary-cited-attempt.ts
       - libs/summary/adapters/model/deterministic-summary-model.adapter.spec.ts
+      - libs/summary/adapters/model/deterministic-summary-source-highlights.ts
+      - libs/summary/adapters/model/deterministic-summary-source-highlights.spec.ts
+      - libs/summary/adapters/model/deterministic-summary-repository-trend-highlight.ts
+      - libs/summary/adapters/model/deterministic-summary-repository-trend-highlight.spec.ts
       - libs/summary/adapters/model/deterministic-summary-outcome-policy.ts
       - libs/summary/adapters/model/deterministic-summary-outcome-policy.spec.ts
       - libs/summary/adapters/model/summary-provider-labels.ts
@@ -94,6 +98,8 @@ jobs:
           libs/summary/adapters/model/deterministic-reader-summary-provider-diversity.spec.ts
           libs/summary/adapters/model/deterministic-reader-summary-outcome-policy.spec.ts
           libs/summary/adapters/model/deterministic-summary-model.adapter.spec.ts
+          libs/summary/adapters/model/deterministic-summary-source-highlights.spec.ts
+          libs/summary/adapters/model/deterministic-summary-repository-trend-highlight.spec.ts
           libs/summary/adapters/model/deterministic-summary-outcome-policy.spec.ts
           libs/summary/adapters/model/summary-provider-labels.spec.ts
           libs/summary/adapters/model/deterministic-reader-summary-budget-policy.spec.ts
