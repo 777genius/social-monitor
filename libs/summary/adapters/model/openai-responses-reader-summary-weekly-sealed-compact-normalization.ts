@@ -1,12 +1,7 @@
 import { projectLegacyWeeklyDocument } from "./openai-responses-reader-summary-weekly-document-projection";
 import type { ReaderSummaryWeeklyModelInput } from "../../ports/reader-summary-weekly-model.port";
-import {
-  hasExactKeys,
-  normalizeExpandedLegacyStoryStatus,
-  sealedCompactOutputKeys,
-  sealedCompactStoryKeys,
-  sealedCompactStoryKeysWithHeadline,
-} from "./openai-responses-reader-summary-weekly-response-shapes";
+import { sealedCompactOutputKeys, sealedCompactStoryKeys, sealedCompactStoryKeysWithHeadline } from "./openai-responses-reader-summary-weekly-sealed-shape-keys";
+import { hasExactKeys, normalizeExpandedLegacyStoryStatus } from "./openai-responses-reader-summary-weekly-response-shapes";
 import { exactLegacyCitationRange } from "./openai-responses-reader-summary-weekly-legacy-evidence-policy";
 import { exactLegacyClaimType } from "./openai-responses-reader-summary-weekly-legacy-claim-policy";
 import { normalizeExpandedWeeklySection } from "./openai-responses-reader-summary-weekly-section-normalization";

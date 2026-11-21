@@ -1,10 +1,6 @@
 import type { ReaderSummaryWeeklyModelInput } from "../../ports/reader-summary-weekly-model.port";
-import {
-  expandedLegacySectionKeys,
-  expandedLegacySectionKeysWithoutClaimType,
-  hasExactKeys,
-  normalizeExpandedLegacySectionKind,
-} from "./openai-responses-reader-summary-weekly-response-shapes";
+import { expandedLegacySectionKeys, expandedLegacySectionKeysWithoutClaimType } from "./openai-responses-reader-summary-weekly-legacy-shape-keys";
+import { hasExactKeys, normalizeExpandedLegacySectionKind } from "./openai-responses-reader-summary-weekly-response-shapes";
 import { exactLegacyCitationRange } from "./openai-responses-reader-summary-weekly-legacy-evidence-policy";
 import { exactLegacyClaimType, legacyClaimTypeFromStories } from "./openai-responses-reader-summary-weekly-legacy-claim-policy";
 

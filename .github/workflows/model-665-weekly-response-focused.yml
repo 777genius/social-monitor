@@ -23,6 +23,9 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-shape-validation.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-legacy-compatibility.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-shapes.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-weekly-legacy-shape-keys.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-weekly-sealed-shape-keys.ts
+      - libs/summary/adapters/model/openai-responses-reader-summary-weekly-shape-owners.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-shape-validation.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-parser.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-parser.spec.ts
@@ -84,6 +87,7 @@ jobs:
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
           libs/summary/adapters/model/openai-responses-reader-summary-weekly-shape-validation.spec.ts
+          libs/summary/adapters/model/openai-responses-reader-summary-weekly-shape-owners.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-weekly-response-parser.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-weekly-document-projection.spec.ts
           libs/summary/adapters/model/openai-responses-reader-summary-weekly-envelope-boundaries.spec.ts
