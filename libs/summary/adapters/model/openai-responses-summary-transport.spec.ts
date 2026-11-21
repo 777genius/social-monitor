@@ -1,6 +1,7 @@
 import {
   createOpenAiSummaryResponse,
 } from './openai-responses-summary-transport';
+import { admitOpenAiSummaryHttpResponse } from './openai-responses-summary-http-response-admission';
 
 describe('OpenAI summary transport', () => {
   it('preserves request payload, credentials, and response body without rewriting', async () => {
@@ -66,5 +67,26 @@ describe('OpenAI summary transport', () => {
       apiKey: 'synthetic-unit-value', timeoutMs: 250,
       fetchFn: async () => { throw aborted; },
     })).rejects.toBe(aborted);
+  });
+
+  it('separates HTTP body trust from downstream completion and preserves source identity', () => {
+    const providerBody = Object.freeze({ status: 'failed', output: Object.freeze([]) });
+    expect(admitOpenAiSummaryHttpResponse({ ok: true, status: 200 }, providerBody)).toBe(providerBody);
+    for (const root of [null, [], true, 42, 'text']) {
+      expect(() => admitOpenAiSummaryHttpResponse({ ok: true, status: 200 }, root))
+        .toThrow('OpenAI response body must be a JSON object');
+    }
+    expect(providerBody.status).toBe('failed');
+  });
+
+  it('gives HTTP error classification precedence over successful-root admission', () => {
+    expect(() => admitOpenAiSummaryHttpResponse({ ok: false, status: 401 }, []))
+      .toThrow();
+    try {
+      admitOpenAiSummaryHttpResponse({ ok: false, status: 401 }, Object.freeze({ error: 'synthetic' }));
+      throw new Error('Expected HTTP classification');
+    } catch (error) {
+      expect(error).toMatchObject({ failure: { retryable: false } });
+    }
   });
 });

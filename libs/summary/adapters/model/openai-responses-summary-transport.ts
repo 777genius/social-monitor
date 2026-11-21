@@ -1,10 +1,6 @@
-import { SummaryModelProviderError } from './openai-responses-summary-model-error';
 import { rethrowOpenAiSummaryTransportFailure } from './openai-responses-summary-transport-failure';
-import {
-  classifyOpenAiHttpFailure,
-  readOpenAiResponseBody,
-} from './openai-responses-summary-http-failure';
-import { asRecord } from './openai-responses-summary-json';
+import { readOpenAiResponseBody } from './openai-responses-summary-http-failure';
+import { admitOpenAiSummaryHttpResponse } from './openai-responses-summary-http-response-admission';
 
 export type OpenAiSummaryFetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
@@ -30,23 +26,7 @@ export const createOpenAiSummaryResponse = async (params: Readonly<{
       });
       const body = await readOpenAiResponseBody(response);
 
-      if (!response.ok) {
-        throw new SummaryModelProviderError(
-          classifyOpenAiHttpFailure(response.status, body),
-        );
-      }
-
-      const record = asRecord(body);
-
-      if (record === null) {
-        throw new SummaryModelProviderError({
-          kind: 'invalid_schema',
-          retryable: false,
-          message: 'OpenAI response body must be a JSON object',
-        });
-      }
-
-      return record;
+      return admitOpenAiSummaryHttpResponse(response, body);
     } catch (error) {
       return rethrowOpenAiSummaryTransportFailure(error);
     } finally {

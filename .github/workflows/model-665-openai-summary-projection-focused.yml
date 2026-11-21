@@ -9,6 +9,7 @@ on:
       - .github/workflows/model-665-openai-summary-projection-focused.yml
       - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
       - libs/summary/adapters/model/openai-responses-summary-transport.ts
+      - libs/summary/adapters/model/openai-responses-summary-http-response-admission.ts
       - libs/summary/adapters/model/openai-responses-summary-transport-failure.ts
       - libs/summary/adapters/model/openai-responses-summary-transport.spec.ts
       - libs/summary/adapters/model/openai-responses-reader-summary-source-content.ts

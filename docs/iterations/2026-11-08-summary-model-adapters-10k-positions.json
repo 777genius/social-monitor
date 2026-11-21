@@ -3232,12 +3232,6 @@
         372,
         375,
         377,
-        379,
-        380,
-        381,
-        385,
-        387,
-        391,
         413
       ],
       "responsibility": "Bounded POST transport, HTTP body reading, JSON object validation and timeout cleanup are separate from port decisions"
@@ -8010,6 +8004,22 @@
         288
       ],
       "responsibility": "Pure rejected-result account outcome from trusted gateway failure evidence; former dispatch-loop coordinates moved to policy once, while the loop retains observation I/O and retry effects; zero newly credited original LOC."
+    },
+    {
+      "original": "openai-responses-summary-model.adapter.ts",
+      "owner": "openai-responses-summary-http-response-admission.ts",
+      "originalPositions": [
+        379,
+        380,
+        381,
+        385,
+        387,
+        388,
+        389,
+        390,
+        391
+      ],
+      "responsibility": "HTTP success/failure admission and strict JSON-object root acceptance separated from timed POST transport, leaving downstream provider semantic interpretation unchanged"
     }
   ]
 }
