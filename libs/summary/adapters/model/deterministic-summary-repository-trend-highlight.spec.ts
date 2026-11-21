@@ -12,14 +12,26 @@ describe("deterministic summary GitHub trend metadata policy", () => {
       repository: Object.freeze({ fullName: "acme/agents", totalStars: 200 }),
       trending: Object.freeze({ starsGained: 12, window: "weekly", rank: 3 }),
     });
-    const input = Object.freeze({
+    const input: Parameters<typeof formatSourceHighlight>[0] = Object.freeze({
+      feedItemId: "feed-1",
+      sourceItemId: "source-1",
+      sourceBindingId: "binding-1",
+      providerKey: "github",
+      observedAt: new Date("2026-11-08T00:00:00.000Z"),
       title: "Original evidence",
       providerMetadata: metadata,
-      relevance: Object.freeze({ whyImportant: Object.freeze(["Matches memory preference"]) }),
+      relevance: Object.freeze({
+        score: 1,
+        rank: 1,
+        clusterId: "cluster-1",
+        clusterSize: 1,
+        duplicateFeedItemIds: Object.freeze([]),
+        whyImportant: Object.freeze(["Matches memory preference"]),
+      }),
     });
     expect(formatRepositoryTrendHighlight(metadata))
       .toBe("acme/agents: #3 on GitHub Trending weekly, 200 stars, +12");
-    expect(formatSourceHighlight(input as Parameters<typeof formatSourceHighlight>[0]))
+    expect(formatSourceHighlight(input))
       .toBe("acme/agents: #3 on GitHub Trending weekly, 200 stars, +12 (Matches memory preference)");
     expect(metadata.trending.starsGained).toBe(12);
   });
