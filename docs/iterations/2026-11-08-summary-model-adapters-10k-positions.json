@@ -4406,17 +4406,6 @@
       "originalPositions": [
         72,
         73,
-        79,
-        92,
-        93,
-        94,
-        95,
-        96,
-        97,
-        98,
-        99,
-        100,
-        109,
         127,
         128,
         129,
@@ -8048,6 +8037,23 @@
         89
       ],
       "responsibility": "Pure retry-only low-coverage feedback projection and deterministic minimum group count, separate from fixed taxonomy/prompt policy; exact original instruction and admission behavior preserved"
+    },
+    {
+      "original": "agent-runtime-reader-summary-topic-labeler-prompt.ts",
+      "owner": "agent-runtime-reader-summary-topic-labeler-taxonomy-policy.ts",
+      "originalPositions": [
+        92,
+        93,
+        94,
+        95,
+        96,
+        97,
+        98,
+        99,
+        100,
+        109
+      ],
+      "responsibility": "Static closed taxonomy instructions and provider-visible label/group vocabulary independent of retry feedback and grounded cohort computation; first-use original coordinates already credited previously, reassigned once without new credit"
     }
   ]
 }
