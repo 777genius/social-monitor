@@ -331,6 +331,28 @@ test('readiness CLI preserves successful HOLD/GO and ordered fail-closed diagnos
       ],
     },
     {
+      name: 'all five policy owners preserve original diagnostic order in one CLI run',
+      mutate(f) {
+        f.contract.schemaVersion = 0;
+        f.contract.externalBetaDecision = 'go';
+        f.contract.requiredEvidenceGroups[0].status = 'hold';
+        f.certification.certifiedProviders[0].liveBetaReady = false;
+        f.feedback.evidenceMode = 'fixture';
+        f.decision.decision = 'hold';
+        f.contract.capacityEnvelope.maxUsers = 0;
+        delete f.pkg.scripts.verify;
+      },
+      expected: [
+        `${prefix}: schemaVersion must be 1`,
+        `${prefix}: externalBetaDecision cannot be go while blocking evidence is not passed`,
+        `${prefix}: go requires every certified provider to be liveBetaReady`,
+        `${prefix}: go requires redacted beta feedback samples`,
+        `${prefix}: go requires beta ring decision to be go`,
+        `${prefix}: capacityEnvelope.maxUsers must be positive`,
+        'package.json: npm run verify or verify:backend must include check:external-beta-readiness',
+      ],
+    },
+    {
       name: 'contract/verification/capacity failures stay ordered',
       mutate(f) {
         f.contract.evidenceRunner.contract = 'nonexistent-evidence.json';
