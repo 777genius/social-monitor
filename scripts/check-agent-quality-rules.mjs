@@ -258,8 +258,6 @@ if (violations.length === 0) {
     'TaskCreated',
     'Stop',
     'CLAUDE_PROJECT_DIR',
-    'disableAutoMode',
-    'disableBypassPermissionsMode',
     'Read(//**/.env)',
     'Read(//**/.npmrc)',
     'Read(//**/.kube/**)',
