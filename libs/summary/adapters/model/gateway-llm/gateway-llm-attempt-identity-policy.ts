@@ -13,6 +13,10 @@ export const gatewayLlmTaskId = (runId: string, requestId: string): string => {
   if (runId.includes("\u0000") || requestId.includes("\u0000")) {
     throw new Error("Gateway llm attempt identity contains a reserved delimiter");
   }
+  if (/[\uD800-\uDFFF]/u.test(runId) || /[\uD800-\uDFFF]/u.test(requestId)) {
+    // UTF-8 replaces isolated surrogates with U+FFFD, aliasing distinct task keys.
+    throw new Error("Gateway llm attempt identity contains ill-formed Unicode");
+  }
   return `sm${createHash("sha256").update(`${runId}\u0000${requestId}`, "utf8")
     .digest("base64url")}`;
 };

@@ -33,6 +33,33 @@ describe("gateway invocation identity admission", () => {
     expect(() => invalidRun.next(a.requestId)).toThrow("reserved delimiter");
     expect(source.next("request-id").attempt).toBe(2);
   });
+  it("rejects lossy UTF-8 aliases from unpaired surrogates without consuming attempts", () => {
+    const high = "\uD800";
+    const low = "\uDC00";
+    const replacement = "\uFFFD";
+    // Node's UTF-8 encoder replaces all isolated surrogates with U+FFFD.
+    expect(Buffer.from(high, "utf8")).toEqual(Buffer.from(replacement, "utf8"));
+    expect(Buffer.from(low, "utf8")).toEqual(Buffer.from(replacement, "utf8"));
+    const attempts = new RunScopedGatewayLlmAttempts("run");
+    for (const invalid of [high, low]) {
+      expect(() => gatewayLlmTaskId("run", `request-${invalid}`))
+        .toThrow("ill-formed Unicode");
+      expect(() => gatewayLlmTaskId(`run-${invalid}`, "request"))
+        .toThrow("ill-formed Unicode");
+      expect(() => attempts.next(`request-${invalid}`))
+        .toThrow("ill-formed Unicode");
+    }
+    expect(() => new RunScopedGatewayLlmAttempts(`run-${high}`).next("request"))
+      .toThrow("ill-formed Unicode");
+    expect(attempts.next(`request-${replacement}`).attempt).toBe(1);
+    expect(attempts.next(`request-${replacement}`).attempt).toBe(2);
+    // Valid surrogate pairs remain distinct, unchanged UTF-8 identities.
+    expect(gatewayLlmTaskId("run", "request-\uD83D\uDE80"))
+      .toMatch(/^sm[A-Za-z0-9_-]{43}$/);
+    expect(gatewayLlmTaskId("run", "request-\uD83D\uDE80"))
+      .not.toBe(gatewayLlmTaskId("run", `request-${replacement}`));
+  });
+
   it("keeps admission pure and never consumes the last available attempt", () => {
     const taskId = gatewayLlmTaskId("run-1", "request-1");
     const issued = new Map([[taskId, gatewayLlmMaxAttempt - 1]]);
