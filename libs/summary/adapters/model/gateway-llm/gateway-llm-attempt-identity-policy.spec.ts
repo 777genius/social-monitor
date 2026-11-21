@@ -15,6 +15,24 @@ describe("gateway invocation identity admission", () => {
     expect(id).not.toBe(gatewayLlmTaskId("run-1", "request-2"));
   });
 
+  it("rejects ambiguous NUL-separated run and request IDs before issuing an attempt", () => {
+    const delimiter = String.fromCharCode(0);
+    const a = { runId: `run${delimiter}request`, requestId: "id" };
+    const b = { runId: "run", requestId: `request${delimiter}id` };
+    // The previous concatenation would hash exactly the same bytes for both pairs.
+    expect(`${a.runId}${delimiter}${a.requestId}`)
+      .toBe(`${b.runId}${delimiter}${b.requestId}`);
+    expect(() => gatewayLlmTaskId(a.runId, a.requestId)).toThrow("reserved delimiter");
+    expect(() => gatewayLlmTaskId(b.runId, b.requestId)).toThrow("reserved delimiter");
+    const source = new RunScopedGatewayLlmAttempts("run");
+    expect(() => source.next(b.requestId)).toThrow("reserved delimiter");
+    expect(source.next("request-id")).toEqual({
+      taskId: gatewayLlmTaskId("run", "request-id"), attempt: 1,
+    });
+    const invalidRun = new RunScopedGatewayLlmAttempts(a.runId);
+    expect(() => invalidRun.next(a.requestId)).toThrow("reserved delimiter");
+    expect(source.next("request-id").attempt).toBe(2);
+  });
   it("keeps admission pure and never consumes the last available attempt", () => {
     const taskId = gatewayLlmTaskId("run-1", "request-1");
     const issued = new Map([[taskId, gatewayLlmMaxAttempt - 1]]);

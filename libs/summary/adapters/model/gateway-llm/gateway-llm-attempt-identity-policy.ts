@@ -8,9 +8,14 @@ export type GatewayLlmAttemptIdentity = {
 };
 
 /** "sm" plus 43 base64url characters: inside the gateway reference grammar. */
-export const gatewayLlmTaskId = (runId: string, requestId: string): string =>
-  `sm${createHash("sha256").update(`${runId}\u0000${requestId}`, "utf8")
+export const gatewayLlmTaskId = (runId: string, requestId: string): string => {
+  // A NUL in either component would alias a different (run, request) pair.
+  if (runId.includes("\u0000") || requestId.includes("\u0000")) {
+    throw new Error("Gateway llm attempt identity contains a reserved delimiter");
+  }
+  return `sm${createHash("sha256").update(`${runId}\u0000${requestId}`, "utf8")
     .digest("base64url")}`;
+};
 
 export const gatewayLlmMaxAttempt = 9_999;
 

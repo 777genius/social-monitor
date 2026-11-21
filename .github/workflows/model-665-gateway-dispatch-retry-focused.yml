@@ -9,6 +9,9 @@ on:
       - .github/workflows/model-665-gateway-dispatch-retry-focused.yml
       - libs/summary/adapters/model/gateway-llm/gateway-llm-failure*.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-task-failure.ts
+      - libs/summary/adapters/model/gateway-llm/gateway-llm-attempts.ts
+      - libs/summary/adapters/model/gateway-llm/gateway-llm-attempt-identity-policy.ts
+      - libs/summary/adapters/model/gateway-llm/gateway-llm-attempt-identity-policy.spec.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-client.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-client-contract.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-task-completion.ts
@@ -82,6 +85,7 @@ jobs:
         run: >-
           npx jest --config jest.config.ts --runInBand --runTestsByPath
           libs/summary/adapters/model/gateway-llm/gateway-llm-dispatch-retry-policy.spec.ts
+          libs/summary/adapters/model/gateway-llm/gateway-llm-attempt-identity-policy.spec.ts
           libs/summary/adapters/model/gateway-llm/gateway-llm-failed-dispatch-policy.spec.ts
           libs/summary/adapters/model/gateway-llm/gateway-llm-dispatch-task.spec.ts
           libs/summary/adapters/model/gateway-llm/gateway-llm-post-backoff-admission.spec.ts

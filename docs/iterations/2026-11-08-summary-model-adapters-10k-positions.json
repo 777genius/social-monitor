@@ -8207,6 +8207,19 @@
         154
       ],
       "responsibility": "Canonical tenant/workspace-bound request digest and deterministic task/correlation IDs are owned independently of wire-command fields and dispatch; ten already credited frozen baseline statements transferred once with zero new original LOC"
+    },
+    {
+      "original": "gateway-llm/gateway-llm-attempts.ts",
+      "owner": "gateway-llm/gateway-llm-attempt-identity-policy.ts",
+      "originalPositions": [
+        20,
+        40,
+        41,
+        45,
+        46,
+        49
+      ],
+      "responsibility": "Frozen run-scoped gateway attempt policy split: maximum attempt admission, request-ID rejection and budget veto are pure and owned apart from the mutable issued-count source; exact one-to-one original statements, no hash declaration credit. The new NUL-delimiter hardening prevents distinct identity pairs sharing the same serialized digest; it is new code and earns no baseline credit."
     }
   ]
 }
