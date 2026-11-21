@@ -1,7 +1,5 @@
 {
   "permissions": {
-    "disableAutoMode": "disable",
-    "disableBypassPermissionsMode": "disable",
     "deny": [
       "Read(//**/.env)",
       "Read(//**/.env.local)",
