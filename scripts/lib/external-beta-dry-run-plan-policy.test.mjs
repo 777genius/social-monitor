@@ -309,11 +309,14 @@ function dryRunCliFixture() {
     join(root, 'scripts', 'lib', 'external-beta-dry-run-safety-linkage-policy.mjs'));
   copyFileSync(new URL('./external-beta-dry-run-package-admission.mjs', import.meta.url),
     join(root, 'scripts', 'lib', 'external-beta-dry-run-package-admission.mjs'));
+  copyFileSync(new URL('./external-beta-dry-run-clean-env-runtime.mjs', import.meta.url),
+    join(root, 'scripts', 'lib', 'external-beta-dry-run-clean-env-runtime.mjs'));
   writeFileSync(join(root, 'scripts', 'external-beta-evidence-runner.mjs'),
     "import { readFileSync } from 'node:fs';\n" +
     "const args = process.argv.slice(2).join(' ');\n" +
     "const file = args === '--plan --json' ? 'plan.json' : args === '--handoff-json' ? 'handoff.json' : null;\n" +
     "if (!file) { process.stderr.write('unexpected runner operation'); process.exit(91); }\n" +
+    "if (process.env.EXTERNAL_BETA_EVIDENCE_CONFIRM || process.env.EXTERNAL_BETA_SECRET_SENTINEL) { process.stderr.write('unfiltered child environment'); process.exit(92); }\n" +
     "process.stdout.write(readFileSync(file, 'utf8'));\n");
   const runner = {
     runnerId: 'synthetic-dry-run', jsonPlanCommand: 'node runner --plan --json',
@@ -397,11 +400,11 @@ function dryRunCliFixture() {
     write('handoff.json', handoff);
     writeFileSync(join(root, 'ops', 'release', 'example.env'), '');
   };
-  const run = () => {
+  const run = (parentEnv = {}) => {
     save();
     return spawnSync(process.execPath, ['scripts/check-external-beta-evidence-dry-run.mjs'], {
       cwd: root, encoding: 'utf8', timeout: 10000,
-      env: { PATH: process.env.PATH ?? '' },
+      env: { PATH: process.env.PATH ?? '', ...parentEnv },
     });
   };
   return { runner, dryRun, readiness, plan, handoff, run, cleanup: () => rmSync(root, { recursive: true, force: true }) };
@@ -922,4 +925,56 @@ test('package AST E2E guard detects commented, nested, missing-dependency and wr
   assert.equal(realPackageWiring(source.replace(
     "from './lib/external-beta-dry-run-package-admission.mjs'",
     "from './lib/not-the-admission-policy.mjs'")), false);
+});
+function inspectCleanEnvRunnerBoundary(source) {
+  const tree = ts.createSourceFile('dry-run.mjs', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  const owner = './lib/external-beta-dry-run-clean-env-runtime.mjs';
+  const imported = tree.statements.some((statement) =>
+    ts.isImportDeclaration(statement) && statement.moduleSpecifier.text === owner &&
+    statement.importClause?.namedBindings &&
+    ts.isNamedImports(statement.importClause.namedBindings) &&
+    statement.importClause.namedBindings.elements.some((entry) =>
+      !entry.propertyName && entry.name.text === 'readRunnerJsonWithCleanEnv'));
+  const calls = tree.statements.filter(ts.isVariableStatement)
+    .flatMap((statement) => statement.declarationList.declarations)
+    .filter((declaration) => ts.isIdentifier(declaration.name) &&
+      declaration.initializer && ts.isCallExpression(declaration.initializer) &&
+      ts.isIdentifier(declaration.initializer.expression) &&
+      declaration.initializer.expression.text === 'readRunnerJsonWithCleanEnv')
+    .map((declaration) => [declaration.name.text, declaration.initializer.arguments[0]?.getText(tree)]);
+  const duplicate = tree.statements.some((statement) =>
+    ts.isFunctionDeclaration(statement) && statement.name?.text === 'readRunnerJsonWithCleanEnv');
+  return { imported, calls, duplicate };
+}
+
+test('clean-env subprocess I/O delegates exactly two real top-level runner operations', () => {
+  const source = readFileSync(new URL('../check-external-beta-evidence-dry-run.mjs', import.meta.url), 'utf8');
+  const expected = {
+    imported: true, calls: [['plan', "['--plan', '--json']"], ['handoff', "['--handoff-json']"]],
+    duplicate: false,
+  };
+  assert.deepEqual(inspectCleanEnvRunnerBoundary(source), expected);
+  assert.equal(inspectCleanEnvRunnerBoundary(source.replace(
+    "from './lib/external-beta-dry-run-clean-env-runtime.mjs'",
+    "from './lib/unrelated-runtime.mjs'")).imported, false);
+  assert.deepEqual(inspectCleanEnvRunnerBoundary(source.replace(
+    "const plan = readRunnerJsonWithCleanEnv(['--plan', '--json']);",
+    "function unused() { const plan = readRunnerJsonWithCleanEnv(['--plan', '--json']); }")).calls,
+  [['handoff', "['--handoff-json']"]]);
+});
+
+test('real dry-run CLI scrubs parent confirmation and secret sentinel from both child invocations', () => {
+  const f = dryRunCliFixture();
+  try {
+    const result = f.run({
+      EXTERNAL_BETA_EVIDENCE_CONFIRM: 'run-live',
+      EXTERNAL_BETA_SECRET_SENTINEL: 'must-not-reach-child',
+    });
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stderr, '');
+    assert.equal(result.stdout, 'External beta evidence dry-run package OK\n');
+  } finally {
+    f.cleanup();
+  }
 });

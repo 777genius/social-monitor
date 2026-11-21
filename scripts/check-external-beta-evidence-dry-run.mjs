@@ -1,9 +1,9 @@
-import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { createExternalBetaDryRunPlanPolicy } from './lib/external-beta-dry-run-plan-policy.mjs';
 import { createExternalBetaDryRunHandoffPolicy } from './lib/external-beta-dry-run-handoff-policy.mjs';
 import { createExternalBetaDryRunSafetyLinkagePolicy } from './lib/external-beta-dry-run-safety-linkage-policy.mjs';
 import { createExternalBetaDryRunPackageAdmission } from './lib/external-beta-dry-run-package-admission.mjs';
+import { readRunnerJsonWithCleanEnv } from './lib/external-beta-dry-run-clean-env-runtime.mjs';
 
 const dryRunPath = 'ops/release/external-beta-evidence-dry-run.json';
 const runnerPath = 'ops/release/external-beta-evidence-runner.json';
@@ -64,19 +64,6 @@ function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
 }
 
-function readRunnerJsonWithCleanEnv(args) {
-  const output = execFileSync(
-    process.execPath,
-    ['scripts/external-beta-evidence-runner.mjs', ...args],
-    {
-      encoding: 'utf8',
-      env: {
-        PATH: process.env.PATH ?? '',
-      },
-    },
-  );
-  return JSON.parse(output);
-}
 
 
 function assertSameSet(actual, expected, label) {
