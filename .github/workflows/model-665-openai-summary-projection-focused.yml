@@ -52,6 +52,8 @@ on:
       - libs/summary/adapters/model/openai-responses-reader-summary-content-support.spec.ts
       - libs/summary/adapters/model/openai-responses-summary-model-error.ts
       - libs/summary/adapters/model/openai-responses-summary-model.adapter.ts
+      - libs/summary/adapters/model/openai-responses-summary-route-admission.ts
+      - libs/summary/adapters/model/openai-responses-summary-route-admission.spec.ts
       - libs/summary/adapters/model/openai-responses-summary-budget.ts
       - libs/summary/adapters/model/openai-responses-summary-budget.spec.ts
       - libs/summary/adapters/model/reader-summary-token-budget.ts
@@ -171,6 +173,7 @@ jobs:
           libs/summary/adapters/model/openai-responses-summary-model-error.spec.ts
           libs/summary/adapters/model/openai-responses-summary-http-failure.spec.ts
           libs/summary/adapters/model/openai-responses-summary-model.adapter.spec.ts
+          libs/summary/adapters/model/openai-responses-summary-route-admission.spec.ts
           libs/summary/adapters/model/openai-responses-summary-budget.spec.ts
           libs/summary/adapters/model/summary-model-budget-admission.spec.ts
           libs/summary/adapters/model/openai-responses-completion-state.spec.ts

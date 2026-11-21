@@ -8082,6 +8082,16 @@
         181
       ],
       "responsibility": "Paid runtime dispatch and bounded identical-command retry isolated from result validation, attestation, and per-story cleanup; first-use credit +0, original line reowned"
+    },
+    {
+      "original": "openai-responses-summary-model.adapter.ts",
+      "owner": "openai-responses-summary-route-admission.ts",
+      "originalPositions": [
+        61,
+        317,
+        320
+      ],
+      "responsibility": "Pure provider/schema route identity and exact budget gating before ordinary OpenAI summary dispatch; three previously unclaimed pinned identity statements re-owned, with provider, model, prompt, rejection order preserved"
     }
   ]
 }

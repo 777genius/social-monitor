@@ -1,3 +1,4 @@
+import { admitOpenAiSummaryRoute } from "./openai-responses-summary-route-admission";
 import { validateOpenAiSummaryResponse } from "./openai-responses-summary-response-policy";
 import { buildSummaryNoSignalAttempt } from "./summary-no-signal-attempt";
 import type {
@@ -13,7 +14,6 @@ import type {
 } from '../../ports';
 import { classifyOpenAiSummaryError } from './openai-responses-summary-model-error';
 import {
-  assertOpenAiSummaryWithinBudget,
   estimateOpenAiSummaryUsage,
 } from "./openai-responses-summary-budget";
 import {
@@ -25,8 +25,6 @@ import { runOpenAiResponsesSummaryGeneration } from './openai-responses-summary-
 import type { OpenAiResponsesSummaryModelAdapterOptions } from './openai-responses-summary-options';
 export type { OpenAiResponsesSummaryModelAdapterOptions } from './openai-responses-summary-options';
 export { resolveOpenAiResponsesSummaryModelOptions } from './openai-responses-summary-options';
-
-const provider = 'openai-responses';
 
 export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
   private readonly settings: OpenAiSummaryRuntimeSettings;
@@ -40,9 +38,13 @@ export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
     policy: SummaryModelPolicy,
     budget: SummaryModelBudget,
   ): SummaryModelRoute {
-    const route = this.buildRoute();
-    assertOpenAiSummaryWithinBudget(this.estimate(input, route), policy, budget);
-    return route;
+    return admitOpenAiSummaryRoute({
+      model: this.settings.model,
+      promptVersion: this.settings.promptVersion,
+      policy,
+      budget,
+      estimate: (route) => this.estimate(input, route),
+    });
   }
 
   estimate(
@@ -83,15 +85,6 @@ export class OpenAiResponsesSummaryModelAdapter implements SummaryModelPort {
 
   classifyError(error: unknown): SummaryModelFailure {
     return classifyOpenAiSummaryError(error);
-  }
-
-  private buildRoute(): SummaryModelRoute {
-    return {
-      provider,
-      model: this.settings.model,
-      promptVersion: this.settings.promptVersion,
-      schemaVersion: 'summary.artifact.v1',
-    };
   }
 
   private buildNoSignalAttempt(
