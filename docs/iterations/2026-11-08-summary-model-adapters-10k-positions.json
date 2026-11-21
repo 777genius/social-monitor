@@ -6064,16 +6064,9 @@
       "original": "gateway-llm/gateway-llm-client.ts",
       "owner": "gateway-llm/gateway-llm-task-preparation.ts",
       "originalPositions": [
-        196,
-        198,
-        199,
-        201,
-        202,
-        204,
-        207,
-        208
+        196
       ],
-      "responsibility": "Previously extracted SDK task projection: route-pinned model/effort, source instructions and input, bounded output-token floor, byte budget and existing deadline; retrospective disjoint original-coordinate provenance only."
+      "responsibility": "Post-admission reasoning-effort public field stays in preparation coordinator; one frozen original executable position retained"
     },
     {
       "original": "gateway-llm/gateway-llm-client.ts",
@@ -8054,6 +8047,20 @@
         109
       ],
       "responsibility": "Static closed taxonomy instructions and provider-visible label/group vocabulary independent of retry feedback and grounded cohort computation; first-use original coordinates already credited previously, reassigned once without new credit"
+    },
+    {
+      "original": "gateway-llm/gateway-llm-client.ts",
+      "owner": "gateway-llm/gateway-llm-sdk-task-payload.ts",
+      "originalPositions": [
+        198,
+        199,
+        201,
+        202,
+        204,
+        207,
+        208
+      ],
+      "responsibility": "Pure SDK request payload after route/schema trust, separate from paid task identity/account selection; seven already-credited original statements re-owned once, no new LOC credit"
     }
   ]
 }

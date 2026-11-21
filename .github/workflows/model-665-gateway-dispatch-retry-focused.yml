@@ -19,6 +19,8 @@ on:
       - libs/summary/adapters/model/gateway-llm/gateway-llm-account-order-policy.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-account-selector.spec.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-task-preparation.ts
+      - libs/summary/adapters/model/gateway-llm/gateway-llm-sdk-task-payload.ts
+      - libs/summary/adapters/model/gateway-llm/gateway-llm-sdk-task-payload.spec.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-request-identity.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-output-budget.ts
       - libs/summary/adapters/model/gateway-llm/gateway-llm-task-route-admission.ts
@@ -85,6 +87,7 @@ jobs:
           libs/summary/adapters/model/gateway-llm/gateway-llm-settlement-warnings.spec.ts
           libs/summary/adapters/model/gateway-llm/gateway-llm-account-selector.spec.ts
           libs/summary/adapters/model/gateway-llm/gateway-llm-task-route-admission.spec.ts
+          libs/summary/adapters/model/gateway-llm/gateway-llm-sdk-task-payload.spec.ts
           libs/summary/adapters/model/gateway-llm/gateway-llm-failure-policies.spec.ts
           libs/summary/adapters/model/gateway-llm/gateway-llm-output-schema.spec.ts
           libs/summary/adapters/model/gateway-llm/gateway-llm-schema-traversal.spec.ts

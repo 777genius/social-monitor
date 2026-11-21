@@ -5,9 +5,8 @@ import { gatewayDefaultReasoningEffort } from "../reader-summary-gateway-model-p
 import type { GatewayLlmClientOptions, GatewayLlmRoute } from "./gateway-llm-client-contract";
 import type { GatewayLlmOutputViolations } from "./gateway-llm-failure";
 import { prepareGatewayLlmOutput } from "./gateway-llm-structured-output";
-import { gatewayLlmDeadline } from "./gateway-llm-deadline";
-import { gatewayLlmMaxOutputTokens, gatewayLlmOutputBytes } from "./gateway-llm-output-budget";
 import { admitGatewayLlmTaskRoute } from "./gateway-llm-task-route-admission";
+import { gatewayLlmSdkTaskPayload } from "./gateway-llm-sdk-task-payload";
 
 type PreparedTask = Omit<LlmTask<Record<string, unknown>>, "taskId" | "attempt" | "accountRefs">;
 export type GatewayLlmPrepared = {
@@ -30,7 +29,6 @@ export const prepareGatewayLlmTask = (
   const route = options.route;
   const admission = admitGatewayLlmTaskRoute(command, route);
   if (admission !== null) return admission;
-  const controls = command.controls;
   const preparedOutput = prepareGatewayLlmOutput(command.outputSchema);
   if ("failure" in preparedOutput) return preparedOutput;
   return {
@@ -38,18 +36,6 @@ export const prepareGatewayLlmTask = (
     structured: preparedOutput.structured,
     outputViolations: preparedOutput.outputViolations,
     reasoningEffort: route.reasoningEffort ?? gatewayDefaultReasoningEffort,
-    task: {
-      profileId: route.profileId,
-      model: route.model,
-      policy: options.policy,
-      instructions: command.systemPrompt,
-      input: command.prompt,
-      output: preparedOutput.output,
-      ...(route.reasoningEffort === undefined ? {} : { effort: route.reasoningEffort }),
-      maxOutputTokens: gatewayLlmMaxOutputTokens(route.minOutputTokens, controls.maxOutputTokens),
-      limits: { outputBytes: gatewayLlmOutputBytes(command.purpose) },
-      deadline: gatewayLlmDeadline(startedAt, command.timeoutMs),
-      ...(preparedOutput.decode === undefined ? {} : { decode: preparedOutput.decode }),
-    },
+    task: gatewayLlmSdkTaskPayload(command, startedAt, route, options.policy, preparedOutput),
   };
 };
