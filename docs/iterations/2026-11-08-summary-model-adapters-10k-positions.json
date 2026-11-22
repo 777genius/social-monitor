@@ -378,7 +378,6 @@
         18,
         19,
         20,
-        23,
         25,
         26,
         27,
@@ -764,10 +763,6 @@
       "original": "openai-responses-reader-summary-narrative.ts",
       "owner": "openai-responses-reader-summary-narrative-diagnostics.ts",
       "originalPositions": [
-        440,
-        441,
-        442,
-        443,
         444,
         445,
         446,

@@ -114,6 +114,12 @@ for (const slice of ledger.slices) {
     if (!line || /^(?:\/\/|\/\*|\*|\*\/|import\b|export\s+type\b|[{};]+$)/u.test(line)) {
       fail(`non-implementation original position: ${coordinate}`);
     }
+    // TypeScript-only declarations are erased at runtime, even when a specialist
+    // retains them verbatim. They cannot count as original implementation LOC.
+    if (/^(?:export\s+)?(?:type|interface)\s+[A-Za-z_$]/u.test(line) ||
+      /^(?:(?:private|public|protected)\s+)?readonly\s+[A-Za-z_$][\w$]*\??\s*:\s*[^=]+;\s*$/u.test(line)) {
+      fail(`erased TypeScript declaration is not implementation: ${coordinate}`);
+    }
     if (importClausePositions.has(position) || /^\)\s*:\s*.+=>/u.test(line)) {
       fail(`import/return-type signature is not original implementation: ${coordinate}`);
     }
