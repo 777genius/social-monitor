@@ -75,6 +75,64 @@ for (const [name, sourcePath, source, targetPath, expected] of [
   });
 }
 
+
+for (const [name, sourcePath, source, targetPath] of [
+  ['type-only foreign domain', 'libs/summary/domain/example.ts',
+    "import type { Foreign } from '@social-monitor/relevance/domain/example';",
+    'libs/relevance/domain/example.ts'],
+  ['foreign domain barrel', 'libs/delivery/domain/example.ts',
+    "import { foreign } from '@social-monitor/feed/domain';",
+    'libs/feed/domain/index.ts'],
+  ['foreign domain re-export', 'libs/summary/domain/example.ts',
+    "export type { Foreign } from '@social-monitor/ingestion/domain/example';",
+    'libs/ingestion/domain/example.ts'],
+  ['foreign domain require', 'libs/summary/domain/example.ts',
+    "const foreign = require('@social-monitor/ingestion/domain/example');",
+    'libs/ingestion/domain/example.ts'],
+  ['foreign domain dynamic import', 'libs/summary/domain/example.ts',
+    "void import('@social-monitor/ingestion/domain/example');",
+    'libs/ingestion/domain/example.ts'],
+  ['legacy permission is path-exact', 'libs/summary/domain/policies/extra.ts',
+    "import type { Foreign } from '@social-monitor/relevance/domain/reader-value/reader-value-assessment';",
+    'libs/relevance/domain/reader-value/reader-value-assessment.ts'],
+  ['legacy permission is specifier-exact', 'libs/summary/domain/policies/reader-promotion-ranking.ts',
+    "import type { Foreign } from '@social-monitor/relevance/domain/reader-value/other';",
+    'libs/relevance/domain/reader-value/other.ts'],
+]) {
+  test('rejects ' + name, () => {
+    const result = check({ [sourcePath]: source, [targetPath]: 'export type Foreign = number; export const foreign = 1;' });
+    assert.equal(result.status, 1, result.output);
+    assert.match(result.output, /cross-context domain import is forbidden/);
+  });
+}
+
+test('permits the exact current-main cross-context domain debt, without broadening', () => {
+  const result = check({
+    'libs/summary/domain/policies/reader-promotion-ranking.ts':
+      "import type { Foreign } from '@social-monitor/relevance/domain/reader-value/reader-value-assessment';",
+    'libs/relevance/domain/reader-value/reader-value-assessment.ts': 'export type Foreign = number;',
+    'libs/delivery/domain/reader-summary-ready-projection.ts':
+      "import type { Foreign } from '@social-monitor/summary/domain/value-objects/reader-summary-scope';",
+    'libs/summary/domain/value-objects/reader-summary-scope.ts': 'export type Foreign = number;',
+    'libs/conversation/domain/services/conversation-bundle-builder.ts':
+      "import { foreign } from '@social-monitor/feed/domain';",
+    'libs/feed/domain/index.ts': 'export const foreign = 1;',
+  });
+  assert.equal(result.status, 0, result.output);
+});
+
+test('permits same-context domain imports and does not turn composition into domain', () => {
+  const result = check({
+    'libs/summary/domain/model.ts':
+      "import { value } from './value'; export const model = value;",
+    'libs/summary/domain/value.ts': 'export const value = 1;',
+    'libs/summary/interfaces/rest/summary-rest.module.ts':
+      "import { foreign } from '@social-monitor/feed/domain'; export const wired = foreign;",
+    'libs/feed/domain/index.ts': 'export const foreign = 1;',
+  });
+  assert.equal(result.status, 0, result.output);
+});
+
 const contextAliases = Object.keys(JSON.parse(config).compilerOptions.paths)
   .filter((alias) => /^@social-monitor\/[^/]+\/\*$/.test(alias))
   .filter((alias) => !/platform-|contracts/.test(alias));
