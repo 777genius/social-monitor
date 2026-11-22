@@ -250,6 +250,21 @@ function architectureLayerOf(file) {
     ?? null;
 }
 
+// Exact current-main debt, not a permission to create new cross-context domain edges.
+// Remove entries when a consumer-owned published-language contract replaces the import.
+const legacyCrossContextDomainImports = new Set([
+  'libs/conversation/domain/value-objects/conversation-signal-baseline-sample.ts|@social-monitor/feed/domain',
+  'libs/conversation/domain/services/conversation-bundle-builder.ts|@social-monitor/feed/domain',
+  'libs/summary/domain/policies/reader-summary-github-projection-audit-types.ts|@social-monitor/ingestion/domain',
+  'libs/summary/domain/policies/reader-summary-github-archived-projection.ts|@social-monitor/ingestion/domain',
+  'libs/summary/domain/policies/reader-post-promotion-v3.ts|@social-monitor/relevance/domain/reader-value/reader-value-assessment',
+  'libs/summary/domain/policies/reader-promotion-ranking.ts|@social-monitor/relevance/domain/reader-value/reader-value-assessment',
+  'libs/summary/domain/policies/reader-post-promotion-policy-contract.ts|@social-monitor/relevance/domain/reader-value/reader-value-assessment',
+  'libs/summary/domain/entities/reader-summary-promotion-order-validation.ts|@social-monitor/relevance/domain/reader-value/reader-value-assessment',
+  'libs/delivery/domain/reader-summary-ready-projection.ts|@social-monitor/summary/domain/value-objects/reader-summary-period',
+  'libs/delivery/domain/reader-summary-ready-projection.ts|@social-monitor/summary/domain/value-objects/reader-summary-scope',
+]);
+
 const forbiddenTargetLayers = {
   domain: new Set(['features', 'application', 'adapters', 'infrastructure', 'interfaces', 'presentation']),
   features: new Set(['adapters', 'infrastructure', 'interfaces', 'presentation']),
@@ -502,6 +517,13 @@ for (const file of globSync('libs/**/*.ts')) {
     const targetContext = resolved ? boundedContextOf(resolved) : null;
     const targetLayer = resolved ? architectureLayerOf(resolved) : null;
     const sourceLayer = architectureLayerOf(file);
+
+    if (sourceLayer === 'domain' && targetLayer === 'domain' &&
+        sourceContext && targetContext && sourceContext !== targetContext &&
+        !legacyCrossContextDomainImports.has(toProjectPath(file) + '|' + specifier)) {
+      addViolation(file, 'cross-context domain import is forbidden: ' + JSON.stringify(specifier) +
+        ' resolves to ' + JSON.stringify(resolved));
+    }
 
     if (resolved && forbiddenTargetLayers[sourceLayer]?.has(targetLayer)) {
       addViolation(file, `${sourceLayer} must not import ${targetLayer}: "${specifier}" resolves to "${resolved}"`);
