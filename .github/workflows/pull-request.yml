@@ -904,6 +904,15 @@ jobs:
         with:
           node-version: 22
 
+      - name: Exercise self-hosted Flutter delivery through native Nginx
+        run: |
+          set -euo pipefail
+          if ! command -v nginx >/dev/null 2>&1; then
+            sudo env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=2 update -qq
+            sudo env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=2 install -y -qq --no-install-recommends nginx
+          fi
+          node --test scripts/e2e/selfhost-frontend-http.test.mjs
+
       - name: Resolve the exact Flutter cache version
         id: flutter_version
         run: |
