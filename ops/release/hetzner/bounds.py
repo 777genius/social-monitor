@@ -28,12 +28,18 @@ class Budget:
         require(self.total <= TOTAL_BYTES, 'archive-processing-limit')
 
 
-def receive_bytes(stream, output, size):
-    end = time.monotonic() + RECEIVE_SECONDS
+def receive_bytes(stream, output, size, *, receive_seconds=None, idle_seconds=None):
+    duration = RECEIVE_SECONDS if receive_seconds is None else receive_seconds
+    require(type(duration) in (int, float) and 0 < duration <= 300, 'receive-deadline')
+    require(idle_seconds is None or type(idle_seconds) in (int, float) and 0 < idle_seconds <= 300,
+            'receive-deadline')
+    start = time.monotonic()
+    end = start + duration
+    idle_end = start + idle_seconds if idle_seconds is not None else end
     fd = stream.fileno()
     remaining = size
     while True:
-        wait = end - time.monotonic()
+        wait = min(end, idle_end) - time.monotonic()
         require(wait > 0 and select.select([fd], [], [], wait)[0], 'receive-deadline')
         chunk = os.read(fd, min(1024 * 1024, remaining) if remaining else 1)
         if not chunk:
@@ -43,6 +49,8 @@ def receive_bytes(stream, output, size):
         require(type(chunk) is bytes and len(chunk) <= remaining, 'archive-byte-count')
         output.write(chunk)
         remaining -= len(chunk)
+        if idle_seconds is not None:
+            idle_end = time.monotonic() + idle_seconds
 
 
 def scan_tar(stream, budget):
