@@ -132,7 +132,7 @@ describe("OpenAI reader summary weekly response parser", () => {
     ).toThrow("exactly one story");
   });
 
-  it("keeps each weekly envelope's section trust failures and chronology labels", () => {
+  it("preserves distinct key-shape and evidence diagnostic casing for both weekly envelopes", () => {
     const input = weeklyInput();
     const current = weeklyOutput(input);
     const variants = [
@@ -155,7 +155,7 @@ describe("OpenAI reader summary weekly response parser", () => {
           { ...value.sections[0]!, observedFrom: "2026-07-01" },
           ...value.sections.slice(1),
         ],
-      })).toThrow(`${label} 1 fabricates chronology`);
+      })).toThrow(`${label.toLowerCase()} 1 fabricates chronology`);
     }
   });
 
