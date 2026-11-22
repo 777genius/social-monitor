@@ -6,6 +6,7 @@ import type {
 } from "../../ports";
 import { buildPromptPayload } from "./openai-responses-summary-prompt";
 import { AgentRuntimeModelProviderError } from "./agent-runtime-model-support";
+import { exceedsSummaryModelBudget } from "./summary-model-budget-admission";
 
 /** Admission is a pure policy: never dispatch a paid task before all limits pass. */
 export const assertAgentRuntimeSummaryWithinBudget = (
@@ -13,13 +14,7 @@ export const assertAgentRuntimeSummaryWithinBudget = (
   policy: SummaryModelPolicy,
   budget: SummaryModelBudget,
 ): void => {
-  if (
-    estimate.inputTokens > policy.maxInputTokens ||
-    estimate.outputTokens > policy.maxOutputTokens ||
-    estimate.estimatedCostUsd > policy.maxEstimatedCostUsd ||
-    estimate.inputTokens + estimate.outputTokens > budget.remainingTokens ||
-    estimate.estimatedCostUsd > budget.remainingCostUsd
-  ) {
+  if (exceedsSummaryModelBudget(estimate, policy, budget)) {
     throw new AgentRuntimeModelProviderError({
       kind: "budget_exceeded",
       retryable: false,

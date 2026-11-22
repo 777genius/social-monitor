@@ -1,4 +1,7 @@
 import { exceedsSummaryModelBudget } from "./summary-model-budget-admission";
+import { assertAgentRuntimeSummaryWithinBudget } from "./agent-runtime-summary-budget-policy";
+import { AgentRuntimeModelProviderError } from "./agent-runtime-model-support";
+import { assertDeterministicSummaryBudget } from "./deterministic-summary-budget-policy";
 import { assertOpenAiSummaryWithinBudget } from "./openai-responses-summary-budget";
 import { SummaryModelProviderError } from "./openai-responses-summary-model-error";
 import { isReaderSummaryBudgetExceeded } from "./reader-summary-token-budget";
@@ -17,6 +20,8 @@ const remaining = Object.freeze({
 describe("provider-neutral summary model budget admission", () => {
   it("accepts equality in all five gates with unchanged provider semantics", () => {
     expect(exceedsSummaryModelBudget(estimate, policy, remaining)).toBe(false);
+    expect(() => assertAgentRuntimeSummaryWithinBudget(estimate, { ...policy, preferredProvider: "agent-runtime" }, remaining)).not.toThrow();
+    expect(() => assertDeterministicSummaryBudget(estimate, { ...policy, preferredProvider: "deterministic-local" }, remaining)).not.toThrow();
     expect(isReaderSummaryBudgetExceeded(estimate, {
       ...policy, preferredProvider: "deterministic-local",
     }, remaining)).toBe(false);
@@ -45,6 +50,18 @@ describe("provider-neutral summary model budget admission", () => {
     const prior = JSON.stringify([actualEstimate, actualPolicy, actualBudget]);
 
     expect(exceedsSummaryModelBudget(actualEstimate, actualPolicy, actualBudget)).toBe(true);
+    expect(() => assertDeterministicSummaryBudget(actualEstimate, { ...actualPolicy, preferredProvider: "deterministic-local" }, actualBudget))
+      .toThrow("Summary model budget exceeded");
+    let agentError: unknown;
+    try {
+      assertAgentRuntimeSummaryWithinBudget(actualEstimate, { ...actualPolicy, preferredProvider: "agent-runtime" }, actualBudget);
+    } catch (error) {
+      agentError = error;
+    }
+    expect(agentError).toBeInstanceOf(AgentRuntimeModelProviderError);
+    expect((agentError as AgentRuntimeModelProviderError).failure).toEqual({
+      kind: "budget_exceeded", retryable: false, message: "Summary model budget exceeded",
+    });
     expect(isReaderSummaryBudgetExceeded(actualEstimate, {
       ...actualPolicy, preferredProvider: "deterministic-local",
     }, actualBudget)).toBe(true);

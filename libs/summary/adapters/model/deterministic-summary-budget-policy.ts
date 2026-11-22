@@ -4,6 +4,7 @@ import type {
   SummaryModelInput,
   SummaryModelPolicy,
 } from '../../ports';
+import { exceedsSummaryModelBudget } from './summary-model-budget-admission';
 
 /**
  * Deterministic model token accounting stays independent of route selection.
@@ -36,13 +37,7 @@ export const assertDeterministicSummaryBudget = (
   policy: SummaryModelPolicy,
   budget: SummaryModelBudget,
 ): void => {
-  if (
-    estimate.inputTokens > policy.maxInputTokens ||
-    estimate.outputTokens > policy.maxOutputTokens ||
-    estimate.estimatedCostUsd > policy.maxEstimatedCostUsd ||
-    estimate.inputTokens + estimate.outputTokens > budget.remainingTokens ||
-    estimate.estimatedCostUsd > budget.remainingCostUsd
-  ) {
+  if (exceedsSummaryModelBudget(estimate, policy, budget)) {
     throw new Error('Summary model budget exceeded');
   }
 };

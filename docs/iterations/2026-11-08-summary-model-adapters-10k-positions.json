@@ -242,11 +242,6 @@
       "original": "deterministic-summary-model.adapter.ts",
       "owner": "deterministic-summary-budget-policy.ts",
       "originalPositions": [
-        30,
-        31,
-        32,
-        33,
-        34,
         36,
         48,
         50,
@@ -4127,11 +4122,6 @@
       "original": "agent-runtime-summary-model.adapter.ts",
       "owner": "agent-runtime-summary-budget-policy.ts",
       "originalPositions": [
-        118,
-        119,
-        120,
-        121,
-        122,
         125,
         127,
         140,
@@ -8208,6 +8198,30 @@
         224
       ],
       "responsibility": "Independent read-only publication projection of corroborated anchors for final active groups; no membership mutation or promotion of unsupported singleton/explicit-only groups"
+    },
+    {
+      "original": "agent-runtime-summary-model.adapter.ts",
+      "owner": "summary-model-budget-admission.ts",
+      "originalPositions": [
+        118,
+        119,
+        120,
+        121,
+        122
+      ],
+      "responsibility": "Shared provider-neutral five-limit admission predicate; Agent Runtime retains typed nonretryable failure projection and distinct estimate; existing frozen coordinates re-owned, no new LOC credit"
+    },
+    {
+      "original": "deterministic-summary-model.adapter.ts",
+      "owner": "summary-model-budget-admission.ts",
+      "originalPositions": [
+        30,
+        31,
+        32,
+        33,
+        34
+      ],
+      "responsibility": "Shared provider-neutral five-limit admission predicate; deterministic summary retains original Error and token estimate; existing frozen coordinates re-owned, no new LOC credit"
     }
   ]
 }
