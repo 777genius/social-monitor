@@ -19,7 +19,7 @@ WORKDIR /workspace/apps/frontend/app
 # Derive a stable release identity from checked-out Flutter sources and locks.
 # Exclude build/pub caches; every source change must yield a fresh URL version.
 RUN set -eu; \
-    release="$(find /workspace/apps/frontend -type d \( -name .dart_tool -o -name build \) -prune -o -type f -print0 \
+    release="$(find /workspace/apps/frontend -type d \( -name .dart_tool -o -name build \) -prune -o -type f ! -name .flutter-plugins-dependencies -print0 \
       | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | cut -c1-40)"; \
     test "${#release}" -eq 40; \
     flutter build web --release --wasm --no-web-resources-cdn \
