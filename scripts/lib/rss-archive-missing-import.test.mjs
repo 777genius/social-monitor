@@ -108,6 +108,8 @@ test('RSS preserves source publication timestamp and rejects invalid or out-of-d
     assert.throws(() => normalizeRssArchiveMissing(
       { ...exact, items: [{ ...item, publishedAt }] }, plan.day, [item.guid]));
   }
+  const impossible = { ...item, publishedUtcDate: '2026-10-01', publishedAt: '2026-09-31T14:32:01Z' };
+  assert.throws(() => normalizeRssArchiveMissing({ ...exact, items: [impossible] }, '2026-10-01', [item.guid]));
 });
 
 test('RSS accepts key-omitted guid-only items and canonicalizes nulls', () => {
@@ -189,6 +191,9 @@ test('RSS planner pins packetSha256 to exact packet.json file bytes', async () =
   ] }));
   assert.throws(() => planRssArchiveMissingPackets({ ...precise, items: [
     { ...precise.items[0], publishedAt: '2026-10-17T14:32:01.123456Z' }, precise.items[1],
+  ] }));
+  assert.throws(() => planRssArchiveMissingPackets({ ...precise, items: [
+    { ...precise.items[0], publishedUtcDate: '2026-10-01', publishedAt: '2026-09-31T14:32:01Z' }, precise.items[1],
   ] }));
   assert.equal(planRssArchiveMissingPackets({ ...precise, items: [
     { ...precise.items[0], publishedAt: '2026-10-17T14:32:01.123000Z' }, precise.items[1],

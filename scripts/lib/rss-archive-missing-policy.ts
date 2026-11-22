@@ -83,6 +83,7 @@ export function qualifyRssArchiveItem(input: unknown, day: string, ordinal: numb
   if (value.publishedAt !== undefined) {
     archiveNeed(typeof value.publishedAt === 'string' && publishedAtPattern.test(value.publishedAt) &&
       Number.isFinite(Date.parse(value.publishedAt)) &&
+      value.publishedAt.slice(0, 10) === day &&
       new Date(value.publishedAt).toISOString().slice(0, 10) === day,
       `RSS item ${ordinal} timestamp invalid`);
   }

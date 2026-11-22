@@ -44,6 +44,7 @@ export function planRssArchiveMissingPackets(manifestInput: unknown, env = proce
       (value.publishedAt === undefined || (typeof value.publishedAt === 'string' &&
         /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3}0{0,3})?Z$/u.test(value.publishedAt) &&
         Number.isFinite(Date.parse(value.publishedAt)) &&
+        value.publishedAt.slice(0, 10) === value.publishedUtcDate &&
         new Date(value.publishedAt).toISOString().slice(0, 10) === value.publishedUtcDate)) &&
       value.title.trim().length > 0 &&
       (value.description === undefined || typeof value.description === 'string') &&
