@@ -100,7 +100,11 @@ test('RSS preserves source publication timestamp and rejects invalid or out-of-d
   assert.equal(result.metadata.publishedPrecision, 'instant');
   assert.equal(result.metadata.publishedAtSource, 'source-pub-date');
   assert.deepEqual(result.metadata.provenance, item.provenance);
-  for (const publishedAt of ['2026-10-18T00:00:00Z', '2026-10-17T25:00:00Z', 'not-a-date']) {
+  const padded = { ...item, publishedAt: '2026-10-17T14:32:01.123000Z' };
+  assert.equal(normalizeRssArchiveMissing({ ...exact, items: [padded] }, plan.day, [padded.guid])
+    .items[0].publishedAt.toISOString(), '2026-10-17T14:32:01.123Z');
+  for (const publishedAt of ['2026-10-18T00:00:00Z', '2026-10-17T25:00:00Z',
+    '2026-10-17T14:32:01.123456Z', 'not-a-date']) {
     assert.throws(() => normalizeRssArchiveMissing(
       { ...exact, items: [{ ...item, publishedAt }] }, plan.day, [item.guid]));
   }
@@ -183,4 +187,10 @@ test('RSS planner pins packetSha256 to exact packet.json file bytes', async () =
   assert.throws(() => planRssArchiveMissingPackets({ ...precise, items: [
     { ...precise.items[0], publishedAt: '2026-10-18T00:00:00Z' }, precise.items[1],
   ] }));
+  assert.throws(() => planRssArchiveMissingPackets({ ...precise, items: [
+    { ...precise.items[0], publishedAt: '2026-10-17T14:32:01.123456Z' }, precise.items[1],
+  ] }));
+  assert.equal(planRssArchiveMissingPackets({ ...precise, items: [
+    { ...precise.items[0], publishedAt: '2026-10-17T14:32:01.123000Z' }, precise.items[1],
+  ] }).length, 1);
 });

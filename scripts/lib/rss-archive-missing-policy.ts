@@ -26,6 +26,9 @@ export type RssArchiveClaim = Readonly<{
 const digest = /^[a-f0-9]{64}$/u;
 const dayPattern = /^\d{4}-\d{2}-\d{2}$/u;
 const utcPattern = /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,6})?Z$/u;
+// Date and the persistence path retain milliseconds, so non-zero submillisecond
+// digits must not be silently truncated while claiming source-time precision.
+const publishedAtPattern = /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3}0{0,3})?Z$/u;
 const uuidPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/iu;
 
 function object(value: unknown, reason: string): Record<string, unknown> {
@@ -78,7 +81,7 @@ export function qualifyRssArchiveItem(input: unknown, day: string, ordinal: numb
     (value.description === undefined || typeof value.description === 'string'),
     `RSS item ${ordinal} identity invalid`);
   if (value.publishedAt !== undefined) {
-    archiveNeed(typeof value.publishedAt === 'string' && utcPattern.test(value.publishedAt) &&
+    archiveNeed(typeof value.publishedAt === 'string' && publishedAtPattern.test(value.publishedAt) &&
       Number.isFinite(Date.parse(value.publishedAt)) &&
       new Date(value.publishedAt).toISOString().slice(0, 10) === day,
       `RSS item ${ordinal} timestamp invalid`);

@@ -42,7 +42,7 @@ export function planRssArchiveMissingPackets(manifestInput: unknown, env = proce
     need(typeof value.guid === 'string' && value.guid.trim().length > 0 &&
       dayPattern.test(String(value.publishedUtcDate)) && typeof value.title === 'string' &&
       (value.publishedAt === undefined || (typeof value.publishedAt === 'string' &&
-        /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,6})?Z$/u.test(value.publishedAt) &&
+        /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3}0{0,3})?Z$/u.test(value.publishedAt) &&
         Number.isFinite(Date.parse(value.publishedAt)) &&
         new Date(value.publishedAt).toISOString().slice(0, 10) === value.publishedUtcDate)) &&
       value.title.trim().length > 0 &&
