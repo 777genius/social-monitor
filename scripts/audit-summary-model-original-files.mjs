@@ -120,6 +120,14 @@ for (const slice of ledger.slices) {
       /^(?:(?:private|public|protected)\s+)?readonly\s+[A-Za-z_$][\w$]*\??\s*:\s*[^=]+;\s*$/u.test(line)) {
       fail(`erased TypeScript declaration is not implementation: ${coordinate}`);
     }
+    // A closing delimiter contributes no implementation. Keep standalone
+    // initializers such as "[];" eligible for separate semantic review.
+    const syntaxOnlyDelimiter =
+      (line.startsWith(")") || line.startsWith("}") || line.startsWith("]")) &&
+      [...line].every((character) => "(){}[],:; \t".includes(character));
+    if (syntaxOnlyDelimiter || line === ": {") {
+      fail(`syntax-only original position: ${coordinate}`);
+    }
     if (importClausePositions.has(position) || /^\)\s*:\s*.+=>/u.test(line)) {
       fail(`import/return-type signature is not original implementation: ${coordinate}`);
     }
