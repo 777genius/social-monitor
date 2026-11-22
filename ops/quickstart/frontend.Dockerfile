@@ -16,8 +16,18 @@ RUN flutter analyze \
     && dart test packages/shared_kernel \
     && dart test packages/generated_api
 WORKDIR /workspace/apps/frontend/app
-RUN flutter build web --release --no-tree-shake-icons \
-    --dart-define-from-file=/workspace/frontend-defines.json
+# Derive a stable release identity from checked-out Flutter sources and locks.
+# Exclude build/pub caches; every source change must yield a fresh URL version.
+RUN set -eu; \
+    release="$(find /workspace/apps/frontend -type d \\( -name .dart_tool -o -name build \\) -prune -o -type f -print0 \
+      | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | cut -c1-40)"; \
+    test "${#release}" -eq 40; \
+    flutter build web --release --wasm --no-web-resources-cdn \
+      --dart-define-from-file=/workspace/frontend-defines.json \
+      --web-define="SOCIAL_MONITOR_RELEASE_ID=$release"; \
+    grep -F "flutter_bootstrap.js?v=$release" build/web/index.html >/dev/null; \
+    grep -F "const configuredRelease = '$release'" build/web/flutter_bootstrap.js >/dev/null; \
+    test -s build/web/main.dart.wasm && test -s build/web/main.dart.js
 
 FROM ${NGINX_IMAGE}
 LABEL org.opencontainers.image.source="https://github.com/777genius/social-monitor"
