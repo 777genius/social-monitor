@@ -48,4 +48,41 @@ describe("weekly legacy envelope decoding boundaries", () => {
       sections: [],
     })).toThrow("Expanded legacy weekly story 1 must contain exactly the supported fields");
   });
+
+  it("preserves sealed compact original lowercase evidence and claim failure labels", () => {
+    const section = {
+      sectionId: "section:1", kind: "lead", storyId: "story:1",
+      headline: "Synthetic", synthesis: "Synthetic", claimType: "snapshot",
+      citationIds: ["c1"], observedFrom: "2026-07-21", observedThrough: "2026-07-21",
+    };
+    const root = {
+      ...envelope(sealedCompactOutputKeys), stories: [], sections: [section],
+    };
+    expect(() => normalizeSealedCompactWeeklyModelOutput(input, root))
+      .toThrow("sealed compact weekly section 1 fabricates chronology");
+    expect(() => normalizeSealedCompactWeeklyModelOutput(input, {
+      ...root,
+      sections: [{ ...section, observedFrom: "2026-07-20",
+        observedThrough: "2026-07-20", claimType: "forecast" }],
+    })).toThrow("sealed compact weekly section 1 claim type is invalid");
+  });
+
+  it("preserves expanded legacy original lowercase evidence and claim failure labels", () => {
+    const section = {
+      sectionId: "section:1", kind: "lead", storyId: "story:1",
+      headline: "Synthetic", synthesis: "Synthetic", claimType: "snapshot",
+      citationIds: ["c1"], observedFrom: "2026-07-21", observedThrough: "2026-07-21",
+    };
+    const root = {
+      ...envelope(expandedLegacyOutputKeys), claimType: "snapshot",
+      stories: [], sections: [section],
+    };
+    expect(() => normalizeExpandedLegacyWeeklyModelOutput(input, root))
+      .toThrow("expanded legacy weekly section 1 fabricates chronology");
+    expect(() => normalizeExpandedLegacyWeeklyModelOutput(input, {
+      ...root,
+      sections: [{ ...section, observedFrom: "2026-07-20",
+        observedThrough: "2026-07-20", claimType: "forecast" }],
+    })).toThrow("expanded legacy weekly section 1 claim type is invalid");
+  });
 });
