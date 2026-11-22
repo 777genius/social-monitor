@@ -9,6 +9,7 @@ COPY --chmod=0644 AGENTS.md /workspace/AGENTS.md
 COPY --chmod=0644 scripts/create-frontend-feature.mjs /workspace/scripts/create-frontend-feature.mjs
 COPY ops/quickstart/frontend-defines.json /workspace/ops/quickstart/frontend-defines.json
 COPY ops/quickstart/build-frontend-release.sh /workspace/ops/quickstart/build-frontend-release.sh
+COPY ops/quickstart/frontend.Dockerfile /workspace/ops/quickstart/frontend.Dockerfile
 RUN flutter pub get
 # Same executable surface as npm run check:frontend; SDK version is pinned above.
 RUN flutter analyze \
