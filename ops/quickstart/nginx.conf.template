@@ -62,7 +62,7 @@ server {
   }
   # Preserve the compiled entrypoint version contract from flutter_bootstrap.js.
   # A missing static resource must be a 404, never the SPA's index.html.
-  location ~ ^/main\\.dart\\.(?:wasm|mjs|js)$ {
+  location ~ ^/main\.dart\.(?:wasm|mjs|js)$ {
     types {
       application/javascript js mjs;
       application/wasm wasm;
