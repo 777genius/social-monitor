@@ -1,9 +1,9 @@
 # Hacker News archive observations
 
 The archive tools prepare missing-only packets; they do not write to the database or
-authorize an import. Run them with Node 22 or newer from a private working directory.
+authorize an import. Run them from the repository checkout with Node 22 or newer.
 The snapshot and every output can contain workspace identifiers or provider content:
-keep the directory mode `0700` and input files mode `0600`.
+keep those files in a private directory with mode `0700` and input files mode `0600`.
 
 The snapshot is one read-only, repeatable-read database observation with this shape:
 
@@ -22,8 +22,8 @@ the bound configuration immediately before any write.
 For one closed UTC day, run:
 
 ```sh
-npm run run:hn-archive-discovery -- /absolute/private/snapshot.json 2026-01-01 /absolute/private/reconciliation.json
-npm run run:hn-archive-manifest -- /absolute/private/reconciliation.json /absolute/private/manifest.json
+./node_modules/.bin/ts-node -P tsconfig.build.json -r tsconfig-paths/register scripts/discover-hn-archive-missing.ts /absolute/private/snapshot.json 2026-01-01 /absolute/private/reconciliation.json
+./node_modules/.bin/ts-node -P tsconfig.build.json scripts/generate-hn-archive-missing-manifest.ts /absolute/private/reconciliation.json /absolute/private/manifest.json
 ```
 
 Strict discovery refuses a provider response that cannot establish coverage. If
