@@ -11,7 +11,7 @@ map $http_host $selfhost_host_allowed {
 # release identity. Do not apply this to index.html or unversioned engine files.
 map $arg_v $selfhost_compiler_cache {
   default "no-cache";
-  ~^[a-f0-9]{40}$ "public, max-age=31536000, immutable";
+  "~^[a-f0-9]{40}$" "public, max-age=31536000, immutable";
 }
 
 server {
