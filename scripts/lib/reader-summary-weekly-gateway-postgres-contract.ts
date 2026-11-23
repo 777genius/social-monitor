@@ -1,5 +1,5 @@
 import type { ReaderSummaryPublicationPostgresClient } from "./reader-summary-publication-postgres-fixture-scope";
-import { approvedGatewayLlmSdkIdentity } from "../../libs/summary/adapters/model/gateway-llm/gateway-llm-sdk-identity";
+import { approvedGatewayLlmSdkIdentity, historicalGatewayLlmSdkIdentity } from "../../libs/summary/adapters/model/gateway-llm/gateway-llm-sdk-identity";
 import { assertPostgres as assert, assertPostgresRejectsContaining as assertRejects } from "./reader-summary-publication-postgres-assertions";
 
 type Payload = Record<string, unknown>;
@@ -55,6 +55,8 @@ export const assertReaderSummaryWeeklyGatewayPostgresContract = async (params: {
   // Roll back fixture writes so the existing independent CLI race/replay tests
   // still exercise the same immutable seal from an empty manifest slot.
   for (const valid of [proof,
+    { ...proof, runtimePackageVersion: historicalGatewayLlmSdkIdentity.packageVersion,
+      launcherSha256: historicalGatewayLlmSdkIdentity.archiveSha256 },
     { ...proof, model: "gpt-6.1-terra", reasoningEffort: "medium",
       gateway: { ...gateway, observedModel: "gpt-6.1-terra" } },
     { ...proof, gateway: { ...gateway, observedModel: null } },
@@ -86,6 +88,10 @@ export const assertReaderSummaryWeeklyGatewayPostgresContract = async (params: {
     ["other profile", { ...proof, gateway: { ...gateway, profileId: "other-profile" } }],
     ["wrong SDK", { ...proof, runtimePackageVersion: "9.9.9" }],
     ["wrong SDK digest", { ...proof, launcherSha256: "e".repeat(64) }],
+    ["historical version with current digest", { ...proof,
+      runtimePackageVersion: historicalGatewayLlmSdkIdentity.packageVersion }],
+    ["current version with historical digest", { ...proof,
+      launcherSha256: historicalGatewayLlmSdkIdentity.archiveSha256 }],
     ["crossed effort", { ...proof, reasoningEffort: "high" }],
     ["Terra wrong effort", { ...proof, model: "gpt-6.1-terra", reasoningEffort: "low",
       gateway: { ...gateway, observedModel: "gpt-6.1-terra" } }],

@@ -1,6 +1,6 @@
 import { resolveGatewayLlmTransportConfig, resolveSummaryAgentRuntimeTransport, assertReaderSummaryTransportBackend } from "@social-monitor/summary/adapters/composition/reader-summary-agent-runtime-transport";
 import { gatewayLlmCanonicalRequest } from "@social-monitor/summary/adapters/model/gateway-llm/gateway-llm-request-identity";
-import { approvedGatewayLlmSdkIdentity } from "@social-monitor/summary/adapters/model/gateway-llm/gateway-llm-sdk-identity";
+import { isKnownGatewayLlmSdkIdentity } from "@social-monitor/summary/adapters/model/gateway-llm/gateway-llm-sdk-identity";
 import type { GatewayLlmRoute } from "@social-monitor/summary/adapters/model/gateway-llm/gateway-llm-client";
 import type { ReaderSummaryGenerationBackend } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
 import { isAttestedRuntimeIdentity } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
@@ -112,8 +112,8 @@ export const checkReceiptBinding = (manifest: RequestManifest, receipt: CaptureR
   check(manifest.gateway === undefined || receipt.captureKind !== "live_subscription", "Gateway capture cannot claim CLI provenance");
   if (!manifest.gateway) check(receipt.transport.runtimeEngine === undefined, "Legacy transport identity changed");
   if (manifest.gateway) check(receipt.transport.runtimeEngine === "gateway-llm" &&
-    receipt.transport.runtimePackageVersion === approvedGatewayLlmSdkIdentity.packageVersion &&
-    receipt.transport.launcherSha256 === approvedGatewayLlmSdkIdentity.archiveSha256, "Gateway SDK identity mismatch");
+    isKnownGatewayLlmSdkIdentity(receipt.transport.runtimePackageVersion,
+      receipt.transport.launcherSha256), "Gateway SDK identity mismatch");
   for (const envelope of manifest.requests) {
     const row = receipt.responses.find((r) => r.blockId === envelope.blockId);
     check(row, `Missing response ${envelope.blockId}`);
@@ -139,8 +139,7 @@ export const verifyCapturedRuntime = (envelope: RequestEnvelope, result: AgentRu
       a.gateway.profileId === gateway.profileId && a.model === gateway.model &&
       (envelope.command.controls.modelBackend ?? "openai-chatgpt") === gateway.modelBackend &&
       a.reasoningEffort === (gateway.reasoningEffort ?? "default") &&
-      a.runtimePackageVersion === approvedGatewayLlmSdkIdentity.packageVersion &&
-      a.launcherSha256 === approvedGatewayLlmSdkIdentity.archiveSha256,
+      isKnownGatewayLlmSdkIdentity(a.runtimePackageVersion, a.launcherSha256),
       "Gateway execution profile mismatch");
     else check(a?.runtimeEngine === "subscription-runtime-cli", "Legacy receipt requires CLI runtime identity");
     check(a?.canonicalRequestSha256 === envelope.canonicalRequestSha256, "Runtime canonical request mismatch");

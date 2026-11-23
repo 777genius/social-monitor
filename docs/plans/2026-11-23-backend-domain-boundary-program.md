@@ -1,6 +1,6 @@
 # Social Monitor backend — critical architecture boundary program
 
-Status: **Review remediation in progress; not merge-ready**. Baseline: `main` `c0f3ea3dd2f546ab5fd25f395e341cd2c5093541` (2026-11-22). Owner: `social-monitor` backend. No production deployment authorized.
+Status: **Stage A merged in #790; B1 (#791), B2 (#792), and the separate dependency/runtime slice (#793) are implemented or under qualification as stated below.** Audit baseline: `main` `c0f3ea3dd2f546ab5fd25f395e341cd2c5093541` (2026-11-22). Owner: `social-monitor` backend. Production access and manual deployment are outside this program.
 
 This document is the reviewable, normative **plan**. Its two companion per-source audit indexes are **non-authoritative scope ledgers**, not mandates to edit every indexed file. A line count is never a proof of changed architecture or working E2E.
 
@@ -99,6 +99,14 @@ Only **seven** exact tuples remain in `scripts/check-architecture.mjs`. The runt
 B2 removes **only** the type-only import `libs/summary/domain/policies/reader-summary-github-projection-audit-types.ts|@social-monitor/ingestion/domain` by introducing a Summary-owned archived GitHub observation snapshot. The snapshot's nested structure is mutually assignable to the current Ingestion `GitHubTrendingArchiveMetadata` contract and is checked in a test at the adapter boundary. This preserves the existing runtime validator, archival provenance, parsing, external ID, UTC window and publication behavior.
 
 The remaining active exception set is **six** exact (source path, specifier) tuples: two `conversation → feed`, one runtime `summary → ingestion`, one runtime `summary → relevance`, and two `delivery → summary`. This count applies only to Stage B2; the preceding ten-entry baseline is retained for audit history. The stacked change is not merge-qualified until full native checks on the final code, external review and parent PR merges are confirmed.
+
+### Separate dependency/runtime qualification (#793)
+
+Registry and artifact inspection confirmed Core/Assembly `0.8.0` and Engineering Foundation `3.1.0`. Account Gateway [PR #123](https://github.com/agent-teams-ai/account-gateway/pull/123) owns the producer's removed-Assembly-API migration and its existing development-only Foundation upgrade. Social Monitor consumes the reviewed private SDK archive; it does not introduce Foundation as a new checker or replace NestJS composition. The broader tooling/adoption proposals in slices D/E remain separate decisions.
+
+Social Monitor #793 selects Node `24.22.3`, aligns its existing image/CI/runtime contracts, fixes the host artifact's omitted nested SDK archive, and preserves TypeScript 6 compiler compatibility. The consumer supports the Node 24 line; the producer independently qualifies Node 24 and 26. The [bounded qualification plan](../iterations/2026-11-23-backend-sdk-runtime-qualification.md) records the actual scope and gates.
+
+The SDK archive's version/hash pair is part of retained publication evidence. Updating it therefore also requires a narrow additive SQL function migration and retained-reader compatibility: admit the old and new complete pairs for historical evidence, reject mixed pairs, and keep new executions bound to the current artifact. Historical migrations, persisted evidence bytes, model/effort policy, tenant access, canonical hashes and runtime lifecycle ownership remain unchanged. This is a compatibility prerequisite discovered by the source audit, not a new data model or a blanket identity allowlist. An older binary's ability to read newly emitted identities is not claimed.
 
 
 

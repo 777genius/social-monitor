@@ -28,6 +28,14 @@ The producer's current main contains the original LLM feature. Its reviewed delt
 
 The canonical immutable candidate remains pinned to an independently retrieved official image digest. Updating a Docker tag without updating the candidate build-context mapping and exact guard would silently lose that pin, and is prohibited.
 
+## SDK identity and retained evidence
+
+The new archive is built from reviewed Account Gateway source `c610c95acfdadab1e2feeaef7af2d9881bb4a48c`, tree `a602f855d4ee93b4707bb406eeaab7f0fe2bd560`. Its current execution identity is `0.1.0-gm08.c610c95` with archive SHA-256 `2d7861f4f88cc34b7461228e190122a3e946d3ad7986ee1c18dfcc403444e8a7`. Keep the older archive and provenance as historical evidence; new execution, health checks and fresh manifests use the current pair exclusively.
+
+Source review found that persisted weekly attestations and retained artifact readers also bind the previous SDK pair. This justifies one narrow additive SQL migration alongside the dependency refresh: replace the latest weekly attestation validator with the same function admitting either complete known version/digest pair. SQL continues admitting old writes and replays; the upgraded application emits only the new pair. Keep ownership, grants, transaction isolation, JSON shapes, request/output binding and model policies unchanged. Do not edit historical migrations, stored attestations, canonical hashes, manifests or other data rows.
+
+Retained weekly proofs, refresh reconciliation/successor originals and stored evaluation captures may recognize the current or historical complete pair. Crossed version/digest pairs remain invalid, and fresh execution remains current-only. This provides additive database and forward-reader compatibility; it does not claim that an unmodified old application can consume new-identity evidence after rollback.
+
 ## Verification gates
 
 - Exact locked install on the supported runtime, generated Prisma client, semantic typecheck and backend build.

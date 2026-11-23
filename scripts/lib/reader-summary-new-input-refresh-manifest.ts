@@ -1,6 +1,6 @@
 import { isCodexGatewayReaderSummaryRoute } from "@social-monitor/summary/adapters/model/codex-reader-summary-route";
 import { createHash } from "node:crypto";
-import { approvedGatewayLlmSdkIdentity } from "@social-monitor/summary/adapters/model/gateway-llm/gateway-llm-sdk-identity";
+import { approvedGatewayLlmSdkIdentity, isKnownGatewayLlmSdkIdentity } from "@social-monitor/summary/adapters/model/gateway-llm/gateway-llm-sdk-identity";
 import { isGatewayReaderSummaryExecution, resolveReaderSummaryGenerationIdentity, type ReaderSummaryGenerationBackend } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
 import type { GatewayLlmRoute } from "@social-monitor/summary/adapters/model/gateway-llm/gateway-llm-client";
 import { readerSummaryNewInputRefreshPrefix } from
@@ -72,7 +72,7 @@ export const refreshOperation = (m: Omit<RefreshManifest, "operation">): string 
 
 export function assertRefreshManifest(m: RefreshManifest, now: Date, fresh = true, depth = 0): void {
   if (m.successor !== undefined) assertRefreshSuccessorGrant(m, now, { assertOriginal: assertRefreshManifest, hash: refreshHash }, depth);
-  if (!refreshManifestFormat(m.format) || !validRefreshRuntimePolicy(m) ||
+  if (!refreshManifestFormat(m.format) || !validRefreshRuntimePolicy(m, fresh) ||
       m.tenantId !== refreshScope.tenantId || m.workspaceId !== refreshScope.workspaceId ||
       !refreshDates.includes(m.date) || m.timezone !== "UTC" ||
       m.startedAt !== `${m.date}T00:00:00.000Z` ||
@@ -126,7 +126,7 @@ function canonical(value: unknown): string {
 
 export const refreshManifestFormat = (format: unknown): boolean =>
   format === "reader-summary-seven-day-new-input-v1" || format === "reader-summary-seven-day-new-input-v2";
-function validRefreshRuntimePolicy(m: RefreshManifest): boolean {
+function validRefreshRuntimePolicy(m: RefreshManifest, fresh: boolean): boolean {
   if (m.format === "reader-summary-seven-day-new-input-v1") return m.gateway === undefined &&
     m.model === "gpt-5.6-sol" && m.reasoningEffort === "high" && m.runtime.engine === "subscription-runtime-cli";
   const route = m.gateway;
@@ -136,8 +136,10 @@ function validRefreshRuntimePolicy(m: RefreshManifest): boolean {
   } catch { return false; }
   if (route.modelBackend === "kimi-code" && route.reasoningEffort !== undefined) return false;
   return m.runtime.engine === "gateway-llm" &&
-    m.runtime.packageVersion === approvedGatewayLlmSdkIdentity.packageVersion &&
-    m.runtime.launcherSha256 === approvedGatewayLlmSdkIdentity.archiveSha256 &&
+    (fresh
+      ? m.runtime.packageVersion === approvedGatewayLlmSdkIdentity.packageVersion &&
+        m.runtime.launcherSha256 === approvedGatewayLlmSdkIdentity.archiveSha256
+      : isKnownGatewayLlmSdkIdentity(m.runtime.packageVersion, m.runtime.launcherSha256)) &&
     Object.keys(route).sort().join(",") === (route.reasoningEffort === undefined
       ? "minOutputTokens,model,modelBackend,profileId" : "minOutputTokens,model,modelBackend,profileId,reasoningEffort") &&
     /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/u.test(route.profileId) &&

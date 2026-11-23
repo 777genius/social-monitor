@@ -1,6 +1,6 @@
 import Ajv from "ajv";
 import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
-import { approvedGatewayLlmSdkIdentity as sdk } from "@social-monitor/summary/adapters/model/gateway-llm/gateway-llm-sdk-identity";
+import { approvedGatewayLlmSdkIdentity as sdk, historicalGatewayLlmSdkIdentity as historicalSdk } from "@social-monitor/summary/adapters/model/gateway-llm/gateway-llm-sdk-identity";
 import type { AgentRuntimeTaskResult } from "@social-monitor/summary/ports";
 import { loadDataset, readJson } from "./dataset";
 import { prepareBlock, type PreparedBlock } from "./replay";
@@ -19,7 +19,7 @@ beforeAll(async () => {
     if (request) { prepared = p; envelope = request; break; }
   }
 });
-function fixture() {
+function fixture(identity = sdk) {
   const manifest = makeManifest(loadDataset(), [envelope], source, undefined, gateway);
   const structuredOutput = { decisions: prepared.candidates.map((pair) => ({
     leftFeedItemId: pair.leftFeedItemId, rightFeedItemId: pair.rightFeedItemId,
@@ -29,7 +29,7 @@ function fixture() {
     executionAttestation: { schemaVersion: 1, requestId: envelope.command.requestId,
       purpose: envelope.command.purpose, provider: "codex", model: gateway.model, reasoningEffort: "low",
       canonicalRequestSha256: envelope.canonicalRequestSha256, runtimeEngine: "gateway-llm",
-      runtimePackageVersion: sdk.packageVersion, launcherSha256: sdk.archiveSha256,
+      runtimePackageVersion: identity.packageVersion, launcherSha256: identity.archiveSha256,
       selectedOutputKind: "structured_output", selectedOutputSha256: canonicalJsonSha256(structuredOutput),
       gateway: { profileId: gateway.profileId, taskId: "TEST-task", attempt: 1, executionRef: "TEST-execution",
         requestRef: "TEST-request", accountRef: "TEST-account", observedModel: "gpt-6.1-sol-2026-11-01",
@@ -40,15 +40,16 @@ function fixture() {
     captureSourceRevision: manifest.captureSourceRevision, labelSealSha256: manifest.labelSealSha256,
     replaySha256: manifest.replaySha256,
     transport: { authentication: "deterministic_fixture", operatorRecord: "Synthetic transport only",
-      runtimeEngine: "gateway-llm", runtimePackageVersion: sdk.packageVersion, launcherSha256: sdk.archiveSha256 },
+      runtimeEngine: "gateway-llm", runtimePackageVersion: identity.packageVersion, launcherSha256: identity.archiveSha256 },
     responses: [{ blockId: envelope.blockId, commandSha256: envelope.commandSha256,
       canonicalRequestSha256: envelope.canonicalRequestSha256, schemaSha256: envelope.schemaSha256,
       evidenceSha256: envelope.evidenceSha256, receivedAt: "2026-11-01T00:00:00Z", result }],
   };
   return { manifest, receipt, result };
 }
-it("captures and replays the gateway route with its SDK identity and effective budget", async () => {
-  const { manifest, receipt, result } = fixture();
+it.each([sdk, historicalSdk])("replays the retained gateway route from $packageVersion with its exact SDK identity", async (identity) => {
+  const { manifest, receipt, result } = fixture(identity);
+  const original = JSON.stringify(receipt);
   expect(manifest.schemaVersion).toBe(3);
   expect(manifest.effectBudget.maxOutputTokens).toBe(16_384);
   expect(envelope.command.controls).toMatchObject({ model: "gpt-6.1-sol", reasoningEffort: "low" });
@@ -59,10 +60,27 @@ it("captures and replays the gateway route with its SDK identity and effective b
   expect(ajv.validate(readJson<object>("scripts/evals/reader-story-grouping/request-manifest.schema.json"), manifest)).toBe(true);
   expect(ajv.validate(readJson<object>("scripts/evals/reader-story-grouping/receipt.schema.json"), receipt)).toBe(true);
   await expect(normalizeCapturedResponse(prepared, envelope, result)).resolves.toHaveLength(prepared.candidates.length);
+  expect(JSON.stringify(receipt)).toBe(original);
   const legacy = await captureRequest(prepared);
   expect(legacy?.command.controls).toMatchObject({ model: "gpt-5.6-sol", reasoningEffort: "high" });
   expect(makeManifest(loadDataset(), [legacy!], source)).toMatchObject({ schemaVersion: 2 });
 });
+it.each(["old version/new digest", "new version/old digest", "current receipt/old attestation", "old receipt/current attestation"])(
+  "rejects a crossed or mixed gateway capture: %s", (kind) => {
+    const { manifest, receipt, result } = fixture();
+    const old = { runtimePackageVersion: historicalSdk.packageVersion, launcherSha256: historicalSdk.archiveSha256 };
+    if (kind === "old version/new digest") {
+      Object.assign(receipt.transport, { runtimePackageVersion: old.runtimePackageVersion });
+      Object.assign(result.executionAttestation!, { runtimePackageVersion: old.runtimePackageVersion });
+    }
+    if (kind === "new version/old digest") {
+      Object.assign(receipt.transport, { launcherSha256: old.launcherSha256 });
+      Object.assign(result.executionAttestation!, { launcherSha256: old.launcherSha256 });
+    }
+    if (kind === "current receipt/old attestation") Object.assign(result.executionAttestation!, old);
+    if (kind === "old receipt/current attestation") Object.assign(receipt.transport, old);
+    expect(() => checkReceiptBinding(manifest, receipt)).toThrow();
+  });
 it.each(["canonical", "output", "sdk", "profile", "requestRef", "executionRef", "observedModel", "cliLabel"])(
   "rejects changed gateway %s proof", (kind) => {
     const { manifest, receipt, result } = fixture();
