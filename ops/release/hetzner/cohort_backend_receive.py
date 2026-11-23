@@ -5,8 +5,18 @@ import re
 import shutil
 import tempfile
 from archive import inspect_archive
-from bounds import receive_bytes
+from bounds import RECEIVE_SECONDS, receive_bytes
 from contract import DIGEST, KEY, atomic, require, sync_dir, trusted
+
+COHORT_RECEIVE_MAX_SECONDS = 300
+COHORT_RECEIVE_IDLE_SECONDS = 30
+COHORT_RECEIVE_BYTES_PER_SECOND = 4 * 1024**2
+
+
+def receive_budget(size):
+    require(type(size) is int and size > 0, 'archive-size-limit')
+    scaled = (size + COHORT_RECEIVE_BYTES_PER_SECOND - 1) // COHORT_RECEIVE_BYTES_PER_SECOND
+    return min(COHORT_RECEIVE_MAX_SECONDS, max(RECEIVE_SECONDS, scaled))
 
 
 def receive_backend(core, args, stream):
@@ -25,7 +35,8 @@ def receive_backend(core, args, stream):
     fd, name = tempfile.mkstemp(prefix='.upload-', dir=root / 'inbox')
     try:
         with os.fdopen(fd, 'wb') as output:
-            receive_bytes(stream, output, size)
+            receive_bytes(stream, output, size, receive_seconds=receive_budget(size),
+                          idle_seconds=COHORT_RECEIVE_IDLE_SECONDS)
             output.flush(); os.fsync(output.fileno())
         metadata = inspect_archive(Path(name), checksum, image, sha, run, core.c['migration_root'])
         item = {'sha': sha, 'ci_run_id': run, 'archive_sha256': checksum,

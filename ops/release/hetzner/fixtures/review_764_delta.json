@@ -1,0 +1,102 @@
+[
+  {
+    "path": "Dockerfile",
+    "before": {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "cba26666aced8bc63f5f69a1a60cb5bb4990742c"
+    },
+    "after": {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "c236a80a697737692f21ccfb87721579e210cb18"
+    }
+  },
+  {
+    "path": "scripts/import-reddit-archive-missing.spec.ts",
+    "before": null,
+    "after": {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a8b58ebfd9d237ac0ec4b4d79428faa68512959f"
+    }
+  },
+  {
+    "path": "scripts/import-reddit-archive-missing.ts",
+    "before": {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "8d51f6c09b1c70a3da846e28cd6d4b4bfa3e4336"
+    },
+    "after": {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "66d99696337fae59056a9b7d239ffb8a4cd67882"
+    }
+  },
+  {
+    "path": "scripts/lib/rss-archive-missing-import.test.mjs",
+    "before": {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "82149f1bdc90870ffeeee6b0d5a6628690f3ce6b"
+    },
+    "after": {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "c9baf6f51d1f518ed52d4d4d35cc889e874411b8"
+    }
+  },
+  {
+    "path": "scripts/lib/rss-archive-missing-normalizer.ts",
+    "before": {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "e0f6fbf32d91a45e9004a4a45c5ccd0fa1e0813f"
+    },
+    "after": {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "8179b6e3550e164c058bc92ea423ea36b657da85"
+    }
+  },
+  {
+    "path": "scripts/lib/rss-archive-missing-policy.ts",
+    "before": {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "926d5b0e041c657efae4e59a01bbe642db3fb4e4"
+    },
+    "after": {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "170a309a0cf801a5add672cb2291b80802c12225"
+    }
+  },
+  {
+    "path": "scripts/migration-build-source-surface.spec.ts",
+    "before": {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "aca545b3ca4f8ce1627060873d8d78b0a187615c"
+    },
+    "after": {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "5bfc4ad6744302007aba0bda8ae602c6d67e831d"
+    }
+  },
+  {
+    "path": "scripts/plan-rss-archive-missing-packets.ts",
+    "before": {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "86245203be331d3fcfcaf8e3967fc4913905c442"
+    },
+    "after": {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "30373adbe1842a2370060ec216f71ddaa9496149"
+    }
+  }
+]
