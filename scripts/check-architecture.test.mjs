@@ -75,6 +75,175 @@ for (const [name, sourcePath, source, targetPath, expected] of [
   });
 }
 
+
+for (const [name, sourcePath, source, targetPath] of [
+  ['type-only foreign domain', 'libs/summary/domain/example.ts',
+    "import type { Foreign } from '@social-monitor/relevance/domain/example';",
+    'libs/relevance/domain/example.ts'],
+  ['foreign domain barrel', 'libs/delivery/domain/example.ts',
+    "import { foreign } from '@social-monitor/feed/domain';",
+    'libs/feed/domain/index.ts'],
+  ['foreign domain re-export', 'libs/summary/domain/example.ts',
+    "export type { Foreign } from '@social-monitor/ingestion/domain/example';",
+    'libs/ingestion/domain/example.ts'],
+  ['foreign domain require', 'libs/summary/domain/example.ts',
+    "const foreign = require('@social-monitor/ingestion/domain/example');",
+    'libs/ingestion/domain/example.ts'],
+  ['foreign domain dynamic import', 'libs/summary/domain/example.ts',
+    "void import('@social-monitor/ingestion/domain/example');",
+    'libs/ingestion/domain/example.ts'],
+  ['foreign domain require with comment trivia', 'libs/summary/domain/example.ts',
+    "const foreign = require(/* dependency */ '@social-monitor/ingestion/domain/example');",
+    'libs/ingestion/domain/example.ts'],
+  ['foreign domain parenthesized require callee', 'libs/summary/domain/example.ts',
+    "const foreign = (require)('@social-monitor/ingestion/domain/example');",
+    'libs/ingestion/domain/example.ts'],
+  ['foreign domain nested require callee', 'libs/summary/domain/example.ts',
+    "const foreign = ((require))('@social-monitor/ingestion/domain/example');",
+    'libs/ingestion/domain/example.ts'],
+  ['foreign domain asserted require callee', 'libs/summary/domain/example.ts',
+    "const foreign = (require as typeof require)('@social-monitor/ingestion/domain/example');",
+    'libs/ingestion/domain/example.ts'],
+  ['foreign domain dynamic import with comment trivia', 'libs/summary/domain/example.ts',
+    "void import(/* dependency */ '@social-monitor/ingestion/domain/example');",
+    'libs/ingestion/domain/example.ts'],
+  ['foreign domain dynamic import with multiline trivia', 'libs/summary/domain/example.ts',
+    "void import(/* dependency */\n'@social-monitor/ingestion/domain/example');",
+    'libs/ingestion/domain/example.ts'],
+  ['foreign domain dynamic import with as-const wrapper', 'libs/summary/domain/example.ts',
+    "void import(('@social-monitor/ingestion/domain/example' as const));",
+    'libs/ingestion/domain/example.ts'],
+  ['foreign domain require with nested grouping and type assertion', 'libs/summary/domain/example.ts',
+    "const foreign = require((('@social-monitor/ingestion/domain/example') as string));",
+    'libs/ingestion/domain/example.ts'],
+  ['foreign domain dynamic import with satisfies wrapper', 'libs/summary/domain/example.ts',
+    "void import(('@social-monitor/ingestion/domain/example' satisfies string));",
+    'libs/ingestion/domain/example.ts'],
+  ['foreign domain dynamic import with non-null assertion', 'libs/summary/domain/example.ts',
+    "void import(('@social-monitor/ingestion/domain/example'!));",
+    'libs/ingestion/domain/example.ts'],
+  ['foreign domain import type query', 'libs/summary/domain/example.ts',
+    "export type Foreign = import('@social-monitor/ingestion/domain/example').Foreign;",
+    'libs/ingestion/domain/example.ts'],
+  ['foreign domain nested template expression', 'libs/summary/domain/example.ts',
+    "export const loaded = `${import('@social-monitor/ingestion/domain/example')}`;",
+    'libs/ingestion/domain/example.ts'],
+  ['foreign domain import after regex containing apparent comment', 'libs/summary/domain/example.ts',
+    "const re = /[/*]/;\nimport type { Foreign } from '@social-monitor/ingestion/domain/example';\n/* closing comment */",
+    'libs/ingestion/domain/example.ts'],
+  ['legacy permission is path-exact', 'libs/summary/domain/policies/extra.ts',
+    "import type { Foreign } from '@social-monitor/relevance/domain/reader-value/reader-value-assessment';",
+    'libs/relevance/domain/reader-value/reader-value-assessment.ts'],
+  ['legacy permission is specifier-exact', 'libs/summary/domain/policies/reader-promotion-ranking.ts',
+    "import type { Foreign } from '@social-monitor/relevance/domain/reader-value/other';",
+    'libs/relevance/domain/reader-value/other.ts'],
+]) {
+  test('rejects ' + name, () => {
+    const result = check({ [sourcePath]: source, [targetPath]: 'export type Foreign = number; export const foreign = 1;' });
+    assert.equal(result.status, 1, result.output);
+    assert.match(result.output, /cross-context domain import is forbidden/);
+  });
+}
+
+test('rejects foreign domain-only root aliases without a deep path', () => {
+  const result = check({
+    'libs/summary/domain/example.ts': "import { foreign } from '@social-monitor/feed';",
+    'libs/feed/index.ts': "export * from './domain';",
+    'libs/feed/domain/index.ts': 'export const foreign = 1;',
+  });
+  assert.equal(result.status, 1, result.output);
+  assert.match(result.output, /cross-context domain import is forbidden/);
+});
+
+test('rejects type-only imports from foreign domain-only root aliases', () => {
+  const result = check({
+    'libs/summary/domain/example.ts': "import type { Foreign } from '@social-monitor/feed';",
+    'libs/feed/index.ts': "export type { Foreign } from './domain';",
+    'libs/feed/domain/index.ts': 'export type Foreign = number;',
+  });
+  assert.equal(result.status, 1, result.output);
+  assert.match(result.output, /cross-context domain import is forbidden/);
+});
+
+test('permits foreign domain-only root aliases in non-domain composition', () => {
+  const result = check({
+    'libs/summary/interfaces/rest/summary-rest.module.ts':
+      "import { foreign } from '@social-monitor/feed'; export const wired = foreign;",
+    'libs/feed/index.ts': "export * from './domain';",
+    'libs/feed/domain/index.ts': 'export const foreign = 1;',
+  });
+  assert.equal(result.status, 0, result.output);
+});
+
+test('permits the exact current-main cross-context domain debt, without broadening', () => {
+  const result = check({
+    'libs/summary/domain/policies/reader-promotion-ranking.ts':
+      "import type { Foreign } from '@social-monitor/relevance/domain/reader-value/reader-value-assessment';",
+    'libs/relevance/domain/reader-value/reader-value-assessment.ts': 'export type Foreign = number;',
+    'libs/delivery/domain/reader-summary-ready-projection.ts':
+      "import type { Foreign } from '@social-monitor/summary/domain/value-objects/reader-summary-scope';",
+    'libs/summary/domain/value-objects/reader-summary-scope.ts': 'export type Foreign = number;',
+    'libs/conversation/domain/services/conversation-bundle-builder.ts':
+      "import { foreign } from '@social-monitor/feed/domain';",
+    'libs/feed/domain/index.ts': 'export const foreign = 1;',
+  });
+  assert.equal(result.status, 0, result.output);
+});
+
+test('permits same-context domain imports and does not turn composition into domain', () => {
+  const result = check({
+    'libs/summary/domain/model.ts':
+      "import { value } from './value'; export const model = value;",
+    'libs/summary/domain/value.ts': 'export const value = 1;',
+    'libs/summary/interfaces/rest/summary-rest.module.ts':
+      "import { foreign } from '@social-monitor/feed/domain'; export const wired = foreign;",
+    'libs/feed/domain/index.ts': 'export const foreign = 1;',
+  });
+  assert.equal(result.status, 0, result.output);
+});
+
+test('ignores commented-out import, export, require and dynamic import declarations', () => {
+  const result = check({
+    'libs/summary/domain/example.ts': [
+      "// import type { Foreign } from '@social-monitor/ingestion/domain/example';",
+      "/* export type { Foreign } from '@social-monitor/ingestion/domain/example'; */",
+      "// const unused = require('@social-monitor/ingestion/domain/example');",
+      "/* void import('@social-monitor/ingestion/domain/example'); */",
+      "const url = 'https://example.test/source';",
+      "export const ok = url;",
+    ].join('\n'),
+    'libs/ingestion/domain/example.ts': 'export type Foreign = number;',
+  });
+  assert.equal(result.status, 0, result.output);
+});
+
+test('preserves executable imports adjacent to line and block comments', () => {
+  const result = check({
+    'libs/summary/domain/example.ts': [
+      "// an ordinary comment before an actual import",
+      "/* a header */",
+      "import type { Foreign } from '@social-monitor/ingestion/domain/example';",
+    ].join('\n'),
+    'libs/ingestion/domain/example.ts': 'export type Foreign = number;',
+  });
+  assert.equal(result.status, 1, result.output);
+  assert.match(result.output, /cross-context domain import is forbidden/);
+});
+
+test('does not mistake string, template or regex content for real imports', () => {
+  const result = check({
+    'libs/summary/domain/example.ts': [
+      "const documentation = \"import { Foreign } from '@social-monitor/ingestion/domain/example'\";",
+      "const template = `export type { Foreign } from '@social-monitor/ingestion/domain/example'`;",
+      "const matcher = /[/*]/;",
+      "const notAnImport = \"require('@social-monitor/ingestion/domain/example')\";",
+      "export const accepted = [documentation, template, matcher, notAnImport];",
+    ].join('\n'),
+    'libs/ingestion/domain/example.ts': 'export type Foreign = number;',
+  });
+  assert.equal(result.status, 0, result.output);
+});
+
 const contextAliases = Object.keys(JSON.parse(config).compilerOptions.paths)
   .filter((alias) => /^@social-monitor\/[^/]+\/\*$/.test(alias))
   .filter((alias) => !/platform-|contracts/.test(alias));

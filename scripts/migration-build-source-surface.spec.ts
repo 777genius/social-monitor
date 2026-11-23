@@ -43,6 +43,13 @@ const missingImportScripts = [
   'scripts/lib/github-archive-finite-journal.ts',
   'scripts/lib/github-archive-finite-role-policy.ts',
 ];
+const redditArchiveScripts = [
+  'scripts/import-reddit-archive-missing.ts',
+  'scripts/lib/reddit-archive-finite-policy.ts',
+  'scripts/lib/reddit-archive-finite-dependencies.ts',
+  'scripts/backfill/reddit-archive-write/plan.ts',
+  'scripts/backfill/reddit-archive-write/internal-writer.ts',
+];
 const selfhostScripts = [
   'scripts/quickstart/local-config.ts',
   'scripts/quickstart/setup.ts',
@@ -67,6 +74,7 @@ const telegramCollectionScripts = [
 const expectedScripts = [
   ...sep24Scripts,
   ...missingImportScripts,
+  ...redditArchiveScripts,
   ...selfhostScripts,
   ...telegramCollectionScripts,
   'scripts/check-feed-promotion-index-recovery.ts',
@@ -124,11 +132,11 @@ function scriptCopies(dockerfile: string): ScriptCopy[] {
     }
     if (!tokens.some((token) => /\bscripts\b/.test(token))) return [];
     const destination = tokens.pop();
-    if (!destination || !/^\.\/scripts(?:\/(?:lib|quickstart|sql))?\/$/.test(destination)) {
+    if (!destination || !/^\.\/scripts(?:\/(?:lib|quickstart|sql|backfill\/reddit-archive-write))?\/$/.test(destination)) {
       throw new Error('Script COPY requires an explicit scripts destination directory');
     }
     return tokens.map((source) => {
-      if (!/^scripts\/(?:(?:lib|quickstart|sql)\/)?[a-z0-9][a-z0-9.-]*\.(?:ts|mjs|sql)$/.test(source)) {
+      if (!/^scripts\/(?:(?:lib|quickstart|sql|backfill\/reddit-archive-write)\/)?[a-z0-9][a-z0-9.-]*\.(?:ts|mjs|sql)$/.test(source)) {
         throw new Error('Script COPY requires explicit bounded file sources');
       }
       return { source, destination: posix.join(destination, posix.basename(source)) };
@@ -229,6 +237,13 @@ describe('migration image production compilation', () => {
     expect(() => expectScriptSurface(scriptCopies(mutated))).toThrow();
   });
 
+  it.each(redditArchiveScripts)('rejects a recipe missing approved Reddit archive source: %s', (source) => {
+    const dockerfile = readFileSync(resolve(root, 'Dockerfile'), 'utf8');
+    const mutated = dockerfile.replace(`${source} `, '');
+    expect(mutated).not.toBe(dockerfile);
+    expect(() => expectScriptSurface(scriptCopies(mutated))).toThrow();
+  });
+
   it.each(selfhostScripts)('rejects a recipe missing approved installer source: %s', (source) => {
     const dockerfile = readFileSync(resolve(root, 'Dockerfile'), 'utf8');
     const mutated = dockerfile.replace(`${source} `, '');
@@ -271,6 +286,8 @@ describe('migration image production compilation', () => {
 
   it.each(['scripts', 'scripts/', 'scripts/*', 'scripts/lib/', 'scripts/lib/*.ts',
     'scripts/quickstart/', 'scripts/quickstart/*.ts', 'scripts/sql/', 'scripts/sql/*.sql',
+    'scripts/backfill/', 'scripts/backfill/reddit-archive-write/',
+    'scripts/backfill/reddit-archive-write/*.ts', 'scripts/backfill/other/unapproved.ts',
     'scripts/quickstart/../unapproved.ts'])(
     'rejects broad script copying: %s', (source) => {
       const dockerfile = readFileSync(resolve(root, 'Dockerfile'), 'utf8');
@@ -294,6 +311,13 @@ describe('migration image production compilation', () => {
   it('rejects flattening the library destination in the real recipe', () => {
     const dockerfile = readFileSync(resolve(root, 'Dockerfile'), 'utf8');
     const mutated = dockerfile.replace('./scripts/lib/', './scripts/');
+    expect(mutated).not.toBe(dockerfile);
+    expect(() => expectScriptSurface(scriptCopies(mutated))).toThrow();
+  });
+
+  it('rejects flattening the Reddit archive destination in the real recipe', () => {
+    const dockerfile = readFileSync(resolve(root, 'Dockerfile'), 'utf8');
+    const mutated = dockerfile.replace('./scripts/backfill/reddit-archive-write/', './scripts/');
     expect(mutated).not.toBe(dockerfile);
     expect(() => expectScriptSurface(scriptCopies(mutated))).toThrow();
   });

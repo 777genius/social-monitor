@@ -103,13 +103,32 @@ REVIEW_767_PATHS = frozenset((
 ))
 REVIEW_767_DOCKERFILE = 'cba26666aced8bc63f5f69a1a60cb5bb4990742c'
 
+# Exact reviewed November archive delta; this grants no collection authority.
+REVIEW_764_BASE = 'e80a3870a5e87d8cbadb6dc0f9b69722c2cbc06e'
+REVIEW_764_HEAD = '5a5e05f743f5ed447b7c9f15876a9d207d41b54a'
+REVIEW_764_DIGEST = 'sha256:ff91dd1ec96f131927b47975c634525e8d95116134b242173b1e0dd0d5bbe788'
+REVIEW_764_PATHS = frozenset((
+    'Dockerfile', 'scripts/import-reddit-archive-missing.spec.ts',
+    'scripts/import-reddit-archive-missing.ts', 'scripts/lib/rss-archive-missing-import.test.mjs',
+    'scripts/lib/rss-archive-missing-normalizer.ts', 'scripts/lib/rss-archive-missing-policy.ts',
+    'scripts/migration-build-source-surface.spec.ts', 'scripts/plan-rss-archive-missing-packets.ts',
+))
+REVIEW_764_DOCKERFILE = 'c236a80a697737692f21ccfb87721579e210cb18'
+
 
 def package_check_key(key):
     return isinstance(key, str) and re.fullmatch(r'check:[a-zA-Z0-9][a-zA-Z0-9:._-]{0,127}', key) is not None
 
 
+def frontend_source_path(path):
+    """Flutter sources: tsc builds only *.ts (tsconfig.build.json) and the image runs node dist/, so these never
+    change backend behaviour; the frontend ships as its own artifact. Any TypeScript stays a backend path."""
+    return path.startswith('apps/frontend/') and re.search(r'\.[cm]?tsx?$', path) is None
+
+
 def package_ci_path(path):
     return (path == 'package.json' or path in PACKAGE_CI_TS or path.startswith(('docs/', 'ops/release/')) or
+            frontend_source_path(path) or
             re.fullmatch(r'scripts/lib/durable-backend-e2e-[a-z0-9-]+\.ts', path) is not None or
             path.startswith('scripts/') and path.endswith('.mjs') and path not in PACKAGE_COPIED_MJS or
             path.startswith(('scripts/ci/', 'ops/ci/')) and path.endswith('.mts'))
@@ -130,7 +149,12 @@ PACKAGE_BUILD = {
 }
 
 
-def package_build_contract(reviewed_767=False, stable_767=False):
+def package_build_contract(reviewed_767=False, stable_767=False, reviewed_764=False, stable_764=False):
+    if reviewed_764:
+        return {**PACKAGE_BUILD, 'files': {**PACKAGE_BUILD['files'], 'Dockerfile': REVIEW_767_DOCKERFILE},
+                'reviewed_dockerfile_after': REVIEW_764_DOCKERFILE}
+    if stable_764:
+        return {**PACKAGE_BUILD, 'files': {**PACKAGE_BUILD['files'], 'Dockerfile': REVIEW_764_DOCKERFILE}}
     if reviewed_767:
         return {**PACKAGE_BUILD, 'reviewed_dockerfile_after': REVIEW_767_DOCKERFILE}
     if stable_767:
@@ -138,15 +162,18 @@ def package_build_contract(reviewed_767=False, stable_767=False):
     return PACKAGE_BUILD
 
 
-def package_script_proof(proof, base, head, delta, reviewed_767=False):
+def package_script_proof(proof, base, head, delta, reviewed_767=False, reviewed_764=False):
     require(isinstance(proof, dict) and set(proof) == {'base', 'head', 'delta_sha256', 'changed_scripts',
             'before_blob', 'after_blob', 'before_sha256', 'after_sha256', 'build_contract_sha256'}
             and proof['base'] == base and proof['head'] == head and proof['delta_sha256'] == delta
             and isinstance(proof['changed_scripts'], list) and proof['changed_scripts']
             and all(package_check_key(key) for key in proof['changed_scripts'])
             and proof['changed_scripts'] == sorted(set(proof['changed_scripts']))
-            and proof['build_contract_sha256'] in ({digest(package_build_contract(True))} if reviewed_767 else
-                {digest(package_build_contract()), digest(package_build_contract(stable_767=True))}), 'backend-sensitive-files')
+            and proof['build_contract_sha256'] in (
+                {digest(package_build_contract(reviewed_764=True))} if reviewed_764 else
+                {digest(package_build_contract(True))} if reviewed_767 else
+                {digest(package_build_contract()), digest(package_build_contract(stable_767=True)),
+                 digest(package_build_contract(stable_764=True))}), 'backend-sensitive-files')
     require(all(isinstance(proof[k], str) and re.fullmatch(r'[0-9a-f]{40}', proof[k])
                 for k in ('before_blob', 'after_blob')) and
             all(isinstance(proof[k], str) and re.fullmatch(DIGEST, proof[k])
@@ -178,7 +205,8 @@ def backend_compatibility(evidence, revisions, candidate, snapshot):
         review_paths = frozenset()
         reviews = (('reviewed_231421', REVIEW_BASE, REVIEW_DIGEST, REVIEW_PATHS),
                    ('reviewed_746', REVIEW_746_BASE, REVIEW_746_DIGEST, REVIEW_746_PATHS),
-                   ('reviewed_767', REVIEW_767_BASE, REVIEW_767_DIGEST, REVIEW_767_PATHS))
+                   ('reviewed_767', REVIEW_767_BASE, REVIEW_767_DIGEST, REVIEW_767_PATHS),
+                   ('reviewed_764', REVIEW_764_BASE, REVIEW_764_DIGEST, REVIEW_764_PATHS))
         for field, expected_base, expected_digest, expected_paths in reviews:
             proof = delta.get(field)
             if proof is None:
@@ -189,8 +217,7 @@ def backend_compatibility(evidence, revisions, candidate, snapshot):
                     proof['delta_sha256'] == delta['delta_sha256'] and
                     proof['review_delta_sha256'] == expected_digest and
                     isinstance(proof['continuation'], list) and
-                    all(isinstance(p, str) and package_ci_path(p) and p not in expected_paths
-                        for p in proof['continuation']) and
+                    all(isinstance(p, str) and package_ci_path(p) for p in proof['continuation']) and
                     paths == sorted(expected_paths | set(proof['continuation'])),
                     'backend-sensitive-files')
             reviewed, review_paths = proof, expected_paths
@@ -199,7 +226,8 @@ def backend_compatibility(evidence, revisions, candidate, snapshot):
             require(all(allowed(p) for p in paths),
                     'backend-sensitive-files')
             package_script_proof(delta.get('package_scripts'), base, candidate, delta['delta_sha256'],
-                                 reviewed is not None and review_paths == REVIEW_767_PATHS)
+                                 reviewed is not None and review_paths == REVIEW_767_PATHS,
+                                 reviewed is not None and review_paths == REVIEW_764_PATHS)
         # Shared libs also run in retained consumers (including summary via delivery
         # composition). Current-version CI does not prove mixed-version compatibility.
         # This limited lane refuses all shared-library changes; it is not an all-backend

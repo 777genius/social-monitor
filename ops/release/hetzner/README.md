@@ -73,6 +73,13 @@ monotonic deadline for both. It takes a nonwaiting host flock, checks disk space
 byte SHA256 and archive content, and publishes immutable import metadata. No
 Docker load/create/up or candidate execution happens before admission.
 
+The coordinated cohort backend receiver uses the same exact-byte and EOF checks,
+but allows a size-scaled total receive budget: at least 120 seconds, calculated
+at 4 MiB/s and capped at 300 seconds. It also rejects a stream with no progress
+for 30 seconds, including a missing EOF. Frontend and legacy receivers retain
+their existing 120-second deadline. The independent archive-processing budget
+remains 120 seconds.
+
 Preferred CI output: build **once**, `--provenance=false`, single linux/amd64
 platform OCI manifest; export that exact Docker ID tag-free. Docker 29 saves with
 `blobs/`, `blobs/sha256/`, `index.json`, `oci-layout`, `manifest.json` and gzip
