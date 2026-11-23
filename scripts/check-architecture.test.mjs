@@ -137,7 +137,7 @@ test('permits the exact current-main cross-context domain debt, without broadeni
   const result = check({
     'libs/summary/domain/entities/reader-summary-promotion-order-validation.ts':
       "import { validateReaderValueAnswers } from '@social-monitor/relevance/domain/reader-value/reader-value-assessment';",
-    'libs/relevance/domain/reader-value/reader-value-assessment.ts': 'export type Foreign = number;',
+    'libs/relevance/domain/reader-value/reader-value-assessment.ts': 'export const validateReaderValueAnswers = () => true;',
     'libs/delivery/domain/reader-summary-ready-projection.ts':
       "import type { Foreign } from '@social-monitor/summary/domain/value-objects/reader-summary-scope';",
     'libs/summary/domain/value-objects/reader-summary-scope.ts': 'export type Foreign = number;',
