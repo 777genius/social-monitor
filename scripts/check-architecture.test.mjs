@@ -125,6 +125,9 @@ for (const [name, sourcePath, source, targetPath] of [
   ['retired attestation type-only edge', 'libs/summary/domain/policies/reader-post-promotion-policy-contract.ts',
     "import type { Foreign } from '@social-monitor/relevance/domain/reader-value/reader-value-assessment';",
     'libs/relevance/domain/reader-value/reader-value-assessment.ts'],
+  ['retired archive metadata type-only edge', 'libs/summary/domain/policies/reader-summary-github-projection-audit-types.ts',
+    "import type { Metadata } from '@social-monitor/ingestion/domain';",
+    'libs/ingestion/domain/index.ts'],
 ]) {
   test('rejects ' + name, () => {
     const result = check({ [sourcePath]: source, [targetPath]: 'export type Foreign = number; export const foreign = 1;' });
@@ -144,6 +147,13 @@ test('permits the exact current-main cross-context domain debt, without broadeni
     'libs/conversation/domain/services/conversation-bundle-builder.ts':
       "import { foreign } from '@social-monitor/feed/domain';",
     'libs/feed/domain/index.ts': 'export const foreign = 1;',
+    'libs/summary/domain/policies/reader-summary-github-archived-projection.ts':
+      "import { parseGitHubTrendingArchiveMetadata } from '@social-monitor/ingestion/domain';",
+    'libs/ingestion/domain/index.ts': 'export const parseGitHubTrendingArchiveMetadata = () => null;',
+    'libs/summary/domain/policies/reader-summary-github-projection-audit-types.ts':
+      "import type { Snapshot } from './reader-summary-github-archive-snapshot';",
+    'libs/summary/domain/policies/reader-summary-github-archive-snapshot.ts':
+      'export type Snapshot = { readonly kind: string };'
   });
   assert.equal(result.status, 0, result.output);
 });
