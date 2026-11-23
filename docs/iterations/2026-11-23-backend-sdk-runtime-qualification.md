@@ -10,7 +10,7 @@ Account Gateway PR123 owns the narrow producer migration to immutable module ent
 
 ## Consumer scope
 
-1. Qualify the existing backend on supported Node 24.22.3. Align the root engine contract, canonical backend CI pins, application Docker bases, immutable candidate context/digest, and their existing executable contracts.
+1. Qualify the existing backend on supported Node 24.22.3. Limit the consumer root engine contract and host artifact admission to `>=24.21.0 <25`; align canonical backend CI pins, application Docker bases, immutable candidate context/digest, and their existing executable contracts.
 2. Remove only the unsupported `--experimental-default-type=module` option from the architecture command and two typed-test launchers. Keep the required TypeScript transformation flags, CommonJS application semantics and TypeScript 6.0.3.
 3. Preserve independent frontend and release-controller toolchains that do not install or execute this backend dependency graph. Do not blanket-rewrite historical fixtures or alter any workflow's enabled/disabled state.
 4. Keep the private host artifact's supported runtime and vendored dependency closure accurate. Its current packaging omits the nested Account Gateway archive; cover the complete required file-dependency closure with the existing isolated archive test.
@@ -21,6 +21,8 @@ Account Gateway PR123 owns the narrow producer migration to immutable module ent
 ## Compatibility boundaries
 
 The consumer keeps its existing NestJS, TypeScript 6, ts-jest and ts-node compiler APIs. The published TypeScript 7 root no longer offers the same compiler API; a compiler/framework migration is a separate scope, not a prerequisite to consuming compatible SDK declarations emitted upstream by TypeScript 7.
+
+Account Gateway independently supports Node 24 and 26. Social Monitor qualifies only the Node 24 line in this slice: an actual Node 26.11.1 probe rejects `--experimental-transform-types` with exit 9, while the existing architecture fixtures still require that option. Advertising Node 26 for the consumer would therefore promise an unsupported toolchain. Preserve the transformation flags and historical Node 26 archive reproductions; broader consumer runtime support requires separate qualification.
 
 The producer's current main contains the original LLM feature. Its reviewed delta includes correct handling of a completed event whose nested response status is incomplete; the new artifact must pass the downstream error/identity fixtures. Do not describe the entire refreshed SDK as byte-identical to the older archive.
 

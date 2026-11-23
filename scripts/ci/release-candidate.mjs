@@ -354,7 +354,7 @@ export async function candidate(options, run = command, emit = value => process.
       emit(state);
       // Keep the runtime version stable until a coordinated Node upgrade is reviewed.
       await run('docker', ['build', '--file', 'Dockerfile', '--target', 'app',
-        '--build-context', 'node:22-bookworm-slim=docker-image://node:22.23.4-bookworm-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d',
+        '--build-context', 'node:24.22.3-bookworm-slim=docker-image://node:24.22.3-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54',
         '--provenance=false', '--platform', 'linux/amd64', '--iidfile', iid,
         '--label', 'org.opencontainers.image.revision=' + options.sha,
         '--label', 'social-monitor.ci-run-id=' + options.runId, '-'],

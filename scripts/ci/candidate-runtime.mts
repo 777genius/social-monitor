@@ -54,7 +54,7 @@ const req = http.get('http://127.0.0.1:3000/ready', {timeout: 4000}, res => {
   let size = 0; const chunks = [];
   res.on('data', b => { size += b.length; if (size > 262144) req.destroy(); else chunks.push(b); });
   res.on('end', () => {
-    try { process.stdout.write(JSON.stringify({http_status: res.statusCode,
+    try { process.stdout.write(JSON.stringify({http_status: res.statusCode, node_version: process.versions.node,
       body: JSON.parse(Buffer.concat(chunks).toString('utf8'))})); }
     catch { process.exitCode = 1; }
   });
@@ -460,7 +460,11 @@ export async function runtime(o: Options): Promise<RuntimeProof> {
       need(same(await stamp(), before), 'api-restarted-after-probe');
       if (response.code === 0) {
         const value: unknown = JSON.parse(response.stdout);
-        if (object(value).http_status === 200) { poolOk = ready(value); break; }
+        if (object(value).http_status === 200) {
+          poolOk = ready(value);
+          process.stderr.write(`candidate-runtime: observed-api-node-version=${String(object(value).node_version)}\n`);
+          break;
+        }
       }
       await delay(1000);
     }

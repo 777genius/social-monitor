@@ -67,7 +67,7 @@ function jobChecks(job, id, expectedName, expectedSteps, errors, extra = [], req
 const checkoutStep = (full = false) => ({ uses: checkout, with: {
   ref: '${{ github.sha }}', 'persist-credentials': false, ...(full ? { 'fetch-depth': 0 } : {}),
 } });
-const nodeStep = (cache = true) => ({ uses: node, with: { 'node-version': 22, ...(cache ? { cache: 'npm' } : {}) } });
+const nodeStep = (cache = true) => ({ uses: node, with: { 'node-version': '24.22.3', ...(cache ? { cache: 'npm' } : {}) } });
 const setup = (full = false) => [checkoutStep(full), nodeStep(), { run: 'npm ci' }, { run: 'npm run prisma:generate' }];
 // Exact authenticated, nonroot, runner-only prerequisite; no shard-specific admission.
 const nativePg18 = [

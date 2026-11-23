@@ -73,7 +73,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: 22
+          node-version: '24.22.3'
           cache: npm
 
       - name: Install exact dependencies
@@ -135,7 +135,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: 22
+          node-version: '24.22.3'
           cache: npm
 
       - name: Select fail-closed scope from reviewed trusted base
@@ -224,7 +224,7 @@ jobs:
         if: needs.security_contracts.outputs.tier == 'full'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: 22
+          node-version: '24.22.3'
           cache: npm
 
       - name: Install exact dependencies
@@ -339,7 +339,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: 22
+          node-version: '24.22.3'
           cache: npm
 
       - name: Install exact dependencies
@@ -446,7 +446,7 @@ jobs:
         if: needs.security_contracts.outputs.tier == 'full'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: 22
+          node-version: '24.22.3'
 
       - name: Download all unit report artifacts without merging
         if: needs.security_contracts.outputs.tier == 'full'
@@ -486,7 +486,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: 22
+          node-version: '24.22.3'
           cache: npm
 
       - name: Install exact dependencies
@@ -540,7 +540,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: 22
+          node-version: '24.22.3'
           cache: npm
 
       - name: Install exact dependencies
@@ -647,7 +647,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: 22
+          node-version: '24.22.3'
           cache: npm
 
       - name: Install exact dependencies
@@ -692,7 +692,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: 22
+          node-version: '24.22.3'
           cache: npm
 
       - name: Install exact dependencies
@@ -738,7 +738,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: 22
+          node-version: '24.22.3'
           cache: npm
 
       - name: Install exact dependencies
@@ -776,7 +776,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: 22
+          node-version: '24.22.3'
       - name: Set up the native candidate store
         uses: docker/setup-docker-action@2bf61fb9464cc67f0cbdeabed6aa0380accd1c70 # v5.5.0
         with:
@@ -836,7 +836,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: 22
+          node-version: '24.22.3'
       - name: Verify production container and deploy lifecycle
         run: |
           set -euo pipefail

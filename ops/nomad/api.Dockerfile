@@ -3,7 +3,7 @@
 # tokens, module wiring for health reporting), so the full `apps` tree is
 # required at build time even though only the API entrypoint runs here; the
 # runtime image itself carries no other app's server code invoked at startup.
-FROM node:22-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5 AS app
+FROM node:24.22.3-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS app
 
 WORKDIR /app
 
