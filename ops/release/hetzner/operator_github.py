@@ -139,14 +139,17 @@ class GitHub:
         return paths, digest(delta)
 
 
-    def package_scripts(self, base, head, delta, reviewed_767=False):
+    def package_scripts(self, base, head, delta, reviewed_767=False, reviewed_764=False):
         """Only CI check scripts may change; the pinned build never invokes them."""
         paths, observed_delta = self.delta(base, head)
         require('package.json' in paths and observed_delta == delta, 'operator-package-delta')
         records, documents = [], []
         require(not reviewed_767 or base == core_policies.REVIEW_767_BASE, 'operator-package-build-contract')
+        require(not reviewed_764 or base == core_policies.REVIEW_764_BASE, 'operator-package-build-contract')
+        require(not (reviewed_767 and reviewed_764), 'operator-package-build-contract')
         trees = (self.tree(base), self.tree(head))
-        stable_767 = not reviewed_767 and trees[0].get('Dockerfile', {}).get('sha') == core_policies.REVIEW_767_DOCKERFILE
+        stable_767 = not (reviewed_767 or reviewed_764) and trees[0].get('Dockerfile', {}).get('sha') == core_policies.REVIEW_767_DOCKERFILE
+        stable_764 = not (reviewed_767 or reviewed_764) and trees[0].get('Dockerfile', {}).get('sha') == core_policies.REVIEW_764_DOCKERFILE
         for index, tree in enumerate(trees):
             # No copied source may redirect through a link to an otherwise un-copied CI file.
             require(all(entry['type'] == 'blob' and entry['mode'] in ('100644', '100755')
@@ -155,6 +158,10 @@ class GitHub:
             for path, sha in core_policies.PACKAGE_BUILD['files'].items():
                 if path == 'Dockerfile' and (stable_767 or reviewed_767 and index == 1):
                     sha = core_policies.REVIEW_767_DOCKERFILE
+                if path == 'Dockerfile' and reviewed_764:
+                    sha = core_policies.REVIEW_767_DOCKERFILE if index == 0 else core_policies.REVIEW_764_DOCKERFILE
+                if path == 'Dockerfile' and stable_764:
+                    sha = core_policies.REVIEW_764_DOCKERFILE
                 require(tree.get(path) == {'mode': '100644', 'type': 'blob', 'sha': sha},
                         'operator-package-build-contract')
             entry = tree.get('package.json')
@@ -188,7 +195,8 @@ class GitHub:
         return {'base': base, 'head': head, 'delta_sha256': delta, 'changed_scripts': changed,
                 'before_blob': records[0]['blob'], 'after_blob': records[1]['blob'],
                 'before_sha256': records[0]['sha256'], 'after_sha256': records[1]['sha256'],
-                'build_contract_sha256': digest(core_policies.package_build_contract(reviewed_767, stable_767))}
+                'build_contract_sha256': digest(core_policies.package_build_contract(reviewed_767, stable_767,
+                                                                                     reviewed_764, stable_764))}
 
 
 def scope(paths):
@@ -253,7 +261,9 @@ def backend_release(config, runner, binding):
                        ('reviewed_746', core_policies.REVIEW_746_BASE, core_policies.REVIEW_746_HEAD,
                         core_policies.REVIEW_746_DIGEST, core_policies.REVIEW_746_PATHS),
                        ('reviewed_767', core_policies.REVIEW_767_BASE, core_policies.REVIEW_767_HEAD,
-                        core_policies.REVIEW_767_DIGEST, core_policies.REVIEW_767_PATHS))
+                        core_policies.REVIEW_767_DIGEST, core_policies.REVIEW_767_PATHS),
+                       ('reviewed_764', core_policies.REVIEW_764_BASE, core_policies.REVIEW_764_HEAD,
+                        core_policies.REVIEW_764_DIGEST, core_policies.REVIEW_764_PATHS))
             for field, expected_base, reviewed_head, expected_digest, expected_paths in reviews:
                 if base != expected_base or not expected_paths.issubset(paths):
                     continue
@@ -267,6 +277,7 @@ def backend_release(config, runner, binding):
             package = None
             if 'package.json' in paths:
                 package = (gh.package_scripts(base, sha, checksum, reviewed_767=True) if review_field == 'reviewed_767'
+                           else gh.package_scripts(base, sha, checksum, reviewed_764=True) if review_field == 'reviewed_764'
                            else gh.package_scripts(base, sha, checksum))
             observed[base] = (paths, checksum, package, reviewed, review_field)
         paths, checksum, package, reviewed, review_field = observed[base]

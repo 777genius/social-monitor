@@ -4,8 +4,9 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+import bounds
 from contract import Denied
-from cohort_backend_receive import receive_backend
+from cohort_backend_receive import receive_backend, receive_budget
 
 SHA, RUN, IMAGE = 'a' * 40, '123', 'sha256:' + 'b' * 64
 
@@ -63,6 +64,17 @@ class BackendReceiveTests(unittest.TestCase):
         self.archive.write_bytes(b'x' * int(self.args[-1]))
         with self.assertRaisesRegex(Denied, 'archive-digest'): self.receive()
         self.assertEqual(list((self.state / 'cohort/backend/inbox').iterdir()), [])
+
+    def test_cohort_receive_uses_bounded_size_and_idle_budgets(self):
+        with patch('cohort_backend_receive.receive_bytes', wraps=bounds.receive_bytes) as receive:
+            self.receive()
+        self.assertEqual(receive.call_args.kwargs, {'receive_seconds': 120, 'idle_seconds': 30})
+        self.assertEqual(receive_budget(480 * 1024**2), 120)
+        self.assertEqual(receive_budget(480 * 1024**2 + 1), 121)
+        self.assertEqual(receive_budget(1_216_727_552), 291)
+        self.assertEqual(receive_budget(10 * 1024**3), 300)
+        for invalid in (0, -1, True):
+            with self.subTest(size=invalid), self.assertRaises(Denied): receive_budget(invalid)
 
 
 if __name__ == '__main__': unittest.main()
