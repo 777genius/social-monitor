@@ -1,5 +1,6 @@
 import { existsSync, globSync, readFileSync } from 'node:fs';
 import { dirname, join, normalize, relative, sep } from 'node:path';
+import ts from 'typescript';
 
 const forbiddenInDomain = [
   '@nestjs/',
@@ -121,69 +122,82 @@ const forbiddenInSocialResearchMcpAdapter = [
   '@social-monitor/monitoring',
 ];
 
-function importsOf(source) {
-  const specifiers = [];
-  const patterns = [
-    /(?:import|export)\s+(?:type\s+)?(?:[^'"]+from\s+)?['"]([^'"]+)['"]/g,
-    /\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
-    /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
-  ];
+// The repository already uses TypeScript. Its syntax tree distinguishes real
+// module references from comments, strings, regex literals and template text;
+// regex matching here previously produced both false positives and bypasses.
+// Keep type-only edges for the architecture gate, but exclude them from cycles.
+function moduleReferencesOf(source) {
+  const file = ts.createSourceFile('architecture.ts', source, ts.ScriptTarget.Latest, false, ts.ScriptKind.TS);
+  const imports = [];
+  const runtimeImports = [];
 
-  for (const pattern of patterns) {
-    for (const match of source.matchAll(pattern)) {
-      specifiers.push(match[1]);
+  // Type assertions and grouping do not make an otherwise constant module
+  // path dynamic. Inspect the wrapped literal without evaluating expressions.
+  function unwrapTransparentExpression(expression) {
+    let node = expression;
+    while (node && (
+      ts.isParenthesizedExpression(node) ||
+      ts.isAsExpression(node) ||
+      ts.isTypeAssertionExpression(node) ||
+      ts.isSatisfiesExpression(node) ||
+      ts.isNonNullExpression(node)
+    )) {
+      node = node.expression;
     }
+    return node;
   }
 
-  return specifiers;
+  function add(specifier, isRuntime) {
+    const literal = unwrapTransparentExpression(specifier);
+    if (!literal || !(ts.isStringLiteral(literal) || ts.isNoSubstitutionTemplateLiteral(literal))) return;
+    imports.push(literal.text);
+    if (isRuntime) runtimeImports.push(literal.text);
+  }
+
+  function runtimeImportClause(clause) {
+    if (!clause) return true;
+    if (clause.isTypeOnly) return false;
+    if (clause.name || !clause.namedBindings || !ts.isNamedImports(clause.namedBindings)) return true;
+    return clause.namedBindings.elements.length === 0 ||
+      clause.namedBindings.elements.some((element) => !element.isTypeOnly);
+  }
+
+  function runtimeExportDeclaration(declaration) {
+    if (declaration.isTypeOnly) return false;
+    const clause = declaration.exportClause;
+    return !clause || !ts.isNamedExports(clause) || clause.elements.length === 0 ||
+      clause.elements.some((element) => !element.isTypeOnly);
+  }
+
+  function visit(node) {
+    if (ts.isImportDeclaration(node)) {
+      add(node.moduleSpecifier, runtimeImportClause(node.importClause));
+    } else if (ts.isExportDeclaration(node)) {
+      add(node.moduleSpecifier, runtimeExportDeclaration(node));
+    } else if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) {
+      add(node.moduleReference.expression, !node.isTypeOnly);
+    } else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)) {
+      add(node.argument.literal, false);
+    } else if (ts.isCallExpression(node)) {
+      const callee = unwrapTransparentExpression(node.expression);
+      if (callee.kind === ts.SyntaxKind.ImportKeyword ||
+          (ts.isIdentifier(callee) && callee.text === 'require')) {
+        add(node.arguments[0], true);
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(file);
+  return { imports, runtimeImports };
+}
+
+function importsOf(source) {
+  return moduleReferencesOf(source).imports;
 }
 
 function runtimeImportsOf(source) {
-  const specifiers = [];
-  const staticPatterns = [
-    /\b(import|export)\s+([\s\S]*?)\s+from\s+['"]([^'"]+)['"]/g,
-    /\bimport\s+['"]([^'"]+)['"]/g,
-  ];
-  const dynamicPatterns = [
-    /\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
-    /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
-  ];
-
-  for (const match of source.matchAll(staticPatterns[0])) {
-    const clause = match[2].trim();
-    if (!isTypeOnlyImportExport(clause)) {
-      specifiers.push(match[3]);
-    }
-  }
-
-  for (const match of source.matchAll(staticPatterns[1])) {
-    specifiers.push(match[1]);
-  }
-
-  for (const pattern of dynamicPatterns) {
-    for (const match of source.matchAll(pattern)) {
-      specifiers.push(match[1]);
-    }
-  }
-
-  return specifiers;
-}
-
-function isTypeOnlyImportExport(clause) {
-  if (clause.startsWith('type ')) {
-    return true;
-  }
-
-  const namedExports = clause.match(/^\{\s*([\s\S]*?)\s*\}$/);
-  if (!namedExports) {
-    return false;
-  }
-
-  return namedExports[1]
-    .split(',')
-    .map((specifier) => specifier.trim())
-    .filter(Boolean)
-    .every((specifier) => specifier.startsWith('type '));
+  return moduleReferencesOf(source).runtimeImports;
 }
 
 function addViolation(file, reason) {
@@ -249,6 +263,36 @@ function architectureLayerOf(file) {
     ?? (/^libs\/platform\/persistence\/src\/prisma-/.test(path) ? 'infrastructure' : null)
     ?? null;
 }
+
+// A root alias that *only* republishes its own domain is a domain dependency,
+// even though the root index file has no layer in its path. Do not infer a layer
+// for mixed public/composition entrypoints or walk arbitrarily deep barrels.
+function isDomainOnlyContextRoot(file) {
+  const path = toProjectPath(file);
+  if (!/^libs\/[^/]+\/index\.ts$/.test(path)) return false;
+  const root = ts.createSourceFile(path, readFileSync(path, 'utf8'),
+    ts.ScriptTarget.Latest, false, ts.ScriptKind.TS);
+  return root.statements.length > 0 && root.statements.every((statement) =>
+    ts.isExportDeclaration(statement) &&
+    statement.moduleSpecifier &&
+    ts.isStringLiteral(statement.moduleSpecifier) &&
+    /^\.\/domain(?:\/|$)/.test(statement.moduleSpecifier.text));
+}
+
+// Exact current-main debt, not a permission to create new cross-context domain edges.
+// Remove entries when a consumer-owned published-language contract replaces the import.
+const legacyCrossContextDomainImports = new Set([
+  'libs/conversation/domain/value-objects/conversation-signal-baseline-sample.ts|@social-monitor/feed/domain',
+  'libs/conversation/domain/services/conversation-bundle-builder.ts|@social-monitor/feed/domain',
+  'libs/summary/domain/policies/reader-summary-github-projection-audit-types.ts|@social-monitor/ingestion/domain',
+  'libs/summary/domain/policies/reader-summary-github-archived-projection.ts|@social-monitor/ingestion/domain',
+  'libs/summary/domain/policies/reader-post-promotion-v3.ts|@social-monitor/relevance/domain/reader-value/reader-value-assessment',
+  'libs/summary/domain/policies/reader-promotion-ranking.ts|@social-monitor/relevance/domain/reader-value/reader-value-assessment',
+  'libs/summary/domain/policies/reader-post-promotion-policy-contract.ts|@social-monitor/relevance/domain/reader-value/reader-value-assessment',
+  'libs/summary/domain/entities/reader-summary-promotion-order-validation.ts|@social-monitor/relevance/domain/reader-value/reader-value-assessment',
+  'libs/delivery/domain/reader-summary-ready-projection.ts|@social-monitor/summary/domain/value-objects/reader-summary-period',
+  'libs/delivery/domain/reader-summary-ready-projection.ts|@social-monitor/summary/domain/value-objects/reader-summary-scope',
+]);
 
 const forbiddenTargetLayers = {
   domain: new Set(['features', 'application', 'adapters', 'infrastructure', 'interfaces', 'presentation']),
@@ -502,6 +546,15 @@ for (const file of globSync('libs/**/*.ts')) {
     const targetContext = resolved ? boundedContextOf(resolved) : null;
     const targetLayer = resolved ? architectureLayerOf(resolved) : null;
     const sourceLayer = architectureLayerOf(file);
+
+    if (sourceLayer === 'domain' && sourceContext && targetContext &&
+        sourceContext !== targetContext &&
+        (targetLayer === 'domain' ||
+          (targetLayer === null && isDomainOnlyContextRoot(resolved))) &&
+        !legacyCrossContextDomainImports.has(toProjectPath(file) + '|' + specifier)) {
+      addViolation(file, 'cross-context domain import is forbidden: ' + JSON.stringify(specifier) +
+        ' resolves to ' + JSON.stringify(resolved));
+    }
 
     if (resolved && forbiddenTargetLayers[sourceLayer]?.has(targetLayer)) {
       addViolation(file, `${sourceLayer} must not import ${targetLayer}: "${specifier}" resolves to "${resolved}"`);
