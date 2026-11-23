@@ -465,6 +465,16 @@ export async function runtime(o: Options): Promise<RuntimeProof> {
       await delay(1000);
     }
     need(poolOk, 'actual-api-pool-not-ready');
+    // An invalid date exits before collection can touch a provider or database.
+    // This verifies the image contains the TypeScript collection entrypoint and
+    // its runtime dependencies, not just the compiled API.
+    const collector = await exec('api', ['/usr/bin/env', '-i',
+      'PATH=/app/node_modules/.bin:/usr/local/bin:/usr/bin:/bin', 'HOME=/tmp',
+      '/usr/local/bin/npm', 'run', 'run:reader-summary-clean-real-day-collection',
+      '--', '--update', '--date', 'invalid'], '', 30_000, true, 300_000);
+    need(collector.code === 1 && collector.stderr.includes('Collection date must use YYYY-MM-DD format: invalid'),
+      'collection-entrypoint-not-runnable');
+    need(same(await stamp(), before), 'api-restarted-after-collection-check');
     apiId = before.id; apiStarted = before.started; succeeded = true;
   } catch (error) {
     let firstError: string | null = null;

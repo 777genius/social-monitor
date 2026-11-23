@@ -97,13 +97,23 @@ export async function runnerConfig(path) {
 export function command(verb, args = []) {
   const patterns = {
     status: [], preflight: [], receive: [SHA, RUN, DIGEST, DIGEST, /^[1-9][0-9]{0,11}$/u],
+    'github-auth': [SHA, RUN], 'github-auth-clear': [SHA, RUN],
     admit: [SHA, RUN], activate: [SHA, RUN], verify: [SHA, RUN], rollback: [SHA, RUN],
     receipt: [/^[0-9a-f]{40}-[1-9][0-9]{0,14}(?:-rollback)?$/u],
+    'cohort-receive-frontend': [SHA, RUN],
+    'cohort-receive-frontend-auth': [SHA, RUN],
+    'cohort-admit': [SHA, RUN], 'cohort-activate': [SHA, RUN],
+    'cohort-rollback': [SHA, RUN], 'cohort-verify': [SHA, RUN],
+    'cohort-receipt': [/^[0-9a-f]{40}-[1-9][0-9]{0,14}(?:-rollback)?$/u],
+    'cohort-receive-backend': [SHA, RUN, DIGEST, DIGEST, /^[1-9][0-9]{0,11}$/u],
+    'backend-preflight': [], 'backend-receive': [SHA, RUN, DIGEST, DIGEST, /^[1-9][0-9]{0,11}$/u],
+    'backend-admit': [SHA, RUN], 'backend-activate': [SHA, RUN], 'backend-verify': [SHA, RUN],
+    'backend-rollback': [SHA, RUN], 'backend-receipt': [/^[0-9a-f]{40}-[1-9][0-9]{0,14}(?:-rollback)?$/u],
   };
   requireThat(Object.hasOwn(patterns, verb) && Array.isArray(args)
     && args.length === patterns[verb].length
     && args.every((arg, i) => typeof arg === 'string' && patterns[verb][i].test(arg)), 'ssh-grammar');
-  requireThat(verb !== 'receive' || Number(args[4]) <= MAX_ARCHIVE, 'ssh-grammar');
+  requireThat(!['receive', 'backend-receive', 'cohort-receive-backend'].includes(verb) || Number(args[4]) <= MAX_ARCHIVE, 'ssh-grammar');
   return [verb, ...args].join(' ');
 }
 export function sshArgs(config, wire) {
@@ -116,13 +126,14 @@ export function sshArgs(config, wire) {
     '-o', 'ClearAllForwardings=yes', '-o', 'RequestTTY=no', '-o', 'IdentityAgent=none',
     '-p', String(config.port), '-l', config.user, '-i', config.private_key, '--', config.host, wire];
 }
-export function sshTransport(config, spawnProcess = spawn) {
+export function sshTransport(config, spawnProcess = spawn, timeoutMs = 600_000) {
+  requireThat(Number.isSafeInteger(timeoutMs) && timeoutMs >= 1000 && timeoutMs <= 600_000, 'transport-timeout');
   return async (wire, source) => {
     const child = spawnProcess('/usr/bin/ssh', sshArgs(config, wire),
       { shell: false, env: ENV, stdio: ['pipe', 'pipe', 'pipe'] });
     let size = 0;
     const chunks = [];
-    const timer = setTimeout(() => child.kill('SIGKILL'), 600_000);
+    const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs);
     const closed = new Promise((accept, reject) => {
       child.once('error', () => reject(new ClientError('transport-uncertain')));
       child.once('close', (code) => accept(code));
@@ -132,17 +143,31 @@ export function sshTransport(config, spawnProcess = spawn) {
       if (size > 8 * 1024 * 1024) child.kill('SIGKILL');
       else chunks.push(chunk);
     });
-    // Discard stderr, including possible private paths, remote errors and payloads.
-    child.stderr.resume();
+    // Keep a bounded prefix solely to classify fixed SSH failures; never emit it.
+    let errorBytes = Buffer.alloc(0);
+    child.stderr.on('data', (chunk) => {
+      const part = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      if (errorBytes.length < 16384) errorBytes = Buffer.concat([errorBytes, part.subarray(0, 16384 - errorBytes.length)]);
+    });
     const sent = source ? pipeline(Readable.from(source()), child.stdin) :
       new Promise((accept) => { child.stdin.end(accept); });
     try {
       const [code] = await Promise.all([closed, sent]);
       requireThat(size <= 8 * 1024 * 1024, 'transport-uncertain');
-      return { code, stdout: Buffer.concat(chunks) };
+      return { code, stdout: Buffer.concat(chunks),
+        ...(code === 255 ? { diagnostic: classifySshFailure(errorBytes) } : {}) };
     } catch { child.kill('SIGKILL'); await closed.catch(() => {}); throw new ClientError('transport-uncertain'); }
     finally { clearTimeout(timer); }
   };
+}
+function classifySshFailure(bytes) {
+  const text = bytes.toString('utf8');
+  if (/REMOTE HOST IDENTIFICATION HAS CHANGED|Host key verification failed/iu.test(text)) return 'host-key';
+  if (/Permission denied \(publickey/iu.test(text)) return 'publickey';
+  if (/Load key [^\n]*: (?:error in libcrypto|invalid format|No such file)/iu.test(text)) return 'private-key';
+  if (/Connection timed out|Operation timed out/iu.test(text)) return 'timeout';
+  if (/Connection refused|No route to host|Network is unreachable/iu.test(text)) return 'network';
+  return 'unknown';
 }
 function parseJson(bytes) {
   const source = bytes.toString('utf8');
@@ -173,6 +198,22 @@ function canonical(value) {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
   if (object(value)) return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`;
   return JSON.stringify(value);
+}
+// Controller database proofs contain ASCII object keys and integral numbers;
+// match its json.dumps(..., sort_keys=True, separators=(',', ':')) bytes.
+function databaseDigest(value) {
+  function validate(entry) {
+    if (typeof entry === 'number') requireThat(Number.isSafeInteger(entry), 'database-number');
+    else if (Array.isArray(entry)) entry.forEach(validate);
+    else if (object(entry)) for (const [key, child] of Object.entries(entry)) {
+      requireThat([...key].every((character) => character.codePointAt(0) <= 0x7f), 'database-key');
+      validate(child);
+    }
+  }
+  validate(value);
+  const text = canonical(value).replace(/[\u007f-\uffff]/g,
+    (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`);
+  return 'sha256:' + createHash('sha256').update(text).digest('hex');
 }
 function decode(result) {
   requireThat(result && Number.isInteger(result.code) && result.stdout?.length <= 8 * 1024 * 1024,
@@ -205,12 +246,15 @@ export function receipt(value, manifest, admission) {
   binding(value, manifest);
   requireThat(exact(value, ['schema', 'sha', 'ci_run_id', 'archive_sha256', 'image_id',
     'previous_image_id', 'previous_sha', 'image_graph', 'compatibility', 'scope',
-    'snapshot_before_hash', 'snapshot_after_hash', 'backup', 'migration_status', 'probes', 'outcome', 'timings'])
+    'snapshot_before_hash', 'snapshot_after_hash', 'backup', 'migration_status', 'probes', 'outcome', 'timings',
+    'admission_database', 'admission_database_hash', 'database', 'database_hash'])
     && value.schema === 'social-monitor-release-receipt-v1' && value.outcome === 'activated'
     && value.scope?.length === 1 && value.scope[0] === 'api' && value.migration_status === 'unchanged'
     && value.probes?.target === true && DIGEST.test(value.previous_image_id) && SHA.test(value.previous_sha)
     && DIGEST.test(value.snapshot_before_hash) && value.snapshot_after_hash === value.snapshot_before_hash
     && object(value.image_graph) && object(value.compatibility) && object(value.backup)
+    && object(value.admission_database) && object(value.database)
+    && DIGEST.test(value.admission_database_hash) && DIGEST.test(value.database_hash)
     && object(value.timings) && Number.isSafeInteger(value.timings.started_at)
     && Number.isSafeInteger(value.timings.finished_at)
     && value.timings.finished_at >= value.timings.started_at, 'terminal-receipt');
@@ -218,6 +262,10 @@ export function receipt(value, manifest, admission) {
     'snapshot_before_hash', 'migration_status']) {
     requireThat(canonical(value[key]) === canonical(admission[key]), 'receipt-admission');
   }
+  requireThat(canonical(value.admission_database) === canonical(admission.database)
+    && value.admission_database_hash === admission.database_hash
+    && databaseDigest(value.admission_database) === value.admission_database_hash
+    && databaseDigest(value.database) === value.database_hash, 'receipt-database');
   return value;
 }
 function sameFile(a, b) {

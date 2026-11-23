@@ -6,6 +6,56 @@ import re
 from compose_contract import fixed_roots
 
 
+COMPOSE_VALUE_OPTIONS = frozenset(('--project-name', '--project-directory', '--env-file', '-f', '--profile'))
+
+
+def compose_subcommand(argv):
+    """First Compose word after global options, so option values such as a project named config never match."""
+    index = 2
+    while index < len(argv):
+        token = argv[index]
+        if token in COMPOSE_VALUE_OPTIONS:
+            index += 2
+        elif token.startswith('-'):
+            index += 1
+        else:
+            return token
+    return ''
+
+
+def failed_command(argv):
+    """Name the failing command family without exposing arguments or stderr."""
+    exe, verb = argv[0], (argv[1] if len(argv) > 1 else '')
+    sub = argv[2] if len(argv) > 2 else ''
+    if exe == '/usr/bin/systemctl':
+        return Denied('host-systemctl-failed')
+    if exe != '/usr/bin/docker':
+        return Denied('host-command-failed')
+    if verb == 'compose':
+        return Denied('host-compose-config-failed') if compose_subcommand(argv) == 'config' else Denied('host-compose-failed')
+    if verb == 'image' and sub == 'inspect':
+        return Denied('host-image-inspect-failed')
+    if verb == 'image' and sub == 'load':
+        return Denied('host-image-load-failed')
+    if verb == 'image' and sub == 'tag':
+        return Denied('host-image-tag-failed')
+    if verb == 'image' and sub == 'ls':
+        return Denied('host-image-list-failed')
+    if verb == 'image' and sub == 'rm':
+        return Denied('host-image-remove-failed')
+    if verb == 'inspect':
+        return Denied('host-docker-inspect-failed')
+    if verb == 'ps':
+        return Denied('host-docker-list-failed')
+    if verb == 'start':
+        return Denied('host-docker-start-failed')
+    if verb == 'update':
+        return Denied('host-docker-update-failed')
+    if verb == 'kill':
+        return Denied('host-docker-kill-failed')
+    return Denied('host-command-failed')
+
+
 class Host:
     def __init__(self, config):
         self.c = config
@@ -16,16 +66,23 @@ class Host:
                                     stderr=subprocess.DEVNULL, timeout=180, check=True,
                                     env={'PATH': '/usr/sbin:/usr/bin:/sbin:/bin',
                                          'HOME': '/nonexistent', 'LC_ALL': 'C', 'COMPOSE_DISABLE_ENV_FILE': '1'})
+        except subprocess.TimeoutExpired:
+            raise Denied('host-command-timeout') from None
         except (subprocess.SubprocessError, OSError):
-            raise Denied('host-command-failed') from None
+            raise failed_command(argv) from None
         return result.stdout
 
     def docker(self, *args):
         return self.command(['/usr/bin/docker', *args])
 
     def evidence(self, verb, binding):
-        result = json.loads(self.command([self.c['adapter'], verb],
-                                        json.dumps(binding).encode()))
+        try:
+            raw = self.command([self.c['adapter'], verb], json.dumps(binding).encode())
+        except Denied as error:
+            if str(error) == 'host-command-failed':
+                raise Denied('host-adapter-failed') from None
+            raise
+        result = json.loads(raw)
         require(isinstance(result, dict) and result.get('version') == 1, 'adapter-version')
         fresh(result.get('observed_at'), self.c['evidence_max_age_seconds'])
         for key, value in binding.items():
@@ -69,11 +126,32 @@ class Host:
         return digest({'model': model, 'private_inputs': {
             path: self.private_digest(path) for path in sorted(paths)}})
 
-    def snapshot(self):
-        ids = self.docker('ps', '-aq', '--filter',
-                          'label=com.docker.compose.project=' + self.c['project']).decode().split()
+    def snapshot(self, target_services=None, allow_missing_targets=False):
+        fmt = ('{"id":{{json .ID}},'
+               '"project":{{json (.Label "com.docker.compose.project")}},'
+               '"service":{{json (.Label "com.docker.compose.service")}},'
+               '"oneoff":{{json (.Label "com.docker.compose.oneoff")}}}')
+        listing = self.docker('ps', '-a', '--no-trunc', '--filter',
+                              'label=com.docker.compose.project=' + self.c['project'],
+                              '--format', fmt).decode().splitlines()
+        ids = []
+        for line in listing:
+            item = json.loads(line)
+            if (item['project'] == self.c['project'] and item['service'] == 'collection'
+                    and item['oneoff'] == 'True'):
+                continue
+            ids.append(item['id'])
         # Explicit independently configured names also fence containers outside this project.
-        ids.extend(self.c['required_non_targets'].values())
+        for service, selector in self.c['required_non_targets'].items():
+            if allow_missing_targets and target_services is not None and service in target_services:
+                # Only a declared target may be absent in the journaled Compose create gap.
+                # Never catch a generic inspect error or skip any protected non-target.
+                matches = self.docker('ps', '-a', '--no-trunc', '--filter',
+                    'name=^/' + re.escape(selector) + '$', '--format', '{{.ID}}').decode().splitlines()
+                require(len(matches) <= 1, 'target-selector-count')
+                if not matches:
+                    continue
+            ids.append(selector)
         containers = {}
         target = []
         named = {v: k for k, v in self.c['required_non_targets'].items()}
@@ -87,11 +165,13 @@ class Host:
             if ident in named:
                 require(item['service'] == named[ident] and item['service'] != 'api',
                         'non-target-selector')
-            if item['service'] == 'api' and item['project'] == self.c['project']:
-                target.append(item)
+            if item['service'] in (target_services or ('api',)) and item['project'] == self.c['project']:
+                if not any(value['id'] == item['id'] for value in target):
+                    target.append(item)
             else:
                 containers[item['id']] = item
-        require(len({v['id'] for v in target}) == 1, 'api-target-count')
+        if target_services is None:
+            require(len({v['id'] for v in target}) == 1, 'api-target-count')
         units = {}
         for unit in self.c['fenced_units']:
             raw = self.command(['/usr/bin/systemctl', 'show', unit,
@@ -100,7 +180,7 @@ class Host:
             require(values.get('ActiveState') == 'inactive'
                     and values.get('UnitFileState') in ('disabled', 'masked'), 'writer-not-fenced')
             units[unit] = values
-        return {'containers': containers, 'units': units}, target[0]
+        return {'containers': containers, 'units': units}, target[0] if target_services is None else target
 
     def image(self, image_id):
         require(re.fullmatch(DIGEST, image_id), 'image-id')

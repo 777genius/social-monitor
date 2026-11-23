@@ -14,6 +14,7 @@ export const assertReaderSummaryWeeklyGatewayPostgresContract = async (params: {
 }): Promise<void> => {
   const catalog = await params.adminClient.query<{ secure: boolean }>(`
     SELECT owner.rolname = 'social_monitor_reader_summary_publication_owner'
+      AND NOT has_schema_privilege(owner.oid, 'public', 'CREATE')
       AND NOT p.prosecdef AND p.proisstrict AND p.provolatile = 'i'
       AND p.proconfig = ARRAY['search_path=pg_catalog']::text[]
       AND NOT EXISTS (
@@ -54,6 +55,8 @@ export const assertReaderSummaryWeeklyGatewayPostgresContract = async (params: {
   // Roll back fixture writes so the existing independent CLI race/replay tests
   // still exercise the same immutable seal from an empty manifest slot.
   for (const valid of [proof,
+    { ...proof, model: "gpt-6.1-terra", reasoningEffort: "medium",
+      gateway: { ...gateway, observedModel: "gpt-6.1-terra" } },
     { ...proof, gateway: { ...gateway, observedModel: null } },
     { ...proof, gateway: { ...gateway, observedModel: "gpt-6.1-sol-2026-11-02" } },
     { ...proof, model: "gpt-5.6-sol", reasoningEffort: "high",
@@ -84,6 +87,8 @@ export const assertReaderSummaryWeeklyGatewayPostgresContract = async (params: {
     ["wrong SDK", { ...proof, runtimePackageVersion: "9.9.9" }],
     ["wrong SDK digest", { ...proof, launcherSha256: "e".repeat(64) }],
     ["crossed effort", { ...proof, reasoningEffort: "high" }],
+    ["Terra wrong effort", { ...proof, model: "gpt-6.1-terra", reasoningEffort: "low",
+      gateway: { ...gateway, observedModel: "gpt-6.1-terra" } }],
     ["wrong model", { ...proof, model: "another-model" }],
     ["retired purpose", { ...proof, purpose: "social_monitor.reader_summary.weekly.review" }],
     ["wrong output kind", { ...proof, selectedOutputKind: "output_text" }],

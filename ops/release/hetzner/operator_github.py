@@ -1,8 +1,8 @@
 """Fixed read-only GitHub API observations and an independently supplied review."""
 import hashlib
-from contract import digest, require
+from contract import Denied, canonical, digest, require
 import evidence as core_policies
-from operator_config import (EXECUTABLES, GH_DIR, REVIEW, TOKEN, decode, exact,
+from operator_config import (EXECUTABLES, GH_DIR, REVIEW, TOKEN, decode, exact, github_auth_header,
                              match, private_bytes, sha_bytes)
 
 REPO = '777genius/social-monitor'
@@ -24,18 +24,23 @@ JOBS = {
 class GitHub:
     def __init__(self, config, runner):
         self.config, self.runner = config, runner
+        self._trees = {}  # Per-invocation immutable commit trees; never a persisted authority cache.
 
-    def get(self, suffix):
+    def _read(self, suffix, accept, limit):
         self.config.recheck()
-        token = private_bytes(TOKEN, secret=True).strip().decode('ascii')
-        result = decode(self.runner.run([
-            EXECUTABLES['gh'], 'api', '--hostname', 'github.com', '--method', 'GET',
-            '-H', 'Accept: application/vnd.github+json', '-H', 'X-GitHub-Api-Version: 2022-11-28',
-            'repos/' + REPO + '/' + suffix], env={
-                'GH_TOKEN': token, 'GH_CONFIG_DIR': GH_DIR, 'GH_PROMPT_DISABLED': '1',
-                'GH_NO_UPDATE_NOTIFIER': '1', 'GH_NO_EXTENSION_UPDATE_NOTIFIER': '1'}, limit=16 * 1024**2))
+        header = github_auth_header(self.config)
+        result = self.runner.run([
+            EXECUTABLES['curl'], '--disable', '--fail', '--silent', '--location', '--proto', '=https',
+            '--max-redirs', '0', '--header', 'Accept: ' + accept,
+            '--header', 'X-GitHub-Api-Version: 2022-11-28', '--user-agent', 'social-monitor-release',
+            *(['--header', '@-'] if header is not None else []),
+            'https://api.github.com/repos/' + REPO + (('/' + suffix) if suffix else '')],
+            data=header, env={}, limit=limit)
         self.config.recheck()
         return result
+
+    def get(self, suffix):
+        return decode(self._read(suffix, 'application/vnd.github+json', 16 * 1024**2))
 
     def legacy(self):
         value = self.get('actions/workflows/production-deploy.yml')
@@ -95,6 +100,9 @@ class GitHub:
         require(False, 'operator-ci-pagination')
 
     def tree(self, commit_sha):
+        require(match(r'[0-9a-f]{40}', commit_sha), 'operator-commit')
+        if commit_sha in self._trees:
+            return self._trees[commit_sha]
         commit = self.get('git/commits/' + commit_sha)
         require(commit.get('sha') == commit_sha
                 and match(r'[0-9a-f]{40}', commit.get('tree', {}).get('sha')), 'operator-commit')
@@ -115,14 +123,80 @@ class GitHub:
                 ('blob', '120000'), ('commit', '160000')}, 'operator-tree-mode')
             if item['type'] != 'tree':
                 result[path] = {key: item[key] for key in ('mode', 'type', 'sha')}
+        self._trees[commit_sha] = result
         return result
 
-    def delta(self, base, head):
+    def delta(self, base, head, *, allow_empty=False):
         old, new = self.tree(base), self.tree(head)
         paths = sorted(path for path in old.keys() | new.keys() if old.get(path) != new.get(path))
-        require(paths and len(paths) <= 10000, 'operator-delta-count')
+        require((paths or allow_empty) and len(paths) <= 10000, 'operator-delta-count')
+        if core_policies.WORKER_README in paths:
+            for tree in (old, new):
+                entry = tree.get(core_policies.WORKER_README)
+                require(entry is not None and entry['type'] == 'blob'
+                        and entry['mode'] == '100644', 'operator-worker-readme-mode')
         delta = [{'path': path, 'before': old.get(path), 'after': new.get(path)} for path in paths]
         return paths, digest(delta)
+
+
+    def package_scripts(self, base, head, delta, reviewed_767=False, reviewed_764=False):
+        """Only CI check scripts may change; the pinned build never invokes them."""
+        paths, observed_delta = self.delta(base, head)
+        require('package.json' in paths and observed_delta == delta, 'operator-package-delta')
+        records, documents = [], []
+        require(not reviewed_767 or base == core_policies.REVIEW_767_BASE, 'operator-package-build-contract')
+        require(not reviewed_764 or base == core_policies.REVIEW_764_BASE, 'operator-package-build-contract')
+        require(not (reviewed_767 and reviewed_764), 'operator-package-build-contract')
+        trees = (self.tree(base), self.tree(head))
+        stable_767 = not (reviewed_767 or reviewed_764) and trees[0].get('Dockerfile', {}).get('sha') == core_policies.REVIEW_767_DOCKERFILE
+        stable_764 = not (reviewed_767 or reviewed_764) and trees[0].get('Dockerfile', {}).get('sha') == core_policies.REVIEW_764_DOCKERFILE
+        for index, tree in enumerate(trees):
+            # No copied source may redirect through a link to an otherwise un-copied CI file.
+            require(all(entry['type'] == 'blob' and entry['mode'] in ('100644', '100755')
+                        for entry in tree.values()), 'operator-package-build-contract')
+            require('binding.gyp' not in tree, 'operator-package-build-contract')
+            for path, sha in core_policies.PACKAGE_BUILD['files'].items():
+                if path == 'Dockerfile' and (stable_767 or reviewed_767 and index == 1):
+                    sha = core_policies.REVIEW_767_DOCKERFILE
+                if path == 'Dockerfile' and reviewed_764:
+                    sha = core_policies.REVIEW_767_DOCKERFILE if index == 0 else core_policies.REVIEW_764_DOCKERFILE
+                if path == 'Dockerfile' and stable_764:
+                    sha = core_policies.REVIEW_764_DOCKERFILE
+                require(tree.get(path) == {'mode': '100644', 'type': 'blob', 'sha': sha},
+                        'operator-package-build-contract')
+            entry = tree.get('package.json')
+            require(entry is not None and entry['mode'] == '100644' and entry['type'] == 'blob',
+                    'operator-package-mode')
+            raw = self._read('git/blobs/' + entry['sha'], 'application/vnd.github.raw+json', 128 * 1024)
+            require(type(raw) is bytes and 0 < len(raw) <= 128 * 1024 and
+                    hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest() == entry['sha'],
+                    'operator-package-blob')
+            try:
+                raw.decode('utf-8')
+            except UnicodeError:
+                raise Denied('operator-package-json') from None
+            require(b'\0' not in raw, 'operator-package-json')
+            document = decode(raw, 128 * 1024)
+            require(isinstance(document, dict) and isinstance(document.get('scripts'), dict)
+                    and all(isinstance(v, str) for v in document['scripts'].values()), 'operator-package-json')
+            scripts = document['scripts']
+            require(all(scripts.get(k) == v for k, v in core_policies.PACKAGE_BUILD['scripts'].items())
+                    and not set(scripts).intersection(core_policies.PACKAGE_BUILD['absent_hooks']),
+                    'operator-package-build-contract')
+            documents.append(document)
+            records.append({'blob': entry['sha'], 'sha256': sha_bytes(raw)})
+        old, new = documents
+        changed = sorted(k for k in old['scripts'].keys() | new['scripts'].keys()
+                         if old['scripts'].get(k) != new['scripts'].get(k))
+        require(changed and all(core_policies.package_check_key(k) for k in changed), 'operator-package-scripts')
+        stable = [{**doc, 'scripts': {k: v for k, v in doc['scripts'].items()
+                   if not core_policies.package_check_key(k)}} for doc in documents]
+        require(canonical(stable[0]) == canonical(stable[1]), 'operator-package-fields')
+        return {'base': base, 'head': head, 'delta_sha256': delta, 'changed_scripts': changed,
+                'before_blob': records[0]['blob'], 'after_blob': records[1]['blob'],
+                'before_sha256': records[0]['sha256'], 'after_sha256': records[1]['sha256'],
+                'build_contract_sha256': digest(core_policies.package_build_contract(reviewed_767, stable_767,
+                                                                                     reviewed_764, stable_764))}
 
 
 def scope(paths):
@@ -130,7 +204,7 @@ def scope(paths):
                  or '/prisma/migrations/' in p for p in paths if not p.startswith('docs/'))
     worker = any(p.startswith(('apps/intelligence-worker/', 'apps/ingestion-worker/',
                               'apps/agent-runtime/', 'apps/x-collector/', 'libs/agent-runtime/'))
-                 for p in paths if not p.startswith('docs/'))
+                 for p in paths if not p.startswith('docs/') and p != core_policies.WORKER_README)
     compose = any(p.startswith('ops/compose/') or match(
         r'(?:docker-compose|compose)(?:[.-][a-zA-Z0-9_-]+)*\.ya?ml', p.rsplit('/', 1)[-1])
         for p in paths if not p.startswith('docs/'))
@@ -164,5 +238,61 @@ def release(config, runner, binding):
     core_policies.compatibility(result, base, sha)  # Preserve the canonical fail-closed policy.
     require(gh.main() == sha and gh.run(binding['ci_run_id'], sha) == run
             and gh.jobs(run) == jobs and gh.legacy() == legacy, 'operator-ci-race')
+    config.recheck()
+    return result
+
+
+def backend_release(config, runner, binding):
+    """Exact current-main CI and complete deltas for both running image revisions."""
+    gh = GitHub(config, runner)
+    sha = binding['sha']
+    require(gh.main() == sha, 'operator-not-current-main')
+    legacy, run = gh.legacy(), gh.run(binding['ci_run_id'], sha)
+    jobs = gh.jobs(run)
+    revisions = {'api': binding['api_revision'], 'jev-intelligence-worker': binding['worker_revision']}
+    deltas = {}
+    observed = {}
+    for service, base in revisions.items():
+        if base not in observed:
+            paths, checksum = ([], digest([])) if base == sha else gh.delta(base, sha)
+            reviewed, review_field = None, None
+            reviews = (('reviewed_231421', core_policies.REVIEW_BASE, core_policies.REVIEW_HEAD,
+                        core_policies.REVIEW_DIGEST, core_policies.REVIEW_PATHS),
+                       ('reviewed_746', core_policies.REVIEW_746_BASE, core_policies.REVIEW_746_HEAD,
+                        core_policies.REVIEW_746_DIGEST, core_policies.REVIEW_746_PATHS),
+                       ('reviewed_767', core_policies.REVIEW_767_BASE, core_policies.REVIEW_767_HEAD,
+                        core_policies.REVIEW_767_DIGEST, core_policies.REVIEW_767_PATHS),
+                       ('reviewed_764', core_policies.REVIEW_764_BASE, core_policies.REVIEW_764_HEAD,
+                        core_policies.REVIEW_764_DIGEST, core_policies.REVIEW_764_PATHS))
+            for field, expected_base, reviewed_head, expected_digest, expected_paths in reviews:
+                if base != expected_base or not expected_paths.issubset(paths):
+                    continue
+                reviewed_paths, reviewed_digest = gh.delta(base, reviewed_head)
+                continuation, _ = ([], digest([])) if sha == reviewed_head else gh.delta(reviewed_head, sha, allow_empty=True)
+                require(set(reviewed_paths) == expected_paths and reviewed_digest == expected_digest and
+                        all(core_policies.package_ci_path(p) for p in continuation), 'operator-reviewed-delta')
+                reviewed = {'base': base, 'head': sha, 'delta_sha256': checksum,
+                            'review_delta_sha256': reviewed_digest, 'continuation': continuation}
+                review_field = field
+            package = None
+            if 'package.json' in paths:
+                package = (gh.package_scripts(base, sha, checksum, reviewed_767=True) if review_field == 'reviewed_767'
+                           else gh.package_scripts(base, sha, checksum, reviewed_764=True) if review_field == 'reviewed_764'
+                           else gh.package_scripts(base, sha, checksum))
+            observed[base] = (paths, checksum, package, reviewed, review_field)
+        paths, checksum, package, reviewed, review_field = observed[base]
+        deltas[service] = {'base': base, 'head': sha, 'complete_delta': True,
+                           'changed_paths': paths, 'delta_sha256': checksum}
+        if package is not None:
+            deltas[service]['package_scripts'] = package
+        if reviewed is not None:
+            deltas[service][review_field] = reviewed
+    result = {**binding, 'policy': 'backend-cohort-ci-v1', 'main_sha': sha, 'head_sha': sha,
+              'event': 'push', 'branch': 'main', 'legacy_workflow': legacy,
+              'jobs': [job['conclusion'] for job in jobs], 'job_observations': jobs,
+              'run_attempt': run['run_attempt'], 'deltas': deltas}
+    core_policies.backend_compatibility(result, revisions, sha, binding['non_target_snapshot_sha256'])
+    require(gh.main() == sha and gh.run(binding['ci_run_id'], sha) == run and gh.jobs(run) == jobs
+            and gh.legacy() == legacy, 'operator-ci-race')
     config.recheck()
     return result

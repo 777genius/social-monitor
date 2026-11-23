@@ -1,4 +1,5 @@
 import { SystemClock, tenantId, workspaceId } from "@social-monitor/shared-kernel";
+import type { SourceProviderScanContext } from "../../../ports";
 
 import { certifySourceProvider } from "../testing/source-provider-certification";
 import { FixtureHackerNewsClient } from "./fixture-hacker-news-client";
@@ -386,6 +387,69 @@ describe("HackerNewsSourceProvider", () => {
     expect(client.storySearchQueries).toEqual(
       scanPasses.map((pass) => pass.query),
     );
+  });
+
+  it("keeps current-day listing results when another lane fails", async () => {
+    const client = new RecordingHackerNewsClient();
+    jest.spyOn(client, "listStories").mockResolvedValueOnce([
+      { id: 9911, title: "Current story", time: Date.parse("2026-07-07T10:00:00Z") / 1000 },
+    ]);
+    jest.spyOn(client, "searchStories").mockRejectedValue(new Error("search lane failed"));
+    const provider = new HackerNewsSourceProvider(client, { now: () => new Date("2026-07-07T12:00:00Z") });
+    const context: SourceProviderScanContext = {
+      tenantId: tenantId("tenant-1"), workspaceId: workspaceId("workspace-1"),
+      sourceBindingId: "hn-binding-1", scanJobId: "scan-job-1", correlationId: "correlation-1",
+      config: {
+        targetPublishedWindow: { startInclusive: "2026-07-07T00:00:00Z", endExclusive: "2026-07-08T00:00:00Z" },
+        scanPasses: [
+          { mode: "listing", listing: "top" },
+          { mode: "search", target: "story", query: "failed" },
+        ],
+      },
+    };
+    const result = await provider.scan(provider.planScan({ mode: "search", query: "AI" }, context), context);
+    expect(client.listStories).toHaveBeenCalled();
+    expect(client.searchStories).toHaveBeenCalledWith('failed', expect.any(Number),
+      expect.objectContaining({ requireComplete: false }));
+    expect(result.items).toHaveLength(1);
+    expect(result.collection).toEqual({ complete: false, backfillPending: true });
+  });
+
+  it("marks a current-day result truncated across successful listing lanes incomplete", async () => {
+    const client = new RecordingHackerNewsClient();
+    jest.spyOn(client, "listStories")
+      .mockResolvedValueOnce([{ id: 9911, title: "First story", time: Date.parse("2026-07-07T10:00:00Z") / 1000 }])
+      .mockResolvedValueOnce([{ id: 9912, title: "Second story", time: Date.parse("2026-07-07T11:00:00Z") / 1000 }]);
+    const provider = new HackerNewsSourceProvider(client, { now: () => new Date("2026-07-07T12:00:00Z") });
+    const context = {
+      tenantId: tenantId("tenant-1"), workspaceId: workspaceId("workspace-1"),
+      sourceBindingId: "hn-binding-1", scanJobId: "scan-job-1", correlationId: "correlation-1",
+      config: {
+        maxItems: 1,
+        targetPublishedWindow: { startInclusive: "2026-07-07T00:00:00Z", endExclusive: "2026-07-08T00:00:00Z" },
+        scanPasses: [ { mode: "listing", listing: "top" }, { mode: "listing", listing: "new" } ],
+      },
+    };
+    const result = await provider.scan(provider.planScan({ mode: "search", query: "AI" }, context), context);
+    expect(result.items).toHaveLength(1);
+    expect(result.collection).toEqual({ complete: false, backfillPending: true });
+    expect(result.warnings).toEqual(expect.arrayContaining([expect.stringContaining("maxItems exceeded")]));
+  });
+
+  it("treats the day as closed at its exclusive end", async () => {
+    const client = new RecordingHackerNewsClient();
+    jest.spyOn(client, "searchStories").mockRejectedValueOnce(new Error("closed lane failed"));
+    const provider = new HackerNewsSourceProvider(client, { now: () => new Date("2026-07-08T00:00:00Z") });
+    const context = {
+      tenantId: tenantId("tenant-1"), workspaceId: workspaceId("workspace-1"),
+      sourceBindingId: "hn-binding-1", scanJobId: "scan-job-1", correlationId: "correlation-1",
+      config: {
+        targetPublishedWindow: { startInclusive: "2026-07-07T00:00:00Z", endExclusive: "2026-07-08T00:00:00Z" },
+        scanPasses: [ { mode: "search", target: "story", query: "failed" } ],
+      },
+    };
+    await expect(provider.scan(provider.planScan({ mode: "search", query: "AI" }, context), context))
+      .rejects.toThrow("closed lane failed");
   });
 
   it("does not report a partial historical lane as a successful scan", async () => {

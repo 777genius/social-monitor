@@ -1,9 +1,12 @@
 import type { AgentRuntimeClientPort } from "../../ports";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   resolveReaderSummaryDailyTaskIdentityFromEnv,
   resolveReaderSummaryGenerationIdentityFromEnv,
   resolveReaderSummaryReasoningEffortFromEnv,
 } from "../model/active-reader-summary-generation-profile";
+import { codexGatewayReaderSummaryReasoningEffort } from "../model/codex-reader-summary-route";
 import { GatewayLlmClient } from "../model/gateway-llm/gateway-llm-client";
 import {
   assertReaderSummaryTransportBackend,
@@ -33,6 +36,34 @@ const gatewayEnv = (extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv => ({
 const clock = { now: () => new Date("2026-10-30T00:00:00.000Z") };
 
 describe("reader summary agent-runtime transport", () => {
+  it("uses the summary model setting for the gateway and daily identities", () => {
+    const contents = readFileSync(resolve(process.cwd(),
+      "ops/deploy/production-runtime/reader-summary-model.env"), "utf8");
+    const settings = Object.fromEntries(contents.split(/\r?\n/u)
+      .filter((line) => line.length > 0 && !line.startsWith("#"))
+      .map((line) => {
+        const separator = line.indexOf("=");
+        if (separator < 1) throw new Error("Invalid summary model setting");
+        return [line.slice(0, separator), line.slice(separator + 1)];
+      }));
+    expect(Object.keys(settings).sort()).toEqual([
+      "AGENT_RUNTIME_GATEWAY_LLM_MODEL", "AGENT_RUNTIME_READER_SUMMARY_BACKEND",
+      "AGENT_RUNTIME_TRANSPORT",
+    ]);
+    const env = gatewayEnv({ ...settings,
+      AGENT_RUNTIME_READER_SUMMARY_MODEL: undefined,
+      AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: undefined });
+    const model = settings.AGENT_RUNTIME_GATEWAY_LLM_MODEL;
+    if (!model) throw new Error("Summary model setting is missing");
+    const effort = codexGatewayReaderSummaryReasoningEffort(model);
+    expect(effort).toBeDefined();
+    expect(resolveGatewayLlmTransportConfig(env).route).toMatchObject({
+      model, reasoningEffort: effort, modelBackend: "openai-chatgpt" });
+    expect(resolveReaderSummaryGenerationIdentityFromEnv(env).model).toBe(model);
+    expect(resolveReaderSummaryDailyTaskIdentityFromEnv(env, undefined).model).toBe(model);
+    expect(resolveReaderSummaryReasoningEffortFromEnv(env)).toBe(effort);
+  });
+
   it("uses one shared transport selector and retains the legacy entry point", () => {
     expect(createReaderSummaryAgentRuntimeClient).toBe(createSummaryAgentRuntimeClient);
     expect(resolveSummaryAgentRuntimeTransport({})).toBe("agent-runtime");
@@ -79,19 +110,19 @@ describe("reader summary agent-runtime transport", () => {
         model: "openai/gpt-oss-120b" });
   });
 
-  it("resolves Codex through the gateway at gpt-6.1-sol/low by default", () => {
+  it("resolves Codex through the gateway at gpt-6.1-terra/medium by default", () => {
     const codexAccount = "8d2f6a51-3c6e-4f0b-9d7a-2b1c4e5f6a7b";
     const env = gatewayEnv({ AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
       AGENT_RUNTIME_GATEWAY_LLM_ACCOUNT_REFS: `${codexAccount},${kimiAccount}` });
     expect(resolveGatewayLlmTransportConfig(env).route).toEqual({
-      profileId: "openai-codex-oauth-responses-v1", modelBackend: "openai-chatgpt", model: "gpt-6.1-sol",
-      reasoningEffort: "low", accountRefs: [codexAccount, kimiAccount], minOutputTokens: 16_384 });
-    // Adapters take the same pair, so verifiers check gpt-6.1-sol at effort low.
+      profileId: "openai-codex-oauth-responses-v1", modelBackend: "openai-chatgpt", model: "gpt-6.1-terra",
+      reasoningEffort: "medium", accountRefs: [codexAccount, kimiAccount], minOutputTokens: 16_384 });
+    // Adapters and verifiers use the same default model and effort.
     expect(resolveReaderSummaryGenerationIdentityFromEnv(env)).toEqual({
-      provider: "codex", model: "gpt-6.1-sol", backend: "openai-chatgpt" });
+      provider: "codex", model: "gpt-6.1-terra", backend: "openai-chatgpt" });
     expect(resolveReaderSummaryDailyTaskIdentityFromEnv(env, undefined)).toEqual({
-      model: "gpt-6.1-sol", modelBackend: "openai-chatgpt" });
-    expect(resolveReaderSummaryReasoningEffortFromEnv(env)).toBe("low");
+      model: "gpt-6.1-terra", modelBackend: "openai-chatgpt" });
+    expect(resolveReaderSummaryReasoningEffortFromEnv(env)).toBe("medium");
     // The CLI transport keeps the pinned Codex identity from the same settings.
     const cliEnv = { ...env, AGENT_RUNTIME_TRANSPORT: "agent-runtime" };
     expect(resolveReaderSummaryGenerationIdentityFromEnv(cliEnv)).toEqual({
@@ -103,7 +134,7 @@ describe("reader summary agent-runtime transport", () => {
 
   it.each([
     [{ AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-6.1-sol" }, "gpt-6.1-sol", "low"],
-    [{ AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "low" }, "gpt-6.1-sol", "low"],
+    [{ AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "medium" }, "gpt-6.1-terra", "medium"],
     [{ AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-5.6-sol" }, "gpt-5.6-sol", "high"],
     [{ AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-5.6-sol", AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "high",
       AGENT_RUNTIME_GATEWAY_LLM_MAX_OUTPUT_TOKENS: "24000" }, "gpt-5.6-sol", "high"],
@@ -116,8 +147,9 @@ describe("reader summary agent-runtime transport", () => {
 
   it.each([
     ["another Codex gateway model", { AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-5.6-mini" }],
-    ["gpt-6.1-sol at another effort", { AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "high" }],
-    ["gpt-6.1-sol without reasoning", { AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "minimal" }],
+    ["gpt-6.1-terra at another effort", { AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "high" }],
+    ["gpt-6.1-terra with Sol's effort", { AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "low" }],
+    ["gpt-6.1-terra without reasoning", { AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "minimal" }],
     ["gpt-5.6-sol at another effort", { AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-5.6-sol",
       AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "low" }],
     ["an effort the Codex purposes do not admit", { AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "xhigh" }],

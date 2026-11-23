@@ -60,12 +60,18 @@ class _PublishedSummaryPageState extends State<PublishedSummaryPage> {
         }
 
         if (summary == null &&
-            state is EmptyViewState<ReaderSummary> &&
+            (state is EmptyViewState<ReaderSummary> ||
+                state is FailureViewState<ReaderSummary>) &&
             widget.readerPostsBrowseStore != null &&
             widget.store.canBrowseUnpublishedDaily) {
           return _PublishedUnpublishedDay(
             store: widget.store,
             browseStore: widget.readerPostsBrowseStore!,
+            summaryLoadError: switch (state) {
+              FailureViewState<ReaderSummary>(:final failure) =>
+                failure.message,
+              _ => null,
+            },
             onOpenUrl: (url) => unawaited(widget.store.openUrl(url)),
           );
         }
@@ -193,11 +199,13 @@ class _PublishedUnpublishedDay extends StatelessWidget {
   const _PublishedUnpublishedDay({
     required this.store,
     required this.browseStore,
+    required this.summaryLoadError,
     required this.onOpenUrl,
   });
 
   final PublishedSummaryStore store;
   final ReaderPostsBrowseStore browseStore;
+  final String? summaryLoadError;
   final ValueChanged<String> onOpenUrl;
 
   @override
@@ -228,12 +236,21 @@ class _PublishedUnpublishedDay extends StatelessWidget {
               pageInsets.right,
               0,
             ),
-            child: const AppInlineProblem(
-              title: 'No AI summary for this day',
-              message: 'Showing collected original posts below, ordered by '
-                  'likes or source score. No AI-generated headlines or descriptions.',
-              tone: AppProblemTone.neutral,
-            ),
+            child: summaryLoadError == null
+                ? const AppInlineProblem(
+                    title: 'No AI summary for this day',
+                    message: 'Showing collected original posts below, ordered by '
+                        'likes or source score. No AI-generated headlines or descriptions.',
+                    tone: AppProblemTone.neutral,
+                  )
+                : AppInlineProblem(
+                    title: 'Summary unavailable',
+                    message: '$summaryLoadError Original posts are still '
+                        'available below.',
+                    tone: AppProblemTone.warning,
+                    actionLabel: 'Retry',
+                    onAction: () => unawaited(store.load()),
+                  ),
           ),
         ),
         ReaderSummaryUnpublishedPostsSliver(

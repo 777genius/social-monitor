@@ -14,14 +14,14 @@ export * from "./periodic-reader-summary-scheduler-options";
 
 export type IntelligenceSummaryJobLoopOptions = {
   readonly enabled: boolean;
+  readonly executionPaused?: boolean;
   readonly intervalMs: number;
   readonly limit: number;
   readonly runOnStart: boolean;
   readonly tenantId?: string;
   readonly workspaceId?: string;
 };
-export type IntelligenceReaderSummaryJobLoopOptions =
-  IntelligenceSummaryJobLoopOptions;
+export type IntelligenceReaderSummaryJobLoopOptions = IntelligenceSummaryJobLoopOptions;
 export type IntelligenceSummaryQueueReaderMode = "in-memory" | "rabbitmq";
 export type IntelligenceRabbitMqSummaryQueueReaderOptions = {
   readonly queue: string;
@@ -33,12 +33,12 @@ export type IntelligenceRabbitMqReaderSummaryQueueReaderOptions =
   IntelligenceRabbitMqSummaryQueueReaderOptions;
 export type IntelligenceSummaryQueueDrainLoopOptions = {
   readonly enabled: boolean;
+  readonly executionPaused?: boolean;
   readonly intervalMs: number;
   readonly limit: number;
   readonly runOnStart: boolean;
 };
-export type IntelligenceReaderSummaryQueueDrainLoopOptions =
-  IntelligenceSummaryQueueDrainLoopOptions;
+export type IntelligenceReaderSummaryQueueDrainLoopOptions = IntelligenceSummaryQueueDrainLoopOptions;
 export type IntelligenceAutoSummarySchedulerOptions = {
   readonly enabled: boolean;
   readonly intervalMs: number;
@@ -119,6 +119,7 @@ export const resolveIntelligenceSummaryJobLoopOptions = (
 
   return {
     enabled: loopMode === "enabled",
+    executionPaused: parseBoolean(env.INTELLIGENCE_SUMMARY_EXECUTION_PAUSED, false),
     intervalMs: parseBoundedInteger(
       env.INTELLIGENCE_SUMMARY_JOB_LOOP_INTERVAL_MS,
       60_000,
@@ -172,6 +173,7 @@ export const resolveIntelligenceReaderSummaryJobLoopOptions = (
 
   return {
     enabled: loopMode === "enabled",
+    executionPaused: parseBoolean(env.INTELLIGENCE_SUMMARY_EXECUTION_PAUSED, false),
     intervalMs: parseBoundedInteger(
       env.INTELLIGENCE_READER_SUMMARY_JOB_LOOP_INTERVAL_MS,
       60_000,
@@ -282,6 +284,7 @@ export const resolveIntelligenceSummaryQueueDrainLoopOptions = (
 
   return {
     enabled: loopMode === "enabled",
+    executionPaused: parseBoolean(env.INTELLIGENCE_SUMMARY_EXECUTION_PAUSED, false),
     intervalMs: parseBoundedInteger(
       env.INTELLIGENCE_SUMMARY_QUEUE_DRAIN_INTERVAL_MS,
       5_000,
@@ -320,6 +323,7 @@ export const resolveIntelligenceReaderSummaryQueueDrainLoopOptions = (
 
   return {
     enabled: loopMode === "enabled",
+    executionPaused: parseBoolean(env.INTELLIGENCE_SUMMARY_EXECUTION_PAUSED, false),
     intervalMs: parseBoundedInteger(
       env.INTELLIGENCE_READER_SUMMARY_QUEUE_DRAIN_INTERVAL_MS,
       5_000,

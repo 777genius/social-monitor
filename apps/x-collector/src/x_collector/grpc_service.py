@@ -29,6 +29,7 @@ from .domain import (
 from .health import XCollectorHealthMonitor
 from .ports import DailySearchCollectorPort
 from .post_lookup import validate_post_lookup
+from .rpc_drain import RpcDrain
 
 
 LOGGER = logging.getLogger(__name__)
@@ -36,6 +37,10 @@ LOGGER = logging.getLogger(__name__)
 
 class XCollectorGrpcService(x_collector_pb2_grpc.XCollectorServiceServicer):
     def LookupPosts(self, request, context):
+        with self._drain.call(context):
+            return self._lookup_posts(request, context)
+
+    def _lookup_posts(self, request, context):
         require_service_token(context, self._service_token)
         try:
             if request.schema_version != 1:
@@ -56,16 +61,22 @@ class XCollectorGrpcService(x_collector_pb2_grpc.XCollectorServiceServicer):
         collector: DailySearchCollectorPort,
         service_token: str | None = None,
         health_monitor: XCollectorHealthMonitor | None = None,
+        drain: RpcDrain | None = None,
     ) -> None:
         self._collector = collector
         self._service_token = service_token
         self._health_monitor = health_monitor
+        self._drain = drain if drain is not None else RpcDrain()
 
     def CollectDailySearch(
         self,
         request: x_collector_pb2.CollectDailySearchRequest,
         context: grpc.ServicerContext,
     ) -> x_collector_pb2.CollectDailySearchResponse:
+        with self._drain.call(context):
+            return self._collect_daily_search(request, context)
+
+    def _collect_daily_search(self, request, context):
         require_service_token(context, self._service_token)
 
         stage = "request_decode"

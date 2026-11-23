@@ -33,6 +33,13 @@ describe("weekly review execution evidence", () => {
     expect(Object.isFrozen(proof)).toBe(true);
     expect(Object.isFrozen(proof.gateway)).toBe(true);
   });
+  it("accepts the Terra default and retains immutable gateway evidence", () => {
+    const terra = { ...gateway, model: "gpt-6.1-terra" as const, reasoningEffort: "medium" as const,
+      gateway: { ...gateway.gateway, observedModel: "gpt-6.1-terra-2026-10-01" } };
+    const proof = canonicalReaderSummaryWeeklyReviewExecutionAttestation(terra, terra.selectedOutputSha256);
+    expect(proof).toEqual(terra);
+    expect(Object.isFrozen(proof.gateway)).toBe(true);
+  });
   it.each([
     { ...gateway, gateway: { ...gateway.gateway, extra: "unexpected" } },
     { ...gateway, gateway: { ...gateway.gateway, requestRef: "" } },
@@ -40,6 +47,8 @@ describe("weekly review execution evidence", () => {
     { ...gateway, gateway: { ...gateway.gateway, observedModel: "gpt-6.1-sol-other" } },
     { ...gateway, gateway: { ...gateway.gateway, profileId: "different_profile" } },
     { ...gateway, reasoningEffort: "high" },
+    { ...gateway, model: "gpt-6.1-terra", reasoningEffort: "low" },
+    { ...gateway, model: "gpt-6.1-terra", reasoningEffort: "high" },
     { ...legacy, gateway: gateway.gateway },
   ])("rejects a forged transport shape or route", (proof) => {
     expect(() => canonicalReaderSummaryWeeklyReviewExecutionAttestation(proof as ReaderSummaryWeeklyReviewExecutionAttestation, legacy.selectedOutputSha256))

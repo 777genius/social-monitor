@@ -1,9 +1,17 @@
+import { createExternalBetaDuplicateEvidencePaths } from './lib/external-beta-evidence-duplicate-paths.mjs';
+import { validateArtifactIdentity, validateArtifactProviderKeys } from './lib/external-beta-evidence-artifact-shape-policy.mjs';
+import { createExternalBetaArtifactConsistencyFreshness } from './lib/external-beta-artifact-consistency-freshness.mjs';
+import { createExternalBetaJobReadiness } from './lib/external-beta-evidence-job-readiness.mjs';
 import { execFileSync } from 'node:child_process';
 import { accessSync, constants, existsSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
-import { basename, dirname, isAbsolute, relative, resolve } from 'node:path';
-import { URL } from 'node:url';
+import { dirname, isAbsolute, relative } from 'node:path';
 import { parse as parseDotenv } from 'dotenv';
 import { readEnvFileSelection, readSelectedJobSelection } from './lib/external-beta-evidence-selections.mjs';
+import { buildExternalBetaPlan } from './lib/external-beta-evidence-plan.mjs';
+import { createExternalBetaPlanPrinter } from './lib/external-beta-evidence-plan-printer.mjs';
+import { createExternalBetaEnvFileLoader } from './lib/external-beta-evidence-env-file-loader.mjs';
+import { buildExternalBetaHandoff } from './lib/external-beta-evidence-handoff.mjs';
+import { createExternalBetaDisplayFormatters } from './lib/external-beta-evidence-display-formatters.mjs';
 import {
   validateArtifactLiteralRedaction,
   validateArtifactStructuredRedaction, validateArtifactDecodedRedaction,
@@ -11,10 +19,27 @@ import {
   isStructuredJsonEvidence,
 } from './lib/external-beta-evidence-artifact-redaction.mjs';
 
+import { localRuntimeEnvNames, isLocalRuntimeEnvValue, createExternalBetaEvidenceValueValidator } from './lib/external-beta-evidence-input-value-policy.mjs';
+
 const contractPath = 'ops/release/external-beta-evidence-runner.json';
 const inputMatrixPath = 'ops/release/external-beta-evidence-input-matrix.json';
 const contract = JSON.parse(readFileSync(contractPath, 'utf8'));
 const inputMatrix = JSON.parse(readFileSync(inputMatrixPath, 'utf8'));
+const {
+  duplicateEvidencePathViolations,
+  duplicateEvidencePathViolationsByJob,
+} = createExternalBetaDuplicateEvidencePaths({ contract, env: process.env });
+const { validateArtifactEnvConsistency, validateArtifactFreshness } = createExternalBetaArtifactConsistencyFreshness({ contract, process, Date });
+const {
+  missingRequiredEnv, missingOptionalEnvNames, requiredEnvAlternativeCoveredEnvNames,
+  jobInputEnvNames, hasEnv, jobExecutionReadiness, formatMissingRequiredEnvViolation,
+} = createExternalBetaJobReadiness({ process, localRuntimeEnvNames, isLocalRuntimeEnvValue });
+const { validateEvidenceValueEnv } = createExternalBetaEvidenceValueValidator({ contract, env: process.env, jobInputEnvNames });
+const {
+  formatOutputArtifacts, formatRequiredEnvAlternatives, formatHandoffArtifacts,
+  handoffAction, handoffRunner, artifactExamplePathByFormat, inputMetadataByEnv,
+} = createExternalBetaDisplayFormatters({ contract, inputMatrix });
+const { printPlan } = createExternalBetaPlanPrinter({ contract, formatRequiredEnvAlternatives, formatOutputArtifacts });
 const forbiddenEvidencePathFragments = ['/fixtures/', '\\fixtures\\', '.example.', '-examples', '_examples', '/example-', '\\example-'];
 const args = process.argv.slice(2);
 const execute = args.includes('--execute');
@@ -46,6 +71,7 @@ if (handoffJson && (execute || validateArtifacts || json || summary || handoff))
   process.exit(1);
 }
 
+const { loadExternalBetaEnvFiles } = createExternalBetaEnvFileLoader({ parseDotenv, readFileSync, validateExternalBetaEnvFilePath, env: process.env });
 const envFileSelection = readEnvFileSelection(args);
 if (envFileSelection.errors.length > 0) {
   console.error('Invalid external beta evidence env file selection:');
@@ -174,143 +200,16 @@ function validateGeneratedArtifacts(job) {
 }
 
 function buildPlan(planJobs) {
-  const duplicatePreflightViolationsByJob = duplicateEvidencePathViolationsByJob(planJobs);
-  const plan = {
+  return buildExternalBetaPlan(planJobs, {
     runnerId: contract.runnerId,
     mode: execute ? 'execute' : validateArtifacts ? 'validate_artifacts' : 'plan_only',
-    jobCount: planJobs.length,
-    localContractJobCount: 0,
-    liveCommandJobCount: 0,
-    manualArtifactJobCount: 0,
-    executableLiveJobCount: 0,
-    liveArtifactReadyForValidationJobCount: 0,
-    externalBlockerJobCount: 0,
-    missingEnvCount: 0,
-    missingOptionalEnvCount: 0,
-    readinessCounts: {},
-    contractClosurePercent: 0,
-    externalEvidenceEnvReadinessPercent: 0,
-    manualArtifactReadyForValidationJobCount: 0,
-    blockedMissingRequiredEnvJobCount: 0,
-    blockedInvalidInputJobCount: 0,
-    blockedLocalRuntimeEnvJobCount: 0,
-    uniqueMissingEnv: [],
-    uniqueMissingOptionalEnv: [],
-    jobs: [],
-  };
-
-  for (const job of planJobs) {
-    const missingEnv = missingRequiredEnv(job);
-    const missingOptionalEnv = missingOptionalEnvNames(job);
-    const preflightViolations = [
-      ...jobPreflightViolations(job, new Set(missingEnv)),
-      ...(duplicatePreflightViolationsByJob.get(job.jobId) ?? []),
-    ];
-    const executionReadiness = jobExecutionReadiness(job, missingEnv, preflightViolations);
-    plan.readinessCounts[executionReadiness] = (plan.readinessCounts[executionReadiness] ?? 0) + 1;
-    plan.jobs.push({
-      jobId: job.jobId,
-      evidenceGroupId: job.evidenceGroupId,
-      mode: job.mode,
-      runPolicy: job.runPolicy,
-      owner: job.owner,
-      blocksExternalBeta: job.blocksExternalBeta,
-      executionReadiness,
-      runnerCommand: job.runnerCommand,
-      runnerDescription: job.runnerDescription,
-      operatorAction: job.operatorAction,
-      validationCommands: job.validationCommands,
-      requiredEnv: job.requiredEnv,
-      requiredEnvAlternatives: job.requiredEnvAlternatives ?? [],
-      optionalEnv: job.optionalEnv,
-      missingEnv,
-      missingOptionalEnv,
-      preflightViolations,
-      outputArtifacts: job.outputArtifacts,
-      exitCondition: job.exitCondition,
-    });
-    plan.missingEnvCount += missingEnv.length;
-    plan.missingOptionalEnvCount += missingOptionalEnv.length;
-    if (job.runPolicy === 'local_contract') {
-      plan.localContractJobCount += 1;
-    }
-    if (job.runPolicy === 'live_command') {
-      plan.liveCommandJobCount += 1;
-      if (executionReadiness === 'live_command_executable') {
-        plan.executableLiveJobCount += 1;
-      }
-      if (executionReadiness === 'live_artifact_ready_for_validation') {
-        plan.liveArtifactReadyForValidationJobCount += 1;
-      }
-    }
-    if (job.runPolicy === 'manual_artifact_then_validator') {
-      plan.manualArtifactJobCount += 1;
-      if (executionReadiness === 'manual_artifact_required') {
-        plan.manualArtifactReadyForValidationJobCount += 1;
-      }
-    }
-    if (job.blocksExternalBeta === true) {
-      plan.externalBlockerJobCount += 1;
-    }
-    if (executionReadiness === 'blocked_missing_required_env') {
-      plan.blockedMissingRequiredEnvJobCount += 1;
-    }
-    if (executionReadiness === 'blocked_invalid_env') {
-      plan.blockedInvalidInputJobCount += 1;
-    }
-    if (executionReadiness === 'blocked_local_runtime_env') {
-      plan.blockedLocalRuntimeEnvJobCount += 1;
-    }
-  }
-  plan.uniqueMissingEnv = [...new Set(plan.jobs.flatMap((job) => job.missingEnv))].sort();
-  plan.uniqueMissingOptionalEnv = [...new Set(plan.jobs.flatMap((job) => job.missingOptionalEnv))].sort();
-  plan.contractClosurePercent = percent(plan.localContractJobCount, plan.jobCount);
-  plan.externalEvidenceEnvReadinessPercent = percent(
-    plan.executableLiveJobCount + plan.liveArtifactReadyForValidationJobCount + plan.manualArtifactReadyForValidationJobCount,
-    plan.liveCommandJobCount + plan.manualArtifactJobCount,
-  );
-
-  return plan;
-}
-
-function printPlan(plan) {
-  console.log(`External beta evidence plan (${contract.runnerId})`);
-  console.log(`Mode: ${plan.mode}`);
-  console.log(`Jobs: ${plan.jobCount}`);
-  console.log(
-    `Run policies: local=${plan.localContractJobCount}, live=${plan.liveCommandJobCount}, manual=${plan.manualArtifactJobCount}`,
-  );
-  console.log(`Executable live jobs: ${plan.executableLiveJobCount}`);
-  console.log(`Live artifact ready jobs: ${plan.liveArtifactReadyForValidationJobCount}`);
-  console.log(`External beta blocker jobs: ${plan.externalBlockerJobCount}`);
-
-  for (const job of plan.jobs) {
-    console.log('');
-    console.log(`${job.jobId}`);
-    console.log(`  group: ${job.evidenceGroupId}`);
-    console.log(`  mode: ${job.mode}`);
-    console.log(`  runPolicy: ${job.runPolicy}`);
-    console.log(`  readiness: ${job.executionReadiness}`);
-    console.log(`  owner: ${job.owner}`);
-    console.log(`  runner: ${job.runnerCommand ?? 'manual artifact / validators only'}`);
-    console.log(`  validators: ${job.validationCommands.join(' && ')}`);
-    console.log(`  requiredEnv: ${job.requiredEnv.length === 0 ? 'none' : job.requiredEnv.join(', ')}`);
-    console.log(`  requiredEnvAlternatives: ${formatRequiredEnvAlternatives(job)}`);
-    console.log(`  optionalEnv: ${job.optionalEnv.length === 0 ? 'none' : job.optionalEnv.join(', ')}`);
-    console.log(`  missingEnv: ${job.missingEnv.length === 0 ? 'none' : job.missingEnv.join(', ')}`);
-    console.log(`  missingOptionalEnv: ${job.missingOptionalEnv.length === 0 ? 'none' : job.missingOptionalEnv.join(', ')}`);
-    console.log(`  preflightViolations: ${job.preflightViolations.length === 0 ? 'none' : job.preflightViolations.join(' | ')}`);
-    console.log(`  outputArtifacts: ${formatOutputArtifacts(job)}`);
-    console.log(`  exit: ${job.exitCondition}`);
-  }
-
-  if (plan.missingEnvCount > 0) {
-    console.log('');
-    console.log(`Missing required env count: ${plan.missingEnvCount}`);
-  }
-  if (plan.missingOptionalEnvCount > 0) {
-    console.log(`Missing optional env count: ${plan.missingOptionalEnvCount}`);
-  }
+    duplicateEvidencePathViolationsByJob,
+    missingRequiredEnv,
+    missingOptionalEnvNames,
+    jobPreflightViolations,
+    jobExecutionReadiness,
+    percent,
+  });
 }
 
 function printSummary(plan) {
@@ -398,134 +297,17 @@ function printHandoff(plan) {
 }
 
 function printJsonHandoff(plan) {
-  writeStdout(`${JSON.stringify(buildHandoff(plan), null, 2)}\n`);
-}
-
-function buildHandoff(plan) {
-  return {
-    runnerId: contract.runnerId,
-    scope: contract.scope,
-    frontendPolicy: contract.frontendPolicy,
-    defaultMode: contract.defaultMode,
-    envTemplate: contract.envExample,
-    inputMatrix: {
-      matrixId: inputMatrix.matrixId,
-      checkCommand: inputMatrix.checkCommand,
-      secretValuePolicy: inputMatrix.secretValuePolicy,
-      artifactPathPolicy: inputMatrix.artifactPathPolicy,
-    },
-    safety: {
-      inspectPlanCommand: contract.planCommand,
-      inspectSummaryCommand: contract.summaryCommand,
-      handoffCommand: contract.handoffCommand,
-      handoffJsonCommand: contract.handoffJsonCommand,
-      preflightCommand: contract.preflightCommand,
-      artifactValidationCommand: contract.artifactValidationCommand,
-      dockerBundleImportCommand: contract.dockerBundleImportCommand,
-      currentPackageCommand: contract.currentPackageCommand,
-      envFileArg: contract.executionSafety.envFileArg,
-      envFileConflictPolicy: contract.executionSafety.envFileConflictPolicy,
-      liveExecutionRequires: contract.executionSafety.liveExecutionRequires,
-      evidencePathMaxBytes: evidencePathMaxBytes(),
-      envValuePolicy: 'names_only',
-      evidencePathPolicy: inputMatrix.artifactPathPolicy,
-    },
-    readiness: {
-      localContractJobs: plan.localContractJobCount,
-      totalJobs: plan.jobCount,
-      contractClosurePercent: plan.contractClosurePercent,
-      externalEvidenceReadyJobs: plan.executableLiveJobCount + plan.liveArtifactReadyForValidationJobCount + plan.manualArtifactReadyForValidationJobCount,
-      externalEvidenceTotalJobs: plan.liveCommandJobCount + plan.manualArtifactJobCount,
-      externalEvidenceEnvReadinessPercent: plan.externalEvidenceEnvReadinessPercent,
-      liveArtifactReadyForValidationJobCount: plan.liveArtifactReadyForValidationJobCount,
-      externalBlockerJobCount: plan.externalBlockerJobCount,
-      blockedMissingRequiredEnvJobCount: plan.blockedMissingRequiredEnvJobCount,
-      blockedInvalidInputJobCount: plan.blockedInvalidInputJobCount,
-      blockedLocalRuntimeEnvJobCount: plan.blockedLocalRuntimeEnvJobCount,
-      readinessCounts: plan.readinessCounts,
-      uniqueMissingEnv: plan.uniqueMissingEnv,
-      uniqueMissingOptionalEnv: plan.uniqueMissingOptionalEnv,
-    },
-    jobs: plan.jobs.map((job) => ({
-      jobId: job.jobId,
-      evidenceGroupId: job.evidenceGroupId,
-      mode: job.mode,
-      runPolicy: job.runPolicy,
-      owner: job.owner,
-      blocksExternalBeta: job.blocksExternalBeta,
-      executionReadiness: job.executionReadiness,
-      runnerCommand: job.runnerCommand,
-      runnerDescription: handoffRunner(job),
-      validationCommands: job.validationCommands,
-      requiredEnv: job.requiredEnv,
-      requiredEnvAlternatives: job.requiredEnvAlternatives ?? [],
-      optionalEnv: job.optionalEnv,
-      missingEnv: job.missingEnv,
-      missingOptionalEnv: job.missingOptionalEnv,
-      requiredInputs: buildHandoffInputs(job, job.requiredEnv, job.missingEnv),
-      requiredAlternativeInputs: buildHandoffAlternativeInputs(job),
-      optionalInputs: buildHandoffInputs(job, job.optionalEnv, job.missingOptionalEnv),
-      preflightViolations: job.preflightViolations,
-      outputArtifacts: buildHandoffArtifactContracts(job),
-      operatorAction: handoffAction(job),
-      exitCondition: job.exitCondition,
-    })),
-  };
-}
-
-function buildHandoffInputs(job, envNames, missingEnvNames) {
-  const missingEnv = new Set(missingEnvNames ?? []);
-  return (envNames ?? []).map((envName) => {
-    const metadata = inputMetadataByEnv().get(envName) ?? {};
-    return {
-      env: envName,
-      inputClass: metadata.inputClass ?? 'unclassified',
-      description: metadata.description ?? null,
-      missing: missingEnv.has(envName),
-      artifacts: buildHandoffEnvArtifacts(job, envName),
-    };
-  });
-}
-
-function buildHandoffAlternativeInputs(job) {
-  return (job.requiredEnvAlternatives ?? []).map((alternative) => ({
-    label: alternative.label ?? null,
-    coversEnv: requiredEnvAlternativeCoveredEnvNames(alternative),
-    inputs: buildHandoffInputs(job, alternative.env ?? [], missingAlternativeEnvNames(alternative)),
-  }));
-}
-
-function missingAlternativeEnvNames(alternative) {
-  return (alternative.env ?? []).filter((envName) => !hasEnv(envName));
-}
-
-function buildHandoffEnvArtifacts(job, envName) {
-  return (job.outputArtifacts ?? [])
-    .filter((artifact) => artifact.env === envName)
-    .map((artifact) => {
-      const examplePath = artifactExamplePathByFormat().get(artifact.format) ?? null;
-      return {
-        format: artifact.format,
-        examplePath,
-        expectedArtifactId: artifact.expectedArtifactId ?? null,
-        expectedProviderKeys: artifact.expectedProviderKeys ?? [],
-      };
-    });
-}
-
-function buildHandoffArtifactContracts(job) {
-  return job.outputArtifacts.map((artifact) => {
-    const examplePath = artifactExamplePathByFormat().get(artifact.format) ?? null;
-    return {
-      path: artifact.path ?? null,
-      env: artifact.env ?? null,
-      location: artifact.path ?? `<env:${artifact.env}>`,
-      format: artifact.format,
-      examplePath,
-      expectedArtifactId: artifact.expectedArtifactId ?? null,
-      expectedProviderKeys: artifact.expectedProviderKeys ?? [],
-    };
-  });
+  writeStdout(`${JSON.stringify(buildExternalBetaHandoff(plan, {
+    contract,
+    inputMatrix,
+    evidencePathMaxBytes,
+    handoffRunner,
+    handoffAction,
+    hasEnv,
+    inputMetadataByEnv,
+    artifactExamplePathByFormat,
+    requiredEnvAlternativeCoveredEnvNames,
+  }), null, 2)}\n`);
 }
 
 function printJsonPlan(plan) {
@@ -541,47 +323,6 @@ function percent(numerator, denominator) {
     return 0;
   }
   return Math.round((numerator / denominator) * 100);
-}
-
-function loadExternalBetaEnvFiles(paths) {
-  const violations = [];
-  const loadedSources = new Map();
-  for (const path of paths) {
-    const label = `--env-file ${path}`;
-    validateExternalBetaEnvFilePath(path, label, violations);
-    if (violations.some((violation) => violation.startsWith(`${label}:`))) {
-      continue;
-    }
-
-    const parsed = parseDotenv(readFileSync(path, 'utf8'));
-    for (const [name, rawValue] of Object.entries(parsed)) {
-      if (!/^[A-Z_][A-Z0-9_]*$/.test(name)) {
-        violations.push(`${label}: env name ${name} is not a valid uppercase env var name`);
-        continue;
-      }
-
-      const value = String(rawValue).trim();
-      if (value.length === 0) {
-        continue;
-      }
-      if (name === 'EXTERNAL_BETA_EVIDENCE_CONFIRM') {
-        violations.push(`${label}: EXTERNAL_BETA_EVIDENCE_CONFIRM must be set explicitly in the operator shell, not loaded from --env-file`);
-        continue;
-      }
-
-      const existingValue = process.env[name]?.trim();
-      if (existingValue !== undefined && existingValue.length > 0 && existingValue !== value) {
-        const existingSource = loadedSources.get(name) ?? 'the shell environment';
-        violations.push(`${label}: env ${name} conflicts with ${existingSource}; refusing to merge evidence from different runs`);
-        continue;
-      }
-
-      process.env[name] = value;
-      loadedSources.set(name, label);
-    }
-  }
-
-  return violations;
 }
 
 function validateExternalBetaEnvFilePath(path, label, violations) {
@@ -620,94 +361,6 @@ function validateExternalBetaEnvFilePath(path, label, violations) {
   if (isGitTrackedPath(path)) {
     violations.push(`${label}: path must not point to a git-tracked file`);
   }
-}
-
-function missingRequiredEnv(job, options = {}) {
-  const missingEnv = job.requiredEnv.filter((envName) => !hasEnv(envName));
-  const coveredEnvNames = new Set(satisfiedRequiredEnvAlternatives(job, options).flatMap(requiredEnvAlternativeCoveredEnvNames));
-  if (coveredEnvNames.size === 0) {
-    return missingEnv;
-  }
-
-  return missingEnv.filter((envName) => !coveredEnvNames.has(envName));
-}
-
-function missingOptionalEnvNames(job) {
-  return job.optionalEnv.filter((envName) => process.env[envName]?.trim() === undefined || process.env[envName]?.trim() === '');
-}
-
-function satisfiedRequiredEnvAlternatives(job, options = {}) {
-  const allowCapturedArtifactAlternatives = options.allowCapturedArtifactAlternatives !== false;
-  return (job.requiredEnvAlternatives ?? []).filter((alternative) => {
-    if (alternative.mode === 'captured_artifact' && !allowCapturedArtifactAlternatives) {
-      return false;
-    }
-    const envNames = alternative.env ?? [];
-    return envNames.length > 0 && envNames.every((envName) => hasEnv(envName));
-  });
-}
-
-function requiredEnvAlternativeCoveredEnvNames(alternative) {
-  const coveredEnv = alternative.coversEnv ?? alternative.env ?? [];
-  return Array.isArray(coveredEnv) ? coveredEnv : [];
-}
-
-function jobInputEnvNames(job) {
-  return [
-    ...(job.requiredEnv ?? []),
-    ...(job.optionalEnv ?? []),
-    ...(job.requiredEnvAlternatives ?? []).flatMap((alternative) => alternative.env ?? []),
-  ];
-}
-
-function hasEnv(envName) {
-  const value = process.env[envName]?.trim();
-  return value !== undefined && value !== '';
-}
-
-function jobExecutionReadiness(job, missingEnv, preflightViolations) {
-  if (missingEnv.length > 0) {
-    return 'blocked_missing_required_env';
-  }
-  if (preflightViolations.length > 0) {
-    if (hasOnlyLocalRuntimeEnvViolations(job, preflightViolations)) {
-      return 'blocked_local_runtime_env';
-    }
-    return 'blocked_invalid_env';
-  }
-  if (job.runPolicy === 'manual_artifact_then_validator') {
-    return 'manual_artifact_required';
-  }
-  if (job.runPolicy === 'live_command') {
-    if (hasSatisfiedCapturedArtifactAlternative(job)) {
-      return 'live_artifact_ready_for_validation';
-    }
-    return 'live_command_executable';
-  }
-  return 'local_contract_ready';
-}
-
-function hasSatisfiedCapturedArtifactAlternative(job) {
-  return satisfiedRequiredEnvAlternatives(job)
-    .some((alternative) => alternative.mode === 'captured_artifact');
-}
-
-function hasOnlyLocalRuntimeEnvViolations(job, preflightViolations) {
-  if (!['live_network', 'staging_artifact', 'staging_deploy'].includes(job.mode)) {
-    return false;
-  }
-  return preflightViolations.length > 0 && preflightViolations.every((violation) => {
-    const envName = extractEnvNameFromPreflightViolation(violation);
-    if (envName === undefined || !localRuntimeEnvNames().has(envName)) {
-      return false;
-    }
-    const value = process.env[envName]?.trim();
-    return value !== undefined && isLocalRuntimeEnvValue(value);
-  });
-}
-
-function extractEnvNameFromPreflightViolation(violation) {
-  return /: env ([A-Z][A-Z0-9_]*) /.exec(violation)?.[1];
 }
 
 function executableJobViolations(candidateJobs) {
@@ -801,93 +454,6 @@ function artifactValidationViolations(candidateJobs) {
   return violations;
 }
 
-function formatMissingRequiredEnvViolation(job, missingEnv, options = {}) {
-  const base = `${job.jobId}: missing required env ${missingEnv.join(', ')}`;
-  const alternatives = missingCoveringAlternatives(job, missingEnv, options);
-  if (alternatives.length === 0) {
-    return base;
-  }
-
-  return `${base}; satisfy one alternative: ${alternatives.map(formatRequiredEnvAlternative).join(' OR ')}`;
-}
-
-function missingCoveringAlternatives(job, missingEnv, options = {}) {
-  const missingEnvSet = new Set(missingEnv);
-  const allowCapturedArtifactAlternatives = options.allowCapturedArtifactAlternatives !== false;
-  return (job.requiredEnvAlternatives ?? []).filter((alternative) => {
-    if (alternative.mode === 'captured_artifact' && !allowCapturedArtifactAlternatives) {
-      return false;
-    }
-    return requiredEnvAlternativeCoveredEnvNames(alternative).some((envName) => missingEnvSet.has(envName));
-  });
-}
-
-function formatRequiredEnvAlternative(alternative) {
-  const label = alternative.label ?? 'unnamed_alternative';
-  const envNames = (alternative.env ?? []).join('+');
-  return `${label}(${envNames})`;
-}
-
-function duplicateEvidencePathViolations(candidateJobs) {
-  return [...duplicateEvidencePathViolationsByJob(candidateJobs).values()].flat();
-}
-
-function duplicateEvidencePathViolationsByJob(candidateJobs) {
-  const violationsByJob = new Map();
-  if (contract.executionSafety?.evidencePathEnvForbidsDuplicatePaths !== true) {
-    return violationsByJob;
-  }
-
-  const entriesByPath = new Map();
-  for (const job of candidateJobs) {
-    for (const artifact of job.outputArtifacts ?? []) {
-      const envName = artifact.env;
-      if (envName === undefined || !envName.endsWith('_PATH')) {
-        continue;
-      }
-      const value = process.env[envName]?.trim();
-      if (value === undefined || value === '') {
-        continue;
-      }
-
-      const duplicateKey = evidencePathDuplicateKey(value);
-      const entries = entriesByPath.get(duplicateKey) ?? [];
-      entries.push({ jobId: job.jobId, envName });
-      entriesByPath.set(duplicateKey, entries);
-    }
-  }
-
-  for (const entries of entriesByPath.values()) {
-    if (entries.length < 2) {
-      continue;
-    }
-    for (const entry of entries) {
-      const violations = violationsByJob.get(entry.jobId) ?? [];
-      violations.push(`${entry.jobId}: evidence path env ${entry.envName} must not duplicate another evidence artifact path in this run`);
-      violationsByJob.set(entry.jobId, violations);
-    }
-  }
-
-  return violationsByJob;
-}
-
-function evidencePathDuplicateKey(path) {
-  if (existsSync(path)) {
-    try {
-      return realpathSync(path);
-    } catch {
-      return resolve(path);
-    }
-  }
-
-  const parentDirectory = dirname(path);
-  try {
-    return resolve(realpathSync(parentDirectory), basename(path));
-  } catch {
-    return resolve(path);
-  }
-}
-
 function validateExecutableOutputArtifactPathEnv(job, missingEnvSet, violations) {
   if (contract.executionSafety?.liveExecutionValidatesOutputPathsBeforeRun !== true) {
     return;
@@ -936,79 +502,6 @@ function validateExecutableOutputArtifactPathEnv(job, missingEnvSet, violations)
     if (existsSync(value) && isGitTrackedPath(value)) {
       violations.push(`${job.jobId}: output artifact env ${envName} must not point to a git-tracked file before live execution`);
     }
-  }
-}
-
-function validateEvidenceValueEnv(job, missingEnvSet, violations, options = {}) {
-  const enabled = options.enabled ?? contract.executionSafety?.criticalEnvValuesMustBeTyped === true;
-  if (!enabled) {
-    return;
-  }
-
-  const envNames = new Set(jobInputEnvNames(job));
-  for (const envName of envNames) {
-    if (missingEnvSet.has(envName) || envName.endsWith('_PATH')) {
-      continue;
-    }
-
-    const value = process.env[envName]?.trim();
-    if (value === undefined || value === '') {
-      continue;
-    }
-
-    if (envName === 'BACKEND_IMAGE_DIGEST' && !/^sha256:[0-9a-f]{64}$/.test(value)) {
-      violations.push(`${job.jobId}: env ${envName} must be an immutable sha256 image digest`);
-      continue;
-    }
-    if (envName === 'BACKEND_GIT_COMMIT_SHA' && !/^[0-9a-f]{40}$/.test(value)) {
-      violations.push(`${job.jobId}: env ${envName} must be a full 40-character lowercase git commit SHA`);
-      continue;
-    }
-    if (envName === 'API_BASE_URL') {
-      validateHttpsEvidenceUrlEnv(job, envName, value, violations);
-      continue;
-    }
-    if (postgresUrlEnvNames().has(envName)) {
-      validateTypedUrlEnv(job, envName, value, {
-        expectedDescription: 'valid PostgreSQL URL',
-        protocols: ['postgres:', 'postgresql:'],
-      }, violations);
-      continue;
-    }
-    if (rabbitmqUrlEnvNames().has(envName)) {
-      validateTypedUrlEnv(job, envName, value, {
-        expectedDescription: 'valid RabbitMQ URL',
-        protocols: ['amqp:', 'amqps:'],
-      }, violations);
-      continue;
-    }
-    if (httpsEvidenceUrlEnvNames().has(envName)) {
-      validateHttpsEvidenceUrlEnv(job, envName, value, violations);
-      continue;
-    }
-    if (tokenEvidenceEnvNames().has(envName)) {
-      validateSecretTokenEnv(job, envName, value, violations);
-      continue;
-    }
-    if (secretReferenceEnvNames().has(envName)) {
-      validateSecretReferenceEnv(job, envName, value, violations);
-      continue;
-    }
-    if (realEvidenceIdentityEnvNames().has(envName) && isFixtureLikeEnvValue(value)) {
-      violations.push(`${job.jobId}: env ${envName} must not use local, fixture, example, mock or test identifiers`);
-    }
-  }
-}
-
-function validateSecretTokenEnv(job, envName, value, violations) {
-  if (isPlaceholderSecretValue(value) || value.length < 20 || /\s/.test(value)) {
-    violations.push(`${job.jobId}: env ${envName} must be a non-placeholder secret value`);
-  }
-}
-
-function validateSecretReferenceEnv(job, envName, value, violations) {
-  if (isPlaceholderSecretValue(value) || value.length < 8 || isRawSecretValueReference(value)) {
-    violations.push(`${job.jobId}: env ${envName} must be a non-placeholder secret reference, not a raw secret value`);
   }
 }
 
@@ -1098,141 +591,6 @@ function validatePlannedEvidencePathEnv(job, missingEnvSet, violations) {
       violations.push(`${job.jobId}: evidence path env ${envName} realpath must not point to a git-tracked file before preflight`);
     }
   }
-}
-
-function validateHttpsEvidenceUrlEnv(job, envName, value, violations) {
-  validateTypedUrlEnv(job, envName, value, {
-    expectedDescription: 'valid https URL',
-    protocols: ['https:'],
-  }, violations);
-}
-
-function validateTypedUrlEnv(job, envName, value, options, violations) {
-  let parsed;
-  try {
-    parsed = new URL(value);
-  } catch {
-    violations.push(`${job.jobId}: env ${envName} must be a ${options.expectedDescription}`);
-    return;
-  }
-  if (!options.protocols.includes(parsed.protocol)) {
-    violations.push(`${job.jobId}: env ${envName} must be a ${options.expectedDescription}`);
-    return;
-  }
-  if (isFixtureLikeEnvValue(parsed.hostname)) {
-    violations.push(`${job.jobId}: env ${envName} must not use local, fixture, example, mock or test hostnames`);
-  }
-}
-
-function postgresUrlEnvNames() {
-  return new Set(['DATABASE_URL']);
-}
-
-function rabbitmqUrlEnvNames() {
-  return new Set(['RABBITMQ_URL']);
-}
-
-function localRuntimeEnvNames() {
-  return new Set(['API_BASE_URL', 'DATABASE_URL', 'INFINITY_CONTEXT_URL', 'RABBITMQ_URL', 'RABBITMQ_MANAGEMENT_URL']);
-}
-
-function isLocalRuntimeEnvValue(value) {
-  let parsed;
-  try {
-    parsed = new URL(value);
-  } catch {
-    return false;
-  }
-
-  const hostname = parsed.hostname.toLowerCase();
-  return isFixtureLikeEnvValue(hostname)
-    || hostname === 'host.docker.internal'
-    || hostname.endsWith('.localhost');
-}
-
-function httpsEvidenceUrlEnvNames() {
-  return new Set([
-    'INFINITY_CONTEXT_URL',
-    'JWKS_URL',
-    'OIDC_ISSUER',
-    'RABBITMQ_MANAGEMENT_URL',
-    'WEBHOOK_TEST_ENDPOINT',
-  ]);
-}
-
-function tokenEvidenceEnvNames() {
-  return new Set([
-    'GITHUB_ACCESS_TOKEN',
-    'INFINITY_CONTEXT_TOKEN',
-    'REDDIT_ACCESS_TOKEN',
-    'REDDIT_APP_CLIENT_SECRET',
-    'REDDIT_CLIENT_SECRET',
-    'REDDIT_REFRESH_TOKEN',
-  ]);
-}
-
-function secretReferenceEnvNames() {
-  return new Set(['DATABASE_URL_SECRET_REF', 'OIDC_CONFIG_SECRET_REF', 'OIDC_TEST_TOKEN_REF', 'RABBITMQ_URL_SECRET_REF', 'SYSTEM_DATABASE_URL_SECRET_REF']);
-}
-
-function realEvidenceIdentityEnvNames() {
-  return new Set([
-    'STAGING_ENVIRONMENT_ID',
-    'SOURCE_LIVE_ENVIRONMENT_ID',
-    'SOURCE_LIVE_OPERATOR',
-    'STAGING_SECRET_STORE_ID',
-  ]);
-}
-
-function isFixtureLikeEnvValue(value) {
-  const normalized = String(value).toLowerCase();
-  if (
-    normalized === 'localhost'
-    || normalized === '0.0.0.0'
-    || normalized === '::1'
-    || normalized === '[::1]'
-    || normalized.startsWith('127.')
-  ) {
-    return true;
-  }
-  return normalized.split(/[^a-z0-9]+/).some((segment) => {
-    return ['local', 'localhost', 'fixture', 'example', 'synthetic', 'mock', 'test'].includes(segment);
-  });
-}
-
-function isPlaceholderSecretValue(value) {
-  const normalized = String(value).trim().toLowerCase();
-  if (isFixtureLikeEnvValue(normalized)) {
-    return true;
-  }
-  return [
-    'changeme',
-    'change-me',
-    'dummy',
-    'placeholder',
-    'redacted',
-    'secret',
-    'token',
-    'todo',
-    'undefined',
-  ].includes(normalized);
-}
-
-function isRawSecretValueReference(value) {
-  const normalized = String(value).trim().toLowerCase();
-  return [
-    'bearer ',
-    'basic ',
-    'postgres://',
-    'postgresql://',
-    'amqp://',
-    'amqps://',
-    'github_pat_',
-    'ghp_',
-    'sk-proj-',
-    'sk-live-',
-    'whsec_',
-  ].some((fragment) => normalized.startsWith(fragment) || normalized.includes(fragment));
 }
 
 function validateEvidencePathEnv(job, missingEnvSet, violations) {
@@ -1536,289 +894,6 @@ function readJsonArtifact(path, jobId, envName, violations) {
 function validateArtifactRedaction(content, jobId, envName, violations) {
   validateArtifactLiteralRedaction(JSON.stringify(content), jobId, `output artifact env ${envName}`, violations);
   validateArtifactStructuredRedaction(content, jobId, `output artifact env ${envName}`, violations);
-}
-
-function validateArtifactIdentity(content, job, artifact, violations) {
-  const expectedArtifactId = artifact.expectedArtifactId;
-  if (expectedArtifactId === undefined) {
-    return;
-  }
-  if (typeof expectedArtifactId !== 'string' || expectedArtifactId.trim().length === 0) {
-    violations.push(`${job.jobId}: output artifact env ${artifact.env} has invalid expectedArtifactId`);
-    return;
-  }
-  if (content.artifactId !== expectedArtifactId) {
-    violations.push(`${job.jobId}: output artifact env ${artifact.env} must use artifactId ${expectedArtifactId}`);
-  }
-}
-
-function validateArtifactProviderKeys(content, job, artifact, violations) {
-  if (artifact.expectedProviderKeys === undefined) {
-    return;
-  }
-  if (!Array.isArray(artifact.expectedProviderKeys) || artifact.expectedProviderKeys.length === 0) {
-    violations.push(`${job.jobId}: output artifact env ${artifact.env} has invalid expectedProviderKeys`);
-    return;
-  }
-
-  const expectedProviderKeys = new Set(artifact.expectedProviderKeys);
-  if (expectedProviderKeys.size !== artifact.expectedProviderKeys.length) {
-    violations.push(`${job.jobId}: output artifact env ${artifact.env} has duplicate expectedProviderKeys`);
-    return;
-  }
-  if (![...expectedProviderKeys].every((providerKey) => typeof providerKey === 'string' && providerKey.trim().length > 0)) {
-    violations.push(`${job.jobId}: output artifact env ${artifact.env} has invalid expectedProviderKeys`);
-    return;
-  }
-
-  if (!Array.isArray(content.providerResults)) {
-    violations.push(`${job.jobId}: output artifact env ${artifact.env} must include providerResults`);
-    return;
-  }
-
-  const observedProviderKeys = new Set();
-  for (const result of content.providerResults) {
-    if (typeof result?.providerKey === 'string' && result.providerKey.trim().length > 0) {
-      observedProviderKeys.add(result.providerKey.trim());
-    }
-  }
-  for (const providerKey of expectedProviderKeys) {
-    if (!observedProviderKeys.has(providerKey)) {
-      violations.push(`${job.jobId}: output artifact env ${artifact.env} must include providerKey ${providerKey}`);
-    }
-  }
-  for (const providerKey of observedProviderKeys) {
-    if (!expectedProviderKeys.has(providerKey)) {
-      violations.push(`${job.jobId}: output artifact env ${artifact.env} must not include providerKey ${providerKey}`);
-    }
-  }
-}
-
-function validateArtifactEnvConsistency(content, job, artifactEnv, violations) {
-  for (const rule of artifactEnvConsistencyRules()) {
-    if (shouldSkipArtifactEnvConsistencyRule(artifactEnv, rule)) {
-      continue;
-    }
-    if (!(job.requiredEnv ?? []).includes(rule.envName) && !(job.optionalEnv ?? []).includes(rule.envName)) {
-      continue;
-    }
-
-    const expected = process.env[rule.envName]?.trim();
-    if (expected === undefined || expected === '') {
-      continue;
-    }
-
-    const observedValues = observedArtifactStringValues(content, rule.paths);
-    if (observedValues.length === 0) {
-      continue;
-    }
-
-    for (const observed of observedValues) {
-      if (observed !== expected) {
-        violations.push(`${job.jobId}: output artifact env ${artifactEnv} ${rule.label} must match ${rule.envName}`);
-      }
-    }
-  }
-}
-
-function shouldSkipArtifactEnvConsistencyRule(artifactEnv, rule) {
-  return artifactEnv === 'REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH'
-    && ['BACKEND_IMAGE_DIGEST', 'BACKEND_GIT_COMMIT_SHA'].includes(rule.envName);
-}
-
-function validateArtifactFreshness(content, job, artifactEnv, artifactFormat, violations) {
-  const freshness = contract.artifactFreshness;
-  if (typeof freshness !== 'object' || freshness === null) {
-    return;
-  }
-
-  const timestampPaths = Array.isArray(freshness.timestampPaths) ? freshness.timestampPaths : [];
-  const timestamps = observedArtifactTimestampValues(content, timestampPaths);
-  const requiredTimestampFormats = new Set(freshness.requiredTimestampFormats ?? []);
-  if (requiredTimestampFormats.has(artifactFormat) && timestamps.length === 0) {
-    violations.push(`${job.jobId}: output artifact env ${artifactEnv} must include a release evidence timestamp`);
-    return;
-  }
-
-  const maxAgeMs = Number(freshness.maxArtifactAgeHours) * 60 * 60 * 1000;
-  const maxFutureSkewMs = Number(freshness.maxArtifactFutureSkewMinutes) * 60 * 1000;
-  if (!Number.isFinite(maxAgeMs) || maxAgeMs <= 0 || !Number.isFinite(maxFutureSkewMs) || maxFutureSkewMs < 0) {
-    violations.push(`${job.jobId}: artifact freshness policy is invalid`);
-    return;
-  }
-
-  const now = Date.now();
-  for (const timestamp of timestamps) {
-    if (freshness.requiresIso8601Timestamp === true && !isIso8601Timestamp(timestamp.value)) {
-      violations.push(`${job.jobId}: output artifact env ${artifactEnv} timestamp ${timestamp.path} must be ISO-8601`);
-      continue;
-    }
-    const observedAtMs = Date.parse(timestamp.value);
-    if (!Number.isFinite(observedAtMs)) {
-      violations.push(`${job.jobId}: output artifact env ${artifactEnv} timestamp ${timestamp.path} must be ISO-8601`);
-      continue;
-    }
-    if (observedAtMs > now + maxFutureSkewMs) {
-      violations.push(`${job.jobId}: output artifact env ${artifactEnv} timestamp ${timestamp.path} must not be in the future`);
-    }
-    if (observedAtMs < now - maxAgeMs) {
-      violations.push(`${job.jobId}: output artifact env ${artifactEnv} timestamp ${timestamp.path} is older than ${freshness.maxArtifactAgeHours} hours`);
-    }
-  }
-}
-
-function isIso8601Timestamp(value) {
-  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value);
-}
-
-function artifactEnvConsistencyRules() {
-  return [
-    {
-      envName: 'STAGING_ENVIRONMENT_ID',
-      label: 'environmentId',
-      paths: [['environmentId'], ['environment', 'environmentId']],
-    },
-    {
-      envName: 'SOURCE_LIVE_ENVIRONMENT_ID',
-      label: 'environmentId',
-      paths: [['environmentId'], ['environment', 'environmentId']],
-    },
-    {
-      envName: 'BACKEND_IMAGE_DIGEST',
-      label: 'imageDigest',
-      paths: [['imageDigest'], ['environment', 'imageDigest']],
-    },
-    {
-      envName: 'BACKEND_GIT_COMMIT_SHA',
-      label: 'commitSha',
-      paths: [['commitSha'], ['environment', 'commitSha']],
-    },
-    {
-      envName: 'API_BASE_URL',
-      label: 'apiBaseUrl',
-      paths: [['apiBaseUrl'], ['environment', 'apiBaseUrl']],
-    },
-    {
-      envName: 'SOURCE_LIVE_OPERATOR',
-      label: 'operator',
-      paths: [['operator'], ['environment', 'operator']],
-    },
-    {
-      envName: 'STAGING_SECRET_STORE_ID',
-      label: 'secretStoreId',
-      paths: [['secretStoreId'], ['environment', 'secretStoreId']],
-    },
-  ];
-}
-
-function observedArtifactTimestampValues(content, paths) {
-  const values = [];
-  for (const path of paths) {
-    const segments = String(path).split('.');
-    let cursor = content;
-    for (const segment of segments) {
-      cursor = cursor?.[segment];
-    }
-    if (typeof cursor === 'string' && cursor.trim().length > 0) {
-      values.push({ path, value: cursor.trim() });
-    }
-  }
-  return values;
-}
-
-function observedArtifactStringValues(content, paths) {
-  const values = [];
-  for (const path of paths) {
-    let cursor = content;
-    for (const segment of path) {
-      cursor = cursor?.[segment];
-    }
-    if (typeof cursor === 'string' && cursor.trim().length > 0) {
-      values.push(cursor.trim());
-    }
-  }
-  return [...new Set(values)];
-}
-
-function formatOutputArtifacts(job) {
-  return job.outputArtifacts
-    .map((artifact) => {
-      const location = artifact.path ?? `<env:${artifact.env}>`;
-      return `${location} (${artifact.format})`;
-    })
-    .join(', ');
-}
-
-function formatRequiredEnvAlternatives(job) {
-  const alternatives = job.requiredEnvAlternatives ?? [];
-  if (alternatives.length === 0) {
-    return 'none';
-  }
-
-  return alternatives
-    .map((alternative) => {
-      const label = typeof alternative.label === 'string' && alternative.label.trim().length > 0
-        ? `${alternative.label}: `
-        : '';
-      const env = (alternative.env ?? []).join(' + ');
-      const coversEnv = (alternative.coversEnv ?? []).join(' + ');
-      return coversEnv.length > 0 ? `${label}${env} covers ${coversEnv}` : `${label}${env}`;
-    })
-    .join(' | ');
-}
-
-function formatHandoffArtifacts(job) {
-  return job.outputArtifacts
-    .map((artifact) => {
-      const location = artifact.path ?? `<env:${artifact.env}>`;
-      const examplePath = artifactExamplePathByFormat().get(artifact.format);
-      const example = examplePath === undefined ? 'no example registered' : `example: ${examplePath}`;
-      return `${location} (${artifact.format}; ${example})`;
-    })
-    .join(', ');
-}
-
-function handoffAction(job) {
-  if (typeof job.operatorAction === 'string' && job.operatorAction.trim().length > 0) {
-    return job.operatorAction;
-  }
-  if (job.runPolicy === 'local_contract') {
-    return `run validators: ${job.validationCommands.join(' && ')}`;
-  }
-  if (job.runPolicy === 'live_command') {
-    return `set required env, run ${job.runnerCommand}, then run ${contract.artifactValidationCommand} -- --job ${job.jobId}`;
-  }
-  return `collect real redacted artifact files, set artifact path env, then run ${contract.artifactValidationCommand} -- --job ${job.jobId}`;
-}
-
-function handoffRunner(job) {
-  if (typeof job.runnerDescription === 'string' && job.runnerDescription.trim().length > 0) {
-    return job.runnerDescription;
-  }
-  if (job.runnerCommand !== null) {
-    return job.runnerCommand;
-  }
-  if (job.runPolicy === 'local_contract') {
-    return 'validators only';
-  }
-  return 'manual evidence collection, then artifact validation';
-}
-
-function artifactExamplePathByFormat() {
-  return new Map((contract.artifactExamples ?? []).map((example) => [example.format, example.path]));
-}
-
-function inputMetadataByEnv() {
-  const metadata = new Map();
-  for (const inputClass of inputMatrix.inputClasses ?? []) {
-    for (const envName of inputClass.env ?? []) {
-      metadata.set(envName, {
-        inputClass: inputClass.inputClass,
-        description: inputClass.description,
-      });
-    }
-  }
-  return metadata;
 }
 
 function runCommand(command, label) {

@@ -2,6 +2,8 @@ import { resolveIntelligencePeriodicReaderSummarySchedulerOptions,
   resolveIntelligenceRabbitMqReaderSummaryQueueReaderOptions,
   resolveIntelligenceRabbitMqSummaryQueueReaderOptions,
   resolveIntelligenceReaderSummaryJobLoopOptions,
+  resolveIntelligenceReaderSummaryQueueDrainLoopOptions,
+  resolveIntelligenceSummaryQueueDrainLoopOptions,
   resolveIntelligenceSummaryJobLoopOptions,
   resolveIntelligenceSummaryQueueReaderMode } from "./intelligence-worker-provider-tokens";
 
@@ -42,6 +44,30 @@ describe("summary RabbitMQ queue isolation", () => {
     expect(resolveIntelligenceSummaryQueueReaderMode({ NODE_ENV: "test",
       INTELLIGENCE_SUMMARY_QUEUE_READER: mode, RABBITMQ_SUMMARY_QUEUE: "shared",
       RABBITMQ_READER_SUMMARY_QUEUE: "shared" })).toBe("in-memory");
+  });
+});
+
+describe("summary execution pause", () => {
+  it("passes one explicit pause setting to both consumers while keeping their configuration enabled", () => {
+    const env = { INTELLIGENCE_SUMMARY_EXECUTION_PAUSED: "true",
+      INTELLIGENCE_READER_SUMMARY_JOB_LOOP: "enabled",
+      INTELLIGENCE_READER_SUMMARY_QUEUE_DRAIN_LOOP: "enabled" };
+    expect(resolveIntelligenceReaderSummaryJobLoopOptions(env)).toMatchObject({ enabled: true, executionPaused: true });
+    expect(resolveIntelligenceReaderSummaryQueueDrainLoopOptions(env)).toMatchObject({ enabled: true, executionPaused: true });
+    expect(resolveIntelligenceSummaryJobLoopOptions(env).executionPaused).toBe(true);
+    expect(resolveIntelligenceSummaryQueueDrainLoopOptions(env).executionPaused).toBe(true);
+    expect(resolveIntelligenceReaderSummaryJobLoopOptions({}).executionPaused).toBe(false);
+    expect(resolveIntelligenceReaderSummaryQueueDrainLoopOptions({}).executionPaused).toBe(false);
+    expect(resolveIntelligenceSummaryJobLoopOptions({}).executionPaused).toBe(false);
+    expect(resolveIntelligenceSummaryQueueDrainLoopOptions({}).executionPaused).toBe(false);
+  });
+
+  it("rejects an invalid pause value", () => {
+    const env = { INTELLIGENCE_SUMMARY_EXECUTION_PAUSED: "yes" };
+    expect(() => resolveIntelligenceReaderSummaryJobLoopOptions(env)).toThrow();
+    expect(() => resolveIntelligenceReaderSummaryQueueDrainLoopOptions(env)).toThrow();
+    expect(() => resolveIntelligenceSummaryJobLoopOptions(env)).toThrow();
+    expect(() => resolveIntelligenceSummaryQueueDrainLoopOptions(env)).toThrow();
   });
 });
 

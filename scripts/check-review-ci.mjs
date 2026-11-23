@@ -59,7 +59,7 @@ export function releaseGateCiViolations(source, assets) {
     "test \"${GITHUB_ACTIONS:-}\" = true",
     "test \"${RUNNER_ENVIRONMENT:-}\" = \"$CI_NATIVE_ENVIRONMENT\"",
     "case \"$CI_NATIVE_RUNNER:$CI_NATIVE_ENVIRONMENT\" in",
-    "ubuntu-24.04:github-hosted|ubicloud-standard-4:self-hosted) ;;",
+    "ubuntu-24.04:github-hosted) ;;",
     "*) printf 'Unsupported native CI runner\\n' >&2; exit 1 ;;",
     "esac",
     "test \"$(id -u)\" -ne 0",
@@ -128,7 +128,7 @@ export function hetznerReleaseCiViolations(source, scripts) {
   const fail = ["Static architecture and quality must run the exact unconditional Hetzner strict typecheck and native tests once after Node 22 and npm ci"];
   const expected = {
     "check:hetzner-release-typecheck": "tsc -p scripts/ci/tsconfig.hetzner-release.json",
-    "check:hetzner-release-tests": "node --experimental-strip-types --test scripts/ci/hetzner-release-authority.test.mts scripts/ci/hetzner-release-observe.test.mts scripts/ci/review-ci/release-workflow-contract.test.mts scripts/ci/review-ci/candidate-workflow-contract.test.mts scripts/ci/candidate-runtime.test.mts",
+    "check:hetzner-release-tests": "node --experimental-strip-types --test scripts/ci/hetzner-release-client.test.mjs scripts/ci/hetzner-release-authority.test.mts scripts/ci/hetzner-release-observe.test.mts scripts/ci/hetzner-release-host-denials.test.mts scripts/ci/review-ci/release-workflow-contract.test.mts scripts/ci/review-ci/candidate-workflow-contract.test.mts scripts/ci/candidate-runtime.test.mts",
     "check:hetzner-release-contract": "node --experimental-strip-types scripts/ci/check-hetzner-release-workflow.mts",
   };
   if (Object.entries(expected).some(([key, value]) => scripts?.[key] !== value)) return fail;

@@ -131,6 +131,11 @@ elif command == 'docker':
                 state['containers']['jev-agent-runtime']['started'] = 'changed'
             state_path.write_text(json.dumps(state))
             sys.exit(0)
+    elif args[:3] == ['ps', '-a', '--no-trunc']:
+        for name, item in [('api', state['target']), *state['containers'].items()]:
+            print(json.dumps({'id': name, 'project': item.get('project', ''),
+                              'service': item.get('service', ''), 'oneoff': item.get('oneoff', 'False')}))
+        sys.exit(0)
     elif args[:2] == ['ps', '-aq']:
         print(state.get('used_images', {}).get(args[-1][9:], '') if args[-1].startswith('ancestor=') else '\n'.join(['api', *state['containers']]))
         sys.exit(0)

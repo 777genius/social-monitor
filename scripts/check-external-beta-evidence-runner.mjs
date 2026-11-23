@@ -7,6 +7,7 @@ import {
 } from './lib/external-beta-job-evidence-requirements.mjs';
 import { releaseDeployNegativeSmokeScenarios, redditArtifactNegativeSmokeScenarios } from './lib/external-beta-artifact-negative-smoke-scenarios.mjs';
 import { preflightNegativeSmokeScenarios } from './lib/external-beta-preflight-negative-smoke-scenarios.mjs';
+import { createExternalBetaPreflightCommandSmokes } from './lib/external-beta-preflight-command-smokes.mjs';
 import { summaryFeedbackNegativeSmokeScenarios } from './lib/external-beta-summary-feedback-negative-smoke-scenarios.mjs';
 import { credentialRotationNegativeSmokeScenarios, securityFinalSweepNegativeSmokeScenarios } from './lib/external-beta-security-negative-smoke-scenarios.mjs';
 import { durableRuntimeNegativeSmokeScenarios, stagingReliabilityNegativeSmokeScenarios } from './lib/external-beta-runtime-negative-smoke-scenarios.mjs';
@@ -14,13 +15,14 @@ import { sourceLiveNegativeSmokeScenarios } from './lib/external-beta-source-liv
 import { validateWiring } from './lib/external-beta-evidence-wiring-policy.mjs';
 import { createExternalBetaJobArtifactRequirementsPolicy } from './lib/external-beta-job-artifact-requirements-policy.mjs';
 import { validateSafety, validateArtifactFreshnessPolicy } from './lib/external-beta-execution-safety-policy.mjs';
+import { createExternalBetaOutputSafetySmokes } from './lib/external-beta-output-safety-smokes.mjs';
 import { createExternalBetaJobRequirementsPolicy } from './lib/external-beta-job-requirements-policy.mjs';
 import {
   completeExternalEvidencePreflightEnv,
   durableBackendE2ePreflightEnv,
   redditOAuthPreflightEnv,
 } from './lib/external-beta-evidence-preflight-fixtures.mjs';
-import { validateRunnerImplementationMarkers, redactionPolicyPath } from './lib/external-beta-evidence-runner-markers.mjs';
+import { validateRunnerImplementationMarkers, artifactShapePolicyPath, redactionPolicyPath, handoffPolicyPath, displayPolicyPath, consistencyPolicyPath, readinessPolicyPath, duplicatePathsPolicyPath, valuePolicyPath, planPrinterPath, envFileLoaderPath } from './lib/external-beta-evidence-runner-markers.mjs';
 import {
   liveOpenConnectorsArtifact,
   redditCredentialLifecycleArtifact,
@@ -31,19 +33,19 @@ import {
   stagingReliabilitySmokeConfigByArtifactId,
   stagingReliabilitySmokeConfigs,
 } from './lib/external-beta-staging-reliability-fixtures.mjs';
-
 import {
   securityFinalSweepExportDocuments,
   securityFinalSweepArtifact,
 } from './lib/external-beta-security-final-sweep-fixtures.mjs';
 
 import { summaryFeedbackSamplesArtifact } from './lib/external-beta-summary-feedback-fixtures.mjs';
-
 import {
   sourceCredentialRotationArtifact,
   webhookSecretRotationArtifact,
 } from './lib/external-beta-credential-rotation-fixtures.mjs';
 
+import { createExternalBetaArtifactValidationSmokes } from './lib/external-beta-artifact-validation-smokes.mjs';
+import { createExternalBetaRuntimePlanSmokes } from './lib/external-beta-runtime-plan-smokes.mjs';
 import { execFileSync } from 'node:child_process';
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
@@ -82,6 +84,23 @@ const auditRequirements = new Map((audit.requirements ?? []).map((requirement) =
 const checkSource = readFileSync(contract.checkFile, 'utf8');
 const violations = [];
 const artifactValidationSmokeTimeoutMs = 300_000;
+const {
+  runRunnerNegativeSmoke,
+  runRunnerSecurityFinalSweepArtifactSmoke,
+  runRunnerCredentialRotationArtifactSmoke,
+  runRunnerDurableRuntimeArtifactSmoke,
+  runRunnerStagingReliabilityArtifactSmoke,
+  runRunnerSummaryFeedbackArtifactSmoke,
+  runRunnerReleaseDeployArtifactSmoke,
+  runRunnerArtifactSmoke,
+  runRunnerRedditArtifactSmoke,
+} = createExternalBetaArtifactValidationSmokes({
+  contract,
+  execFileSync,
+  artifactValidationSmokeTimeoutMs,
+  releaseDeploySmokeImageDigest,
+  childProcessErrorOutput,
+});
 const strictSemanticNegativeSmokeLabels = new Set([
   'durable runtime in-memory selector',
   'durable runtime missing event relay',
@@ -122,6 +141,27 @@ const representativeSemanticNegativeSmokeLabels = new Set([
   'reddit lifecycle hash mismatch',
 ]);
 const runnerSmokeTimeoutMs = 30_000;
+const {
+  validateRunnerLocalRuntimePlanSmoke,
+  validateRunnerDockerBundleAlternativeSmoke,
+} = createExternalBetaRuntimePlanSmokes({
+  contract, violations, execFileSync, runnerSmokeTimeoutMs,
+  mkdtempSync, tmpdir, join, writeFileSync, chmodSync, rmSync,
+  durableBackendE2ePreflightEnv, childProcessErrorOutput, smokeOutputSnippet,
+});
+const {
+  validateRunnerPreflightNegativeSmokes,
+  validateRunnerPreflightPositiveSmoke,
+} = createExternalBetaPreflightCommandSmokes({
+  contract, violations, execFileSync, runnerSmokeTimeoutMs,
+  preflightNegativeSmokeScenarios, mkdtempSync, tmpdir, join, rmSync,
+  completeExternalEvidencePreflightEnv, redditOAuthPreflightEnv,
+  childProcessErrorOutput, smokeOutputSnippet,
+});
+const { validateRunnerOutputRedactionSmoke, validateRunnerEnvFileSmokes } = createExternalBetaOutputSafetySmokes({
+  contract, violations, completeExternalEvidencePreflightEnv,
+  execFileSync, runnerSmokeTimeoutMs, childProcessErrorOutput, smokeOutputSnippet,
+});
 
 const allowedModes = new Set([
   'local_contract',
@@ -306,13 +346,17 @@ function validateArtifactExamples() {
     }
   }
 }
-
 function validateRunnerImplementation() {
   violations.push(...validateRunnerImplementationMarkers({
     runnerSource,
     checkSource,
     selectionHelperSource,
-    redactionPolicySource: readFileSync(redactionPolicyPath, 'utf8'),
+    handoffSource: readFileSync(handoffPolicyPath, 'utf8'),
+    displaySource: readFileSync(displayPolicyPath, 'utf8'), planPrinterSource: readFileSync(planPrinterPath, 'utf8'), envFileLoaderSource: readFileSync(envFileLoaderPath, 'utf8'),
+    consistencyPolicySource: readFileSync(consistencyPolicyPath, 'utf8'),
+    readinessPolicySource: readFileSync(readinessPolicyPath, 'utf8'),
+    artifactShapePolicySource: readFileSync(artifactShapePolicyPath, 'utf8'),
+    redactionPolicySource: readFileSync(redactionPolicyPath, 'utf8'), duplicatePathsPolicySource: readFileSync(duplicatePathsPolicyPath, 'utf8'), valuePolicySource: readFileSync(valuePolicyPath, 'utf8'),
     runnerFile: contract.runnerFile,
     checkFile: contract.checkFile,
     selectionHelperPath,
@@ -900,518 +944,8 @@ function shouldRunNegativeSmoke(label) {
   );
 }
 
-function runRunnerNegativeSmoke(artifactPath, options = {}) {
-  return runRunnerArtifactSmoke(artifactPath, options);
-}
 
-function runRunnerSecurityFinalSweepArtifactSmoke(artifactPath, exportPaths, options = {}) {
-  return runRunnerValidateArtifactsSmoke('security-final-sweep-staging', {
-    LOG_EXPORT_PATH: exportPaths.logs.path,
-    METRICS_EXPORT_PATH: exportPaths.metrics.path,
-    PUBLIC_ERROR_EXPORT_PATH: exportPaths.publicErrors.path,
-    AUDIT_EVENT_EXPORT_PATH: exportPaths.auditMetadata.path,
-    SECURITY_FINAL_SWEEP_ARTIFACT_PATH: artifactPath,
-  }, options);
-}
 
-function runRunnerCredentialRotationArtifactSmoke(sourceArtifactPath, webhookArtifactPath, options = {}) {
-  return runRunnerValidateArtifactsSmoke('credential-secret-rotation-drill', {
-    SOURCE_CREDENTIAL_ROTATION_EVIDENCE_PATH: sourceArtifactPath,
-    STAGING_SECRET_STORE_ID: 'secret-store-staging-alpha-1',
-    WEBHOOK_SECRET_ROTATION_EVIDENCE_PATH: webhookArtifactPath,
-  }, options);
-}
-
-function runRunnerDurableRuntimeArtifactSmoke(artifactPath, options = {}) {
-  const imageDigest = `sha256:${'d'.repeat(64)}`;
-  return runRunnerValidateArtifactsSmoke('durable-runtime-staging-proof', {
-    API_BASE_URL: 'https://api.staging.social-monitor.invalid',
-    BACKEND_IMAGE_DIGEST: imageDigest,
-    DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH: artifactPath,
-    STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
-  }, options);
-}
-
-function runRunnerStagingReliabilityArtifactSmoke(config, artifactPath, options = {}) {
-  return runRunnerValidateArtifactsSmoke(config.jobId, {
-    BACKEND_IMAGE_DIGEST: config.imageDigest,
-    STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
-    [config.envName]: artifactPath,
-    ...config.requiredEnv,
-  }, options);
-}
-
-function runRunnerSummaryFeedbackArtifactSmoke(artifactPath, options = {}) {
-  return runRunnerValidateArtifactsSmoke('summary-real-feedback-import', {
-    SUMMARY_REAL_FEEDBACK_SAMPLES_PATH: artifactPath,
-  }, options);
-}
-
-function runRunnerReleaseDeployArtifactSmoke(artifactPath, options = {}) {
-  return runRunnerValidateArtifactsSmoke('release-deploy-smoke', {
-    API_BASE_URL: 'https://api.staging.social-monitor.invalid',
-    BACKEND_IMAGE_DIGEST: releaseDeploySmokeImageDigest(),
-    RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH: artifactPath,
-    STAGING_ENVIRONMENT_ID: 'staging-alpha-1',
-  }, options);
-}
-
-function runRunnerArtifactSmoke(artifactPath, options = {}) {
-  const imageDigest = `sha256:${'a'.repeat(64)}`;
-  const commitSha = 'a'.repeat(40);
-  return runRunnerValidateArtifactsSmoke('live-open-connectors', {
-    BACKEND_IMAGE_DIGEST: imageDigest,
-    BACKEND_GIT_COMMIT_SHA: commitSha,
-    LIVE_OPEN_CONNECTORS_EVIDENCE_PATH: artifactPath,
-    SOURCE_LIVE_ENVIRONMENT_ID: 'source-prod-alpha',
-    SOURCE_LIVE_OPERATOR: 'release-operator-1',
-  }, options);
-}
-
-function runRunnerRedditArtifactSmoke(liveArtifactPath, lifecyclePath, options = {}) {
-  const imageDigest = `sha256:${'b'.repeat(64)}`;
-  const commitSha = 'b'.repeat(40);
-  return runRunnerValidateArtifactsSmoke('live-reddit-oauth', {
-    BACKEND_IMAGE_DIGEST: imageDigest,
-    BACKEND_GIT_COMMIT_SHA: commitSha,
-    REDDIT_ACCESS_TOKEN: 'reddit-live-value-1234567890',
-    REDDIT_CREDENTIAL_LIFECYCLE_EVIDENCE_PATH: lifecyclePath,
-    REDDIT_LIVE_EVIDENCE_PATH: liveArtifactPath,
-    SOURCE_LIVE_ENVIRONMENT_ID: 'source-reddit-alpha',
-    SOURCE_LIVE_OPERATOR: 'source-operator-1',
-  }, options);
-}
-
-function runRunnerValidateArtifactsSmoke(jobId, env, options = {}) {
-  const args = [
-    contract.runnerFile,
-    '--validate-artifacts',
-    '--require-env',
-    '--job',
-    jobId,
-  ];
-  if (options.contractSmokeArtifactOnly === true) {
-    args.splice(2, 0, '--contract-smoke-artifact-only');
-  }
-
-  try {
-    execFileSync(
-      process.execPath,
-      args,
-      {
-        env: {
-          PATH: process.env.PATH ?? '',
-          ...env,
-        },
-        encoding: 'utf8',
-        stdio: 'pipe',
-        timeout: artifactValidationSmokeTimeoutMs,
-      },
-    );
-    return { exitCode: 0, output: '' };
-  } catch (error) {
-    return {
-      exitCode: typeof error.status === 'number' ? error.status : 1,
-      output: childProcessErrorOutput(error),
-    };
-  }
-}
-
-function validateRunnerPreflightNegativeSmokes() {
-  const scenarios = preflightNegativeSmokeScenarios();
-
-  for (const scenario of scenarios) {
-    const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-preflight-negative-'));
-    try {
-      const result = runRunnerPreflightNegativeSmoke(scenario.jobId, scenario.env(tempDirectory));
-      if (result.exitCode === 0) {
-        violations.push(`${contract.runnerFile}: runner preflight negative smoke must reject ${scenario.label}`);
-        continue;
-      }
-      for (const expectedOutput of scenario.expectedOutput) {
-        if (!result.output.includes(expectedOutput)) {
-          violations.push(`${contract.runnerFile}: runner preflight negative smoke for ${scenario.label} must report "${expectedOutput}"`);
-        }
-      }
-    } finally {
-      rmSync(tempDirectory, { recursive: true, force: true });
-    }
-  }
-}
-
-function runRunnerPreflightNegativeSmoke(jobId, env) {
-  try {
-    execFileSync(
-      process.execPath,
-      [
-        contract.runnerFile,
-        '--require-env',
-        '--job',
-        jobId,
-      ],
-      {
-        env: {
-          PATH: process.env.PATH ?? '',
-          ...env,
-        },
-        encoding: 'utf8',
-        stdio: 'pipe',
-        timeout: runnerSmokeTimeoutMs,
-      },
-    );
-    return { exitCode: 0, output: '' };
-  } catch (error) {
-    return {
-      exitCode: typeof error.status === 'number' ? error.status : 1,
-      output: childProcessErrorOutput(error),
-    };
-  }
-}
-
-function validateRunnerLocalRuntimePlanSmoke() {
-  const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-local-runtime-plan-'));
-  try {
-    const env = durableBackendE2ePreflightEnv(tempDirectory, {
-      API_BASE_URL: 'http://127.0.0.1:3000',
-    });
-    const result = runRunnerJsonPlanSmoke(
-      'durable-backend-e2e-loop',
-      env,
-    );
-    if (result.exitCode !== 0) {
-      violations.push(`${contract.runnerFile}: runner local runtime plan smoke must produce a JSON plan: ${smokeOutputSnippet(result.output)}`);
-      return;
-    }
-    const plan = result.plan;
-    const job = plan.jobs?.[0];
-    if (job?.executionReadiness !== 'blocked_local_runtime_env') {
-      violations.push(`${contract.runnerFile}: local Docker runtime evidence must be classified as blocked_local_runtime_env`);
-    }
-    if (plan.blockedLocalRuntimeEnvJobCount !== 1) {
-      violations.push(`${contract.runnerFile}: local runtime plan must count blockedLocalRuntimeEnvJobCount=1`);
-    }
-    if (plan.readinessCounts?.blocked_local_runtime_env !== 1) {
-      violations.push(`${contract.runnerFile}: local runtime plan must include blocked_local_runtime_env readiness count`);
-    }
-    if (plan.blockedInvalidInputJobCount !== 0) {
-      violations.push(`${contract.runnerFile}: local runtime plan must not count local runtime URLs as generic invalid input`);
-    }
-
-    const handoffResult = runRunnerTextHandoffSmoke('durable-backend-e2e-loop', env);
-    if (handoffResult.exitCode !== 0) {
-      violations.push(`${contract.runnerFile}: runner local runtime handoff smoke must produce text handoff: ${smokeOutputSnippet(handoffResult.output)}`);
-      return;
-    }
-    for (const expectedText of ['Blocked by local runtime env: 1', 'Readiness: blocked_local_runtime_env']) {
-      if (!handoffResult.output.includes(expectedText)) {
-        violations.push(`${contract.runnerFile}: local runtime handoff smoke must include "${expectedText}"`);
-      }
-    }
-  } finally {
-    rmSync(tempDirectory, { recursive: true, force: true });
-  }
-}
-
-function validateRunnerDockerBundleAlternativeSmoke() {
-  const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-docker-bundle-alternative-'));
-  try {
-    const bundlePath = join(tempDirectory, 'backend-staging-evidence-bundle.json');
-    writeFileSync(bundlePath, JSON.stringify({
-      schemaVersion: 1,
-      artifactId: 'backend-staging-evidence-bundle-redacted-smoke',
-      provenance: {
-        evidenceKind: 'local_docker_staging',
-        fixtureOnly: false,
-      },
-      redaction: {
-        secretsIncluded: false,
-        rawConnectionUrlsIncluded: false,
-      },
-    }, null, 2));
-    chmodSync(bundlePath, 0o600);
-
-    const cases = [
-      {
-        jobId: 'durable-runtime-staging-proof',
-        coveredEnv: 'API_BASE_URL',
-        env: {
-          BACKEND_IMAGE_DIGEST: `sha256:${'1'.repeat(64)}`,
-          BACKEND_STAGING_EVIDENCE_BUNDLE_PATH: bundlePath,
-          DURABLE_RUNTIME_SELECTOR_ARTIFACT_PATH: join(tempDirectory, 'durable-runtime-selector.json'),
-          STAGING_ENVIRONMENT_ID: 'docker-alpha-1',
-        },
-      },
-      {
-        jobId: 'rabbitmq-staging-reliability-drill',
-        coveredEnv: 'RABBITMQ_URL',
-        env: {
-          BACKEND_IMAGE_DIGEST: `sha256:${'2'.repeat(64)}`,
-          BACKEND_STAGING_EVIDENCE_BUNDLE_PATH: bundlePath,
-          RABBITMQ_STAGING_DRILL_ARTIFACT_PATH: join(tempDirectory, 'rabbitmq-staging-drill.json'),
-          STAGING_ENVIRONMENT_ID: 'docker-alpha-1',
-        },
-      },
-      {
-        jobId: 'postgres-restore-migration-drill',
-        coveredEnv: 'DATABASE_URL',
-        env: {
-          BACKEND_IMAGE_DIGEST: `sha256:${'3'.repeat(64)}`,
-          BACKEND_STAGING_EVIDENCE_BUNDLE_PATH: bundlePath,
-          POSTGRES_RESTORE_DRILL_ARTIFACT_PATH: join(tempDirectory, 'postgres-restore-drill.json'),
-          STAGING_ENVIRONMENT_ID: 'docker-alpha-1',
-        },
-      },
-      {
-        jobId: 'durable-backend-e2e-loop',
-        coveredEnv: 'API_BASE_URL',
-        env: durableBackendE2ePreflightEnv(tempDirectory, {
-          API_BASE_URL: '',
-          BACKEND_STAGING_EVIDENCE_BUNDLE_PATH: bundlePath,
-          STAGING_ENVIRONMENT_ID: 'docker-alpha-1',
-        }),
-      },
-      {
-        jobId: 'release-deploy-smoke',
-        coveredEnv: 'API_BASE_URL',
-        env: {
-          BACKEND_IMAGE_DIGEST: `sha256:${'4'.repeat(64)}`,
-          BACKEND_STAGING_EVIDENCE_BUNDLE_PATH: bundlePath,
-          RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH: join(tempDirectory, 'release-deploy-smoke.json'),
-          STAGING_ENVIRONMENT_ID: 'docker-alpha-1',
-        },
-      },
-    ];
-
-    for (const currentCase of cases) {
-      const result = runRunnerJsonPlanSmoke(currentCase.jobId, currentCase.env);
-      if (result.exitCode !== 0) {
-        violations.push(`${contract.runnerFile}: Docker bundle alternative plan smoke for ${currentCase.jobId} must produce a JSON plan: ${smokeOutputSnippet(result.output)}`);
-        continue;
-      }
-      const job = result.plan.jobs?.[0];
-      if (job?.executionReadiness !== 'manual_artifact_required') {
-        violations.push(`${contract.runnerFile}: Docker bundle alternative for ${currentCase.jobId} must be manual_artifact_required`);
-      }
-      if (job?.missingEnv?.includes(currentCase.coveredEnv)) {
-        violations.push(`${contract.runnerFile}: Docker bundle alternative for ${currentCase.jobId} must cover ${currentCase.coveredEnv}`);
-      }
-      if (result.plan.blockedMissingRequiredEnvJobCount !== 0) {
-        violations.push(`${contract.runnerFile}: Docker bundle alternative for ${currentCase.jobId} must not count missing required env`);
-      }
-      if (result.plan.blockedInvalidInputJobCount !== 0) {
-        violations.push(`${contract.runnerFile}: Docker bundle alternative for ${currentCase.jobId} must not count invalid input`);
-      }
-      if (result.plan.blockedLocalRuntimeEnvJobCount !== 0) {
-        violations.push(`${contract.runnerFile}: Docker bundle alternative for ${currentCase.jobId} must not count local runtime env`);
-      }
-    }
-
-    const handoffResult = runRunnerTextHandoffSmoke('durable-backend-e2e-loop', cases[3].env);
-    if (handoffResult.exitCode !== 0) {
-      violations.push(`${contract.runnerFile}: Docker bundle alternative handoff smoke must produce text handoff: ${smokeOutputSnippet(handoffResult.output)}`);
-    } else if (!handoffResult.output.includes('BACKEND_STAGING_EVIDENCE_BUNDLE_PATH covers API_BASE_URL')) {
-      violations.push(`${contract.runnerFile}: Docker bundle alternative handoff must explain covered API_BASE_URL`);
-    }
-  } finally {
-    rmSync(tempDirectory, { recursive: true, force: true });
-  }
-}
-
-function validateRunnerOutputRedactionSmoke() {
-  const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-output-redaction-'));
-  try {
-    const secrets = outputRedactionSecretValues();
-    const env = completeExternalEvidencePreflightEnv(tempDirectory, {
-      API_BASE_URL: `http://127.0.0.1:3000?access_token=${secrets.apiToken}`,
-      DATABASE_URL: 'postgresql://runtime_user:...@127.0.0.1:54329/social_monitor',
-      RABBITMQ_URL: 'amqp://runtime_user:...@127.0.0.1:56729/social_monitor',
-      REDDIT_ACCESS_TOKEN: secrets.redditAccessToken,
-      REDDIT_CLIENT_SECRET: secrets.redditClientSecret,
-      REDDIT_REFRESH_TOKEN: secrets.redditRefreshToken,
-    });
-
-    const smokeCommands = [
-      { label: 'JSON plan', args: ['--plan', '--json'] },
-      { label: 'summary', args: ['--summary'] },
-      { label: 'text handoff', args: ['--handoff'] },
-      { label: 'JSON handoff', args: ['--handoff-json'] },
-    ];
-
-    for (const smokeCommand of smokeCommands) {
-      const result = runRunnerOutputSmoke(smokeCommand.args, env);
-      if (result.exitCode !== 0) {
-        violations.push(`${contract.runnerFile}: runner ${smokeCommand.label} redaction smoke must succeed: ${smokeOutputSnippet(result.output)}`);
-        continue;
-      }
-      assertNoRunnerOutputSecrets(result.output, smokeCommand.label, secrets.forbiddenOutputFragments);
-    }
-  } finally {
-    rmSync(tempDirectory, { recursive: true, force: true });
-  }
-}
-
-function validateRunnerEnvFileSmokes() {
-  const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-env-file-'));
-  try {
-    const envFilePath = join(tempDirectory, 'external-beta-evidence.env');
-    writeEnvFile(envFilePath, completeExternalEvidencePreflightEnv(tempDirectory));
-    const positiveResult = runRunnerOutputSmoke(['--summary', '--env-file', envFilePath], {});
-    if (positiveResult.exitCode !== 0) {
-      violations.push(`${contract.runnerFile}: runner env-file summary smoke must accept private env file: ${smokeOutputSnippet(positiveResult.output)}`);
-    } else if (!positiveResult.output.includes('External evidence env readiness: 13/13 live/manual jobs (100%)')) {
-      violations.push(`${contract.runnerFile}: runner env-file summary smoke must load required env values`);
-    }
-
-    const conflictPath = join(tempDirectory, 'conflicting-external-beta-evidence.env');
-    writeEnvFile(conflictPath, {
-      BACKEND_IMAGE_DIGEST: `sha256:${'0'.repeat(64)}`,
-    });
-    const conflictResult = runRunnerOutputSmoke(['--summary', '--env-file', envFilePath, '--env-file', conflictPath], {});
-    if (conflictResult.exitCode === 0) {
-      violations.push(`${contract.runnerFile}: runner env-file conflict smoke must reject conflicting values`);
-    } else if (!conflictResult.output.includes('conflicts with')) {
-      violations.push(`${contract.runnerFile}: runner env-file conflict smoke must explain conflicting values`);
-    }
-
-    const confirmationPath = join(tempDirectory, 'confirmation-external-beta-evidence.env');
-    writeEnvFile(confirmationPath, {
-      EXTERNAL_BETA_EVIDENCE_CONFIRM: 'run-live',
-    });
-    const confirmationResult = runRunnerOutputSmoke(['--summary', '--env-file', confirmationPath], {});
-    if (confirmationResult.exitCode === 0) {
-      violations.push(`${contract.runnerFile}: runner env-file confirmation smoke must reject live execution confirmation in env file`);
-    } else if (!confirmationResult.output.includes('EXTERNAL_BETA_EVIDENCE_CONFIRM must be set explicitly in the operator shell')) {
-      violations.push(`${contract.runnerFile}: runner env-file confirmation smoke must explain confirmation shell policy`);
-    }
-  } finally {
-    rmSync(tempDirectory, { recursive: true, force: true });
-  }
-}
-
-function writeEnvFile(path, env) {
-  const lines = Object.entries(env)
-    .filter(([, value]) => value !== undefined && value !== '')
-    .map(([name, value]) => `${name}='${String(value).replaceAll("'", "'\\''")}'`);
-  writeFileSync(path, `${lines.join('\n')}\n`, { mode: 0o600 });
-  chmodSync(path, 0o600);
-}
-
-function outputRedactionSecretValues() {
-  const values = {
-    apiToken: 'runtime-api-token-value-1234567890',
-    redditAccessToken: 'reddit-runtime-access-value-1234567890',
-    redditClientSecret: 'reddit-runtime-client-secret-value-1234567890',
-    redditRefreshToken: 'reddit-runtime-refresh-value-1234567890',
-  };
-  return {
-    ...values,
-    forbiddenOutputFragments: [
-      values.apiToken,
-      values.redditAccessToken,
-      values.redditClientSecret,
-      values.redditRefreshToken,
-      'postgresql://runtime_user:...@127.0.0.1:54329/social_monitor',
-      'amqp://runtime_user:...@127.0.0.1:56729/social_monitor',
-      '127.0.0.1:54329',
-      '127.0.0.1:56729',
-    ],
-  };
-}
-
-function assertNoRunnerOutputSecrets(output, label, forbiddenOutputFragments) {
-  for (const fragment of forbiddenOutputFragments) {
-    if (String(output).includes(fragment)) {
-      violations.push(`${contract.runnerFile}: runner ${label} output must not print raw env value fragment "${fragment}"`);
-    }
-  }
-}
-
-function runRunnerOutputSmoke(args, env) {
-  try {
-    const output = execFileSync(
-      process.execPath,
-      [
-        contract.runnerFile,
-        ...args,
-      ],
-      {
-        env: {
-          PATH: process.env.PATH ?? '',
-          ...env,
-        },
-        encoding: 'utf8',
-        stdio: 'pipe',
-        timeout: runnerSmokeTimeoutMs,
-      },
-    );
-    return { exitCode: 0, output };
-  } catch (error) {
-    return {
-      exitCode: typeof error.status === 'number' ? error.status : 1,
-      output: childProcessErrorOutput(error),
-    };
-  }
-}
-
-function runRunnerTextHandoffSmoke(jobId, env) {
-  try {
-    const output = execFileSync(
-      process.execPath,
-      [
-        contract.runnerFile,
-        '--handoff',
-        '--job',
-        jobId,
-      ],
-      {
-        env: {
-          PATH: process.env.PATH ?? '',
-          ...env,
-        },
-        encoding: 'utf8',
-        stdio: 'pipe',
-        timeout: runnerSmokeTimeoutMs,
-      },
-    );
-    return { exitCode: 0, output };
-  } catch (error) {
-    return {
-      exitCode: typeof error.status === 'number' ? error.status : 1,
-      output: childProcessErrorOutput(error),
-    };
-  }
-}
-
-function runRunnerJsonPlanSmoke(jobId, env) {
-  try {
-    const output = execFileSync(
-      process.execPath,
-      [
-        contract.runnerFile,
-        '--plan',
-        '--json',
-        '--job',
-        jobId,
-      ],
-      {
-        env: {
-          PATH: process.env.PATH ?? '',
-          ...env,
-        },
-        encoding: 'utf8',
-        stdio: 'pipe',
-        timeout: runnerSmokeTimeoutMs,
-      },
-    );
-    return { exitCode: 0, output, plan: JSON.parse(output) };
-  } catch (error) {
-    return {
-      exitCode: typeof error.status === 'number' ? error.status : 1,
-      output: childProcessErrorOutput(error),
-      plan: undefined,
-    };
-  }
-}
 
 function childProcessErrorOutput(error) {
   const chunks = [
@@ -1432,79 +966,9 @@ function childProcessErrorOutput(error) {
 
 
 
-function validateRunnerPreflightPositiveSmoke() {
-  const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-preflight-positive-'));
-  try {
-    const result = runRunnerPreflightPositiveSmoke(completeExternalEvidencePreflightEnv(tempDirectory));
-    if (result.exitCode !== 0) {
-      violations.push(`${contract.runnerFile}: runner positive preflight smoke must accept structurally valid required env: ${smokeOutputSnippet(result.output)}`);
-    }
-  } finally {
-    rmSync(tempDirectory, { recursive: true, force: true });
-  }
 
-  const redditTempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-preflight-reddit-refresh-positive-'));
-  try {
-    const result = runRunnerPreflightPositiveSmoke(redditOAuthPreflightEnv(redditTempDirectory, {
-      REDDIT_ACCESS_TOKEN: '',
-      REDDIT_CLIENT_ID: 'reddit-client-id-prod-1',
-      REDDIT_CLIENT_SECRET: 'reddit-client-secret-value-1234567890',
-      REDDIT_REFRESH_TOKEN: 'reddit-refresh-token-value-1234567890',
-    }), 'live-reddit-oauth');
-    if (result.exitCode !== 0) {
-      violations.push(`${contract.runnerFile}: runner positive preflight smoke must accept Reddit refresh-token auth alternative: ${smokeOutputSnippet(result.output)}`);
-    }
-  } finally {
-    rmSync(redditTempDirectory, { recursive: true, force: true });
-  }
 
-  const redditAppTempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-preflight-reddit-app-refresh-positive-'));
-  try {
-    const result = runRunnerPreflightPositiveSmoke(redditOAuthPreflightEnv(redditAppTempDirectory, {
-      REDDIT_ACCESS_TOKEN: '',
-      REDDIT_APP_CLIENT_ID: 'reddit-app-client-id-prod-1',
-      REDDIT_APP_CLIENT_SECRET: 'reddit-app-client-secret-value-1234567890',
-      REDDIT_REFRESH_TOKEN: 'reddit-refresh-token-value-1234567890',
-    }), 'live-reddit-oauth');
-    if (result.exitCode !== 0) {
-      violations.push(`${contract.runnerFile}: runner positive preflight smoke must accept Reddit app refresh-token auth alternative: ${smokeOutputSnippet(result.output)}`);
-    }
-  } finally {
-    rmSync(redditAppTempDirectory, { recursive: true, force: true });
-  }
-}
 
-function runRunnerPreflightPositiveSmoke(env, jobId) {
-  const args = [
-    contract.runnerFile,
-    '--require-env',
-  ];
-  if (jobId !== undefined) {
-    args.push('--job', jobId);
-  }
-
-  try {
-    execFileSync(
-      process.execPath,
-      args,
-      {
-        env: {
-          PATH: process.env.PATH ?? '',
-          ...env,
-        },
-        encoding: 'utf8',
-        stdio: 'pipe',
-        timeout: runnerSmokeTimeoutMs,
-      },
-    );
-    return { exitCode: 0, output: '' };
-  } catch (error) {
-    return {
-      exitCode: typeof error.status === 'number' ? error.status : 1,
-      output: childProcessErrorOutput(error),
-    };
-  }
-}
 
 
 function smokeOutputSnippet(output) {
@@ -1600,6 +1064,5 @@ function validationCommandSource(command) {
 }
 
 function scriptNameFromCommand(command) {
-  const match = /^npm run (?:--silent )?([^ ]+)/.exec(String(command ?? ''));
-  return match?.[1] ?? null;
+  return /^npm run (?:--silent )?([^ ]+)/.exec(String(command ?? ''))?.[1] ?? null;
 }

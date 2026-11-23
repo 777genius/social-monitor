@@ -448,6 +448,19 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(before, after)
         self.assertFalse(any('up' in c or 'load' in c for c in self.commands()))
 
+    def test_transient_collection_is_not_part_of_snapshot(self):
+        before = self.ok('preflight')['snapshot']
+        state = json.loads((self.root / 'fake.json').read_text())
+        state['containers']['transient'] = {
+            'id': 'transient', 'name': '/transient', 'image': PREVIOUS,
+            'started': 'now', 'running': True, 'service': 'collection',
+            'project': 'sandbox-release', 'oneoff': 'True'}
+        (self.root / 'fake.json').write_text(json.dumps(state))
+        self.assertEqual(self.ok('preflight')['snapshot'], before)
+        state['containers']['transient']['oneoff'] = 'False'
+        (self.root / 'fake.json').write_text(json.dumps(state))
+        self.assertNotEqual(self.ok('preflight')['snapshot'], before)
+
     # Regression: a configured non-target selector accidentally points at API and weakens the fence.
     def test_non_target_selectors_must_match_service(self):
         config_path = self.root / 'config.json'

@@ -1,3 +1,4 @@
+import { sourceItemIdentityKey } from './github-trending-source-identities';
 import { preserveVerifiedLegacyCapture } from '../../domain/value-objects/legacy-source-capture';
 import { mergeArticleCaptureCompletion } from '../../domain/value-objects/merge-article-capture-completion';
 import { isCurrentInMemoryScanLease } from '../lease/in-memory-scan-lease.adapter';
@@ -32,9 +33,10 @@ export class InMemorySourceItemRepository implements SourceItemRepositoryPort {
     if (observedAt !== undefined) {
       for (const item of command.items) {
         const snapshot = item.toSnapshot();
-        const existing = this.itemsByDeduplicationKey.get(
-          sourceItemDeduplicationKey(command, snapshot.externalId),
-        );
+        const matches = this.matchingSourceKeys(command, snapshot.externalId)
+          .map((key) => this.itemsByDeduplicationKey.get(key)!);
+        if (matches.length > 1) throw new Error('Ambiguous GitHub Trending source identity');
+        const existing = matches[0];
         if (existing !== undefined) {
           assertGitHubTrendingDurableObservationCoherence({
             providerKey: command.providerKey,
@@ -52,8 +54,8 @@ export class InMemorySourceItemRepository implements SourceItemRepositoryPort {
     for (const item of command.items) {
       const raw = item.toSnapshot();
       let snapshot = command.providerKey === GITHUB_TRENDING_PAGE_PROVIDER_KEY ? raw : captureNativeText(raw, command.providerKey, raw.ingestedAt);
-      const key = sourceItemDeduplicationKey(command, snapshot.externalId);
-
+      const candidates = this.matchingSourceKeys(command, snapshot.externalId);
+      const key = candidates[0] ?? sourceItemDeduplicationKey(command, snapshot.externalId);
       const existing = this.itemsByDeduplicationKey.get(key);
       if (existing !== undefined && existing.toSnapshot().sourceBindingId === snapshot.sourceBindingId) {
         snapshot = preserveSourceCapture(snapshot, existing.toSnapshot());
@@ -185,6 +187,17 @@ export class InMemorySourceItemRepository implements SourceItemRepositoryPort {
     this.itemsByDeduplicationKey.set(key, result);
     this.contentHashesByDeduplicationKey.set(key, sourceItemProviderContentHash({ providerKey: command.providerKey, snapshot: merged }));
     return result;
+  }
+
+  private matchingSourceKeys(command: SaveSourceItemsCommand, externalId: string): string[] {
+    const key = sourceItemDeduplicationKey(command, externalId);
+    if (command.providerKey !== GITHUB_TRENDING_PAGE_PROVIDER_KEY) {
+      return this.itemsByDeduplicationKey.has(key) ? [key] : [];
+    }
+    const prefix = sourceItemDeduplicationKey(command, '');
+    const identity = sourceItemIdentityKey(command.providerKey, externalId);
+    return [...this.itemsByDeduplicationKey.keys()].filter((candidate) =>
+      candidate.startsWith(prefix) && sourceItemIdentityKey(command.providerKey, candidate.slice(prefix.length)) === identity);
   }
 
   all(): readonly SourceItem[] {

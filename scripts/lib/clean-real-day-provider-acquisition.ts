@@ -35,7 +35,7 @@ import type {
   CleanRealDayCollectionProviderKey,
   CleanRealDayCollectionReport,
 } from "./clean-real-day-collection-report";
-import { CleanRealDaySourceConfigReader } from "./clean-real-day-source-config-reader";
+import { CleanRealDaySourceConfigReader, cleanDaySourceQuery } from "./clean-real-day-source-config-reader";
 import {
   composeCollectionScanExecution,
   type CollectionScanExecution,
@@ -285,7 +285,7 @@ export const buildLiveRuntime = (params: {
           buildProviders(clock, params.includeGitHub),
           sourceReadinessProfiles,
         ),
-        new CleanRealDaySourceConfigReader(params.targets),
+        new CleanRealDaySourceConfigReader(params.targets, clock),
         new SocialResearchSourceQueryPlannerAdapter(),
       ),
       clock,
@@ -379,7 +379,7 @@ const executeLiveTargetScan = async (
     sourceBindingId: target.sourceBindingId,
     scanPolicyId: target.scanPolicyId,
     providerKey: target.providerKey,
-    sourceQuery: target.sourceQuery,
+    sourceQuery: cleanDaySourceQuery(target.providerKey, target.sourceQuery),
     interestQuerySnapshot: target.interestQuery,
     correlationId: scanExecution.correlationId,
     causationId: scanExecution.causationId,

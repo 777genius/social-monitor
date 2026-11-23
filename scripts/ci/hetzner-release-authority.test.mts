@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
+import type { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 const A: typeof import('./hetzner-release-authority.mjs') =
@@ -140,6 +143,58 @@ test('artifact identity, producer repository, digest, size and expiration are ma
   await assert.rejects(A.observeAuthority(f.get, runId), code('artifact-identity'));
 });
 
+test('separate frontend authority binds exact run attempt without changing API authority', async () => {
+  const f = fixture();
+  const candidate = { id: 51, name: `frontend-candidate-${sha}-123-2`, expired: false,
+    size_in_bytes: 2048, digest: 'sha256:' + 'd'.repeat(64),
+    workflow_run: { id: 123, head_sha: sha, head_branch: 'main', repository_id: 10, head_repository_id: 10 } };
+  f.artifacts.push(candidate);
+  const result = await A.observeAuthority(f.get, runId);
+  assert.equal(result.phase, 'ready');
+  if (result.phase !== 'ready') assert.fail('qualified main must be ready');
+  const frontend = await A.observeFrontendAuthority(f.get, result.authority);
+  assert.deepEqual(frontend.artifact, { id: '51', name: candidate.name,
+    digest: candidate.digest, bytes: 2048 });
+  A.sameFrontendAuthority(frontend, await A.observeFrontendAuthority(f.get, result.authority));
+  assert.throws(() => A.sameFrontendAuthority(frontend,
+    { ...frontend, artifact: { ...frontend.artifact, id: '52' } }), code('frontend-authority-changed'));
+  for (const mutation of [{ expired: true }, { digest: null }, { size_in_bytes: 300_000_001 },
+    { workflow_run: { ...candidate.workflow_run, head_repository_id: 99 } }]) {
+    const next = fixture(); next.artifacts.push({ ...candidate, ...mutation });
+    const api = await A.observeAuthority(next.get, runId);
+    if (api.phase !== 'ready') assert.fail('frontend failure must not block API authority');
+    await assert.rejects(A.observeFrontendAuthority(next.get, api.authority));
+  }
+  const previous = fixture(); previous.artifacts.push({ ...candidate, name: `frontend-candidate-${sha}-123-1` });
+  const older = await A.observeAuthority(previous.get, runId);
+  if (older.phase !== 'ready') assert.fail('older API run must remain ready');
+  await assert.rejects(A.observeFrontendAuthority(previous.get, older.authority), code('frontend-artifact-identity'));
+});
+
+test('frontend closing observation rejects artifact replacement, deletion and duplicates', async () => {
+  for (const change of ['id', 'digest', 'expired', 'duplicate'] as const) {
+    const f = fixture();
+    const candidate = { id: 51, name: `frontend-candidate-${sha}-123-2`, expired: false,
+      size_in_bytes: 2048, digest: 'sha256:' + 'd'.repeat(64),
+      workflow_run: { id: 123, head_sha: sha, head_branch: 'main', repository_id: 10, head_repository_id: 10 } };
+    f.artifacts.push(candidate);
+    const api = await A.observeAuthority(f.get, runId);
+    if (api.phase !== 'ready') assert.fail('API authority required');
+    let listings = 0;
+    await assert.rejects(A.observeFrontendAuthority(async path => {
+      const value = await f.get(path);
+      if (!path.includes('/artifacts?') || ++listings !== 3) return value;
+      const page = A.object(value), rows = (page.artifacts as Row[]).map(row => ({ ...row }));
+      const row = rows.find(item => item.name === candidate.name)!;
+      if (change === 'id') row.id = 52;
+      if (change === 'digest') row.digest = 'sha256:' + 'e'.repeat(64);
+      if (change === 'expired') row.expired = true;
+      if (change === 'duplicate') rows.push({ ...row, id: 52 });
+      return { total_count: rows.length, artifacts: rows };
+    }, api.authority), change);
+  }
+});
+
 test('exact hundred-page artifact boundary is complete; duplicate and changing pages deny', async () => {
   const f = fixture(), candidate = f.artifacts[0]!;
   f.artifacts.splice(0, 1, ...Array.from({ length: 9999 }, (_, i) =>
@@ -176,6 +231,34 @@ test('closing observations reject main/run/workflow/legacy races; stable stale m
   const f = fixture(); f.main.object = { type: 'commit', sha: other };
   assert.deepEqual(await A.observeAuthority(f.get, runId),
     { phase: 'stale-main-skipped', sha, run: runId });
+});
+
+test('stale main CI runs skip missing job evidence but still close all identity races', async () => {
+  const old = fixture();
+  old.main.object = { type: 'commit', sha: other };
+  old.jobs.splice(0, 1); // Stale run has incomplete job inventory and no current artifacts.
+  old.artifacts.splice(0); // No stale artifact may be considered current.
+  assert.deepEqual(await A.observeAuthority(old.get, runId),
+    { phase: 'stale-main-skipped', sha, run: runId });
+  assert.equal(old.calls.some(path => path.includes('/jobs?') || path.includes('/artifacts?')), false);
+
+  for (const raced of ['main', 'run', 'workflow', 'legacy'] as const) {
+    const f = fixture();
+    f.main.object = { type: 'commit', sha: other };
+    f.jobs.splice(0, 1);
+    let observed = 0;
+    await assert.rejects(A.observeAuthority(async path => {
+      const value = await f.get(path);
+      const target = raced === 'main' ? 'git/ref/heads/main'
+        : raced === 'run' ? 'actions/runs/123'
+        : raced === 'workflow' ? 'actions/workflows/pull-request.yml'
+        : 'actions/workflows/production-deploy.yml';
+      if (path !== target || ++observed < 2) return value;
+      if (raced === 'main') return { ref: 'refs/heads/main', object: { type: 'commit', sha } };
+      if (raced === 'run') return { ...f.run, run_attempt: 3 };
+      return { ...A.object(value), id: 999 };
+    }, runId));
+  }
 });
 
 test('mode selection precedes payload access; dispatch requires exact owner/main and explicit activation', () => {
@@ -241,4 +324,26 @@ test('JSON duplicate keys, excessive depth, invalid UTF-8, overflow and size can
     assert.throws(() => A.githubEnvironment({ ...env, ...change }));
   for (const suffix of ['../other', '/actions/runs/123', 'actions/./runs', 'x'.repeat(257)])
     await assert.rejects(A.githubGet(env)(suffix), code('github-endpoint'));
+});
+
+
+test('GitHub subprocess timeout and error have distinct fixed codes without exposing credentials', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const env = { GH_TOKEN: 'TEST_ONLY_NOT_A_CREDENTIAL_0000', GH_CONFIG_DIR: '/tmp/TEST-sm-gh' };
+  for (const timeout of [true, false]) {
+    const child = new EventEmitter() as ReturnType<typeof spawn>;
+    const output = new PassThrough();
+    Object.assign(child, { stdout: output, kill: () => { output.end(); child.emit('close', null); return true; } });
+    const fakeSpawn = ((file: string, args: string[], options: { stdio: string[] }) => {
+      assert.equal(file, '/usr/bin/gh'); assert.equal(args.includes(env.GH_TOKEN), false);
+      assert.deepEqual(options.stdio, ['ignore', 'pipe', 'ignore']);
+      if (!timeout) queueMicrotask(() => { output.end(); child.emit('close', 1); });
+      return child;
+    }) as unknown as typeof spawn;
+    const get = A.githubGet(env, fakeSpawn);
+    const pending = assert.rejects(get('git/ref/heads/main'),
+      code(timeout ? 'github-observation-timeout' : 'github-observation-failed'));
+    if (timeout) t.mock.timers.tick(60000);
+    await pending;
+  }
 });

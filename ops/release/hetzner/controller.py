@@ -244,9 +244,15 @@ class Controller:
         return receipt
 
     def exclusive(self, key):
+        for other in (self.state / 'cohort' / 'transactions').glob('*.json'):
+            same = key.startswith('cohort-') and other.name == key[len('cohort-'):] + '.json'
+            require(same or read_json(other).get('outcome') in ('activated', 'rolled-back'), 'unfinished-cohort-release')
+        for other in (self.state / 'backend' / 'transactions').glob('*.json'):
+            require(key.startswith('backend-') or read_json(other).get('outcome') in ('activated', 'rolled-back'),
+                    'unfinished-backend-release')
         for other in (self.state / 'transactions').glob('*.json'):
             require(other == self.path('transactions', key)
-                    or read_json(other).get('outcome') is not None, 'unfinished-release')
+                    or read_json(other).get('outcome') in ('activated', 'rolled-back'), 'unfinished-release')
 
     def activate(self, key):
         require(not (self.state / 'latch.json').exists(), 'latched')
@@ -342,6 +348,28 @@ class Controller:
         verb, args = parse(command)
         self.fence()
         with Lock(self.state / 'controller.lock'):
+            if verb in ('github-auth', 'github-auth-clear'):
+                if verb == 'github-auth':
+                    require(not (self.state / 'latch.json').exists(), 'latched')
+                    self.exclusive('cohort-' + '-'.join(args))
+                from operator_adapter import read_request
+                from operator_config import github_auth_update
+                return github_auth_update(*args, read_request(stream), clear=verb == 'github-auth-clear')
+            if verb in ('cohort-receive-frontend', 'cohort-receive-frontend-auth', 'cohort-receive-backend'):
+                require(not (self.state / 'latch.json').exists(), 'latched')
+                self.exclusive('cohort-' + '-'.join(args[:2]))
+                if verb in ('cohort-receive-frontend', 'cohort-receive-frontend-auth'):
+                    from cohort_frontend_receive import receive_frontend
+                    return receive_frontend(self, args[0], args[1], stream,
+                                            authenticated=verb == 'cohort-receive-frontend-auth')
+                from cohort_backend_receive import receive_backend
+                return receive_backend(self, args, stream)
+            if verb.startswith('cohort-'):
+                from cohort_wire import dispatch as dispatch_cohort
+                return dispatch_cohort(self, verb[len('cohort-'):], args)
+            if verb.startswith('backend-'):
+                from backend_controller import BackendRelease
+                return BackendRelease(self).dispatch(verb[8:], args, stream)
             if verb == 'status':
                 return {'latch': (self.state / 'latch.json').exists(), 'environment': 'production-hetzner'}
             if verb == 'preflight':

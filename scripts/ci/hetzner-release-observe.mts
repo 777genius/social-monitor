@@ -1,12 +1,13 @@
 import { constants as F } from 'node:fs';
 import { chmod, lstat, mkdir, mkdtemp, open, readdir, rm, writeFile } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
-import { ClientError, command, deliver, runnerConfig, sshTransport, validateManifest } from './hetzner-release-client.mjs';
-import type { Manifest, Transport } from './hetzner-release-client.mjs';
-import type { Authority, Get, Trigger } from './hetzner-release-authority.mjs';
+import { isDeepStrictEqual } from 'node:util';
+import { ClientError, command, runnerConfig, sshTransport, validateManifest } from './hetzner-release-client.mjs';
+import type { Manifest, Transport, TransportResult } from './hetzner-release-client.mjs';
+import type { Authority, FrontendAuthority, Get, Trigger } from './hetzner-release-authority.mjs';
 
 // Typed synchronous .mts loading avoids top-level await and permits the unchanged
 // CommonJS root compiler as well as the standalone NodeNext compiler to check this.
@@ -14,9 +15,14 @@ const A: typeof import('./hetzner-release-authority.mjs') =
   createRequire(resolve('scripts/ci/hetzner-release-observe.mts'))('./hetzner-release-authority.mts');
 const R: typeof import('./candidate-runtime-contract.mts') =
   createRequire(resolve('scripts/ci/hetzner-release-observe.mts'))('./candidate-runtime-contract.mts');
+const D: typeof import('./hetzner-release-host-denials.mts') =
+  createRequire(resolve('scripts/ci/hetzner-release-observe.mts'))('./hetzner-release-host-denials.mts');
 const MACHINE = 'b28fc7b17042414386eb9b114046e50c';
 const FILES = ['candidate.tar', 'candidate.tar.sha256', 'manifest.json', 'phases.json', 'image-id.txt', 'source-sha.txt'];
 const LIMIT = 10_000_000_000;
+// Schema-history evidence already exceeds 64KiB; keep cohort JSON bounded below the 8MiB SSH cap.
+const COHORT_RESPONSE_BYTES = 2 * 1024 * 1024;
+const GITHUB_TOKEN = /^[!-~]{20,2048}$(?![\s\S])/u;
 export async function canonical(path: string): Promise<void> {
   A.requireValue(isAbsolute(path) && resolve(path) === path
     && /^\/[a-zA-Z0-9_./-]+$/u.test(path), 'private-path');
@@ -71,11 +77,11 @@ export async function checksum(path: string, limit: number): Promise<{ digest: s
     return { digest: 'sha256:' + hash.digest('hex'), bytes };
   } finally { await handle.close(); }
 }
-async function download(authority: Authority, target: string, env: NodeJS.ProcessEnv): Promise<void> {
+async function download(artifact: { id: string; bytes: number; digest: string }, target: string, env: NodeJS.ProcessEnv): Promise<void> {
   const file = await open(target, F.O_WRONLY | F.O_CREAT | F.O_EXCL | F.O_NOFOLLOW, 0o600);
   const child = spawn('/usr/bin/gh', ['api', '--hostname', 'github.com', '--method', 'GET',
     '-H', 'Accept: application/vnd.github+json', '-H', 'X-GitHub-Api-Version: 2022-11-28',
-    `repos/${A.REPOSITORY}/actions/artifacts/${authority.artifact}/zip`],
+    `repos/${A.REPOSITORY}/actions/artifacts/${artifact.id}/zip`],
   { shell: false, env: A.githubEnvironment(env), stdio: ['ignore', 'pipe', 'ignore'] });
   const closed = new Promise<void>((accept, reject) => {
     child.once('error', () => reject(new A.AuthorityError('artifact-download')));
@@ -87,12 +93,12 @@ async function download(authority: Authority, target: string, env: NodeJS.Proces
   try {
     for await (const chunk of child.stdout) {
       const bytes = Buffer.from(chunk as Uint8Array); size += bytes.length;
-      A.requireValue(size <= authority.artifactBytes && size <= 10_100_000_000, 'artifact-size');
+      A.requireValue(size <= artifact.bytes && size <= 10_100_000_000, 'artifact-size');
       hash.update(bytes); await file.writeFile(bytes);
     }
     await closed;
-    A.requireValue(size === authority.artifactBytes
-      && 'sha256:' + hash.digest('hex') === authority.artifactDigest, 'artifact-hash');
+    A.requireValue(size === artifact.bytes
+      && 'sha256:' + hash.digest('hex') === artifact.digest, 'artifact-hash');
     await file.sync();
   } catch {
     child.kill('SIGKILL'); await closed.catch(() => {});
@@ -102,18 +108,23 @@ async function download(authority: Authority, target: string, env: NodeJS.Proces
 // Trusted stdlib decodes only the GitHub ZIP. candidate.tar is never extracted.
 const ZIP_READER = `
 import os, stat, sys, zipfile
-names = {'candidate.tar', 'candidate.tar.sha256', 'manifest.json',
-         'phases.json', 'image-id.txt', 'source-sha.txt'}
+mode = sys.argv[3]
+need_mode = mode in ('api', 'frontend')
+if not need_mode: raise ValueError('transport-mode')
+names = ({'candidate.tar', 'candidate.tar.sha256', 'manifest.json',
+          'phases.json', 'image-id.txt', 'source-sha.txt'} if mode == 'api' else
+         {'frontend-release.tgz', 'frontend-manifest.json'})
 def need(ok):
     if not ok: raise ValueError('transport-zip')
 with zipfile.ZipFile(sys.argv[1]) as archive:
     entries = archive.infolist()
-    need(len(entries) == 6 and {e.filename for e in entries} == names)
+    need(len(entries) == len(names) and {e.filename for e in entries} == names)
     need(min(e.header_offset for e in entries) == 0)
-    need(len({e.header_offset for e in entries}) == 6)
+    need(len({e.header_offset for e in entries}) == len(names))
     total = 0
     for entry in entries:
-        ceiling = 10000000000 if entry.filename == 'candidate.tar' else 65536
+        ceiling = (10000000000 if entry.filename == 'candidate.tar' else
+                   268435456 if entry.filename == 'frontend-release.tgz' else 65536)
         kind = stat.S_IFMT(entry.external_attr >> 16)
         need(kind in (0, stat.S_IFREG) and not entry.is_dir())
         need(not entry.flag_bits & 1 and entry.compress_type in (0, 8))
@@ -135,15 +146,16 @@ with zipfile.ZipFile(sys.argv[1]) as archive:
             output.flush()
             os.fsync(output.fileno())
 `;
-export async function extractArtifact(zip: string, directory: string): Promise<void> {
+async function extractZip(zip: string, directory: string, mode: 'api' | 'frontend'): Promise<void> {
   await canonical(zip); await canonical(directory);
   const input = await lstat(zip), destination = await lstat(directory);
-  A.requireValue(input.isFile() && input.size > 0 && input.size <= 10_100_000_000,
+  A.requireValue(input.isFile() && input.size > 0
+    && input.size <= (mode === 'frontend' ? 300_000_000 : 10_100_000_000),
     'artifact-zip-bounds');
   A.requireValue(destination.isDirectory() && destination.uid === process.getuid?.()
     && !(destination.mode & 0o077)
     && (await readdir(directory)).length === 0, 'artifact-directory');
-  const child = spawn('/usr/bin/python3', ['-I', '-B', '-c', ZIP_READER, zip, directory],
+  const child = spawn('/usr/bin/python3', ['-I', '-B', '-c', ZIP_READER, zip, directory, mode],
     { shell: false, env: { PATH: '/usr/bin:/bin', LC_ALL: 'C' }, stdio: 'ignore' });
   const timer = setTimeout(() => child.kill('SIGKILL'), 1_200_000);
   try {
@@ -153,6 +165,8 @@ export async function extractArtifact(zip: string, directory: string): Promise<v
     });
   } finally { clearTimeout(timer); }
 }
+export const extractArtifact = (zip: string, directory: string): Promise<void> => extractZip(zip, directory, 'api');
+export const extractFrontendArtifact = (zip: string, directory: string): Promise<void> => extractZip(zip, directory, 'frontend');
 export interface Candidate { manifest: string; archive: string; manifestHash: string; value: Manifest }
 export async function validateCandidate(directory: string, authority: Authority): Promise<Candidate> {
   await canonical(directory);
@@ -189,10 +203,135 @@ export async function validateCandidate(directory: string, authority: Authority)
   await chmod(manifest, 0o400); await chmod(archive, 0o400);
   return { manifest, archive, manifestHash, value };
 }
+
+/** Validate the separate public/admin bundle after its GitHub ZIP has been verified. */
+export async function validateFrontendCandidate(directory: string, frontend: FrontendAuthority): Promise<{
+  readonly manifest: string; readonly archive: string; readonly manifestHash: string;
+}> {
+  await canonical(directory);
+  const info = await lstat(directory);
+  A.requireValue(info.isDirectory() && info.uid === process.getuid?.() && !(info.mode & 0o077), 'frontend-candidate-directory');
+  const authority = frontend.base, proof = frontend.artifact;
+  A.requireValue(proof && proof.name === `frontend-candidate-${authority.sha}-${authority.run}-${authority.attempt}`,
+    'frontend-artifact-missing');
+  const names = await readdir(directory);
+  A.requireValue(names.length === 2 && names.includes('frontend-release.tgz') && names.includes('frontend-manifest.json'),
+    'frontend-candidate-files');
+  const manifest = join(directory, 'frontend-manifest.json'), archive = join(directory, 'frontend-release.tgz');
+  const bytes = await boundedBytes(manifest, 65536);
+  const value = A.exact(A.parseJson(bytes, 65536), ['version', 'sourceSha', 'ciRunId', 'ciRunAttempt', 'archive', 'bundles']);
+  A.requireValue(value.version === 1 && value.sourceSha === authority.sha && value.ciRunId === authority.run
+    && value.ciRunAttempt === String(authority.attempt), 'frontend-candidate-identity');
+  const declared = A.exact(value.archive, ['name', 'sha256', 'bytes']);
+  A.requireValue(declared.name === 'frontend-release.tgz' && typeof declared.bytes === 'number'
+    && Number.isSafeInteger(declared.bytes) && declared.bytes > 0 && declared.bytes <= 256 * 1024 * 1024
+    && typeof declared.sha256 === 'string' && /^[0-9a-f]{64}$/u.test(declared.sha256), 'frontend-archive');
+  A.requireValue(Array.isArray(value.bundles) && value.bundles.length === 2, 'frontend-bundles');
+  for (const [index, lane, origin] of [[0, 'public', 'https://social-monitor.app'],
+    [1, 'admin', 'https://admin.social-monitor.app']] as const) {
+    const bundle = A.exact(value.bundles[index], ['lane', 'sourceSha', 'ciRunId', 'ciRunAttempt', 'apiOrigin']);
+    A.requireValue(bundle.lane === lane && bundle.sourceSha === authority.sha && bundle.ciRunId === authority.run
+      && bundle.ciRunAttempt === String(authority.attempt) && bundle.apiOrigin === origin, 'frontend-bundle-identity');
+  }
+  const actual = await checksum(archive, 256 * 1024 * 1024);
+  A.requireValue(actual.bytes === declared.bytes && actual.digest === `sha256:${declared.sha256}`, 'frontend-archive-binding');
+  await chmod(manifest, 0o400); await chmod(archive, 0o400);
+  return { manifest, archive, manifestHash: 'sha256:' + createHash('sha256').update(bytes).digest('hex') };
+}
 async function candidate(authority: Authority, scratch: string, env: NodeJS.ProcessEnv): Promise<Candidate> {
   const zip = join(scratch, 'transport.zip'), directory = join(scratch, 'data');
-  await mkdir(directory, { mode: 0o700 }); await download(authority, zip, env);
+  await mkdir(directory, { mode: 0o700 }); await download({ id: authority.artifact,
+    bytes: authority.artifactBytes, digest: authority.artifactDigest }, zip, env);
   await extractArtifact(zip, directory); return validateCandidate(directory, authority);
+}
+/** Download the bound artifact; the caller must re-observe authority before any host effect. */
+export async function prepareFrontendCandidate(frontend: FrontendAuthority, scratch: string, env: NodeJS.ProcessEnv) {
+  const artifact = frontend.artifact;
+  A.requireValue(artifact, 'frontend-artifact-missing');
+  await canonical(scratch);
+  const info = await lstat(scratch);
+  A.requireValue(info.isDirectory() && info.uid === process.getuid?.() && !(info.mode & 0o077), 'frontend-scratch');
+  const zip = join(scratch, 'frontend-transport.zip'), directory = join(scratch, 'frontend-data');
+  await mkdir(directory, { mode: 0o700 });
+  await download(artifact, zip, env);
+  await extractFrontendArtifact(zip, directory);
+  const candidate = await validateFrontendCandidate(directory, frontend);
+  // Retain the original CI artifact so the host can independently verify its provenance.
+  return { ...candidate, transport: zip };
+}
+/** Stage a validated backend archive; host qualification still precedes any image effect. */
+export async function sendBackendCandidate(authority: Authority, candidate: Candidate, get: Get, transport: Transport) {
+  const manifestBytes = await boundedBytes(candidate.manifest, 65536);
+  A.requireValue('sha256:' + createHash('sha256').update(manifestBytes).digest('hex') === candidate.manifestHash,
+    'backend-manifest-changed');
+  const manifest = validateManifest(A.parseJson(manifestBytes, 65536), authority.sha, authority.run);
+  A.requireValue(isDeepStrictEqual(manifest, candidate.value), 'backend-manifest-changed');
+  await canonical(candidate.archive);
+  const handle = await open(candidate.archive, F.O_RDONLY | F.O_NOFOLLOW | F.O_NONBLOCK);
+  try {
+    const before = await handle.stat();
+    A.requireValue(before.isFile() && before.size === manifest.archive_bytes, 'backend-transport-size');
+    const hash = createHash('sha256');
+    for await (const chunk of handle.createReadStream({ autoClose: false, start: 0, end: before.size - 1 })) hash.update(chunk);
+    A.requireValue('sha256:' + hash.digest('hex') === manifest.archive_sha256
+      && identity(before) === identity(await handle.stat()) && identity(before) === identity(await lstat(candidate.archive)),
+      'backend-transport-changed');
+    const guarded = guardedTransport(get, authority, transport);
+    const response = await guarded(command('cohort-receive-backend', [authority.sha, authority.run,
+      manifest.archive_sha256, manifest.image_id, String(manifest.archive_bytes)]),
+      () => handle.createReadStream({ autoClose: false, start: 0, end: before.size - 1 }));
+    requireHostResponse(response, 'backend-host-denied');
+    A.requireValue(identity(before) === identity(await handle.stat()) && identity(before) === identity(await lstat(candidate.archive)),
+      'backend-transport-changed');
+    const item = A.exact(A.parseJson(response.stdout, 65536),
+      ['sha', 'ci_run_id', 'archive_sha256', 'image_id', 'archive_bytes', 'migrations', 'image_graph']);
+    A.requireValue(isDeepStrictEqual(item, manifest), 'backend-host-binding');
+    return item;
+  } finally { await handle.close(); }
+}
+/** Deliver original CI ZIP; the host repeats independent authority and archive checks. */
+export async function sendFrontendCandidate(frontend: FrontendAuthority,
+  candidate: { manifest: string; manifestHash: string; transport: string }, get: Get, transport: Transport,
+  authenticated = false) {
+  const artifact = frontend.artifact, base = frontend.base;
+  const manifestBytes = await boundedBytes(candidate.manifest, 65536);
+  A.requireValue('sha256:' + createHash('sha256').update(manifestBytes).digest('hex') === candidate.manifestHash,
+    'frontend-manifest-changed');
+  const manifest = A.object(A.parseJson(manifestBytes, 65536));
+  const archive = A.object(manifest.archive);
+  const archiveSha = A.text(archive.sha256, /^[0-9a-f]{64}$/u, 'frontend-archive-digest');
+  const archiveBytes = archive.bytes;
+  A.requireValue(Number.isSafeInteger(archiveBytes) && (archiveBytes as number) > 0, 'frontend-archive-size');
+  await canonical(candidate.transport);
+  const handle = await open(candidate.transport, F.O_RDONLY | F.O_NOFOLLOW | F.O_NONBLOCK);
+  try {
+    const before = await handle.stat();
+    A.requireValue(before.isFile() && before.size === artifact.bytes, 'frontend-transport-size');
+    const hash = createHash('sha256');
+    for await (const chunk of handle.createReadStream({ autoClose: false, start: 0, end: before.size - 1 })) hash.update(chunk);
+    A.requireValue('sha256:' + hash.digest('hex') === artifact.digest
+      && identity(before) === identity(await handle.stat()) && identity(before) === identity(await lstat(candidate.transport)),
+      'frontend-transport-changed');
+    const guarded = guardedTransport(get, base, transport, frontend);
+    const response = await guarded(command(authenticated ? 'cohort-receive-frontend-auth' : 'cohort-receive-frontend', [base.sha, base.run]),
+      () => handle.createReadStream({ autoClose: false, start: 0, end: before.size - 1 }));
+    requireHostResponse(response, 'frontend-host-denied');
+    A.requireValue(identity(before) === identity(await handle.stat()) && identity(before) === identity(await lstat(candidate.transport)),
+      'frontend-transport-changed');
+    const proof = A.exact(A.parseJson(response.stdout, 65536),
+      ['root', 'authority', 'manifest_sha256', 'archive_sha256', 'archive_bytes', 'tree_sha256']);
+    const binding = A.exact(proof.authority, ['sha', 'ci_run_id', 'ci_run_attempt', 'artifact_id', 'artifact_name',
+      'artifact_sha256', 'artifact_bytes']);
+    A.requireValue(binding.sha === base.sha && binding.ci_run_id === base.run && binding.ci_run_attempt === String(base.attempt)
+      && binding.artifact_id === artifact.id && binding.artifact_name === artifact.name
+      && binding.artifact_sha256 === artifact.digest && binding.artifact_bytes === artifact.bytes
+      && proof.manifest_sha256 === candidate.manifestHash && proof.archive_sha256 === 'sha256:' + archiveSha
+      && proof.archive_bytes === archiveBytes
+      && proof.root === `/var/lib/social-monitor-release/cohort/frontend/candidates/${base.sha}-${base.run}/bundle`,
+      'frontend-host-binding');
+    A.text(proof.tree_sha256, A.DIGEST, 'frontend-tree-digest');
+    return proof;
+  } finally { await handle.close(); }
 }
 export interface Observation {
   environment: 'production-hetzner'; machine_id: string; latch: false;
@@ -203,13 +342,53 @@ async function readonlyCall(transport: Transport, verb: 'status' | 'preflight'):
     try {
       const result = await transport(command(verb));
       A.requireValue(Number.isInteger(result.code) && Buffer.isBuffer(result.stdout), 'transport-result');
-      if (result.code === 255) throw new ClientError('transport-uncertain');
+      if (result.code === 255) {
+        if (attempt === 2 && result.diagnostic) throw new ClientError(`ssh-${result.diagnostic}`);
+        throw new ClientError('transport-uncertain');
+      }
       A.requireValue(result.code === 0, 'host-denied'); return A.parseJson(result.stdout, 65536);
     } catch (error) {
       if (!(error instanceof ClientError && error.code === 'transport-uncertain' && attempt < 2)) throw error;
     }
   }
   throw new A.AuthorityError('readonly-exhausted');
+}
+export function safePreflightDiagnostic(action: string | undefined, error: unknown): string | undefined {
+  const allowed = new Set(['ssh-host-key', 'ssh-publickey', 'ssh-private-key', 'ssh-timeout', 'ssh-network', 'ssh-unknown']);
+  return action === 'preflight' && error instanceof ClientError && allowed.has(error.code) ? error.code : undefined;
+}
+const HOST_DENIALS = new Set(D.HOST_DENIAL_CODES);
+class CohortUnstartedError extends A.AuthorityError {
+  readonly activationDenial: string | undefined;
+  constructor(denial: string | undefined) {
+    super('cohort-unstarted');
+    this.activationDenial = denial !== undefined && HOST_DENIALS.has(denial) ? denial : undefined;
+  }
+}
+const SSH_DIAGNOSTICS = new Set(['host-key', 'publickey', 'private-key', 'timeout', 'network', 'unknown']);
+const RELEASE_STEPS = new Set(['authority', 'frontend-authority', 'backend-candidate', 'frontend-candidate',
+  'authority-recheck', 'ssh-setup', 'preflight', 'github-auth', 'backend-receive', 'frontend-receive',
+  'cohort-admit', 'cohort-activate', 'cohort-verify', 'cohort-receipt', 'cohort-rollback', 'receipt-save']);
+const RELEASE_DIAGNOSTICS = new Set(['json-size', 'github-observation-timeout', 'github-observation-failed',
+  'github-auth-token', 'github-auth-binding', 'github-auth-denied', 'backend-host-denied', 'frontend-host-denied',
+  'cohort-host-denied', 'transport-uncertain', 'stale-main-skip', 'frontend-stale-main', 'main-race',
+  'run-race', 'workflow-race', 'legacy-race', 'page-race', 'authority-changed', 'frontend-authority-changed',
+  'cohort-unstarted', 'cohort-rolled-back', 'cohort-recovery-required',
+  ...[...HOST_DENIALS].map(code => `host-${code}`), ...[...SSH_DIAGNOSTICS].map(code => `ssh-${code}`)]);
+/** Public receipt fields are finite constants; never copy error messages, causes or transport bodies. */
+export function safeReleaseFailure(step: string, error: unknown): { step: string; diagnostic: string; activation_denial?: string } {
+  const code = error instanceof A.AuthorityError || error instanceof ClientError ? error.code : undefined;
+  return { step: RELEASE_STEPS.has(step) ? step : 'unknown',
+    diagnostic: typeof code === 'string' && RELEASE_DIAGNOSTICS.has(code) ? code : 'unknown',
+    ...(error instanceof CohortUnstartedError && error.activationDenial && HOST_DENIALS.has(error.activationDenial)
+      ? { activation_denial: error.activationDenial } : {}) };
+}
+function requireHostResponse(response: TransportResult, fallback: string): void {
+  if (response.code === 0 && Buffer.isBuffer(response.stdout)) return;
+  if (response.code === 255 && response.diagnostic && SSH_DIAGNOSTICS.has(response.diagnostic))
+    throw new ClientError(`ssh-${response.diagnostic}`);
+  const denial = cohortHostDenial(response);
+  throw new A.AuthorityError(denial && HOST_DENIALS.has(denial) ? `host-${denial}` : fallback);
 }
 export async function observeReadonly(transport: Transport): Promise<Observation> {
   const status = A.exact(await readonlyCall(transport, 'status'), ['latch', 'environment']);
@@ -223,22 +402,324 @@ export async function observeReadonly(transport: Transport): Promise<Observation
     api_image: A.text(value.api_image, A.DIGEST, 'host-image'),
     compose: A.text(value.compose, A.DIGEST, 'host-compose') };
 }
-export function guardedTransport(get: Get, authority: Authority, transport: Transport): Transport {
+export function guardedTransport(get: Get, authority: Authority, transport: Transport,
+  frontend?: FrontendAuthority): Transport {
+  let backendActivationAttempted = false, cohortActivationAttempted = false;
   return async (wire, source) => {
     const [verb, ...args] = wire.split(' '); A.requireValue(typeof verb === 'string', 'wire');
     command(verb, args);
     A.requireValue(verb !== 'rollback', 'rollback-unsupported');
-    if (['receive', 'admit', 'activate'].includes(verb)) {
+    if (verb === 'github-auth' || verb === 'github-auth-clear') {
+      A.requireValue(args[0] === authority.sha && args[1] === authority.run && !!source, 'github-auth-binding');
+    }
+    if (verb === 'backend-rollback') {
+      // Recovery may proceed after main changes, but only for this attempted transaction.
+      A.requireValue(backendActivationAttempted && args[0] === authority.sha && args[1] === authority.run,
+        'rollback-unsupported');
+    }
+    if (verb === 'cohort-rollback') {
+      A.requireValue(cohortActivationAttempted && args[0] === authority.sha && args[1] === authority.run,
+        'rollback-unsupported');
+    }
+    if (['cohort-receive-frontend', 'cohort-receive-frontend-auth', 'cohort-admit', 'cohort-activate'].includes(verb)) {
+      A.requireValue(frontend && args[0] === authority.sha && args[1] === authority.run
+        && (verb.startsWith('cohort-receive-frontend') ? !!source : !source), 'frontend-authority-required');
+      A.sameAuthority(authority, frontend.base);
+      A.sameFrontendAuthority(frontend, await A.observeFrontendAuthority(get, authority));
+      if (verb === 'cohort-activate') cohortActivationAttempted = true;
+    }
+    if (['receive', 'admit', 'activate', 'backend-receive', 'backend-admit', 'backend-activate',
+      'cohort-receive-backend', 'github-auth'].includes(verb)) {
+      A.requireValue(args[0] === authority.sha && args[1] === authority.run, 'candidate-disagreement');
       const decision = await A.observeAuthority(get, authority.run);
       if (decision.phase === 'stale-main-skipped') throw new ClientError('stale-main-skip');
       A.sameAuthority(authority, decision.authority);
+      // Set before the transport: an interrupted SSH call may have reached the host.
+      if (verb === 'backend-activate') backendActivationAttempted = true;
     }
     return transport(wire, source);
   };
 }
+/** Credentials are stdin-only and never part of artifacts or receipts. */
+export async function githubAuth(transport: Transport, sha: string, run: string, lease: string, token?: string) {
+  A.text(lease, /^[0-9a-f]{32}$/u, 'github-auth-lease');
+  if (token !== undefined) A.text(token, GITHUB_TOKEN, 'github-auth-token');
+  const bytes = Buffer.from(JSON.stringify({ lease, ...(token === undefined ? {} : { token }) }));
+  try {
+    const response = await transport(command(token === undefined ? 'github-auth-clear' : 'github-auth', [sha, run]), async function* () { yield bytes; });
+    requireHostResponse(response, 'github-auth-denied');
+    const value = A.exact(A.parseJson(response.stdout, 4096), ['sha', 'ci_run_id', token === undefined ? 'cleared' : 'configured']);
+    A.requireValue(value.sha === sha && value.ci_run_id === run &&
+      (token === undefined ? typeof value.cleared === 'boolean' : value.configured === true), 'github-auth-binding');
+  } finally { bytes.fill(0); }
+}
+async function runAuthClear(env: NodeJS.ProcessEnv): Promise<void> {
+  A.requireValue(env.GITHUB_JOB === 'activate', 'github-auth-job');
+  const root = A.text(env.RUNNER_TEMP, /^\/[a-zA-Z0-9_./-]+$/u, 'runner-temp');
+  const directory = A.text(env.HETZNER_PRIVATE_DIRECTORY, /^\/[a-zA-Z0-9_./-]+$/u, 'private-directory');
+  A.requireValue(dirname(directory) === root && /^hetzner-private-[a-zA-Z0-9]+$/u.test(directory.slice(root.length + 1)), 'private-directory');
+  const path = join(directory, 'github-auth.json');
+  try { await lstat(path); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw error; }
+  const saved = A.exact(A.parseJson(await boundedBytes(path, 4096), 4096), ['sha', 'run', 'lease']);
+  const sha = A.text(saved.sha, A.SHA, 'github-auth-sha'), run = A.text(saved.run, A.RUN, 'github-auth-run');
+  A.requireValue(sha === env.EXPECTED_SHA && run === env.EXPECTED_RUN, 'github-auth-binding');
+  const scratch = await mkdtemp(join(root, 'hetzner-auth-cleanup-'));
+  try { await githubAuth(sshTransport(await provisionRunner(scratch, env), undefined, 15_000), sha, run,
+    A.text(saved.lease, /^[0-9a-f]{32}$/u, 'github-auth-lease')); }
+  finally { await rm(scratch, { recursive: true, force: true }); }
+}
+/** Recovery is operator-triggered and cannot authorize a new deployment. */
+export function recoveryTrigger(mode: string | undefined, event: unknown, name: string,
+  actor: string, repository: string, ref: string, action: 'recover-backend' | 'recover-cohort' = 'recover-backend'):
+  { sha: string; run: string } {
+  A.requireValue((mode === 'manual' || mode === 'auto') && name === 'workflow_dispatch'
+    && actor === '777genius' && repository === A.REPOSITORY && ref === 'refs/heads/main', 'recovery-trigger');
+  const envelope = A.object(event), repo = A.object(envelope.repository), inputs = A.object(envelope.inputs);
+  A.requireValue(repo.full_name === A.REPOSITORY && inputs.action === action
+    && Object.keys(inputs).every(key => ['ci_run_id', 'action', 'rollback_sha'].includes(key)), 'recovery-trigger');
+  return { sha: A.text(inputs.rollback_sha, A.SHA, 'recovery-sha'),
+    run: A.text(inputs.ci_run_id, A.RUN, 'recovery-run') };
+}
+/** A restarted runner can only observe or roll back the original transaction.
+ * Host-side recovery must independently require an existing durable transaction. */
+export function recoveryTransport(sha: string, run: string, transport: Transport): Transport {
+  A.text(sha, A.SHA, 'expected-sha'); A.text(run, A.RUN, 'expected-run');
+  return async (wire, source) => {
+    const [verb, ...args] = wire.split(' '); A.requireValue(typeof verb === 'string', 'wire');
+    command(verb, args);
+    const permitted = (verb === 'status' && args.length === 0)
+      || (verb === 'backend-rollback' && args[0] === sha && args[1] === run)
+      || (verb === 'backend-receipt' && (args[0] === `${sha}-${run}` || args[0] === `${sha}-${run}-rollback`));
+    A.requireValue(permitted && source === undefined, 'recovery-scope');
+    return transport(wire);
+  };
+}
+/** A replacement runner is restricted to observing or rolling back one cohort. */
+export function cohortRecoveryTransport(sha: string, run: string, transport: Transport): Transport {
+  A.text(sha, A.SHA, 'expected-sha'); A.text(run, A.RUN, 'expected-run');
+  return async (wire, source) => {
+    const [verb, ...args] = wire.split(' '); A.requireValue(typeof verb === 'string', 'wire');
+    command(verb, args);
+    const permitted = verb === 'status' || (verb === 'cohort-rollback' && args[0] === sha && args[1] === run)
+      || (verb === 'cohort-receipt' && (args[0] === `${sha}-${run}` || args[0] === `${sha}-${run}-rollback`));
+    A.requireValue(permitted && source === undefined, 'recovery-scope');
+    return transport(wire);
+  };
+}
+
+/** Resume a previously begun rollback; never admits or activates a candidate. */
+export async function recoverBackend(transport: Transport, sha: string, run: string,
+  pause: () => Promise<void> = () => new Promise(resolve => setTimeout(resolve, 1000))) {
+  const scoped = recoveryTransport(sha, run, transport);
+  for (let attempt = 0; attempt < 120; attempt++) {
+    const result = await scoped(command('backend-rollback', [sha, run]));
+    A.requireValue(result.code === 0 && Buffer.isBuffer(result.stdout), 'recovery-host-denied');
+    const value = A.object(A.parseJson(result.stdout, 65536));
+    A.requireValue(value.sha === sha && value.ci_run_id === run
+      && Array.isArray(value.scope) && value.scope.length === 2
+      && value.scope[0] === 'api' && value.scope[1] === 'jev-intelligence-worker', 'recovery-binding');
+    if (value.schema === 'social-monitor-backend-release-receipt-v1') {
+      A.exact(value, ['schema', 'sha', 'ci_run_id', 'archive_sha256', 'image_id', 'scope',
+        'previous_image_ids', 'previous_revisions', 'active_image_ids', 'target_container_ids',
+        'runtime_sha256', 'snapshot_sha256', 'compose_hash', 'compatibility', 'database', 'backup',
+        'outcome', 'timings']);
+      A.requireValue(value.outcome === 'rolled-back', 'recovery-outcome');
+      A.text(value.archive_sha256, A.DIGEST, 'recovery-archive');
+      A.text(value.image_id, A.DIGEST, 'recovery-image');
+      A.text(value.snapshot_sha256, A.DIGEST, 'recovery-snapshot');
+      A.text(value.compose_hash, A.DIGEST, 'recovery-compose');
+      const services = ['api', 'jev-intelligence-worker'];
+      const previous = A.exact(value.previous_image_ids, services), active = A.exact(value.active_image_ids, services);
+      const revisions = A.exact(value.previous_revisions, services), ids = A.exact(value.target_container_ids, services);
+      const runtime = A.exact(value.runtime_sha256, services);
+      for (const service of services) {
+        A.requireValue(A.text(previous[service], A.DIGEST, 'recovery-previous-image') ===
+          A.text(active[service], A.DIGEST, 'recovery-active-image'), 'recovery-image-mismatch');
+        A.text(revisions[service], A.SHA, 'recovery-revision');
+        A.text(ids[service], /^[0-9a-f]{64}$/u, 'recovery-container');
+        A.text(runtime[service], A.DIGEST, 'recovery-runtime');
+      }
+      for (const name of ['compatibility', 'database', 'backup'])
+        A.requireValue(Object.keys(A.object(value[name])).length > 0, 'recovery-evidence');
+      const timing = A.exact(value.timings, ['started_at_ns', 'finished_at_ns']);
+      A.requireValue(typeof timing.started_at_ns === 'number' && Number.isInteger(timing.started_at_ns)
+        && timing.started_at_ns > 0 && typeof timing.finished_at_ns === 'number'
+        && Number.isInteger(timing.finished_at_ns) && timing.finished_at_ns >= timing.started_at_ns, 'recovery-timing');
+      return value;
+    }
+    A.requireValue(value.phase === 'draining' || value.phase === 'starting', 'recovery-phase');
+    await pause();
+  }
+  throw new A.AuthorityError('recovery-timeout');
+}
+/** Validate the exact terminal proof returned by the trusted cohort journal. */
+export function cohortReceipt(input: unknown, sha: string, run: string, outcome: 'activated' | 'rolled-back') {
+  const value = A.exact(input, ['schema', 'sha', 'ci_run_id', 'archive_sha256', 'image_id', 'scope', 'frontend',
+    'active_image_ids', 'previous_image_ids', 'previous_revisions', 'target_container_ids', 'active_sources',
+    'previous_sources', 'active_releases', 'active_frontend_tree_sha256', 'verifier_sha256', 'runtime_sha256',
+    'snapshot_sha256', 'compose_hash', 'compatibility', 'database', 'backup', 'outcome', 'timings']);
+  const targets = ['api', 'jev-intelligence-worker', 'frontend'];
+  A.requireValue(value.schema === 'social-monitor-cohort-release-receipt-v1' && value.sha === sha
+    && value.ci_run_id === run && value.outcome === outcome && Array.isArray(value.scope)
+    && isDeepStrictEqual(value.scope, targets), 'cohort-receipt-binding');
+  for (const name of ['archive_sha256', 'image_id', 'active_frontend_tree_sha256', 'verifier_sha256',
+    'snapshot_sha256', 'compose_hash']) A.text(value[name], A.DIGEST, 'cohort-receipt-digest');
+  const active = A.exact(value.active_image_ids, targets), previous = A.exact(value.previous_image_ids, targets);
+  const ids = A.exact(value.target_container_ids, targets), runtime = A.exact(value.runtime_sha256, targets);
+  for (const service of targets) {
+    A.text(active[service], A.DIGEST, 'cohort-receipt-image');
+    A.text(previous[service], A.DIGEST, 'cohort-receipt-image');
+    A.text(ids[service], /^[0-9a-f]{64}$/u, 'cohort-receipt-container');
+    A.text(runtime[service], A.DIGEST, 'cohort-receipt-runtime');
+    if (outcome === 'rolled-back') A.requireValue(active[service] === previous[service], 'cohort-receipt-image');
+    else A.requireValue(active[service] === (service === 'frontend' ? previous[service] : value.image_id),
+      'cohort-receipt-image');
+  }
+  const revisions = A.exact(value.previous_revisions, targets.slice(0, 2));
+  for (const service of targets.slice(0, 2)) A.text(revisions[service], A.SHA, 'cohort-receipt-revision');
+  const mounts = ['/usr/share/nginx/public', '/usr/share/nginx/admin', '/run/bootstrap/verify-static-release.sh'];
+  const sources = A.exact(value.active_sources, mounts), oldSources = A.exact(value.previous_sources, mounts);
+  for (const target of mounts) {
+    for (const path of [sources[target], oldSources[target]])
+      A.text(path, /^\/(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9_./-]+$/u, 'cohort-receipt-source');
+    if (outcome === 'rolled-back') A.requireValue(sources[target] === oldSources[target], 'cohort-receipt-source');
+  }
+  const releases = A.exact(value.active_releases, ['public', 'admin']);
+  for (const lane of ['public', 'admin']) {
+    A.text(releases[lane], A.SHA, 'cohort-receipt-release');
+    if (outcome === 'activated') A.requireValue(releases[lane] === sha, 'cohort-receipt-release');
+  }
+  const frontend = A.exact(value.frontend, ['root', 'authority', 'manifest_sha256', 'archive_sha256', 'archive_bytes', 'tree_sha256']);
+  const artifact = A.exact(frontend.authority, ['sha', 'ci_run_id', 'ci_run_attempt', 'artifact_id', 'artifact_name',
+    'artifact_sha256', 'artifact_bytes']);
+  A.requireValue(artifact.sha === sha && artifact.ci_run_id === run && frontend.root ===
+    `/var/lib/social-monitor-release/cohort/frontend/candidates/${sha}-${run}/bundle`, 'cohort-receipt-frontend');
+  for (const name of ['manifest_sha256', 'archive_sha256', 'tree_sha256']) A.text(frontend[name], A.DIGEST, 'cohort-receipt-frontend');
+  A.text(artifact.artifact_sha256, A.DIGEST, 'cohort-receipt-frontend');
+  A.text(artifact.ci_run_attempt, A.RUN, 'cohort-receipt-frontend'); A.text(artifact.artifact_id, A.RUN, 'cohort-receipt-frontend');
+  A.requireValue(artifact.artifact_name === `frontend-candidate-${sha}-${run}-${artifact.ci_run_attempt}`
+    && Number.isSafeInteger(artifact.artifact_bytes) && (artifact.artifact_bytes as number) > 0
+    && (artifact.artifact_bytes as number) <= 300_000_000
+    && Number.isSafeInteger(frontend.archive_bytes) && (frontend.archive_bytes as number) > 0
+    && (frontend.archive_bytes as number) <= 268_435_456, 'cohort-receipt-frontend');
+  if (outcome === 'activated') {
+    A.requireValue(frontend.tree_sha256 === value.active_frontend_tree_sha256, 'cohort-receipt-tree');
+    A.requireValue(sources['/usr/share/nginx/public'] === `${frontend.root}/public`
+      && sources['/usr/share/nginx/admin'] === `${frontend.root}/admin`
+      && sources['/run/bootstrap/verify-static-release.sh'] ===
+        `/var/lib/social-monitor-release/cohort/verifiers/${sha}-${run}.sh`, 'cohort-receipt-source');
+  }
+  for (const name of ['compatibility', 'database', 'backup'])
+    A.requireValue(Object.keys(A.object(value[name])).length > 0, 'cohort-receipt-evidence');
+  const timing = A.exact(value.timings, ['started_at_ns', 'finished_at_ns']);
+  A.requireValue(typeof timing.started_at_ns === 'number' && Number.isInteger(timing.started_at_ns)
+    && timing.started_at_ns > 0 && typeof timing.finished_at_ns === 'number' && Number.isInteger(timing.finished_at_ns)
+    && timing.finished_at_ns >= timing.started_at_ns, 'cohort-receipt-timing');
+  return value;
+}
+
+function cohortHostDenial(response: { code: number; stdout: Buffer }): string | undefined {
+  if (response.code !== 1 || !Buffer.isBuffer(response.stdout)) return undefined;
+  try {
+    const value = A.exact(A.parseJson(response.stdout, 4096), ['denied']);
+    return typeof value.denied === 'string' && /^[a-z][a-z0-9-]{0,127}$/u.test(value.denied)
+      ? value.denied : undefined;
+  } catch { return undefined; }
+}
+/** Resume a previously begun rollback; an absent transaction is never a rollback receipt. */
+export async function recoverCohort(transport: Transport, sha: string, run: string,
+  pause: () => Promise<void> = () => new Promise(resolve => setTimeout(resolve, 1000))) {
+  const scoped = cohortRecoveryTransport(sha, run, transport);
+  for (let attempt = 0; attempt < 120; attempt++) {
+    const response = await scoped(command('cohort-rollback', [sha, run]));
+    if (cohortHostDenial(response) === 'cohort-rollback-unstarted')
+      throw new A.AuthorityError('cohort-rollback-unstarted');
+    A.requireValue(response.code === 0 && Buffer.isBuffer(response.stdout), 'cohort-recovery-host-denied');
+    const value = A.object(A.parseJson(response.stdout, COHORT_RESPONSE_BYTES));
+    A.requireValue(value.sha === sha && value.ci_run_id === run
+      && isDeepStrictEqual(value.scope, ['api', 'jev-intelligence-worker', 'frontend']), 'cohort-recovery-binding');
+    if (value.schema === 'social-monitor-cohort-release-receipt-v1') return cohortReceipt(value, sha, run, 'rolled-back');
+    A.requireValue(value.phase === 'draining' || value.phase === 'starting', 'cohort-recovery-phase');
+    await pause();
+  }
+  throw new A.AuthorityError('cohort-recovery-timeout');
+}
+type CohortStep = 'cohort-admit' | 'cohort-activate' | 'cohort-verify' | 'cohort-receipt' | 'cohort-rollback';
+/** Admit and activate one fully staged cohort, rolling back after an uncertain effect. */
+export async function activateCohort(frontend: FrontendAuthority, backend: Manifest, frontendProof: unknown,
+  get: Get, transport: Transport, pause: () => Promise<void> = () => new Promise(resolve => setTimeout(resolve, 1000)),
+  onStep: (step: CohortStep) => void = () => {}) {
+  const { sha, run } = frontend.base;
+  A.requireValue(backend.sha === sha && backend.ci_run_id === run, 'cohort-candidate-binding');
+  const staged = A.object(frontendProof), artifact = A.object(staged.authority), expectedArtifact = frontend.artifact;
+  A.requireValue(artifact.sha === sha && artifact.ci_run_id === run && artifact.ci_run_attempt === String(frontend.base.attempt)
+    && artifact.artifact_id === expectedArtifact.id && artifact.artifact_name === expectedArtifact.name
+    && artifact.artifact_sha256 === expectedArtifact.digest && artifact.artifact_bytes === expectedArtifact.bytes,
+    'cohort-frontend-authority-binding');
+  let activationCalls = 0, firstActivationDenial: string | undefined;
+  const marked: Transport = async (wire, source) => {
+    if (wire.startsWith('cohort-activate ')) activationCalls++;
+    return transport(wire, source);
+  };
+  const guarded = guardedTransport(get, frontend.base, marked, frontend);
+  async function call(verb: CohortStep, args: string[]) {
+    onStep(verb);
+    const response = await guarded(command(verb, args));
+    if (verb === 'cohort-activate')
+      firstActivationDenial = activationCalls === 1 ? cohortHostDenial(response) : undefined;
+    requireHostResponse(response, 'cohort-host-denied');
+    return A.object(A.parseJson(response.stdout, COHORT_RESPONSE_BYTES));
+  }
+  const pair = [sha, run];
+  const admission = await call('cohort-admit', pair);
+  A.requireValue(admission.sha === sha && admission.ci_run_id === run
+    && admission.archive_sha256 === backend.archive_sha256 && admission.image_id === backend.image_id
+    && admission.archive_bytes === backend.archive_bytes && isDeepStrictEqual(admission.frontend, frontendProof),
+    'cohort-admission-binding');
+  try {
+    for (let attempt = 0; attempt < 120; attempt++) {
+      const value = await call('cohort-activate', pair);
+      A.requireValue(value.sha === sha && value.ci_run_id === run && value.archive_sha256 === backend.archive_sha256
+        && value.image_id === backend.image_id && isDeepStrictEqual(value.scope, ['api', 'jev-intelligence-worker', 'frontend']),
+        'cohort-activation-binding');
+      if (value.schema === 'social-monitor-cohort-release-receipt-v1') {
+        const receipt = cohortReceipt(value, sha, run, 'activated');
+        A.requireValue(isDeepStrictEqual(receipt.frontend, frontendProof)
+          && isDeepStrictEqual(receipt.previous_image_ids, admission.previous_image_ids)
+          && isDeepStrictEqual(receipt.previous_revisions, admission.previous_revisions)
+          && isDeepStrictEqual(receipt.previous_sources, admission.previous_sources)
+          && isDeepStrictEqual(receipt.active_sources, admission.desired_sources)
+          && isDeepStrictEqual(receipt.runtime_sha256, admission.runtime_sha256)
+          && isDeepStrictEqual(receipt.compatibility, admission.compatibility)
+          && receipt.snapshot_sha256 === admission.snapshot_sha256 && receipt.compose_hash === admission.compose_hash
+          && receipt.verifier_sha256 === admission.desired_verifier_sha256, 'cohort-receipt-admission');
+        const verified = A.exact(await call('cohort-verify', pair),
+          ['verified', 'scope', 'sha', 'ci_run_id', 'archive_sha256', 'image_id']);
+        A.requireValue(verified.verified === true && isDeepStrictEqual(verified.scope, receipt.scope)
+          && verified.sha === sha && verified.ci_run_id === run && verified.archive_sha256 === backend.archive_sha256
+          && verified.image_id === backend.image_id, 'cohort-verify-binding');
+        const repeated = await call('cohort-receipt', [`${sha}-${run}`]);
+        A.requireValue(isDeepStrictEqual(cohortReceipt(repeated, sha, run, 'activated'), receipt), 'cohort-receipt-changed');
+        return receipt;
+      }
+      A.requireValue(value.phase === 'draining' || value.phase === 'starting', 'cohort-activation-phase');
+      await pause();
+    }
+    throw new A.AuthorityError('cohort-activation-timeout');
+  } catch (error) {
+    if (!activationCalls) throw error;
+    try { onStep('cohort-rollback'); await recoverCohort(transport, sha, run, pause); }
+    catch (recoveryError) {
+      if (firstActivationDenial !== undefined && recoveryError instanceof A.AuthorityError &&
+          recoveryError.code === 'cohort-rollback-unstarted') throw new CohortUnstartedError(firstActivationDenial);
+      throw new A.AuthorityError('cohort-recovery-required');
+    }
+    throw new A.AuthorityError('cohort-rolled-back');
+  }
+}
 async function provisionRunner(directory: string, env: NodeJS.ProcessEnv) {
   await canonical(directory);
-  A.requireValue((await readdir(directory)).every(name => ['data', 'transport.zip'].includes(name)), 'private-directory');
+  A.requireValue((await readdir(directory)).every(name => ['data', 'transport.zip', 'frontend-work'].includes(name)), 'private-directory');
   const host = A.text(env.HETZNER_HOST, /^[a-zA-Z0-9][a-zA-Z0-9.-]{0,252}$/u, 'runner-host');
   const port = Number(A.text(env.HETZNER_PORT, /^[1-9][0-9]{0,4}$/u, 'runner-port'));
   A.requireValue(port <= 65535, 'runner-port');
@@ -279,14 +760,46 @@ function expected(authority: Authority, trigger: Trigger, env: NodeJS.ProcessEnv
     && env.EXPECTED_LANE === trigger.lane, 'candidate-disagreement');
   return A.text(env.EXPECTED_MANIFEST_HASH, A.DIGEST, 'expected-manifest');
 }
+function expectedFrontend(frontend: FrontendAuthority, env: NodeJS.ProcessEnv): string {
+  A.requireValue(A.text(env.EXPECTED_FRONTEND_ARTIFACT, A.RUN, 'expected-frontend-artifact') === frontend.artifact.id,
+    'frontend-candidate-disagreement');
+  return A.text(env.EXPECTED_FRONTEND_MANIFEST_HASH, A.DIGEST, 'expected-frontend-manifest');
+}
 async function summary(phase: string, lane: string): Promise<void> {
   if (!process.env.GITHUB_STEP_SUMMARY) return;
   const handle = await open(process.env.GITHUB_STEP_SUMMARY, F.O_WRONLY | F.O_APPEND | F.O_NOFOLLOW);
   try { await handle.writeFile(`Hetzner release: ${phase}; phase ${lane}.\n`); }
   finally { await handle.close(); }
 }
+async function runRecovery(env: NodeJS.ProcessEnv): Promise<void> {
+  A.requireValue(env.GITHUB_JOB === 'recover', 'recovery-job');
+  const eventPath = A.text(env.GITHUB_EVENT_PATH, /^\/[a-zA-Z0-9_./-]+$/u, 'event-path');
+  const event = A.parseJson(await boundedBytes(eventPath, 1024 * 1024), 1024 * 1024);
+  const inputAction = A.object(A.object(event).inputs).action;
+  A.requireValue(inputAction === 'recover-backend' || inputAction === 'recover-cohort', 'recovery-trigger');
+  const request = recoveryTrigger(env.HETZNER_RELEASE_MODE, event, env.GITHUB_EVENT_NAME ?? '',
+    env.GITHUB_ACTOR ?? '', env.GITHUB_REPOSITORY ?? '', env.GITHUB_REF ?? '', inputAction);
+  A.text(env.TRUSTED_MAIN, A.SHA, 'trusted-main');
+  const root = A.text(env.RUNNER_TEMP, /^\/[a-zA-Z0-9_./-]+$/u, 'runner-temp');
+  await canonical(root); A.requireValue((await lstat(root)).isDirectory(), 'runner-temp');
+  const scratch = await privateScratch(root, env.HETZNER_PRIVATE_DIRECTORY);
+  try {
+    const receipts = join(root, 'hetzner-receipts-recover');
+    await mkdir(receipts, { mode: 0o700 }); await canonical(receipts);
+    const config = await provisionRunner(scratch, env);
+    const transport = sshTransport(config);
+    const receipt = inputAction === 'recover-cohort'
+      ? await recoverCohort(transport, request.sha, request.run)
+      : await recoverBackend(transport, request.sha, request.run);
+    await append(join(receipts, 'receipt.jsonl'), receipt);
+    await outputs({ phase: 'rolled-back', lane: 'recover' });
+    await summary('rolled-back', 'recover');
+  } finally { await rm(scratch, { recursive: true, force: true }); }
+}
 export async function main(args: readonly string[], env: NodeJS.ProcessEnv): Promise<void> {
-  A.requireValue(args.length === 1 && ['candidate', 'gate', 'preflight', 'activate'].includes(args[0] ?? ''), 'arguments');
+  A.requireValue(args.length === 1 && ['candidate', 'gate', 'preflight', 'activate', 'recover', 'auth-clear'].includes(args[0] ?? ''), 'arguments');
+  if (args[0] === 'auth-clear') { await runAuthClear(env); return; }
+  if (args[0] === 'recover') { await runRecovery(env); return; }
   const action = args[0];
   if (!['preflight', 'manual', 'auto'].includes(env.HETZNER_RELEASE_MODE ?? '')) {
     await outputs({ phase: 'disabled-skipped', lane: 'skip' }); return;
@@ -303,6 +816,8 @@ export async function main(args: readonly string[], env: NodeJS.ProcessEnv): Pro
   A.requireValue(typeof ghDirectory === 'string', 'github-private-config');
   await mkdir(ghDirectory, { mode: 0o700 }); await canonical(ghDirectory);
   let scratch: string | undefined, publicDirectory: string | undefined;
+  let step = 'authority';
+  let auth: { transport: Transport; sha: string; run: string; lease: string } | undefined;
   try {
     if (trigger.lane === 'skip') {
       await outputs({ phase: 'ineligible-skipped', lane: 'skip' });
@@ -323,42 +838,76 @@ export async function main(args: readonly string[], env: NodeJS.ProcessEnv): Pro
     const authority = decision.authority;
     A.requireValue(A.text(env.TRUSTED_MAIN, A.SHA, 'trusted-main') === authority.sha, 'checkout-main-disagreement');
     const expectedHash = action === 'candidate' ? undefined : expected(authority, trigger, env);
+    step = 'frontend-authority';
+    const frontend = await A.observeFrontendAuthority(get, authority);
+    const expectedFrontendHash = action === 'candidate' ? undefined : expectedFrontend(frontend, env);
     if (action === 'gate') { await outputs({ phase: 'ready', lane: trigger.lane }); return; }
     scratch = action === 'candidate' ? await mkdtemp(join(root, 'hetzner-candidate-'))
       : await privateScratch(root, env.HETZNER_PRIVATE_DIRECTORY);
+    step = 'backend-candidate';
     const data = await candidate(authority, scratch, env);
     A.requireValue(expectedHash === undefined || expectedHash === data.manifestHash, 'manifest-disagreement');
+    const frontendScratch = join(scratch, 'frontend-work');
+    await mkdir(frontendScratch, { mode: 0o700 });
+    step = 'frontend-candidate';
+    const frontendData = await prepareFrontendCandidate(frontend, frontendScratch, env);
+    A.requireValue(expectedFrontendHash === undefined || expectedFrontendHash === frontendData.manifestHash,
+      'frontend-manifest-disagreement');
+    step = 'authority-recheck';
     const repeated = await A.observeAuthority(get, authority.run);
     if (repeated.phase === 'stale-main-skipped') {
       if (publicDirectory) await append(join(publicDirectory, 'receipt.jsonl'), repeated);
       await outputs({ phase: repeated.phase, lane: trigger.lane }); return;
     }
     A.sameAuthority(authority, repeated.authority);
+    A.sameFrontendAuthority(frontend, await A.observeFrontendAuthority(get, authority));
     if (action === 'candidate') {
       await outputs({ phase: 'ready', lane: trigger.lane, sha: authority.sha, run: authority.run,
-        artifact: authority.artifact, manifest_hash: data.manifestHash }); return;
+        artifact: authority.artifact, manifest_hash: data.manifestHash,
+        frontend_artifact: frontend.artifact.id, frontend_manifest_hash: frontendData.manifestHash }); return;
     }
     A.requireValue(publicDirectory, 'receipt-directory');
+    step = 'ssh-setup';
     const config = await provisionRunner(scratch, env), transport = sshTransport(config);
     const binding = { sha: authority.sha, ci_run_id: authority.run, artifact_id: authority.artifact,
       manifest_sha256: data.manifestHash, archive_sha256: data.value.archive_sha256, image_id: data.value.image_id };
     if (action === 'preflight') {
+      step = 'preflight';
       const observation = await observeReadonly(transport);
       await append(join(publicDirectory, 'receipt.jsonl'), { phase: 'preflight-observed', lane: action, ...binding, ...observation });
       await summary('preflight-observed', action); await outputs({ phase: 'preflight-observed', lane: action }); return;
     }
-    const result = await deliver({ manifest: data.manifest, archive: data.archive, sha: authority.sha,
-      run: authority.run, phases: join(publicDirectory, 'phases.jsonl') }, guardedTransport(get, authority, transport));
-    A.requireValue(['completed', 'stale-main-skipped'].includes(result.phase), 'terminal-phase');
-    await append(join(publicDirectory, 'receipt.jsonl'), { phase: result.phase, lane: action, ...binding });
-    await summary(result.phase, 'activate'); await outputs({ phase: result.phase, lane: 'activate' });
-  } catch {
+    await append(join(publicDirectory, 'receipt.jsonl'), { phase: 'candidate-bound', lane: action, ...binding,
+      frontend_artifact_id: frontend.artifact.id, frontend_manifest_sha256: frontendData.manifestHash });
+    step = 'github-auth';
+    const lease = randomBytes(16).toString('hex');
+    await append(join(scratch, 'github-auth.json'), { sha: authority.sha, run: authority.run, lease });
+    auth = { transport: sshTransport(config, undefined, 15_000), sha: authority.sha, run: authority.run, lease };
+    await githubAuth(guardedTransport(get, authority, transport), authority.sha, authority.run, lease,
+      A.text(env.GH_TOKEN, GITHUB_TOKEN, 'github-auth-token'));
+    step = 'backend-receive';
+    await sendBackendCandidate(authority, data, get, transport);
+    step = 'frontend-receive';
+    const frontendProof = await sendFrontendCandidate(frontend, frontendData, get, transport, true);
+    step = 'cohort-admit';
+    const receipt = await activateCohort(frontend, data.value, frontendProof, get, transport, undefined, value => { step = value; });
+    step = 'receipt-save';
+    await append(join(publicDirectory, 'receipt.jsonl'), { phase: 'verified-receipt', receipt });
+    await append(join(publicDirectory, 'receipt.jsonl'), { phase: 'completed', lane: action, ...binding,
+      frontend_artifact_id: frontend.artifact.id, frontend_manifest_sha256: frontendData.manifestHash });
+    await summary('completed', 'activate'); await outputs({ phase: 'completed', lane: 'activate' });
+  } catch (error) {
     if (publicDirectory) {
-      await append(join(publicDirectory, 'receipt.jsonl'), { phase: 'failed', lane: action });
-      await summary('failed; operator reconciliation required', action ?? 'unknown');
+      const recovery = error instanceof A.AuthorityError && ['cohort-unstarted', 'cohort-rolled-back', 'cohort-recovery-required'].includes(error.message)
+        ? error.message : undefined;
+      await append(join(publicDirectory, 'receipt.jsonl'), { phase: 'failed', lane: action, ...safeReleaseFailure(step, error),
+        ...(recovery ? { recovery } : {}) });
+      await summary(recovery === 'cohort-unstarted' ? 'activation denied; cohort unstarted'
+        : 'failed; operator reconciliation required', action ?? 'unknown');
     }
     throw new A.AuthorityError('release-phase-failed');
   } finally {
+    if (auth) await githubAuth(auth.transport, auth.sha, auth.run, auth.lease).catch(() => {});
     if (scratch) await rm(scratch, { recursive: true, force: true });
     await rm(ghDirectory, { recursive: true, force: true });
   }

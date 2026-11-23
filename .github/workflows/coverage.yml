@@ -22,7 +22,7 @@ jobs:
     outputs:
       ready: ${{ steps.scope.outputs.ready }}
     steps:
-      - name: Skip coverage when the tested run skipped every unit shard
+      - name: Require actual six-shard unit execution before coverage
         id: scope
         env:
           GH_TOKEN: ${{ github.token }}
@@ -30,12 +30,30 @@ jobs:
           RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
           set -euo pipefail
-          # Draft pull requests skip the heavy unit shards; their runs have no coverage to upload.
-          conclusions="$(gh api --paginate "/repos/$GH_REPO/actions/runs/$RUN_ID/jobs?per_page=100" --jq '.jobs[] | select(.name | startswith("Backend unit shard")) | .conclusion')"
-          ready=true
-          if [ -n "$conclusions" ] && [ -z "$(printf '%s\n' "$conclusions" | grep -v '^skipped$' || true)" ]; then
-            ready=false
-          fi
+          # Light PRs keep six successful required check names, but execute no
+          # unit tests. A green job alone is never coverage evidence.
+          gh api --paginate --slurp "/repos/$GH_REPO/actions/runs/$RUN_ID/jobs?per_page=100" > jobs-pages.json
+          ready="$(jq -er '
+            if type != "array" or length == 0 then
+              error("missing job inventory")
+            else
+              ([.[].jobs[] | select(.name | startswith("Backend unit shard "))] as $shards |
+                if ($shards | length) == 1 and $shards[0].conclusion == "skipped" then
+                  "false"
+                elif ($shards | length) == 6 and
+                     ([$shards[].name] | unique | length) == 6 and
+                     all($shards[]; .conclusion == "success") then
+                  ([$shards[] | [.steps[]? |
+                    select(.name == "Run backend unit tests once with coverage") | .conclusion]] as $runs |
+                    if all($runs[]; . == ["success"]) then "true"
+                    elif all($runs[]; . == ["skipped"]) then "false"
+                    else error("mixed or missing shard execution evidence") end)
+                else
+                  error("incomplete or inconsistent unit shard inventory")
+                end)
+            end
+          ' jobs-pages.json)"
+          case "$ready" in true|false) ;; *) exit 1 ;; esac
           echo "ready=$ready" >> "$GITHUB_OUTPUT"
 
   coverage_artifacts:

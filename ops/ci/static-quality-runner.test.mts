@@ -82,7 +82,10 @@ async function fixture(root: string, scenario: string): Promise<number> {
             message.type === 'status' && 'status' in message && message.status === 0) {
           queueMicrotask(() => {
             assert.ok(child.pid);
-            fs.writeFileSync(join(root, 'status-received'), String(child.pid));
+            // Publish the observed PID atomically; concurrent readers must never see an empty file.
+            const markerPending = join(root, 'status-received.pending');
+            fs.writeFileSync(markerPending, String(child.pid));
+            fs.renameSync(markerPending, join(root, 'status-received'));
           });
         }
       });
@@ -134,7 +137,8 @@ async function fixture(root: string, scenario: string): Promise<number> {
         const stat = await readFile(`/proc/${leader}/stat`, 'utf8');
         if (stat.slice(stat.lastIndexOf(')') + 2).startsWith('Z ')) break;
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') break;
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === 'ENOENT' || code === 'ESRCH') break;
         throw error;
       }
       assert.ok(performance.now() < deadline, 'failure command exits before the log error');

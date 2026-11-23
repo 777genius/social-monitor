@@ -9,6 +9,10 @@ import { execFileSync } from "node:child_process";
 import { runInNewContext } from "node:vm";
 
 const workflow = readFileSync(".github/workflows/pull-request.yml", "utf8");
+const scopedBackendDependencies = (load(workflow) as {
+  jobs: { backend_unit: { needs: string[] } };
+}).jobs.backend_unit.needs;
+const scopedNeedsSource = `needs: [${scopedBackendDependencies.join(", ")}]`;
 const checker = readFileSync("scripts/check-review-ci.mjs", "utf8");
 // Exercise the imported semantic contract directly, without production checks.
 const check = (source: string): string[] => JSON.parse(execFileSync(process.execPath, [
@@ -51,7 +55,7 @@ describe("backend unit whole-corpus CI sharding", () => {
     ["--shard=${{ matrix.shard }}/6", "--shard=${{ matrix.shard }}/5"],
     ["--shard=${{ matrix.shard }}/6", "--shard=${{ matrix.shard }}/6 --passWithNoTests"],
     ["--shard=${{ matrix.shard }}/6", "--shard=${{ matrix.shard }}/6 --testPathPatterns=small"],
-    ["needs: [backend_unit_shards, backend_build_contracts]", "needs: static_quality"],
+    [scopedNeedsSource, "needs: static_quality"],
     ["if: always() && !cancelled()", "if: success()"],
     ["if: always() && !cancelled()", "if: always()"],
     ['= "success"', '!= "failure"'],

@@ -1,3 +1,5 @@
+import { execFileSync } from 'node:child_process';
+
 import { InMemoryFeedItemReadRepository } from '@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { WorkerRuntime } from '@social-monitor/platform-worker';
@@ -137,7 +139,14 @@ const run = async (): Promise<void> => {
   }
 };
 
-void run().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
-});
+void run()
+  .then(() => {
+    execFileSync(process.execPath, ['--test', 'scripts/ci/hn-archive-manifest.test.mjs'], {
+      stdio: 'inherit',
+      timeout: 30_000,
+    });
+  })
+  .catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  });

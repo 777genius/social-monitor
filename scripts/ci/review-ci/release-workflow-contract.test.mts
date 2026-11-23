@@ -58,6 +58,14 @@ test('parsed policy mutations cannot smuggle environment, write permissions, sec
     ['extra step', value => { const sequence = job(value, 'candidate').steps; assert.ok(Array.isArray(sequence)); sequence.push({ run: 'echo untrusted' }); }],
     ['candidate secret', value => { map(steps(value, 'candidate')[5]!.env).PRIVATE = '${{ secrets.PRIVATE }}'; }],
     ['host secret expression', value => { map(steps(value, 'activate')[6]!.env).HETZNER_HOST = '${{ github.event.inputs.host }}'; }],
+    ['activation cleanup omitted', value => {
+      const step = steps(value, 'activate')[6]!;
+      step.run = String(step.run).replace('auth-clear', 'status');
+    }],
+    ['credential in cleanup argv', value => {
+      const step = steps(value, 'activate')[6]!;
+      step.run = String(step.run).replace('auth-clear', 'auth-clear "$GH_TOKEN"');
+    }],
   ];
   for (const [name, mutate] of mutations) assert.equal(accepted(changed(mutate)), false, name);
 });
@@ -83,6 +91,10 @@ test('event checkout, command, environment, cancellation and branch-gate mutatio
     ['host authorization gate removed', value => { steps(value, 'activate')[6]!.if = 'always()'; }],
     ['mode gate removed before checkout', value => { delete steps(value, 'candidate')[2]!.if; }],
     ['receipt wildcard', value => { map(steps(value, 'activate')[7]!.with).path = '${{ runner.temp }}/**'; }],
+    ['automatic recovery trigger', value => { job(value, 'recover').if = 'always()'; }],
+    ['recovery command changed', value => { steps(value, 'recover')[5]!.run = 'node activate.mts'; }],
+    ['recovery concurrency removed', value => { delete job(value, 'recover').concurrency; }],
+    ['recovery write permissions', value => { map(job(value, 'recover').permissions).contents = 'write'; }],
   ];
   for (const [name, mutate] of mutations) assert.equal(accepted(changed(mutate)), false, name);
 });
@@ -204,4 +216,7 @@ test('static CI rejects skipped, reordered, duplicated or changed release verifi
   }
   const scripts = { ...map(pkg.scripts), 'check:hetzner-release-tests': 'node --test' };
   assert.ok(R.hetznerReleaseCiViolations(stringify(ci), scripts).length > 0);
+  const withoutTransport = { ...map(pkg.scripts), 'check:hetzner-release-tests':
+    String(map(pkg.scripts)['check:hetzner-release-tests']).replace('scripts/ci/hetzner-release-client.test.mjs ', '') };
+  assert.ok(R.hetznerReleaseCiViolations(stringify(ci), withoutTransport).length > 0);
 });

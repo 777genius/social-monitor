@@ -21,6 +21,14 @@ GRAMMAR = {
     'admit': [SHA, RUN], 'activate': [SHA, RUN], 'verify': [SHA, RUN],
     'rollback': [SHA, RUN], 'receipt': [KEY + r'(?:-rollback)?'],
 }
+GRAMMAR.update({'backend-' + verb: patterns for verb, patterns in GRAMMAR.copy().items()
+                if verb != 'status'})
+GRAMMAR['cohort-receive-frontend'] = [SHA, RUN]
+GRAMMAR['cohort-receive-frontend-auth'] = [SHA, RUN]
+GRAMMAR['cohort-receive-backend'] = [SHA, RUN, DIGEST, DIGEST, r'[1-9][0-9]{0,11}']
+GRAMMAR.update({'cohort-' + verb: [SHA, RUN] for verb in ('admit', 'activate', 'rollback', 'verify')})
+GRAMMAR['cohort-receipt'] = [KEY + r'(?:-rollback)?']
+GRAMMAR.update({verb: [SHA, RUN] for verb in ('github-auth', 'github-auth-clear')})
 
 
 class Denied(Exception):
@@ -198,7 +206,7 @@ def load_config():
             and 'api' not in config['required_non_targets']
             and all(re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}', n)
                     for n in config['required_non_targets'].values()), 'non-targets')
-    require(isinstance(config['fenced_units'], list) and config['fenced_units']
+    require(isinstance(config['fenced_units'], list)
             and all(re.fullmatch(r'[a-zA-Z0-9@_.-]+\.(timer|service)', u)
                     for u in config['fenced_units']), 'fenced-units')
     root = config['migration_root']

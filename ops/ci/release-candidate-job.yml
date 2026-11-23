@@ -2,7 +2,7 @@
 production_candidate:
   name: Production immutable candidate
   if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
-  runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
+  runs-on: ubuntu-24.04
   timeout-minutes: 45
   permissions:
     contents: read
@@ -62,7 +62,7 @@ production_candidate:
 production_lifecycle:
   name: Production deploy lifecycle fixtures
   if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
-  runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
+  runs-on: ubuntu-24.04
   timeout-minutes: 45
   permissions:
     contents: read
@@ -84,12 +84,39 @@ production_lifecycle:
         npm run check:runtime-compose
         npm run check:production-lifecycle-runner:containment
         npm run check:production-deploy-lifecycle
+    - name: Set up Python for X collector
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.13'
+    - name: Verify X collector without live requests
+      run: |
+        set -euo pipefail
+        python -m pip install --disable-pip-version-check -e 'apps/x-collector[dev]'
+        python -m pytest -m 'not real_e2e' apps/x-collector/tests
+    - name: Set up the qualified Docker engine for X
+      uses: docker/setup-docker-action@2bf61fb9464cc67f0cbdeabed6aa0380accd1c70
+      with:
+        version: v29.8.2
+        set-host: true
+        daemon-config: '{"features":{"containerd-snapshotter":true}}'
+    - name: Build and smoke-test exact X collector image offline
+      run: |
+        set -euo pipefail
+        python3 scripts/ci/x-collector-image.test.py
+        bash scripts/ci/x-collector-image.sh
+    - name: Store verified X collector image
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+      with:
+        name: x-collector-image-${{ github.run_id }}-${{ github.run_attempt }}
+        path: ${{ runner.temp }}/x-collector-candidate/
+        if-no-files-found: error
+        retention-days: 7
 
 production_runtime:
   name: Production container and deploy lifecycle
   needs: [production_candidate, production_lifecycle]
   if: always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
-  runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || vars.CI_LINUX_RUNNER == 'ubicloud-standard-4' && 'ubicloud-standard-4' || 'ubuntu-24.04' }}
+  runs-on: ubuntu-24.04
   timeout-minutes: 5
   permissions:
     contents: read

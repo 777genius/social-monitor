@@ -1,4 +1,6 @@
+import { createStagingReliabilitySchemaValidation } from "./lib/staging-reliability-schema-validation.mjs";
 import { createHash } from "node:crypto";
+import { createStagingReliabilityCapturePathSmokes } from "./lib/staging-reliability-capture-path-smokes.mjs";
 import { execFileSync } from "node:child_process";
 import {
   chmodSync,
@@ -11,10 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  validateEvidenceArtifactProvenance,
-  validateEvidenceProvenanceRequirements,
-} from './lib/evidence-provenance.mjs';
+import { validateEvidenceArtifactProvenance } from './lib/evidence-provenance.mjs';
 import { readPrivateEvidenceJsonFile } from "./lib/evidence-env-file.mjs";
 import { createStagingReliabilityArtifactGuards } from "./lib/staging-reliability-artifact-guards.mjs";
 import {
@@ -30,6 +29,8 @@ import {
   matchesEvidenceType,
   isRecord,
 } from "./lib/staging-reliability-evidence-shape.mjs";
+
+import { createStagingReliabilityReleaseWiringPolicy } from "./lib/staging-reliability-release-wiring-policy.mjs";
 
 const evidencePath = "ops/drills/staging-reliability-evidence.json";
 const packagePath = "package.json";
@@ -120,23 +121,46 @@ const requiredBackendOpsDomains = [
   "observability-and-drills",
   "mvp-loop",
 ];
-const requiredSignalResultRequirementTexts = new Set([
-  "every required signalId for the stagingArtifactId is present exactly once",
-  "every signal result has status=passed",
-  "every signal result has observedAt and non-empty evidence",
-  "artifact startedAt/completedAt and signal observedAt use strict ISO-8601 timestamps",
-  "every signal result observedAt is inside artifact startedAt/completedAt window",
-  "every signal result evidence is an object matching signal-specific required fields",
-  "artifact metadata matches the release evidence row",
-  "real artifact environmentId and operator are not example, fixture, synthetic, mock or test identifiers",
-  "real artifact nested evidence values do not contain example, fixture, synthetic, mock or test markers",
-]);
 const signalPolicyContext = {
   violations,
   evidencePath,
   requiredSignalIds,
   requiredEvidenceShapeBySignalId,
 };
+const { validatePassedArtifactContentSchema } = createStagingReliabilitySchemaValidation({
+  evidence,
+  violations,
+  evidencePath,
+  stagingArtifactFormat,
+  stagingArtifactEvidenceKind,
+  requiredEnvArtifacts,
+  isRecord,
+  existsSync,
+});
+
+const {
+  requireReleaseWiring,
+  requireBackendOpsWiring,
+  requireExternalReadinessWiring,
+  requireBaselineWiring,
+} = createStagingReliabilityReleaseWiringPolicy({
+  violations,
+  releaseContract,
+  releaseContractPath,
+  gateId,
+  gateCommand,
+  gateScript,
+  backendOps,
+  backendOpsPath,
+  requiredBackendOpsDomains,
+  evidencePath,
+  externalReadiness,
+  externalReadinessPath,
+  requiredExternalGroups,
+  baseline,
+  baselinePath,
+  evidence,
+});
 
 if (evidence.schemaVersion !== 1) {
   violations.push(`${evidencePath}: schemaVersion must be 1`);
@@ -340,6 +364,10 @@ requireBackendOpsWiring();
 requireExternalReadinessWiring();
 requireBaselineWiring();
 requireCaptureScriptWiring();
+const { validateCaptureOutputPathGuards } = createStagingReliabilityCapturePathSmokes({
+  violations, execFileSync, process, existsSync, resolve,
+  dockerStagingReliabilityCapturePath, dockerDurableBackendE2eCapturePath,
+});
 validateCaptureOutputPathGuards();
 validateDirectArtifactPathGuards();
 
@@ -354,102 +382,7 @@ function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
 }
 
-function validatePassedArtifactContentSchema() {
-  const schema = evidence.passedArtifactContentSchema;
-  if (!isRecord(schema)) {
-    violations.push(
-      `${evidencePath}: passedArtifactContentSchema must define the required passed artifact format`,
-    );
-    return;
-  }
-  if (schema.schemaVersion !== 1) {
-    violations.push(
-      `${evidencePath}: passedArtifactContentSchema.schemaVersion must be 1`,
-    );
-  }
-  if (schema.format !== stagingArtifactFormat) {
-    violations.push(
-      `${evidencePath}: passedArtifactContentSchema.format must be ${stagingArtifactFormat}`,
-    );
-  }
-  if (
-    typeof schema.exampleArtifactPath !== "string" ||
-    schema.exampleArtifactPath.trim().length === 0
-  ) {
-    violations.push(
-      `${evidencePath}: passedArtifactContentSchema.exampleArtifactPath must reference fixture examples`,
-    );
-  } else if (!existsSync(schema.exampleArtifactPath)) {
-    violations.push(
-      `${evidencePath}: passedArtifactContentSchema.exampleArtifactPath does not exist`,
-    );
-  }
 
-  const requiredTopLevelFields = new Set(schema.requiredTopLevelFields ?? []);
-  for (const field of [
-    "schemaVersion",
-    "format",
-    "artifactId",
-    "environmentId",
-    "imageDigest",
-    "operator",
-    "startedAt",
-    "completedAt",
-    "provenance",
-    "redaction",
-    "signalResults",
-  ]) {
-    if (!requiredTopLevelFields.has(field)) {
-      violations.push(
-        `${evidencePath}: passedArtifactContentSchema.requiredTopLevelFields must include ${field}`,
-      );
-    }
-  }
-
-  const redactionRequirements = new Set(schema.redactionRequirements ?? []);
-  for (const requirement of [
-    "secretsIncluded=false",
-    "rawProviderPayloadsIncluded=false",
-    "databaseUrlsIncluded=false",
-    "brokerUrlsIncluded=false",
-  ]) {
-    if (!redactionRequirements.has(requirement)) {
-      violations.push(
-        `${evidencePath}: passedArtifactContentSchema.redactionRequirements must include ${requirement}`,
-      );
-    }
-  }
-
-  if (
-    !Array.isArray(schema.signalResultRequirements) ||
-    schema.signalResultRequirements.length < 4
-  ) {
-    violations.push(
-      `${evidencePath}: passedArtifactContentSchema.signalResultRequirements must describe signal coverage`,
-    );
-  } else {
-    const signalResultRequirements = new Set(schema.signalResultRequirements);
-    for (const requirement of requiredSignalResultRequirementTexts) {
-      if (!signalResultRequirements.has(requirement)) {
-        violations.push(
-          `${evidencePath}: passedArtifactContentSchema.signalResultRequirements must include "${requirement}"`,
-        );
-      }
-    }
-  }
-  validateProvenanceRequirements(schema.provenanceRequirements);
-  validateEnvArtifactValidation(schema.envArtifactValidation);
-}
-
-function validateProvenanceRequirements(requirements) {
-  validateEvidenceProvenanceRequirements({
-    requirements,
-    expectedEvidenceKind: stagingArtifactEvidenceKind,
-    label: "passedArtifactContentSchema.provenanceRequirements",
-    sourcePath: evidencePath,
-    violations,
-  });
-}
 
 function requirePassedArtifact(artifact) {
   if (
@@ -762,54 +695,6 @@ function expectedEnvValueForArtifact(content, config, envVar) {
   return apiBaseUrl.length > 0 ? apiBaseUrl : undefined;
 }
 
-function validateEnvArtifactValidation(validationRules) {
-  if (!Array.isArray(validationRules)) {
-    violations.push(
-      `${evidencePath}: passedArtifactContentSchema.envArtifactValidation must be an array`,
-    );
-    return;
-  }
-
-  const seenRules = new Set();
-  for (const [index, rule] of validationRules.entries()) {
-    const label = `passedArtifactContentSchema.envArtifactValidation[${index}]`;
-    if (!isRecord(rule)) {
-      violations.push(`${evidencePath}: ${label} must be an object`);
-      continue;
-    }
-    const expected = requiredEnvArtifacts.get(rule.artifactId);
-    if (expected === undefined) {
-      violations.push(`${evidencePath}: ${label}.artifactId is unsupported`);
-      continue;
-    }
-    seenRules.add(rule.artifactId);
-    if (rule.envVar !== expected.envVar) {
-      violations.push(
-        `${evidencePath}: ${label}.envVar must be ${expected.envVar}`,
-      );
-    }
-    if (rule.format !== stagingArtifactFormat) {
-      violations.push(
-        `${evidencePath}: ${label}.format must be ${stagingArtifactFormat}`,
-      );
-    }
-    for (const envVar of expected.requiredEnv) {
-      if (!rule.requiredEnv?.includes(envVar)) {
-        violations.push(
-          `${evidencePath}: ${label}.requiredEnv must include ${envVar}`,
-        );
-      }
-    }
-  }
-
-  for (const artifactId of requiredEnvArtifacts.keys()) {
-    if (!seenRules.has(artifactId)) {
-      violations.push(
-        `${evidencePath}: envArtifactValidation must include ${artifactId}`,
-      );
-    }
-  }
-}
 
 function readArtifactContent(artifact, options = {}) {
   try {
@@ -930,19 +815,15 @@ function requireCaptureScriptWiring() {
     }
   }
 
-  const durableBackendE2eCaptureSource = readFileSync(
-    durableBackendE2eCapturePath,
-    "utf8",
-  );
-  for (const marker of [
-    "DURABLE_BACKEND_E2E_ARTIFACT_PATH",
-    "mode: 0o600",
-    "chmodSync",
+  for (const [file, markers] of [
+    [durableBackendE2eCapturePath, ["mode: 0o600", "chmodSync", "loadConfig(defaultMemoStackTimeoutMs)", 'from "./lib/durable-backend-e2e-config"']],
+    ["scripts/lib/durable-backend-e2e-config.ts", ['outputPath: requireEnv("DURABLE_BACKEND_E2E_ARTIFACT_PATH")']],
   ]) {
-    if (!durableBackendE2eCaptureSource.includes(marker)) {
-      violations.push(
-        `${durableBackendE2eCapturePath}: capture must include ${marker}`,
-      );
+    const source = readFileSync(file, "utf8");
+    for (const marker of markers) {
+      if (!source.includes(marker)) {
+        violations.push(`${file}: capture must include ${marker}`);
+      }
     }
   }
 
@@ -957,128 +838,6 @@ function requireCaptureScriptWiring() {
         `${currentScriptPath}: direct staging artifact env path guard must include ${marker}`,
       );
     }
-  }
-}
-
-function validateCaptureOutputPathGuards() {
-  const rabbitWorkspaceArtifactPath = resolve(
-    "rabbitmq-staging-drill-workspace-output.json",
-  );
-  const rabbitResult = runDockerStagingCaptureExpectingFailure({
-    RABBITMQ_STAGING_DRILL_ARTIFACT_PATH: rabbitWorkspaceArtifactPath,
-    POSTGRES_RESTORE_DRILL_ARTIFACT_PATH:
-      "/tmp/social-monitor-postgres-restore-drill-output.json",
-    STAGING_RELIABILITY_ENV_PATH: "/tmp/social-monitor-staging-reliability.env",
-  });
-  if (rabbitResult.exitCode === 0) {
-    violations.push(
-      `${dockerStagingReliabilityCapturePath}: capture must reject workspace RABBITMQ_STAGING_DRILL_ARTIFACT_PATH`,
-    );
-  } else if (
-    !rabbitResult.output.includes(
-      "RABBITMQ_STAGING_DRILL_ARTIFACT_PATH must not write release evidence into the git workspace",
-    )
-  ) {
-    violations.push(
-      `${dockerStagingReliabilityCapturePath}: workspace RabbitMQ artifact path rejection must explain evidence path policy`,
-    );
-  }
-  if (existsSync(rabbitWorkspaceArtifactPath)) {
-    violations.push(
-      `${dockerStagingReliabilityCapturePath}: workspace RabbitMQ artifact path rejection must not create ${rabbitWorkspaceArtifactPath}`,
-    );
-  }
-
-  const postgresWorkspaceArtifactPath = resolve(
-    "postgres-restore-drill-workspace-output.json",
-  );
-  const postgresResult = runDockerStagingCaptureExpectingFailure({
-    RABBITMQ_STAGING_DRILL_ARTIFACT_PATH:
-      "/tmp/social-monitor-rabbitmq-staging-drill-output.json",
-    POSTGRES_RESTORE_DRILL_ARTIFACT_PATH: postgresWorkspaceArtifactPath,
-    STAGING_RELIABILITY_ENV_PATH: "/tmp/social-monitor-staging-reliability.env",
-  });
-  if (postgresResult.exitCode === 0) {
-    violations.push(
-      `${dockerStagingReliabilityCapturePath}: capture must reject workspace POSTGRES_RESTORE_DRILL_ARTIFACT_PATH`,
-    );
-  } else if (
-    !postgresResult.output.includes(
-      "POSTGRES_RESTORE_DRILL_ARTIFACT_PATH must not write release evidence into the git workspace",
-    )
-  ) {
-    violations.push(
-      `${dockerStagingReliabilityCapturePath}: workspace Postgres artifact path rejection must explain evidence path policy`,
-    );
-  }
-  if (existsSync(postgresWorkspaceArtifactPath)) {
-    violations.push(
-      `${dockerStagingReliabilityCapturePath}: workspace Postgres artifact path rejection must not create ${postgresWorkspaceArtifactPath}`,
-    );
-  }
-
-  const durableBackendWorkspaceArtifactPath = resolve(
-    "durable-backend-e2e-workspace-output.json",
-  );
-  const durableBackendResult = runDurableBackendE2eCaptureExpectingFailure({
-    DURABLE_BACKEND_E2E_ARTIFACT_PATH: durableBackendWorkspaceArtifactPath,
-    DURABLE_BACKEND_E2E_ENV_PATH: "/tmp/social-monitor-durable-backend-e2e.env",
-  });
-  if (durableBackendResult.exitCode === 0) {
-    violations.push(
-      `${dockerDurableBackendE2eCapturePath}: capture must reject workspace DURABLE_BACKEND_E2E_ARTIFACT_PATH`,
-    );
-  } else if (
-    !durableBackendResult.output.includes(
-      "DURABLE_BACKEND_E2E_ARTIFACT_PATH must not write release evidence into the git workspace",
-    )
-  ) {
-    violations.push(
-      `${dockerDurableBackendE2eCapturePath}: workspace durable backend E2E artifact path rejection must explain evidence path policy`,
-    );
-  }
-  if (existsSync(durableBackendWorkspaceArtifactPath)) {
-    violations.push(
-      `${dockerDurableBackendE2eCapturePath}: workspace durable backend E2E artifact path rejection must not create ${durableBackendWorkspaceArtifactPath}`,
-    );
-  }
-}
-
-function runDockerStagingCaptureExpectingFailure(env) {
-  try {
-    execFileSync(process.execPath, [dockerStagingReliabilityCapturePath], {
-      env: {
-        ...process.env,
-        ...env,
-      },
-      encoding: "utf8",
-      stdio: "pipe",
-    });
-    return { exitCode: 0, output: "" };
-  } catch (error) {
-    return {
-      exitCode: typeof error.status === "number" ? error.status : 1,
-      output: `${error.stdout ?? ""}\n${error.stderr ?? ""}`,
-    };
-  }
-}
-
-function runDurableBackendE2eCaptureExpectingFailure(env) {
-  try {
-    execFileSync(process.execPath, [dockerDurableBackendE2eCapturePath], {
-      env: {
-        ...process.env,
-        ...env,
-      },
-      encoding: "utf8",
-      stdio: "pipe",
-    });
-    return { exitCode: 0, output: "" };
-  } catch (error) {
-    return {
-      exitCode: typeof error.status === "number" ? error.status : 1,
-      output: `${error.stdout ?? ""}\n${error.stderr ?? ""}`,
-    };
   }
 }
 
@@ -1170,104 +929,5 @@ function runSelfExpectingFailure(env) {
       exitCode: typeof error.status === "number" ? error.status : 1,
       output: `${error.stdout ?? ""}\n${error.stderr ?? ""}`,
     };
-  }
-}
-
-function requireReleaseWiring() {
-  const releaseGateIds = new Set(
-    (releaseContract.requiredGates ?? []).map((gate) => gate.gateId),
-  );
-  const releaseGateCommands = new Set(
-    (releaseContract.requiredGates ?? []).map((gate) => gate.command),
-  );
-
-  if (!releaseGateIds.has(gateId)) {
-    violations.push(`${releaseContractPath}: missing ${gateId} release gate`);
-  }
-  if (!releaseGateCommands.has(gateCommand)) {
-    violations.push(
-      `${releaseContractPath}: release gates must include ${gateScript}`,
-    );
-  }
-}
-
-function requireBackendOpsWiring() {
-  for (const domainId of requiredBackendOpsDomains) {
-    const domain = (backendOps.requiredDomains ?? []).find(
-      (item) => item.domainId === domainId,
-    );
-    if (domain === undefined) {
-      violations.push(
-        `${backendOpsPath}: missing backend ops domain "${domainId}"`,
-      );
-      continue;
-    }
-    if (!domain.gates?.includes(gateScript)) {
-      violations.push(
-        `${backendOpsPath}: domain "${domainId}" must include ${gateScript}`,
-      );
-    }
-    if (!domain.releaseGateIds?.includes(gateId)) {
-      violations.push(
-        `${backendOpsPath}: domain "${domainId}" must include ${gateId} release gate`,
-      );
-    }
-    if (!domain.artifacts?.includes(evidencePath)) {
-      violations.push(
-        `${backendOpsPath}: domain "${domainId}" must include ${evidencePath}`,
-      );
-    }
-  }
-}
-
-function requireExternalReadinessWiring() {
-  for (const groupId of requiredExternalGroups) {
-    const group = (externalReadiness.requiredEvidenceGroups ?? []).find(
-      (item) => item.groupId === groupId,
-    );
-    if (group === undefined) {
-      violations.push(
-        `${externalReadinessPath}: missing external readiness group "${groupId}"`,
-      );
-      continue;
-    }
-    if (!group.verificationCommands?.includes(gateCommand)) {
-      violations.push(
-        `${externalReadinessPath}: group "${groupId}" must include ${gateScript}`,
-      );
-    }
-    if (!group.requiredArtifacts?.includes(evidencePath)) {
-      violations.push(
-        `${externalReadinessPath}: group "${groupId}" must include ${evidencePath}`,
-      );
-    }
-  }
-}
-
-function requireBaselineWiring() {
-  if (!baseline.requiredGreenScripts?.includes(gateScript)) {
-    violations.push(
-      `${baselinePath}: requiredGreenScripts must include ${gateScript}`,
-    );
-  }
-  if (
-    !(baseline.trackedArtifacts ?? []).some(
-      (artifact) => artifact.path === evidencePath,
-    )
-  ) {
-    violations.push(
-      `${baselinePath}: trackedArtifacts must include ${evidencePath}`,
-    );
-  }
-  const examplePath = evidence.passedArtifactContentSchema?.exampleArtifactPath;
-  if (
-    typeof examplePath === "string" &&
-    !(baseline.trackedArtifacts ?? []).some(
-      (artifact) => artifact.path === examplePath,
-    )
-  ) {
-    violations.push(
-      `${baselinePath}: trackedArtifacts must include ${examplePath}`,
-    );
   }
 }

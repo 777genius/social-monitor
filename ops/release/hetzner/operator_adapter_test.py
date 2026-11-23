@@ -64,10 +64,24 @@ class WireAndBoundsTests(unittest.TestCase):
         from operator_adapter import REQUESTS
         for verb in REQUESTS:
             value = {} if verb in ('preflight', 'postgres-identity') else dict(BINDING)
+            if verb in ('frontend-authority', 'cohort-frontend-authority'):
+                value = {'sha': BINDING['sha'], 'ci_run_id': BINDING['ci_run_id']}
             if verb == 'release-evidence':
                 value['production_revision'] = BASE
-            if verb == 'probe':
+            if verb in ('backend-release-evidence', 'cohort-backend-release-evidence'):
+                value.update(api_revision=BASE, worker_revision=BASE,
+                             non_target_snapshot_sha256='sha256:' + '0' * 64)
+            if verb == 'worker-capability':
+                value = {'container_id': CONTAINER, 'image_id': BINDING['image_id']}
+            if verb == 'worker-drain':
+                value = {'container_id': CONTAINER, 'image_id': BINDING['image_id'],
+                         'signal_since_ms': '1794300000000', 'started_at_sha256': 'sha256:' + '0' * 64,
+                         'restart_count': '0'}
+            if verb in ('probe', 'worker-probe', 'cohort-worker-probe-v1'):
                 value = {'sha': BINDING['sha'], 'image_id': BINDING['image_id'], 'container_id': CONTAINER}
+                if verb in ('worker-probe', 'cohort-worker-probe-v1'):
+                    value.update(runtime_sha256='sha256:' + '1' * 64,
+                                 restart_policy_sha256='sha256:' + '2' * 64)
             self.assertEqual(request(verb, canonical(value)), value)
             with self.assertRaises(Denied):
                 request(verb, canonical({**value, 'approve': True}))
@@ -208,14 +222,18 @@ class WireAndBoundsTests(unittest.TestCase):
             module = root / 'opt/social-monitor-release/operator_config.py'
             original = module.read_bytes()
             module.write_bytes(b'(\n')
-            result = subprocess.run(['/usr/sbin/chroot', str(root),
-                '/etc/social-monitor/release/operator-adapter', 'postgres-identity'],
-                input=b'{}', capture_output=True, timeout=8, env=env)
-            self.assertEqual(result.returncode, 1)
-            self.assertEqual(result.stdout, b'')
-            self.assertIn(b'SyntaxError', result.stderr)
-            self.assertIn(b'/opt/social-monitor-release/operator_config.py', result.stderr)
-            self.assertFalse((root / 'poison-imported').exists())
+            for verb in ('postgres-identity', 'frontend-authority', 'backend-release-evidence',
+                         'cohort-frontend-authority', 'cohort-backend-release-evidence',
+                         'worker-capability', 'worker-drain', 'worker-probe', 'cohort-worker-probe-v1'):
+                with self.subTest(verb=verb):
+                    result = subprocess.run(['/usr/sbin/chroot', str(root),
+                        '/etc/social-monitor/release/operator-adapter', verb],
+                        input=b'{}', capture_output=True, timeout=8, env=env)
+                    self.assertEqual(result.returncode, 1)
+                    self.assertEqual(result.stdout, b'')
+                    self.assertIn(b'SyntaxError', result.stderr)
+                    self.assertIn(b'/opt/social-monitor-release/operator_config.py', result.stderr)
+                    self.assertFalse((root / 'poison-imported').exists())
             module.write_bytes(original)
             copy(interpreter, '/opt/social-monitor-release-python/bin/copied-python')
             interpreter.unlink()
@@ -318,6 +336,12 @@ class ProbeTests(unittest.TestCase):
 
 
 class GitHubTests(unittest.TestCase):
+    def test_public_github_observation_does_not_need_token(self):
+        config = FixtureConfig()
+        runner = self.fixture()
+        with patch.object(github, 'TOKEN', '/nonexistent/unused-token'):
+            self.assertEqual(github.GitHub(config, runner).main(), BINDING['sha'])
+
     def test_current_workflow_jobs_are_required_independently_of_operator_fixture(self):
         import yaml
         root = Path(__file__).resolve().parents[3]
@@ -369,7 +393,8 @@ class GitHubTests(unittest.TestCase):
         new = [{'path': 'libs/shared/kernel.ts', 'type': 'blob', 'mode': '100644', 'sha': '2' * 40},
                {'path': 'docs/worker-notes.md', 'type': 'blob', 'mode': '100644', 'sha': '3' * 40}]
         def provider(argv, data, env):
-            self.assertEqual(argv[1:6], ['api', '--hostname', 'github.com', '--method', 'GET'])
+            self.assertEqual(argv[1:8], ['--disable', '--fail', '--silent', '--location', '--proto', '=https', '--max-redirs'])
+            self.assertEqual(argv[8], '0')
             self.assertNotIn('GITHUB_TOKEN', env)
             endpoint = argv[-1].split(github.REPO + '/', 1)[1]
             if endpoint == 'git/ref/heads/main':
@@ -442,6 +467,40 @@ class GitHubTests(unittest.TestCase):
         for path in ('apps/agent-runtime/x.spec.ts', 'prisma/migrations/x.sql', 'ops/compose/compose.yml'):
             self.assertFalse(github.scope([path])['api_only'])
         self.assertTrue(github.scope(['docs/worker-api-guide.md'])['api_only'])
+
+    def test_worker_readme_is_documentation_only_for_regular_unchanged_mode(self):
+        import evidence
+        path = evidence.WORKER_README
+        def fixture_with_readme(old_mode='100644', new_mode='100644'):
+            def modify(endpoint, value):
+                if endpoint.startswith('git/trees/'):
+                    old = '4' * 40 in endpoint
+                    mode = old_mode if old else new_mode
+                    if mode is not None:
+                        value['tree'].append({'path': path, 'type': 'blob', 'mode': mode,
+                                              'sha': ('6' if old else '7') * 40})
+            return github.GitHub(FixtureConfig(), self.fixture(modify))
+
+        paths, delta = fixture_with_readme().delta(BASE, BINDING['sha'])
+        self.assertIn(path, paths)
+        self.assertTrue(github.scope(paths)['api_only'])
+        proof = {'base': BASE, 'head': BINDING['sha'], 'delta_sha256': delta,
+                 'paths_sha256': digest(paths), 'evidence_sha256': 'sha256:' + 'a' * 64,
+                 'independent_review': True, 'all_shared_dependencies_reviewed': True,
+                 'compatible': True}
+        data = {'production_revision': BASE, 'diff_base': BASE, 'diff_head': BINDING['sha'],
+                'complete_delta': True, 'changed_paths': paths, 'delta_sha256': delta,
+                'compatibility': proof}
+        evidence.compatibility(data, BASE, BINDING['sha'])
+        for modes in (('120000', '100644'), ('100644', '120000'),
+                      ('100755', '100644'), ('100644', None), (None, '100644')):
+            with self.subTest(modes=modes), self.assertRaises(Denied):
+                fixture_with_readme(*modes).delta(BASE, BINDING['sha'])
+        for sensitive in ('apps/agent-runtime/src/main.ts', 'apps/agent-runtime/other/README.md',
+                          'prisma/schema.prisma'):
+            self.assertFalse(github.scope([path, sensitive])['api_only'])
+            with self.assertRaises(Denied):
+                evidence.compatibility({**data, 'changed_paths': paths + [sensitive]}, BASE, BINDING['sha'])
 
 
 if __name__ == '__main__':

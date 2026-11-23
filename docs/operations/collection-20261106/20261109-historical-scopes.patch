@@ -1,0 +1,65 @@
+--- a/usr/local/lib/social-monitor/historical-reddit-x/manifest.json
++++ b/usr/local/lib/social-monitor/historical-reddit-x/manifest.json
+@@ -26 +26,2 @@
+-    "2026-11-06"
++    "2026-11-06",
++    "2026-11-09"
+--- a/usr/local/lib/social-monitor/historical-reddit-x/mode.sh
++++ b/usr/local/lib/social-monitor/historical-reddit-x/mode.sh
+@@ -4 +4 @@
+-rx_manifest_sha=69044c27698fc0bb3e4494f9edfa9c72dcadfc3a58c5113a25a42ebf0149271c
++rx_manifest_sha=2a4f0ca4c0d115184f9eebc554f3b7ae87a141553a545c84cfac41431ae93efc
+--- a/usr/local/lib/social-monitor/historical-reddit-x/collection-reddit-x-entrypoint.sh
++++ b/usr/local/lib/social-monitor/historical-reddit-x/collection-reddit-x-entrypoint.sh
+@@ -8 +8 @@
+-case "$3" in 2026-10-02|2026-10-03|2026-10-05|2026-10-06|2026-10-07|2026-10-08|2026-10-09|2026-10-21|2026-10-22|2026-10-26|2026-10-27|2026-10-28|2026-10-29|2026-11-01|2026-11-02|2026-11-03|2026-11-06) ;; *) exit 78 ;; esac
++case "$3" in 2026-10-02|2026-10-03|2026-10-05|2026-10-06|2026-10-07|2026-10-08|2026-10-09|2026-10-21|2026-10-22|2026-10-26|2026-10-27|2026-10-28|2026-10-29|2026-11-01|2026-11-02|2026-11-03|2026-11-06|2026-11-09) ;; *) exit 78 ;; esac
+--- a/usr/local/lib/social-monitor/current-source-guard/current_profile_admission.py
++++ b/usr/local/lib/social-monitor/current-source-guard/current_profile_admission.py
+@@ -404 +404 @@
+-             and values['date'] in ('2026-10-02', '2026-10-03', '2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-21', '2026-10-22', '2026-10-26', '2026-10-27', '2026-10-28', '2026-10-29', '2026-11-01', '2026-11-02', '2026-11-03', '2026-11-06'),
++             and values['date'] in ('2026-10-02', '2026-10-03', '2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-21', '2026-10-22', '2026-10-26', '2026-10-27', '2026-10-28', '2026-10-29', '2026-11-01', '2026-11-02', '2026-11-03', '2026-11-06', '2026-11-09'),
+--- a/usr/local/sbin/social-monitor-posts-once
++++ b/usr/local/sbin/social-monitor-posts-once
+@@ -164,0 +165,11 @@
++  # One bounded additive pass per provider scope for the already reconciled 2026-11-09 day.
++  # Prior current slots must match their exact retained terminal bytes. A prior
++  # historical attempt in the same scope is never replayed, regardless of its result.
++  if [[ $day == 2026-11-09 && ( $mode == historical-hn-rss || $mode == historical-reddit-x ) ]]; then
++    [[ $old_mode == current-slot ]] || return 1
++    case "$old_id:$(sha256sum "$state/posts-once/$old_id/state" 2>/dev/null | cut -d' ' -f1)" in
++      20261109T000000Z-347f0031-77b3-4036-b420-b771f726e694:f57f76af1fe72c273a49ab4887a4570e648a8df9f4ab5d3215e90ba104d691e0|\
++      20261109T212913Z-b9b5e014-e0d5-4ffe-bd09-0fcb523a71ac:e4441f29f76dfa9d7a118f2dd56b026750a093f358acd649565a8d6ac7bbde3c) return 0 ;;
++    esac
++    return 1
++  fi
+@@ -646 +657 @@
+-     $(sha256sum "$rx_module" | cut -d' ' -f1) == 41e701924439e8f0ec8cabe91f6d04e89302ec5722fd3a72a3b9b845262292a1 ]] || exit 78
++     $(sha256sum "$rx_module" | cut -d' ' -f1) == 32a28678ad5b8a021135e0aeb0df89dc5f765aacba519f25bda2c700b2ca7dd0 ]] || exit 78
+@@ -710 +721 @@
+-     $(sha256sum "$rx_entry" | cut -d' ' -f1) == 032dd10c98468ff18481d3adb1f7acc9f3db33c9ecb4ec8bdc7082eef13fac05 ]] || exit 78
++     $(sha256sum "$rx_entry" | cut -d' ' -f1) == f6d60ff50c62820dd4677d6c2fb9a2817d9a53cd5e5466e68a80e863417fe1f1 ]] || exit 78
+--- a/usr/local/lib/social-monitor/current-source-guard/physical_operator_epoch.py
++++ b/usr/local/lib/social-monitor/current-source-guard/physical_operator_epoch.py
+@@ -82,2 +82,2 @@
+-    Path('/usr/local/lib/social-monitor/historical-reddit-x/mode.sh'): '41e701924439e8f0ec8cabe91f6d04e89302ec5722fd3a72a3b9b845262292a1',
+-    Path('/usr/local/lib/social-monitor/historical-reddit-x/manifest.json'): '69044c27698fc0bb3e4494f9edfa9c72dcadfc3a58c5113a25a42ebf0149271c',
++    Path('/usr/local/lib/social-monitor/historical-reddit-x/mode.sh'): '32a28678ad5b8a021135e0aeb0df89dc5f765aacba519f25bda2c700b2ca7dd0',
++    Path('/usr/local/lib/social-monitor/historical-reddit-x/manifest.json'): '2a4f0ca4c0d115184f9eebc554f3b7ae87a141553a545c84cfac41431ae93efc',
+@@ -85 +85 @@
+-    Path('/usr/local/lib/social-monitor/historical-reddit-x/collection-reddit-x-entrypoint.sh'): '032dd10c98468ff18481d3adb1f7acc9f3db33c9ecb4ec8bdc7082eef13fac05',
++    Path('/usr/local/lib/social-monitor/historical-reddit-x/collection-reddit-x-entrypoint.sh'): 'f6d60ff50c62820dd4677d6c2fb9a2817d9a53cd5e5466e68a80e863417fe1f1',
+@@ -109 +109 @@
+-    ROUTER: '647e9d0851e81b4516ba32413d797b615020c83b0db7b18265bb74c9922e78df',
++    ROUTER: 'fba2ce86cba51d7ae71149a535acd30c44682bf278daf93b42250ecde3924448',
+@@ -126 +126 @@
+-    LIB / 'current_profile_admission.py': '1187a96202e95cfe2cca665fc6c4ae28c13388bb362a9de4acfc2b32a62637f2',
++    LIB / 'current_profile_admission.py': '7dcd3a808144abd57a332be9a5115711116235e517dce2b1cf12198cf94434cf',
+--- a/usr/local/sbin/social-monitor-posts-current-authority-stage
++++ b/usr/local/sbin/social-monitor-posts-current-authority-stage
+@@ -63 +63 @@
+-    'physical_operator_epoch': '2d4bb08e394c9b2cc6289d02a5928ada53d59ccbe866f3a1734ed37d881424e8',
++    'physical_operator_epoch': 'f515748a5a9164a832623c8862560a4b4496eb461b510e55cf8530993abcb65d',
+@@ -68 +68 @@
+-    'current_profile_admission': '1187a96202e95cfe2cca665fc6c4ae28c13388bb362a9de4acfc2b32a62637f2',
++    'current_profile_admission': '7dcd3a808144abd57a332be9a5115711116235e517dce2b1cf12198cf94434cf',

@@ -1,4 +1,17 @@
-# Runner capacity decision — 2026-10-03
+# Runner capacity decision
+
+## Current decision - 2026-11-11
+
+All pull-request CI jobs use GitHub-hosted `ubuntu-24.04` directly. The managed
+runner pilot is disabled. `CI_LINUX_RUNNER` no longer controls runner selection,
+and native setup accepts only the GitHub-hosted environment. Native PostgreSQL,
+containment, inventory, coverage and release-candidate gates remain enforced.
+Production workflows retain their existing runners and authority checks.
+
+The dated sections below are historical evidence and are superseded by this
+decision. Do not re-enable the pilot through repository variables.
+
+## Historical baseline - 2026-10-03
 
 Keep standard GitHub-hosted runners. Recent main runs take 15m32s and
 11m33s, meeting the 20–30 minute CI target. Do not deploy a new runner

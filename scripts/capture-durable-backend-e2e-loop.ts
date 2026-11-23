@@ -1,17 +1,36 @@
-import { createPrivateKey, randomUUID, sign as signJwt } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { dirname } from "node:path";
 
 import { minimumScanIntervalSecondsForProvider } from "@social-monitor/monitoring/features/shared/scan-cadence-policy";
-import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 import { defaultMemoStackTimeoutMs } from "@social-monitor/summary/adapters/memory/memo-stack-memory-client";
 import { MemoStackSummaryMemoryAdapter } from "@social-monitor/summary/adapters/memory/memo-stack-summary-memory.adapter";
 import type { SummaryMemoryContext } from "@social-monitor/summary/ports";
-import { Pool, type PoolClient } from "pg";
+import { Pool } from "pg";
+
+import { createDurableBackendHttpClient } from "./lib/durable-backend-e2e-http-client";
+import { summaryMemoryContextQuery } from "./lib/durable-backend-e2e-summary-memory-query";
+import { autoSummaryEvidenceSnapshot, durableCounts, scheduledScanEvidenceSnapshot, seedDurableIdentity } from "./lib/durable-backend-e2e-pg-evidence";
+import { emptyToUndefined, loadConfig } from "./lib/durable-backend-e2e-config";
+import { writeFrontendRuntimeEnvFile } from "./lib/durable-backend-e2e-frontend-env";
+import { authHeaders, resolveAccessToken, withIdempotency, type AuthContext } from "./lib/durable-backend-e2e-auth";
+import { createDurableScanTargets, type DurableScanProviderKey, type DurableScanTarget } from "./lib/durable-backend-e2e-scan-targets";
+import {
+  assertProviderCitationCoverage,
+  providerCitationCoverage,
+  type ProviderCitationCoverage,
+} from "./lib/durable-backend-e2e-citation-coverage";
+
+import {
+  safeMemoryContextDebug,
+  summaryMemoryEvidenceSnapshot,
+  type SummaryMemoryEvidence,
+} from "./lib/durable-backend-e2e-summary-memory-evidence";
+
+import { captureReaderBriefEvidence, type ReaderBriefEvidence } from "./lib/durable-backend-e2e-reader-brief";
 
 import {
   isRecord,
-  optionalString,
   readFirst,
   readNumber,
   readObjectArray,
@@ -21,28 +40,6 @@ import {
   type JsonRecord,
 } from "./lib/durable-backend-e2e-json-fields";
 
-type HttpMethod = "GET" | "POST" | "PUT" | "PATCH";
-
-type RunnerConfig = {
-  readonly apiBaseUrl: string;
-  readonly databaseUrl: string;
-  readonly outputPath: string;
-  readonly environmentId: string;
-  readonly imageDigest: string;
-  readonly operator: string;
-  readonly issuer: string;
-  readonly audience: string;
-  readonly privateKeyPem?: string;
-  readonly keyId?: string;
-  readonly accessToken?: string;
-  readonly accessTokenTtlSeconds: number;
-  readonly frontendEnvPath?: string;
-  readonly webhookUrl: string;
-  readonly memoryBaseUrl: string;
-  readonly memoryToken: string;
-  readonly memoryTimeoutMs: number;
-};
-
 type RuntimeIds = {
   readonly runId: string;
   readonly tenantId: string;
@@ -51,29 +48,13 @@ type RuntimeIds = {
   readonly membershipId: string;
 };
 
-type AuthContext = {
-  readonly tenantId: string;
-  readonly workspaceId: string;
-  readonly token: string;
-};
+
 
 type SignalResult = {
   readonly signalId: string;
   readonly status: "passed";
   readonly observedAt: string;
   readonly evidence: JsonRecord;
-};
-
-type DurableScanProviderKey =
-  | "hacker-news"
-  | "github-issues"
-  | "github-trending-page"
-  | "reddit"
-  | "rss";
-
-type DurableScanTarget = {
-  readonly providerKey: DurableScanProviderKey;
-  readonly config: JsonRecord;
 };
 
 type SourceBindingEvidence = {
@@ -111,40 +92,11 @@ type AutoSummaryEvidence = {
   readonly newFeedItemCount: number;
 };
 
-type ReaderBriefEvidence = {
-  readonly readerSummaryJobId: string;
-  readonly readerSummaryId: string;
-  readonly headline: string;
-  readonly topReadCount: number;
-  readonly topReadTitles: readonly string[];
-  readonly sourceMixProviderKeys: readonly string[];
-  readonly citationProviderKeys: readonly string[];
-  readonly citationCoverage: ProviderCitationCoverage;
-  readonly qualityStatus: string;
-};
 
-type ProviderCitationCoverage = {
-  readonly expectedProviderKeys: readonly string[];
-  readonly citedProviderKeys: readonly string[];
-  readonly uncitedProviderKeys: readonly string[];
-  readonly minimumCitedProviderCount: number;
-};
-
-type SummaryMemoryEvidence = {
-  readonly status: "available";
-  readonly memoryBaseUrlOrigin: string;
-  readonly topicScopeExternalRef: string;
-  readonly providerScopeExternalRef: string;
-  readonly sourceRefTypes: readonly string[];
-  readonly sourceRefCount: number;
-  readonly renderedTextChars: number;
-  readonly factsUsed?: number | undefined;
-  readonly itemsUsed?: number | undefined;
-  readonly retrievalSourcesUsed?: readonly string[] | undefined;
-  readonly memoryEffectMatched: boolean;
-};
-
-const config = loadConfig();
+const config = loadConfig(defaultMemoStackTimeoutMs);
+const { durableScanTargets, scheduledScanTarget } = createDurableScanTargets({ process, emptyToUndefined });
+const { pollJson, requestStatus, requestJsonWithContext, requestJson } =
+  createDurableBackendHttpClient(config, { isRecord, delay });
 const ids: RuntimeIds = {
   runId: `run-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`,
   tenantId: randomUUID(),
@@ -303,66 +255,6 @@ async function main(): Promise<void> {
   } finally {
     await pool.end();
   }
-}
-
-function writeFrontendRuntimeEnvFile(
-  runnerConfig: RunnerConfig,
-  auth: AuthContext,
-  runtimeIds: RuntimeIds,
-): void {
-  if (runnerConfig.frontendEnvPath === undefined) {
-    return;
-  }
-
-  const frontendEnvPath = validatePrivateOutOfWorkspacePath(
-    runnerConfig.frontendEnvPath,
-    "DURABLE_BACKEND_E2E_FRONTEND_ENV_PATH",
-  );
-  const lines = [
-    "# Generated for local Marionette visual verification only.",
-    "# Contains a short-lived backend JWT. Keep outside git and do not commit.",
-    `SOCIAL_MONITOR_API_BASE_URL=${shellQuote(runnerConfig.apiBaseUrl)}`,
-    `SOCIAL_MONITOR_TENANT_ID=${shellQuote(auth.tenantId)}`,
-    `SOCIAL_MONITOR_WORKSPACE_ID=${shellQuote(auth.workspaceId)}`,
-    `SOCIAL_MONITOR_TENANT_NAME=${shellQuote(`tenant-${runtimeIds.runId}`)}`,
-    `SOCIAL_MONITOR_WORKSPACE_NAME=${shellQuote(
-      `workspace-${runtimeIds.runId}`,
-    )}`,
-    "SOCIAL_MONITOR_WORKSPACE_ROLE='owner'",
-    `SOCIAL_MONITOR_USER_ID=${shellQuote(runtimeIds.userId)}`,
-    `SOCIAL_MONITOR_USER_LABEL=${shellQuote("MVP Operator")}`,
-    `SOCIAL_MONITOR_CORRELATION_ID=${shellQuote(
-      `frontend-visual-${runtimeIds.runId}`,
-    )}`,
-    `SOCIAL_MONITOR_API_BEARER_TOKEN=${shellQuote(auth.token)}`,
-  ];
-
-  mkdirSync(dirname(frontendEnvPath), { recursive: true });
-  writeFileSync(frontendEnvPath, `${lines.join("\n")}\n`, { mode: 0o600 });
-  chmodSync(frontendEnvPath, 0o600);
-  console.log(`DURABLE_BACKEND_E2E_FRONTEND_ENV_PATH=${frontendEnvPath}`);
-}
-
-function validatePrivateOutOfWorkspacePath(path: string, label: string): string {
-  if (!isAbsolute(path)) {
-    throw new Error(`${label} must be an absolute path`);
-  }
-
-  const resolvedPath = resolve(path);
-  const workspaceRelativePath = relative(process.cwd(), resolvedPath);
-  if (
-    workspaceRelativePath === "" ||
-    (!workspaceRelativePath.startsWith(`..${sep}`) &&
-      workspaceRelativePath !== "..")
-  ) {
-    throw new Error(`${label} must not be inside the git workspace`);
-  }
-
-  return resolvedPath;
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 async function executeBackendLoop(
@@ -599,7 +491,7 @@ async function executeBackendLoop(
     expectedProviderKeys: bindingsWithFeed.map(
       (binding) => binding.providerKey,
     ),
-  });
+  }, { requestJson, pollJson });
 
   const realtimeChannel = `interest:${interestId}:summary-status`;
   const realtime = await pollJson<JsonRecord>(
@@ -1015,133 +907,6 @@ async function createScheduledSourceBindingAndWait(params: {
   );
 }
 
-async function captureReaderBriefEvidence(params: {
-  readonly headers: Readonly<Record<string, string>>;
-  readonly idempotencyKey: string;
-  readonly expectedProviderKeys: readonly DurableScanProviderKey[];
-}): Promise<ReaderBriefEvidence> {
-  const request = await requestJson<JsonRecord>("POST", "/reader-summary-requests", {
-    headers: withIdempotency(params.headers, params.idempotencyKey),
-    body: {
-      scope: {
-        type: "workspace",
-      },
-    },
-  });
-  const readerSummaryJobId = readString(request, "readerSummaryJobId");
-  const status = await pollJson<JsonRecord>(
-    `/reader-summary-jobs/${encodeURIComponent(readerSummaryJobId)}/status`,
-    params.headers,
-    (value) => {
-      const jobStatus = readString(value, "status");
-      if (jobStatus === "failed") {
-        throw new Error(
-          `readerSummary job ${readerSummaryJobId} failed: ${String(value.failureReason ?? "")}`,
-        );
-      }
-
-      return jobStatus === "completed" ? value : undefined;
-    },
-    { timeoutMs: 120_000, label: "reader readerSummary completion" },
-  );
-  const readerSummaryId = readString(status, "readerSummaryId");
-  const readerSummary = await requestJson<JsonRecord>(
-    "GET",
-    `/reader-summaries/${encodeURIComponent(readerSummaryId)}`,
-    {
-      headers: params.headers,
-    },
-  );
-  const readerBrief = readRecord(readerSummary, "readerBrief");
-  const topReads = readObjectArray(readerBrief, "topReads");
-  const sourceMix = readObjectArray(readerBrief, "sourceMix");
-  const citations = readObjectArray(readerSummary, "citations");
-  const qualityState = readRecord(readerBrief, "qualityState");
-  const sourceMixProviderKeys = [
-    ...new Set(sourceMix.map((entry) => readString(entry, "providerKey"))),
-  ].sort();
-  const citationProviderKeys = [
-    ...new Set(
-      citations.map((citation) => readString(citation, "providerKey")),
-    ),
-  ].sort();
-  const citationCoverage = providerCitationCoverage(
-    params.expectedProviderKeys,
-    citationProviderKeys,
-  );
-
-  if (topReads.length < 3) {
-    throw new Error(
-      `reader brief must expose at least three top reads, got ${topReads.length}`,
-    );
-  }
-  for (const providerKey of params.expectedProviderKeys) {
-    if (!sourceMixProviderKeys.includes(providerKey)) {
-      throw new Error(
-        `reader brief source mix must include ${providerKey}: ${JSON.stringify(sourceMixProviderKeys)}`,
-      );
-    }
-  }
-  assertProviderCitationCoverage("reader brief", citationCoverage, {
-    sourceMixProviderKeys,
-    citationCount: citations.length,
-  });
-
-  return {
-    readerSummaryJobId,
-    readerSummaryId,
-    headline: readString(readerSummary, "headline"),
-    topReadCount: topReads.length,
-    topReadTitles: topReads
-      .map((item) => readString(item, "title"))
-      .slice(0, 10),
-    sourceMixProviderKeys,
-    citationProviderKeys,
-    citationCoverage,
-    qualityStatus: readString(qualityState, "status"),
-  };
-}
-
-function providerCitationCoverage(
-  expectedProviderKeys: readonly string[],
-  citedProviderKeys: readonly string[],
-): ProviderCitationCoverage {
-  const expected = [...new Set(expectedProviderKeys)].sort();
-  const cited = [...new Set(citedProviderKeys)].sort();
-  const minimumCitedProviderCount = Math.min(
-    expected.length,
-    Math.max(2, expected.length - 1),
-  );
-
-  return {
-    expectedProviderKeys: expected,
-    citedProviderKeys: cited,
-    uncitedProviderKeys: expected.filter((providerKey) =>
-      !cited.includes(providerKey),
-    ),
-    minimumCitedProviderCount,
-  };
-}
-
-function assertProviderCitationCoverage(
-  label: string,
-  coverage: ProviderCitationCoverage,
-  diagnostics: JsonRecord,
-): void {
-  if (
-    coverage.citedProviderKeys.length < coverage.minimumCitedProviderCount
-  ) {
-    throw new Error(
-      `${label} citations must include at least ${coverage.minimumCitedProviderCount} provider families: ${JSON.stringify(
-        {
-          ...coverage,
-          ...diagnostics,
-        },
-      )}`,
-    );
-  }
-}
-
 async function assertReady(): Promise<void> {
   const ready = await requestJson<JsonRecord>("GET", "/ready", { headers: {} });
   if (ready.status !== "ok") {
@@ -1153,119 +918,6 @@ async function assertReady(): Promise<void> {
       "API runtimeProfile must be beta for durable backend evidence capture",
     );
   }
-}
-
-async function seedDurableIdentity(
-  db: Pool,
-  runtimeIds: RuntimeIds,
-): Promise<void> {
-  await withClient(db, async (client) => {
-    await client.query("begin");
-    try {
-      await client.query(
-        `
-          insert into tenants (id, slug, name, created_at, updated_at)
-          values ($1, $2, $3, now(), now())
-          on conflict (id) do update set updated_at = excluded.updated_at
-        `,
-        [
-          runtimeIds.tenantId,
-          `tenant-${runtimeIds.runId}`,
-          "Durable Backend Loop Tenant",
-        ],
-      );
-      await client.query(
-        `
-          insert into workspaces (id, tenant_id, slug, name, created_at, updated_at)
-          values ($1, $2, $3, $4, now(), now())
-          on conflict (id) do update set updated_at = excluded.updated_at
-        `,
-        [
-          runtimeIds.workspaceId,
-          runtimeIds.tenantId,
-          `workspace-${runtimeIds.runId}`,
-          "Durable Backend Loop Workspace",
-        ],
-      );
-      await client.query(
-        `
-          insert into users (id, tenant_id, email, display_name, created_at, updated_at)
-          values ($1, $2, $3, $4, now(), now())
-          on conflict (id) do update set updated_at = excluded.updated_at
-        `,
-        [
-          runtimeIds.userId,
-          runtimeIds.tenantId,
-          `ops-${runtimeIds.runId}@internal.local`,
-          "Backend Loop Operator",
-        ],
-      );
-      await client.query(
-        `
-          insert into memberships (id, tenant_id, workspace_id, user_id, role, created_at, updated_at)
-          values ($1, $2, $3, $4, 'OWNER', now(), now())
-          on conflict (tenant_id, workspace_id, user_id) do update set role = 'OWNER', updated_at = excluded.updated_at
-        `,
-        [
-          runtimeIds.membershipId,
-          runtimeIds.tenantId,
-          runtimeIds.workspaceId,
-          runtimeIds.userId,
-        ],
-      );
-      await client.query("commit");
-    } catch (error) {
-      await client.query("rollback");
-      throw error;
-    }
-  });
-}
-
-async function durableCounts(
-  db: Pool,
-  tenantId: string,
-  workspaceId: string,
-): Promise<JsonRecord> {
-  return withClient(db, async (client) => {
-    const result = await client.query<{
-      topics: number;
-      scan_jobs: number;
-      feed_items: number;
-      summary_jobs: number;
-      summaries: number;
-      feedback: number;
-      digests: number;
-      delivery_attempts: number;
-    }>(
-      `
-        select
-          (select count(*)::int from topics where tenant_id = $1 and workspace_id = $2) as topics,
-          (select count(*)::int from scan_jobs where tenant_id = $1 and workspace_id = $2) as scan_jobs,
-          (select count(*)::int from feed_items where tenant_id = $1 and workspace_id = $2) as feed_items,
-          (select count(*)::int from summary_jobs where tenant_id = $1 and workspace_id = $2) as summary_jobs,
-          (select count(*)::int from summary_artifacts where tenant_id = $1 and workspace_id = $2) as summaries,
-          (select count(*)::int from summary_feedback where tenant_id = $1 and workspace_id = $2) as feedback,
-          (select count(*)::int from digests where tenant_id = $1 and workspace_id = $2) as digests,
-          (select count(*)::int from delivery_attempts where tenant_id = $1 and workspace_id = $2) as delivery_attempts
-      `,
-      [tenantId, workspaceId],
-    );
-    const row = result.rows[0];
-    if (row === undefined) {
-      throw new Error("durable count query returned no row");
-    }
-
-    return {
-      topics: Number(row.topics),
-      scanJobs: Number(row.scan_jobs),
-      feedItems: Number(row.feed_items),
-      summaryJobs: Number(row.summary_jobs),
-      summaries: Number(row.summaries),
-      feedback: Number(row.feedback),
-      digests: Number(row.digests),
-      deliveryAttempts: Number(row.delivery_attempts),
-    };
-  });
 }
 
 async function pollSummaryMemoryEvidence(
@@ -1299,7 +951,7 @@ async function pollSummaryMemoryEvidence(
       await delay(1_000);
       continue;
     }
-    const evidence = summaryMemoryEvidenceSnapshot(params, latest);
+    const evidence = summaryMemoryEvidenceSnapshot(params, latest, config);
     if (evidence !== undefined) {
       return evidence;
     }
@@ -1309,131 +961,6 @@ async function pollSummaryMemoryEvidence(
   throw new Error(
     `${options.label} did not produce retrievable memo-stack context; last=${safeMemoryContextDebug(latest)} lastError=${latestError ?? "none"}`,
   );
-}
-
-function summaryMemoryContextQuery(params: {
-  readonly tenantId: string;
-  readonly workspaceId: string;
-  readonly userId: string;
-  readonly interestId: string;
-  readonly feedItems: readonly JsonRecord[];
-}): Parameters<MemoStackSummaryMemoryAdapter["buildContext"]>[0] {
-  const requestedAt = new Date();
-  const evidenceItems = params.feedItems.slice(0, 12).map((item, index) => {
-    const providerKey = readString(item, "providerKey");
-    const feedItemId = readString(item, "id");
-    const bodyPreview = optionalString(item, "bodyPreview");
-    const canonicalUrl = optionalString(item, "canonicalUrl");
-
-    return {
-      feedItemId,
-      sourceItemId:
-        optionalString(item, "sourceItemId") ??
-        `source-${providerKey}-${index}`,
-      sourceBindingId: readString(item, "sourceBindingId"),
-      providerKey,
-      title:
-        optionalString(item, "title") ??
-        `${providerKey} feed item ${index + 1}`,
-      ...(bodyPreview === undefined ? {} : { bodyPreview }),
-      ...(canonicalUrl === undefined ? {} : { canonicalUrl }),
-      observedAt: parseDateOrFallback(
-        optionalString(item, "observedAt"),
-        requestedAt,
-      ),
-    };
-  });
-
-  return {
-    tenantId: tenantId(params.tenantId),
-    workspaceId: workspaceId(params.workspaceId),
-    interestId: params.interestId,
-    userId: params.userId,
-    requestedAt,
-    evidence: {
-      sourceWindow: {
-        windowId: `durable-backend-loop-memory-${params.interestId}`,
-        startedAt: requestedAt,
-        endedAt: requestedAt,
-        selectedFeedItemIds: evidenceItems.map((item) => item.feedItemId),
-      },
-      items: evidenceItems,
-    },
-  };
-}
-
-function summaryMemoryEvidenceSnapshot(
-  params: {
-    readonly interestId: string;
-    readonly feedbackId: string;
-    readonly feedbackProviderKey: string;
-  },
-  context: SummaryMemoryContext,
-): SummaryMemoryEvidence | undefined {
-  if (context.status !== "available") {
-    return undefined;
-  }
-
-  const sourceRefs = context.sourceRefs ?? [];
-  const sourceRefTypes = [
-    ...new Set(
-      sourceRefs
-        .map((ref) =>
-          typeof ref.source_type === "string" ? ref.source_type : undefined,
-        )
-        .filter(
-          (value): value is string =>
-            value !== undefined && value.trim().length > 0,
-        ),
-    ),
-  ].sort((left, right) => left.localeCompare(right));
-  const renderedText = context.renderedText ?? "";
-  const rendered = renderedText.toLocaleLowerCase("en-US");
-  const matchedBySourceRef = sourceRefs.some(
-    (ref) =>
-      ref.source_type === "social-monitor.summary-feedback" &&
-      ref.source_id === params.feedbackId,
-  );
-  const matchedByText =
-    rendered.includes(
-      `summary feedback for topic ${params.interestId}`.toLocaleLowerCase("en-US"),
-    ) ||
-    rendered.includes(
-      `provider ${params.feedbackProviderKey}`.toLocaleLowerCase("en-US"),
-    );
-  const matchedByDiagnostics =
-    Number(
-      context.retrieval?.factsUsed ?? context.diagnostics.facts_used ?? 0,
-    ) > 0 ||
-    Number(
-      context.retrieval?.itemsUsed ?? context.diagnostics.items_used ?? 0,
-    ) > 0;
-  const memoryEffectMatched =
-    matchedBySourceRef || matchedByText || matchedByDiagnostics;
-  if (!memoryEffectMatched) {
-    return undefined;
-  }
-
-  return {
-    status: "available",
-    memoryBaseUrlOrigin: safeUrlOrigin(config.memoryBaseUrl),
-    topicScopeExternalRef: `interest:${params.interestId}:feedback`,
-    providerScopeExternalRef: `interest:${params.interestId}:provider:${params.feedbackProviderKey}:quality`,
-    sourceRefTypes,
-    sourceRefCount: sourceRefs.length,
-    renderedTextChars: renderedText.length,
-    factsUsed: numberOrUndefined(
-      context.retrieval?.factsUsed ?? context.diagnostics.facts_used,
-    ),
-    itemsUsed: numberOrUndefined(
-      context.retrieval?.itemsUsed ?? context.diagnostics.items_used,
-    ),
-    retrievalSourcesUsed: stringArrayOrUndefined(
-      context.retrieval?.retrievalSourcesUsed ??
-        context.diagnostics.retrieval_sources_used,
-    ),
-    memoryEffectMatched,
-  };
 }
 
 async function pollScheduledScanEvidence(
@@ -1450,7 +977,7 @@ async function pollScheduledScanEvidence(
   let lastValue: JsonRecord | undefined;
 
   while (Date.now() < deadline) {
-    const value = await scheduledScanEvidenceSnapshot(params);
+    const value = await scheduledScanEvidenceSnapshot(pool, params);
     lastValue = value;
 
     if (value !== undefined) {
@@ -1486,73 +1013,6 @@ async function pollScheduledScanEvidence(
   );
 }
 
-async function scheduledScanEvidenceSnapshot(params: {
-  readonly tenantId: string;
-  readonly workspaceId: string;
-  readonly sourceBindingId: string;
-  readonly scanPolicyId: string;
-}): Promise<JsonRecord | undefined> {
-  return withClient(pool, async (client) => {
-    const result = await client.query<{
-      scan_job_id: string;
-      status: string;
-      scheduled_idempotency_key: string;
-      completed_at: Date | null;
-      failure_reason: string | null;
-      next_run_at_after_schedule: Date;
-      feed_item_count: number;
-      feed_item_ids: string[] | null;
-    }>(
-      `
-        select
-          j.id as scan_job_id,
-          j.status,
-          j.idempotency_key as scheduled_idempotency_key,
-          j.completed_at,
-          j.failure_reason,
-          p.next_run_at as next_run_at_after_schedule,
-          count(fi.id)::int as feed_item_count,
-          coalesce(array_agg(fi.id::text order by fi.observed_at desc) filter (where fi.id is not null), array[]::text[]) as feed_item_ids
-        from scan_jobs j
-        join scan_policies p on p.id = j.scan_policy_id
-        left join feed_items fi
-          on fi.tenant_id = j.tenant_id
-          and fi.workspace_id = j.workspace_id
-          and fi.source_binding_id = j.source_binding_id
-        where j.tenant_id = $1
-          and j.workspace_id = $2
-          and j.source_binding_id = $3
-          and j.scan_policy_id = $4
-          and j.idempotency_key like 'scheduled:%'
-        group by j.id, j.status, j.idempotency_key, j.completed_at, j.failure_reason, p.next_run_at, j.created_at
-        order by j.created_at desc
-        limit 1
-      `,
-      [
-        params.tenantId,
-        params.workspaceId,
-        params.sourceBindingId,
-        params.scanPolicyId,
-      ],
-    );
-    const row = result.rows[0];
-    if (row === undefined) {
-      return undefined;
-    }
-
-    return {
-      scanJobId: row.scan_job_id,
-      status: row.status,
-      scheduledIdempotencyKey: row.scheduled_idempotency_key,
-      completedAt: row.completed_at?.toISOString() ?? "",
-      failureReason: row.failure_reason,
-      nextRunAtAfterSchedule: row.next_run_at_after_schedule.toISOString(),
-      feedItemCount: Number(row.feed_item_count),
-      feedItemIds: row.feed_item_ids ?? [],
-    };
-  });
-}
-
 async function pollAutoSummaryEvidence(
   params: {
     readonly tenantId: string;
@@ -1566,7 +1026,7 @@ async function pollAutoSummaryEvidence(
   let lastValue: JsonRecord | undefined;
 
   while (Date.now() < deadline) {
-    const value = await autoSummaryEvidenceSnapshot(params);
+    const value = await autoSummaryEvidenceSnapshot(pool, params);
     lastValue = value;
 
     if (value !== undefined) {
@@ -1606,185 +1066,6 @@ async function pollAutoSummaryEvidence(
   );
 }
 
-async function autoSummaryEvidenceSnapshot(params: {
-  readonly tenantId: string;
-  readonly workspaceId: string;
-  readonly interestId: string;
-}): Promise<JsonRecord | undefined> {
-  return withClient(pool, async (client) => {
-    const result = await client.query<{
-      summary_job_id: string;
-      summary_id: string | null;
-      idempotency_key: string;
-      status: string;
-      requested_at: Date;
-      completed_at: Date | null;
-      failure_reason: string | null;
-      latest_feed_item_observed_at: Date | null;
-      new_feed_item_count: number;
-    }>(
-      `
-        with selected_job as (
-          select
-            j.id,
-            j.tenant_id,
-            j.workspace_id,
-            j.topic_id,
-            j.summary_artifact_id,
-            j.idempotency_key,
-            j.status,
-            j.requested_at,
-            j.completed_at,
-            j.failure_reason
-          from summary_jobs j
-          where j.tenant_id = $1
-            and j.workspace_id = $2
-            and j.topic_id = $3
-            and j.user_id is null
-            and j.subscription_id is null
-            and j.idempotency_key like 'auto-summary:%'
-          order by j.requested_at desc, j.id desc
-          limit 1
-        ),
-        previous_summary as (
-          select max(previous.requested_at) as requested_at
-          from summary_jobs previous
-          join selected_job selected
-            on selected.tenant_id = previous.tenant_id
-           and selected.workspace_id = previous.workspace_id
-           and selected.topic_id = previous.topic_id
-          where previous.user_id is null
-            and previous.subscription_id is null
-            and previous.requested_at < selected.requested_at
-        )
-        select
-          selected.id as summary_job_id,
-          selected.summary_artifact_id as summary_id,
-          selected.idempotency_key,
-          lower(selected.status::text) as status,
-          selected.requested_at,
-          selected.completed_at,
-          selected.failure_reason,
-          max(fi.observed_at) filter (
-            where fi.observed_at <= selected.requested_at
-              and (previous.requested_at is null or fi.observed_at > previous.requested_at)
-          ) as latest_feed_item_observed_at,
-          count(fi.id) filter (
-            where fi.observed_at <= selected.requested_at
-              and (previous.requested_at is null or fi.observed_at > previous.requested_at)
-          )::int as new_feed_item_count
-        from selected_job selected
-        cross join previous_summary previous
-        left join feed_items fi
-          on fi.tenant_id = selected.tenant_id
-          and fi.workspace_id = selected.workspace_id
-          and fi.topic_id = selected.topic_id
-          and fi.status = 'VISIBLE'
-        group by
-          selected.id,
-          selected.summary_artifact_id,
-          selected.idempotency_key,
-          selected.status,
-          selected.requested_at,
-          selected.completed_at,
-          selected.failure_reason
-      `,
-      [params.tenantId, params.workspaceId, params.interestId],
-    );
-    const row = result.rows[0];
-    if (row === undefined) {
-      return undefined;
-    }
-
-    return {
-      summaryJobId: row.summary_job_id,
-      summaryId: row.summary_id ?? "",
-      idempotencyKey: row.idempotency_key,
-      status: row.status,
-      requestedAt: row.requested_at.toISOString(),
-      completedAt: row.completed_at?.toISOString() ?? "",
-      failureReason: row.failure_reason,
-      latestFeedItemObservedAt:
-        row.latest_feed_item_observed_at?.toISOString() ?? "",
-      newFeedItemCount: Number(row.new_feed_item_count),
-    };
-  });
-}
-
-async function withClient<T>(
-  db: Pool,
-  callback: (client: PoolClient) => Promise<T>,
-): Promise<T> {
-  const client = await db.connect();
-  try {
-    return await callback(client);
-  } finally {
-    client.release();
-  }
-}
-
-function resolveAccessToken(
-  runnerConfig: RunnerConfig,
-  runtimeIds: RuntimeIds,
-): string {
-  if (runnerConfig.accessToken !== undefined) {
-    return runnerConfig.accessToken;
-  }
-  if (
-    runnerConfig.privateKeyPem === undefined ||
-    runnerConfig.keyId === undefined
-  ) {
-    throw new Error(
-      "DURABLE_BACKEND_E2E_PRIVATE_KEY_PEM and DURABLE_BACKEND_E2E_JWT_KID are required when no access token is supplied",
-    );
-  }
-
-  const nowSeconds = Math.floor(Date.now() / 1000);
-  const privateKey = createPrivateKey(runnerConfig.privateKeyPem);
-  const encodedHeader = encodeJson({
-    alg: "RS256",
-    typ: "JWT",
-    kid: runnerConfig.keyId,
-  });
-  const encodedPayload = encodeJson({
-    sub: runtimeIds.userId,
-    iss: runnerConfig.issuer,
-    aud: runnerConfig.audience,
-    iat: nowSeconds,
-    exp: nowSeconds + runnerConfig.accessTokenTtlSeconds,
-    tenant_id: runtimeIds.tenantId,
-    workspace_id: runtimeIds.workspaceId,
-    workspace_roles: ["owner"],
-  });
-  const signingInput = `${encodedHeader}.${encodedPayload}`;
-  const signature = signJwt(
-    "RSA-SHA256",
-    Buffer.from(signingInput, "ascii"),
-    privateKey,
-  ).toString("base64url");
-
-  return `${signingInput}.${signature}`;
-}
-
-function authHeaders(auth: AuthContext): Record<string, string> {
-  return {
-    "x-tenant-id": auth.tenantId,
-    "x-workspace-id": auth.workspaceId,
-    authorization: `Bearer ${auth.token}`,
-    "x-request-id": `durable-backend-loop-${randomUUID()}`,
-  };
-}
-
-function withIdempotency(
-  headers: Readonly<Record<string, string>>,
-  key: string,
-): Record<string, string> {
-  return {
-    ...headers,
-    "idempotency-key": key,
-  };
-}
-
 function durableScanPolicyCadence(providerKey: DurableScanProviderKey): {
   readonly intervalSeconds: number;
   readonly freshnessSeconds: number;
@@ -1820,90 +1101,8 @@ function durableDeliveryDigestScheduleWindow(params: {
   };
 }
 
-function durableScanTargets(): readonly DurableScanTarget[] {
-  const githubAccessToken = emptyToUndefined(process.env.GITHUB_ACCESS_TOKEN);
-  if (!hasRedditAppOnlyCredentials()) {
-    throw new Error(
-      "REDDIT_APP_CLIENT_ID and REDDIT_APP_CLIENT_SECRET are required because durable backend E2E must scan Reddit, GitHub Issues, GitHub Trending Page, Hacker News and RSS in one loop",
-    );
-  }
-
-  return [
-    {
-      providerKey: "hacker-news",
-      config: {
-        mode: "search",
-        query: "monitoring",
-        maxItems: 2,
-      },
-    },
-    {
-      providerKey: "github-issues",
-      config: {
-        query: "repo:microsoft/TypeScript is:issue",
-        maxItems: 2,
-        userAgent:
-          emptyToUndefined(process.env.GITHUB_USER_AGENT) ??
-          "social-monitor-mvp/0.1 github-live-smoke",
-        ...(githubAccessToken === undefined
-          ? {}
-          : { accessToken: githubAccessToken }),
-      },
-    },
-    {
-      providerKey: "github-trending-page",
-      config: {
-        window: "daily",
-        language: "python",
-        maxItems: 3,
-        userAgent:
-          emptyToUndefined(process.env.GITHUB_TRENDING_PAGE_USER_AGENT) ??
-          emptyToUndefined(process.env.GITHUB_USER_AGENT) ??
-          "social-monitor-mvp/0.1 github-trending-page",
-      },
-    },
-    {
-      providerKey: "reddit",
-      config: {
-        mode: "listing",
-        subreddit: "programming",
-        listing: "hot",
-        maxItems: 2,
-        userAgent:
-          process.env.REDDIT_APP_USER_AGENT ??
-          process.env.REDDIT_USER_AGENT ??
-          "social-monitor-mvp/0.1 reddit-app-only",
-      },
-    },
-    {
-      providerKey: "rss",
-      config: {
-        feedUrl: "https://hnrss.org/frontpage",
-        maxItems: 2,
-      },
-    },
-  ];
-}
-
-function scheduledScanTarget(): DurableScanTarget {
-  return {
-    providerKey: "rss",
-    config: {
-      feedUrl: "https://hnrss.org/newest",
-      maxItems: 2,
-    },
-  };
-}
-
 function scheduledInterestIdempotencyKey(runId: string): string {
   return `scheduled-topic-${runId}`;
-}
-
-function hasRedditAppOnlyCredentials(): boolean {
-  return (
-    emptyToUndefined(process.env.REDDIT_APP_CLIENT_ID) !== undefined &&
-    emptyToUndefined(process.env.REDDIT_APP_CLIENT_SECRET) !== undefined
-  );
 }
 
 function bindingIdempotencyKey(
@@ -1935,183 +1134,6 @@ function scheduledPolicyIdempotencyKey(runId: string): string {
   return `scheduled-policy-rss-${runId}`;
 }
 
-async function pollJson<T extends JsonRecord>(
-  path: string,
-  headers: Readonly<Record<string, string>>,
-  done: (value: JsonRecord) => T | undefined,
-  options: { readonly timeoutMs: number; readonly label: string },
-): Promise<T> {
-  const deadline = Date.now() + options.timeoutMs;
-  let lastValue: JsonRecord | undefined;
-  while (Date.now() < deadline) {
-    let value: JsonRecord;
-    try {
-      value = await requestJson<JsonRecord>("GET", path, { headers });
-    } catch (error) {
-      if (error instanceof RateLimitError) {
-        const waitMs = Math.min(
-          Math.max(error.retryAfterSeconds, 1) * 1_000,
-          Math.max(deadline - Date.now(), 0),
-        );
-        lastValue = {
-          rateLimited: true,
-          retryAfterSeconds: error.retryAfterSeconds,
-        };
-        if (waitMs > 0) {
-          await delay(waitMs);
-          continue;
-        }
-      }
-      throw error;
-    }
-    lastValue = value;
-    const result = done(value);
-    if (result !== undefined) {
-      return result;
-    }
-    await delay(1_000);
-  }
-
-  throw new Error(
-    `${options.label} did not complete before timeout; last=${JSON.stringify(lastValue ?? {})}`,
-  );
-}
-
-async function requestStatus(
-  path: string,
-  headers: Readonly<Record<string, string>>,
-): Promise<number> {
-  let response: Response;
-  try {
-    response = await fetch(new URL(path, config.apiBaseUrl), {
-      method: "GET",
-      headers,
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`GET ${path} request failed: ${message}`);
-  }
-
-  await response.arrayBuffer().catch(() => undefined);
-  return response.status;
-}
-
-async function requestJsonWithContext<T extends JsonRecord>(
-  context: string,
-  method: HttpMethod,
-  path: string,
-  options: {
-    readonly headers: Readonly<Record<string, string>>;
-    readonly body?: JsonRecord;
-  },
-): Promise<T> {
-  try {
-    return await requestJson<T>(method, path, options);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`${context}: ${message}`);
-  }
-}
-
-async function requestJson<T extends JsonRecord>(
-  method: HttpMethod,
-  path: string,
-  options: {
-    readonly headers: Readonly<Record<string, string>>;
-    readonly body?: JsonRecord;
-  },
-): Promise<T> {
-  const headers: Record<string, string> = {
-    accept: "application/json",
-    ...options.headers,
-  };
-  let response: Response;
-  try {
-    response = await fetch(new URL(path, config.apiBaseUrl), {
-      method,
-      headers:
-        options.body === undefined
-          ? headers
-          : { ...headers, "content-type": "application/json" },
-      body:
-        options.body === undefined ? undefined : JSON.stringify(options.body),
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`${method} ${path} request failed: ${message}`);
-  }
-  const text = await response.text();
-  const body = parseJsonResponse(text);
-
-  if (response.status < 200 || response.status >= 300) {
-    if (response.status === 429) {
-      throw new RateLimitError(
-        method,
-        path,
-        readRetryAfterSeconds(response, body),
-        safeHttpErrorBody(body),
-      );
-    }
-    throw new Error(
-      `${method} ${path} failed with HTTP ${response.status}: ${safeHttpErrorBody(body)}`,
-    );
-  }
-  if (!isRecord(body)) {
-    throw new Error(`${method} ${path} did not return a JSON object`);
-  }
-
-  return body as T;
-}
-
-class RateLimitError extends Error {
-  constructor(
-    readonly method: HttpMethod,
-    readonly path: string,
-    readonly retryAfterSeconds: number,
-    readonly safeBody: string,
-  ) {
-    super(
-      `${method} ${path} failed with HTTP 429; retryAfterSeconds=${retryAfterSeconds}; body=${safeBody}`,
-    );
-  }
-}
-
-function readRetryAfterSeconds(response: Response, body: unknown): number {
-  const header = response.headers.get("retry-after");
-  if (header !== null) {
-    const parsedHeader = Number.parseInt(header, 10);
-    if (Number.isSafeInteger(parsedHeader) && parsedHeader > 0) {
-      return parsedHeader;
-    }
-  }
-  if (isRecord(body) && isRecord(body.details)) {
-    const value = body.details.retryAfterSeconds;
-    if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) {
-      return value;
-    }
-  }
-  return 1;
-}
-
-function parseJsonResponse(text: string): unknown {
-  if (text.trim().length === 0) {
-    return {};
-  }
-
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return { raw: text.slice(0, 500) };
-  }
-}
-
-function safeHttpErrorBody(body: unknown): string {
-  const serialized = JSON.stringify(body);
-  return serialized.length > 1_000
-    ? `${serialized.slice(0, 1_000)}...`
-    : serialized;
-}
-
 function signalResult(
   signalId: string,
   evidence: JsonRecord,
@@ -2125,155 +1147,8 @@ function signalResult(
   };
 }
 
-function loadConfig(): RunnerConfig {
-  const apiBaseUrl = requireEnv("API_BASE_URL");
-  const configValue: RunnerConfig = {
-    apiBaseUrl,
-    databaseUrl: requireEnv("DATABASE_URL"),
-    outputPath: requireEnv("DURABLE_BACKEND_E2E_ARTIFACT_PATH"),
-    environmentId: requireEnv("STAGING_ENVIRONMENT_ID"),
-    imageDigest: requireEnv("BACKEND_IMAGE_DIGEST"),
-    operator: process.env.STAGING_OPERATOR ?? "backend-ops-1",
-    issuer:
-      process.env.SOCIAL_MONITOR_OIDC_ISSUER ??
-      process.env.DURABLE_BACKEND_E2E_OIDC_ISSUER ??
-      "",
-    audience:
-      process.env.SOCIAL_MONITOR_OIDC_AUDIENCE ??
-      process.env.DURABLE_BACKEND_E2E_OIDC_AUDIENCE ??
-      "",
-    privateKeyPem: emptyToUndefined(
-      process.env.DURABLE_BACKEND_E2E_PRIVATE_KEY_PEM,
-    ),
-    keyId: emptyToUndefined(process.env.DURABLE_BACKEND_E2E_JWT_KID),
-    accessToken: emptyToUndefined(process.env.DURABLE_BACKEND_E2E_ACCESS_TOKEN),
-    accessTokenTtlSeconds: readPositiveIntegerEnv(
-      "DURABLE_BACKEND_E2E_ACCESS_TOKEN_TTL_SECONDS",
-      900,
-      60,
-      86_400,
-    ),
-    frontendEnvPath: emptyToUndefined(
-      process.env.DURABLE_BACKEND_E2E_FRONTEND_ENV_PATH,
-    ),
-    webhookUrl:
-      process.env.DURABLE_BACKEND_E2E_WEBHOOK_URL ??
-      "https://httpbingo.org/post",
-    memoryBaseUrl: requireEnv("INFINITY_CONTEXT_URL"),
-    memoryToken: requireEnv("INFINITY_CONTEXT_TOKEN"),
-    memoryTimeoutMs: readPositiveIntegerEnv(
-      "SUMMARY_MEMORY_TIMEOUT_MS",
-      defaultMemoStackTimeoutMs,
-      1_000,
-      120_000,
-    ),
-  };
 
-  if (!/^https?:\/\//.test(configValue.apiBaseUrl)) {
-    throw new Error("API_BASE_URL must be an http(s) URL");
-  }
-  if (!/^sha256:[0-9a-f]{64}$/.test(configValue.imageDigest)) {
-    throw new Error("BACKEND_IMAGE_DIGEST must be sha256:<64 hex chars>");
-  }
-  if (
-    configValue.accessToken === undefined &&
-    (configValue.issuer.trim() === "" || configValue.audience.trim() === "")
-  ) {
-    throw new Error(
-      "SOCIAL_MONITOR_OIDC_ISSUER and SOCIAL_MONITOR_OIDC_AUDIENCE are required when signing runner JWTs",
-    );
-  }
 
-  return configValue;
-}
-
-function requireEnv(name: string): string {
-  const value = process.env[name]?.trim();
-  if (value === undefined || value.length === 0) {
-    throw new Error(`${name} is required`);
-  }
-
-  return value;
-}
-
-function encodeJson(value: JsonRecord): string {
-  return Buffer.from(JSON.stringify(value)).toString("base64url");
-}
-
-function emptyToUndefined(value: string | undefined): string | undefined {
-  const trimmed = value?.trim();
-  return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed;
-}
-
-function numberOrUndefined(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value)
-    ? value
-    : undefined;
-}
-
-function stringArrayOrUndefined(value: unknown): readonly string[] | undefined {
-  return Array.isArray(value) && value.every((item) => typeof item === "string")
-    ? value
-    : undefined;
-}
-
-function parseDateOrFallback(value: string | undefined, fallback: Date): Date {
-  if (value === undefined) {
-    return fallback;
-  }
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? fallback : parsed;
-}
-
-function safeMemoryContextDebug(
-  context: SummaryMemoryContext | undefined,
-): string {
-  if (context === undefined) {
-    return "{}";
-  }
-
-  return JSON.stringify({
-    status: context.status,
-    sourceRefTypes: [
-      ...new Set(
-        (context.sourceRefs ?? [])
-          .map((ref) =>
-            typeof ref.source_type === "string" ? ref.source_type : undefined,
-          )
-          .filter((value): value is string => value !== undefined),
-      ),
-    ],
-    factsUsed: context.retrieval?.factsUsed ?? context.diagnostics.facts_used,
-    itemsUsed: context.retrieval?.itemsUsed ?? context.diagnostics.items_used,
-    renderedTextChars: context.renderedText?.length ?? 0,
-  });
-}
-
-function safeUrlOrigin(value: string): string {
-  try {
-    return new URL(value).origin;
-  } catch {
-    return "invalid-url-redacted";
-  }
-}
-
-function readPositiveIntegerEnv(
-  name: string,
-  fallback: number,
-  min: number,
-  max: number,
-): number {
-  const value = process.env[name]?.trim();
-  if (value === undefined || value.length === 0) {
-    return fallback;
-  }
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
-    throw new Error(`${name} must be an integer between ${min} and ${max}`);
-  }
-
-  return parsed;
-}
 
 function nowIso(): string {
   return new Date().toISOString();

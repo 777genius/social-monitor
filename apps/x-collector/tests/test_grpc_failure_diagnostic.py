@@ -45,6 +45,10 @@ class GrpcFailureDiagnosticTests(unittest.TestCase):
                 raise LookupError(private_detail)
 
         class Context:
+            # Direct unit calls have no live transport on which to register a callback.
+            def add_callback(self, _callback: object) -> bool:
+                return False
+
             def abort(self, code: object, details: str) -> None:
                 self.code = code
                 self.details = details
@@ -75,6 +79,10 @@ class GrpcFailureDiagnosticTests(unittest.TestCase):
                 return object()
 
         class Context:
+            # Direct unit calls have no live transport on which to register a callback.
+            def add_callback(self, _callback: object) -> bool:
+                return False
+
             def abort(self, _code: object, _details: str) -> None:
                 raise RuntimeError("synthetic abort")
 

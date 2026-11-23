@@ -367,7 +367,8 @@ class BackupJoinTests(unittest.TestCase):
         config.core['backup_identity']['repository_id'] = 'repo-sha256-e8a6326bc53f87e6bfd762d918511652b21050d16b71012809db84533c4e556b'
         bad = [False]
         def provider(argv, data, env):
-            if argv[0].endswith('/gh'):
+            if argv[0].endswith('/curl'):
+                self.assertEqual(argv[-1], 'https://api.github.com/repos/777genius/social-monitor/actions/workflows/production-deploy.yml')
                 return {'path': '.github/workflows/production-deploy.yml',
                         'state': 'active' if bad[0] else 'disabled_manually'}
             if argv[0].endswith('/psql'):

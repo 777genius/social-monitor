@@ -29,12 +29,16 @@ ADAPTER = Path('/etc/social-monitor/release/operator-adapter')
 USER = 'sm-release'
 FORCED = '/usr/bin/sudo -n /opt/social-monitor-release/root-executor'
 BASE_FILES = ('controller.py', 'contract.py', 'archive.py', 'bounds.py', 'evidence.py', 'prisma_history.py',
-              'host.py', 'compose_contract.py', 'requirements.txt', 'release-gate.sh',
+              'host.py', 'worker_host.py', 'backend_host.py', 'backend_controller.py', 'compose_contract.py',
+              'cohort_frontend_receive.py', 'cohort_backend_receive.py', 'frontend_ingress.py', 'frontend_bundle.py', 'frontend_tree.py',
+              'cohort_controller.py', 'cohort_host.py', 'cohort_compose.py', 'cohort_wire.py', 'frontend_host.py',
+              'frontend_probe.py', 'frontend_probe_runtime.py', 'frontend_http.py', 'frontend_marker.py', 'frontend_verifier.py',
+              'requirements.txt', 'release-gate.sh',
               'restricted-executor.c')
 # Only reviewed operator assets may be added to this finite installation list.
 # Until the operator lane supplies this closure in the approved SHA, install denies.
 OPERATOR_FILES = ('operator-adapter', 'operator_adapter.py', 'operator_config.py',
-                  'operator_github.py', 'operator_backup.py', 'operator_database.py',
+                  'operator_github.py', 'frontend_authority.py', 'operator_backup.py', 'operator_database.py',
                   'operator_probe.py')
 WHEEL = 'pyyaml-6.0.3-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl'
 WHEEL_HASH = 'ba1cc08a7ccde2d2ec775841541641e4548226580ab850948cbfda66a1befcdc'
@@ -182,7 +186,7 @@ def configuration(components, operator):
             and 'api' not in c['required_non_targets'] and all(isinstance(v, str)
             and re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}', v)
             for v in c['required_non_targets'].values()), 'non-targets')
-    require(isinstance(c['fenced_units'], list) and c['fenced_units'] and all(isinstance(v, str)
+    require(isinstance(c['fenced_units'], list) and all(isinstance(v, str)
             and re.fullmatch(r'[a-zA-Z0-9@_.-]+\.(timer|service)', v)
             for v in c['fenced_units']), 'fenced-units')
     require(isinstance(c['migration_root'], str) and re.fullmatch(r'/[a-zA-Z0-9_./-]+', c['migration_root'])

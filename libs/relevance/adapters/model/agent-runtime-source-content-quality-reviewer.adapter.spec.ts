@@ -43,7 +43,7 @@ const stageOf = async (promise: Promise<unknown>): Promise<string> => {
 
 describe("AgentRuntimeSourceContentQualityReviewerAdapter failure stage classification", () => {
   it.each([
-    ["openai-chatgpt", "gpt-6.1-sol", "low"], ["kimi-code", "k3-256k", undefined],
+    ["openai-chatgpt", "gpt-6.1-terra", "medium"], ["kimi-code", "k3-256k", undefined],
   ])("executes source assessment on %s through the SDK and verifies its completion", async (backend, model, effort) => {
     const input = request();
     const env = { AGENT_RUNTIME_TRANSPORT: "gateway-llm", AGENT_RUNTIME_READER_SUMMARY_BACKEND: backend,

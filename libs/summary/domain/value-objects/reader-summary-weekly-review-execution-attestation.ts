@@ -25,8 +25,8 @@ export type ReaderSummaryWeeklyReviewExecutionAttestation = ReviewExecutionBase 
     }>
   | Readonly<{
       purpose: "social_monitor.reader_summary.weekly.review.v2";
-      model: "gpt-6.1-sol" | "gpt-5.6-sol";
-      reasoningEffort: "low" | "high";
+      model: "gpt-6.1-terra" | "gpt-6.1-sol" | "gpt-5.6-sol";
+      reasoningEffort: "medium" | "low" | "high";
       runtimeEngine: "gateway-llm";
       gateway: Readonly<{
         profileId: string; taskId: string; attempt: number; executionRef: string;
@@ -48,7 +48,8 @@ export const canonicalReaderSummaryWeeklyReviewExecutionAttestation = (
     "weekly review execution attestation", { allowAuthoritativeHashes: true });
   const validIdentity = gateway
     ? input.purpose === "social_monitor.reader_summary.weekly.review.v2" &&
-      ((input.model === "gpt-6.1-sol" && input.reasoningEffort === "low") ||
+      ((input.model === "gpt-6.1-terra" && input.reasoningEffort === "medium") ||
+       (input.model === "gpt-6.1-sol" && input.reasoningEffort === "low") ||
        (input.model === "gpt-5.6-sol" && input.reasoningEffort === "high"))
     : input.runtimeEngine === "subscription-runtime-cli" && input.model === "gpt-5.6-sol" &&
       ((input.purpose === "social_monitor.reader_summary.weekly.review.v2" && input.reasoningEffort === "high") ||

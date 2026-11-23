@@ -13,6 +13,8 @@ import { ClientError, deliver, command, sshArgs, sshTransport, runnerConfig,
 
 const sha = 'a'.repeat(40), run = '123', image = 'sha256:' + 'b'.repeat(64);
 const previous = 'sha256:' + 'c'.repeat(64), snapshot = 'sha256:' + 'd'.repeat(64);
+const database = { synthetic: true };
+const databaseHash = 'sha256:' + createHash('sha256').update(JSON.stringify(database)).digest('hex');
 const bytes = Buffer.from([0, 255, 10, 13, 65, 0, 99]);
 const manifest = { sha, ci_run_id: run,
   image_id: image, archive_sha256: 'sha256:' + createHash('sha256').update(bytes).digest('hex'),
@@ -22,11 +24,12 @@ const manifest = { sha, ci_run_id: run,
 const admission = { ...manifest, previous_image_id: previous, previous_sha: 'e'.repeat(40),
   snapshot_before_hash: snapshot, migration_status: 'unchanged', image_graph: { kind: 'oci-manifest' },
   compatibility: { independent_review: true }, backup: { reference: 'synthetic-full' },
-  compose_hash: snapshot, database_hash: snapshot, snapshot_before: { synthetic: true } };
+  compose_hash: snapshot, database, database_hash: databaseHash, snapshot_before: { synthetic: true } };
 const terminal = { sha, ci_run_id: run, image_id: image, archive_sha256: manifest.archive_sha256,
   previous_image_id: previous, previous_sha: 'e'.repeat(40), snapshot_before_hash: snapshot,
   migration_status: 'unchanged', image_graph: admission.image_graph, compatibility: admission.compatibility,
   backup: admission.backup, schema: 'social-monitor-release-receipt-v1', outcome: 'activated',
+  admission_database: database, admission_database_hash: databaseHash, database, database_hash: databaseHash,
   scope: ['api'], snapshot_after_hash: snapshot, probes: { target: true },
   timings: { started_at: 1, finished_at: 2, started_at_ns: 1000 } };
 const config = { host: 'synthetic.invalid', port: 2222, user: 'sm-release',
@@ -69,11 +72,17 @@ function host(override = () => undefined) {
   return { transport, calls, uploaded };
 }
 
-test('fixed eight-verb grammar rejects options, whitespace, shell syntax and bad bindings', () => {
+test('fixed release grammar rejects options, whitespace, shell syntax and bad bindings', () => {
   assert.equal(command('receive', [sha, run, manifest.archive_sha256, image, '7']),
     `receive ${sha} 123 ${manifest.archive_sha256} ${image} 7`);
   assert.equal(command('rollback', [sha, run]), `rollback ${sha} 123`);
   assert.equal(command('receipt', [`${sha}-123-rollback`]), `receipt ${sha}-123-rollback`);
+  assert.equal(command('backend-receive', [sha, run, manifest.archive_sha256, image, '7']),
+    `backend-receive ${sha} 123 ${manifest.archive_sha256} ${image} 7`);
+  assert.equal(command('backend-receipt', [`${sha}-123-rollback`]), `backend-receipt ${sha}-123-rollback`);
+  assert.throws(() => command('backend-receive', [sha, run, image, image, '10000000001']));
+  assert.equal(command('cohort-receive-backend', [sha, run, image, image, '100']), `cohort-receive-backend ${sha} ${run} ${image} ${image} 100`);
+  assert.throws(() => command('cohort-receive-backend', [sha, run, image, image, '10000000001']));
   for (const [verb, args] of [['status;', []], ['status', ['x']], ['activate', [sha, '01']],
     ['admit', [sha + '\n', run]], ['receive', [sha, run, image, image, '0']],
     ['receipt', [`${sha}-123;id`]], ['toString', []]]) assert.throws(() => command(verb, args));
@@ -110,6 +119,42 @@ test('process seam proves exact SSH arguments, cleared environment, stdin EOF, s
   assert.deepEqual(Buffer.concat(received), bytes);
 });
 
+test('SSH failure diagnostics expose only a fixed category, never stderr', async () => {
+  for (const [message, diagnostic] of [
+    ['Permission denied (publickey). SECRET', 'publickey'],
+    ['Host key verification failed. SECRET', 'host-key'],
+    ['Load key /private/SECRET: error in libcrypto', 'private-key'],
+    ['ssh: connect to host SECRET: Connection timed out', 'timeout'],
+    ['ssh: connect to host SECRET: Connection refused', 'network'],
+    ['SECRET unrecognized failure', 'unknown'],
+  ]) {
+    const spawnSeam = () => {
+      const child = new EventEmitter();
+      child.stdin = new PassThrough(); child.stdout = new PassThrough(); child.stderr = new PassThrough();
+      child.kill = () => {};
+      child.stdin.resume();
+      child.stdin.on('end', () => { child.stderr.end(message); child.stdout.end(); setImmediate(() => child.emit('close', 255)); });
+      return child;
+    };
+    const result = await sshTransport(config, spawnSeam)('status');
+    assert.deepEqual(result, { code: 255, stdout: Buffer.alloc(0), diagnostic });
+    assert.equal(JSON.stringify(result).includes('SECRET'), false);
+  }
+});
+
+test('credential cleanup transport has a finite shorter process deadline', async () => {
+  for (const timeout of [0, 999, 600001, NaN]) assert.throws(() => sshTransport(config, undefined, timeout));
+  let killed;
+  const spawnSeam = () => {
+    const child = new EventEmitter();
+    child.stdin = new PassThrough(); child.stdout = new PassThrough(); child.stderr = new PassThrough();
+    child.kill = signal => { killed = signal; child.emit('close', 255); };
+    return child;
+  };
+  const result = await sshTransport(config, spawnSeam, 1000)('status');
+  assert.equal(killed, 'SIGKILL'); assert.equal(result.code, 255);
+});
+
 test('hash before any SSH, exact archive bytes and durable observed phases', async () => fixture(async options => {
   const h = host();
   assert.deepEqual(await deliver(options, h.transport), { phase: 'completed' });
@@ -133,8 +178,20 @@ test('terminal receipts must prove every binding, admission, target and state', 
     { archive_sha256: previous }, { outcome: 'rolled-back' }, { probes: { target: false } },
     { scope: ['api', 'worker'] }, { snapshot_after_hash: previous }, { image_graph: {} },
     { compatibility: {} }, { migration_status: 'changed' }, { previous_sha: sha },
+    { admission_database: { synthetic: false } }, { admission_database_hash: snapshot },
+    { database: { synthetic: false } }, { database_hash: snapshot },
     { timings: { started_at: 2, finished_at: 1 } }])
     assert.throws(() => receipt({ ...terminal, ...mutation }, manifest, admission));
+});
+
+test('receipt database digest uses the controller canonical UTF-8 JSON bytes', () => {
+  const observed = { x: 'é😀' };
+  const hash = 'sha256:d551d85b5fdc1cf5d5acb57c11e2fd83efa25022bae4e58bc74a593b84b131e7';
+  const admitted = { ...admission, database: observed, database_hash: hash };
+  const value = { ...terminal, admission_database: observed, admission_database_hash: hash,
+    database: observed, database_hash: hash };
+  assert.equal(receipt(value, manifest, admitted), value);
+  assert.throws(() => receipt({ ...value, database: { x: 1.5 } }, manifest, admitted));
 });
 
 test('lost activation reconciles exact receipt without a second destructive write', async () => fixture(async options => {

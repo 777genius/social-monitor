@@ -56,6 +56,8 @@ import {
 import { buildReaderSummaryModelArtifact } from "./reader-summary-model-artifact";
 import { generateReaderSummaryWithDailyEditor } from "./reader-summary-daily-editorial-generation";
 import { buildReaderSummaryV3Evidence, prepareReaderSummaryV3Job } from "./reader-summary-v3-execution";
+import { NOOP_READER_SUMMARY_USAGE_SCOPE, type ReaderSummaryUsageScope } from
+  "../../application/contracts/reader-summary-usage-scope";
 type ExecuteReaderSummaryJobFailure = DomainError | Error;
 export class ExecuteReaderSummaryJobUseCase {
   constructor(
@@ -81,12 +83,10 @@ export class ExecuteReaderSummaryJobUseCase {
     private readonly v3Promotion?: ReaderSummaryV3PromotionPort,
     private readonly firstPublication?: ReaderSummaryFirstPublicationAuthority,
     private readonly nativeOwner?: Parameters<typeof resolveReaderSummaryAuthorityBoundary>[0]["nativeOwner"],
+    private readonly usageScope: ReaderSummaryUsageScope = NOOP_READER_SUMMARY_USAGE_SCOPE,
   ) {}
-  async execute(
-    command: ExecuteReaderSummaryJobCommand,
-  ): Promise<
-    Result<ExecuteReaderSummaryJobResult, ExecuteReaderSummaryJobFailure>
-  > {
+  async execute(command: ExecuteReaderSummaryJobCommand):
+  Promise<Result<ExecuteReaderSummaryJobResult, ExecuteReaderSummaryJobFailure>> {
     const explicitCutoffTime = command.observedThrough?.getTime();
     if (command.readerSummaryJobId.trim().length === 0) {
       return err(
@@ -109,6 +109,13 @@ export class ExecuteReaderSummaryJobUseCase {
         ),
       );
     }
+    const snapshot = existingJob.toSnapshot();
+    return this.usageScope.run({ jobId: snapshot.id,
+      periodStartedAt: snapshot.period.startedAt.toISOString() },
+    () => this.executeLoadedJob(existingJob, command, explicitCutoffTime));
+  }
+  private async executeLoadedJob(existingJob: ReaderSummaryJob, command: ExecuteReaderSummaryJobCommand,
+    explicitCutoffTime: number | undefined): Promise<Result<ExecuteReaderSummaryJobResult, ExecuteReaderSummaryJobFailure>> {
     const snapshot = existingJob.toSnapshot();
     const boundary = await resolveReaderSummaryAuthorityBoundary({ job: existingJob, authority: this.firstPublication, nativeOwner: this.nativeOwner,
       explicitCutoffTime, clock: this.clock, refreshAuthority: this.newInputRefresh,

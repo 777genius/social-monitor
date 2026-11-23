@@ -1,10 +1,21 @@
-# Hetzner API release controller (bounded PR3 remediation)
+# Hetzner release controller
+
+The original API-only controller below remains available. The coordinated cohort
+lane adds API, Jev worker and public/admin frontend activation with a shared
+journal and rollback. It does not update the X collector or posts-only collector.
+Automatic activation requires a separately reconciled and qualified host baseline;
+merging the lane does not enable it.
 
 This scope implements host admission and API-only state transitions with Python, pinned PyYAML
 structural admission and synthetic subprocess proofs. It is **not production qualification**.
 The separate trusted adapter (PR5), Docker 29 export/load/E2E, PG18, SSH, GitHub
 and host shellcheck qualification belong to the main/operator lanes. No provider,
 production operation, candidate program or migration was executed here.
+
+Main-branch CI also publishes a SHA/run/attempt-bound frontend artifact containing
+the public and admin bundles. `frontend_bundle.py` validates and stages that
+artifact without activating it. The original controller is API-only; the
+artifact alone does not enable automatic frontend deployment.
 
 ## Trust and installation
 
@@ -62,6 +73,13 @@ monotonic deadline for both. It takes a nonwaiting host flock, checks disk space
 byte SHA256 and archive content, and publishes immutable import metadata. No
 Docker load/create/up or candidate execution happens before admission.
 
+The coordinated cohort backend receiver uses the same exact-byte and EOF checks,
+but allows a size-scaled total receive budget: at least 120 seconds, calculated
+at 4 MiB/s and capped at 300 seconds. It also rejects a stream with no progress
+for 30 seconds, including a missing EOF. Frontend and legacy receivers retain
+their existing 120-second deadline. The independent archive-processing budget
+remains 120 seconds.
+
 Preferred CI output: build **once**, `--provenance=false`, single linux/amd64
 platform OCI manifest; export that exact Docker ID tag-free. Docker 29 saves with
 `blobs/`, `blobs/sha256/`, `index.json`, `oci-layout`, `manifest.json` and gzip
@@ -111,8 +129,10 @@ assertions as successful evidence or fill unknown inputs with success defaults.
   `paths_sha256` (canonical JSON list hash), `evidence_sha256` plus explicit
   `independent_review:true`, `all_shared_dependencies_reviewed:true`,
   `compatible:true`. No shared-code default approvals. Concrete schema/writer/
-  Compose code paths are denied; documentation names mentioning workers pass
-  path classification. Admission binds production revision, delta and proof
+  Compose code paths are denied; `docs/` and the exact
+  `apps/agent-runtime/README.md` are documentary paths. The latter must be a
+  regular, non-executable blob on both sides of the delta; additions, deletions,
+  symlinks and mode changes are denied. Admission binds production revision, delta and proof
   hashes; new activation revalidates the same evidence. The known production
   `dee89140...` to candidate delta still needs actual independent review.
 * `database`: use the separately provisioned read-only PG18 observer. Outer
