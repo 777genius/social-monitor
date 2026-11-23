@@ -1,5 +1,6 @@
 import { existsSync, globSync, readFileSync } from 'node:fs';
 import { dirname, join, normalize, relative, sep } from 'node:path';
+import ts from 'typescript';
 
 const forbiddenInDomain = [
   '@nestjs/',
@@ -121,85 +122,64 @@ const forbiddenInSocialResearchMcpAdapter = [
   '@social-monitor/monitoring',
 ];
 
-// Preserve executable source and module string literals while replacing comment
-// trivia with whitespace. This keeps the existing import gates dependency-free,
-// ignores inert commented declarations, and permits /* ... */ inside call args.
-// Preserve line breaks so diagnostics and multiline imports remain unchanged.
-function withoutComments(source) {
-  const lexicalTokens =
-    /"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|`(?:\\[\s\S]|[^`\\])*`|\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g;
-  return source.replace(lexicalTokens, (token) => (
-    token.startsWith('//') || token.startsWith('/*')
-      ? token.replace(/[^\r\n]/g, ' ')
-      : token
-  ));
+// The repository already uses TypeScript. Its syntax tree distinguishes real
+// module references from comments, strings, regex literals and template text;
+// regex matching here previously produced both false positives and bypasses.
+// Keep type-only edges for the architecture gate, but exclude them from cycles.
+function moduleReferencesOf(source) {
+  const file = ts.createSourceFile('architecture.ts', source, ts.ScriptTarget.Latest, false, ts.ScriptKind.TS);
+  const imports = [];
+  const runtimeImports = [];
+
+  function add(specifier, isRuntime) {
+    if (!specifier || !(ts.isStringLiteral(specifier) || ts.isNoSubstitutionTemplateLiteral(specifier))) return;
+    imports.push(specifier.text);
+    if (isRuntime) runtimeImports.push(specifier.text);
+  }
+
+  function runtimeImportClause(clause) {
+    if (!clause) return true;
+    if (clause.isTypeOnly) return false;
+    if (clause.name || !clause.namedBindings || !ts.isNamedImports(clause.namedBindings)) return true;
+    return clause.namedBindings.elements.length === 0 ||
+      clause.namedBindings.elements.some((element) => !element.isTypeOnly);
+  }
+
+  function runtimeExportDeclaration(declaration) {
+    if (declaration.isTypeOnly) return false;
+    const clause = declaration.exportClause;
+    return !clause || !ts.isNamedExports(clause) || clause.elements.length === 0 ||
+      clause.elements.some((element) => !element.isTypeOnly);
+  }
+
+  function visit(node) {
+    if (ts.isImportDeclaration(node)) {
+      add(node.moduleSpecifier, runtimeImportClause(node.importClause));
+    } else if (ts.isExportDeclaration(node)) {
+      add(node.moduleSpecifier, runtimeExportDeclaration(node));
+    } else if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) {
+      add(node.moduleReference.expression, !node.isTypeOnly);
+    } else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)) {
+      add(node.argument.literal, false);
+    } else if (ts.isCallExpression(node) && (
+      node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+      (ts.isIdentifier(node.expression) && node.expression.text === 'require')
+    )) {
+      add(node.arguments[0], true);
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(file);
+  return { imports, runtimeImports };
 }
 
 function importsOf(source) {
-  source = withoutComments(source);
-  const specifiers = [];
-  const patterns = [
-    /(?:import|export)\s+(?:type\s+)?(?:[^'"]+from\s+)?['"]([^'"]+)['"]/g,
-    /\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
-    /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
-  ];
-
-  for (const pattern of patterns) {
-    for (const match of source.matchAll(pattern)) {
-      specifiers.push(match[1]);
-    }
-  }
-
-  return specifiers;
+  return moduleReferencesOf(source).imports;
 }
 
 function runtimeImportsOf(source) {
-  source = withoutComments(source);
-  const specifiers = [];
-  const staticPatterns = [
-    /\b(import|export)\s+([\s\S]*?)\s+from\s+['"]([^'"]+)['"]/g,
-    /\bimport\s+['"]([^'"]+)['"]/g,
-  ];
-  const dynamicPatterns = [
-    /\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
-    /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
-  ];
-
-  for (const match of source.matchAll(staticPatterns[0])) {
-    const clause = match[2].trim();
-    if (!isTypeOnlyImportExport(clause)) {
-      specifiers.push(match[3]);
-    }
-  }
-
-  for (const match of source.matchAll(staticPatterns[1])) {
-    specifiers.push(match[1]);
-  }
-
-  for (const pattern of dynamicPatterns) {
-    for (const match of source.matchAll(pattern)) {
-      specifiers.push(match[1]);
-    }
-  }
-
-  return specifiers;
-}
-
-function isTypeOnlyImportExport(clause) {
-  if (clause.startsWith('type ')) {
-    return true;
-  }
-
-  const namedExports = clause.match(/^\{\s*([\s\S]*?)\s*\}$/);
-  if (!namedExports) {
-    return false;
-  }
-
-  return namedExports[1]
-    .split(',')
-    .map((specifier) => specifier.trim())
-    .filter(Boolean)
-    .every((specifier) => specifier.startsWith('type '));
+  return moduleReferencesOf(source).runtimeImports;
 }
 
 function addViolation(file, reason) {
