@@ -128,6 +128,16 @@ for (const slice of ledger.slices) {
     if (syntaxOnlyDelimiter || line === ": {") {
       fail(`syntax-only original position: ${coordinate}`);
     }
+    // Exact text is insufficient: TypeScript parameters and return signatures
+    // disappear at runtime, even when a specialist retains them verbatim.
+    // Runtime schema property initializers (e.g. stringSchema()) still qualify.
+    const erasedSignature =
+      /^\}\)\s*:\s*.+=>/u.test(line) ||
+      /^[A-Za-z_$][\w$?]*\s*:\s*(?:number|unknown|boolean|string|any|never)\s*,?$/u.test(line) ||
+      /^[A-Za-z_$][\w$?]*\s*:\s*(?:number|unknown|boolean|string|any|never|Record<[^>]+>)\s*\)\s*:\s*.+=>/u.test(line);
+    if (erasedSignature) {
+      fail(`type-only signature is not original implementation: ${coordinate}`);
+    }
     if (importClausePositions.has(position) || /^\)\s*:\s*.+=>/u.test(line)) {
       fail(`import/return-type signature is not original implementation: ${coordinate}`);
     }
