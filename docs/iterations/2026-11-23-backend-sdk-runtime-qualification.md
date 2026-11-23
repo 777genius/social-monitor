@@ -1,0 +1,40 @@
+# Backend SDK and runtime qualification
+
+Status: implementation and qualification in progress. This is a separate dependency/runtime slice after domain-boundary PRs #790, #791 and #792. It does not reopen their source changes.
+
+## Problem and ownership
+
+Social Monitor vendors a digest-pinned private Account Gateway SDK. Its declared runtime, and the existing Get Modular 0.2 dependencies, already require supported Node 24/26 versions; the application image and backend CI still select Node 22. The requested stable Get Modular 0.8 pair removes the old Assembly factory API. Updating consumer overrides without migrating the producing SDK would break its optional composition entry.
+
+Account Gateway PR123 owns the narrow producer migration to immutable module entries, all four coordinated Core/Assembly 0.8.0 pins, the generated pnpm lockfile, and its existing development-only Foundation 3.0.0 to 3.1.0 update. Social Monitor has no Foundation dependency to bump; adding a new checker or replacing the existing architecture gate is outside this dependency refresh.
+
+## Consumer scope
+
+1. Qualify the existing backend on supported Node 24.22.3. Align the root engine contract, canonical backend CI pins, application Docker bases, immutable candidate context/digest, and their existing executable contracts.
+2. Remove only the unsupported `--experimental-default-type=module` option from the architecture command and two typed-test launchers. Keep the required TypeScript transformation flags, CommonJS application semantics and TypeScript 6.0.3.
+3. Preserve independent frontend and release-controller toolchains that do not install or execute this backend dependency graph. Do not blanket-rewrite historical fixtures or alter any workflow's enabled/disabled state.
+4. Keep the private host artifact's supported runtime and vendored dependency closure accurate. Its current packaging omits the nested Account Gateway archive; cover the complete required file-dependency closure with the existing isolated archive test.
+5. After upstream source review and qualification, build the real SDK package twice and verify identical hashes. Preserve its public HTTP/contracts and merged experimental LLM entry; inspect the exact producer delta and qualify the existing downstream adapter fixtures.
+6. Replace the vendored SDK archive and provenance with the actual reviewed source SHA/tree/PR and archive byte length, SHA-256 and integrity. Generate the npm lockfile with the package manager. Do not hand-edit integrity, forge provenance or use a broad dependency override.
+7. Keep all existing tenant, authority, idempotency, lease, retry, cancellation and publication rules. No new provider/account selection, LLM retry, routing, schema or business policy belongs here.
+
+## Compatibility boundaries
+
+The consumer keeps its existing NestJS, TypeScript 6, ts-jest and ts-node compiler APIs. The published TypeScript 7 root no longer offers the same compiler API; a compiler/framework migration is a separate scope, not a prerequisite to consuming compatible SDK declarations emitted upstream by TypeScript 7.
+
+The producer's current main contains the original LLM feature. Its reviewed delta includes correct handling of a completed event whose nested response status is incomplete; the new artifact must pass the downstream error/identity fixtures. Do not describe the entire refreshed SDK as byte-identical to the older archive.
+
+The canonical immutable candidate remains pinned to an independently retrieved official image digest. Updating a Docker tag without updating the candidate build-context mapping and exact guard would silently lose that pin, and is prohibited.
+
+## Verification gates
+
+- Exact locked install on the supported runtime, generated Prisma client, semantic typecheck and backend build.
+- Native gRPC generator/contract verification; no manually edited generated files.
+- Full architecture, source cap, quality, review-CI, candidate workflow/container and existing lifecycle contracts.
+- Existing SDK/LLM adapter, schema, output violation and promotion presentation tests.
+- Full deterministic API/worker E2E, followed by all protected final-head native unit shards, PostgreSQL 18, RabbitMQ, security, candidate/lifecycle and frontend checks.
+- Real offline candidate build/runtime proof, including the selected Node version and immutable image/source binding.
+- Independent source and scope review; preserve open refactor PR changes, especially shared package script registrations.
+- Merge only after the parent sequence and full final-head success, using expected-head protection; inspect postmerge results. Queued, skipped or cancelled jobs are not PASS.
+
+No real provider/account call, production database query, manual production activation or public npm publication is part of this implementation. Source and package qualification use isolated fixtures and disposable CI environments.
