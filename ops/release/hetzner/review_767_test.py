@@ -92,7 +92,7 @@ class Reviewed767Tests(unittest.TestCase):
     def test_unreviewed_dockerfile_or_runtime_continuation_refused(self):
         mutations = [
             lambda old, reviewed, current: current['Dockerfile'].update(sha='e' * 40),
-            lambda old, reviewed, current: current['scripts/check-source-line-cap.mjs'].update(sha='e' * 40),
+            lambda old, reviewed, current: current['apps/x-collector/src/x_collector/scweet_adapter.py'].update(sha='e' * 40),
             lambda old, reviewed, current: old['Dockerfile'].update(sha='e' * 40),
             lambda old, reviewed, current: current.update({'apps/api/TEST-runtime.ts': {'mode': '100644', 'type': 'blob', 'sha': 'a' * 40}}),
             lambda old, reviewed, current: current['scripts/rewrite-build-aliases.mjs'].update(sha='e' * 40),
@@ -100,6 +100,17 @@ class Reviewed767Tests(unittest.TestCase):
         for mutation in mutations:
             with self.subTest(mutation=mutation), self.assertRaises(Denied):
                 self.collect(mutation)
+
+    def test_ci_only_reviewed_path_may_change_again(self):
+        value = self.collect(lambda old, reviewed, current: current['scripts/check-source-line-cap.mjs'].update(sha='e' * 40))
+        self.assertIn('scripts/check-source-line-cap.mjs', value['deltas']['api']['reviewed_767']['continuation'])
+
+    def test_frontend_sources_continue_but_typescript_under_frontend_is_backend(self):
+        dart = {'mode': '100644', 'type': 'blob', 'sha': 'a' * 40}
+        value = self.collect(lambda old, reviewed, current: current.update({'apps/frontend/app/lib/main.dart': dart}))
+        self.assertIn('apps/frontend/app/lib/main.dart', value['deltas']['api']['reviewed_767']['continuation'])
+        with self.assertRaises(Denied):
+            self.collect(lambda old, reviewed, current: current.update({'apps/frontend/tool/gen.ts': dart}))
 
 if __name__ == '__main__':
     unittest.main()
