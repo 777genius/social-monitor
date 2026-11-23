@@ -1,6 +1,6 @@
 import { resolveGatewayLlmTransportConfig, resolveSummaryAgentRuntimeTransport, assertReaderSummaryTransportBackend } from "@social-monitor/summary/adapters/composition/reader-summary-agent-runtime-transport";
 import { gatewayLlmCanonicalRequest } from "@social-monitor/summary/adapters/model/gateway-llm/gateway-llm-request-identity";
-import { isKnownGatewayLlmSdkIdentity } from "@social-monitor/summary/adapters/model/gateway-llm/gateway-llm-sdk-identity";
+import { approvedGatewayLlmSdkIdentity, isKnownGatewayLlmSdkIdentity } from "@social-monitor/summary/adapters/model/gateway-llm/gateway-llm-sdk-identity";
 import type { GatewayLlmRoute } from "@social-monitor/summary/adapters/model/gateway-llm/gateway-llm-client";
 import type { ReaderSummaryGenerationBackend } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
 import { isAttestedRuntimeIdentity } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
@@ -94,7 +94,16 @@ export type CaptureReceipt = {
   responses: { blockId: string; commandSha256: string; canonicalRequestSha256: string;
     schemaSha256: string; evidenceSha256: string; receivedAt: string; result: AgentRuntimeTaskResult }[];
 };
-export const checkReceiptBinding = (manifest: RequestManifest, receipt: CaptureReceipt): void => {
+type SdkIdentityAdmission = "current" | "retained";
+const sdkIdentityAllowed = (version: string, digest: string, admission: SdkIdentityAdmission): boolean =>
+  admission === "retained"
+    ? isKnownGatewayLlmSdkIdentity(version, digest)
+    : version === approvedGatewayLlmSdkIdentity.packageVersion &&
+      digest === approvedGatewayLlmSdkIdentity.archiveSha256;
+
+/** Fresh captures require the current SDK. Retained imports opt in explicitly. */
+export const checkReceiptBinding = (manifest: RequestManifest, receipt: CaptureReceipt,
+  sdkIdentity: SdkIdentityAdmission = "current"): void => {
   check(receipt.schemaVersion === manifest.schemaVersion && ["live_subscription", "live_gateway", "offline_fixture"].includes(receipt.captureKind), "Unknown receipt kind/schema");
   check(canonicalJsonSha256(receipt.evaluationRun ?? null) === canonicalJsonSha256(manifest.evaluationRun ?? null), "Receipt evaluation run mismatch");
   check(receipt.manifestSha256 === canonicalJsonSha256(manifest), "Receipt manifest mismatch");
@@ -112,8 +121,8 @@ export const checkReceiptBinding = (manifest: RequestManifest, receipt: CaptureR
   check(manifest.gateway === undefined || receipt.captureKind !== "live_subscription", "Gateway capture cannot claim CLI provenance");
   if (!manifest.gateway) check(receipt.transport.runtimeEngine === undefined, "Legacy transport identity changed");
   if (manifest.gateway) check(receipt.transport.runtimeEngine === "gateway-llm" &&
-    isKnownGatewayLlmSdkIdentity(receipt.transport.runtimePackageVersion,
-      receipt.transport.launcherSha256), "Gateway SDK identity mismatch");
+    sdkIdentityAllowed(receipt.transport.runtimePackageVersion,
+      receipt.transport.launcherSha256, sdkIdentity), "Gateway SDK identity mismatch");
   for (const envelope of manifest.requests) {
     const row = receipt.responses.find((r) => r.blockId === envelope.blockId);
     check(row, `Missing response ${envelope.blockId}`);
@@ -124,12 +133,13 @@ export const checkReceiptBinding = (manifest: RequestManifest, receipt: CaptureR
     check(canonicalJsonSha256(envelope.command) === envelope.commandSha256 &&
       canonicalJsonSha256(canonicalRequestFor(envelope.command, manifest.gateway)) === envelope.canonicalRequestSha256 &&
       canonicalJsonSha256(envelope.canonicalRequest) === envelope.canonicalRequestSha256, "Invalid frozen request identity");
-    verifyCapturedRuntime(envelope, row.result, receipt.transport, manifest.gateway);
+    verifyCapturedRuntime(envelope, row.result, receipt.transport, manifest.gateway, sdkIdentity);
     check(Number.isFinite(Date.parse(row.receivedAt)), "Invalid receipt timestamp");
   }
 };
 export const verifyCapturedRuntime = (envelope: RequestEnvelope, result: AgentRuntimeTaskResult,
-  transport: CaptureReceipt["transport"], gateway?: EvaluationGatewayRoute): void => {
+  transport: CaptureReceipt["transport"], gateway?: EvaluationGatewayRoute,
+  sdkIdentity: SdkIdentityAdmission = "current"): void => {
   const a = result.executionAttestation;
     check(a?.schemaVersion === 1 && isAttestedRuntimeIdentity(a), "Invalid attested runtime identity");
     check(a?.requestId === envelope.command.requestId && a.purpose === envelope.command.purpose &&
@@ -139,7 +149,7 @@ export const verifyCapturedRuntime = (envelope: RequestEnvelope, result: AgentRu
       a.gateway.profileId === gateway.profileId && a.model === gateway.model &&
       (envelope.command.controls.modelBackend ?? "openai-chatgpt") === gateway.modelBackend &&
       a.reasoningEffort === (gateway.reasoningEffort ?? "default") &&
-      isKnownGatewayLlmSdkIdentity(a.runtimePackageVersion, a.launcherSha256),
+      sdkIdentityAllowed(a.runtimePackageVersion, a.launcherSha256, sdkIdentity),
       "Gateway execution profile mismatch");
     else check(a?.runtimeEngine === "subscription-runtime-cli", "Legacy receipt requires CLI runtime identity");
     check(a?.canonicalRequestSha256 === envelope.canonicalRequestSha256, "Runtime canonical request mismatch");
