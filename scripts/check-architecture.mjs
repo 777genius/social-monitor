@@ -133,7 +133,7 @@ function moduleReferencesOf(source) {
 
   // Type assertions and grouping do not make an otherwise constant module
   // path dynamic. Inspect the wrapped literal without evaluating expressions.
-  function unwrapModuleLiteral(expression) {
+  function unwrapTransparentExpression(expression) {
     let node = expression;
     while (node && (
       ts.isParenthesizedExpression(node) ||
@@ -148,7 +148,7 @@ function moduleReferencesOf(source) {
   }
 
   function add(specifier, isRuntime) {
-    const literal = unwrapModuleLiteral(specifier);
+    const literal = unwrapTransparentExpression(specifier);
     if (!literal || !(ts.isStringLiteral(literal) || ts.isNoSubstitutionTemplateLiteral(literal))) return;
     imports.push(literal.text);
     if (isRuntime) runtimeImports.push(literal.text);
@@ -178,11 +178,12 @@ function moduleReferencesOf(source) {
       add(node.moduleReference.expression, !node.isTypeOnly);
     } else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)) {
       add(node.argument.literal, false);
-    } else if (ts.isCallExpression(node) && (
-      node.expression.kind === ts.SyntaxKind.ImportKeyword ||
-      (ts.isIdentifier(node.expression) && node.expression.text === 'require')
-    )) {
-      add(node.arguments[0], true);
+    } else if (ts.isCallExpression(node)) {
+      const callee = unwrapTransparentExpression(node.expression);
+      if (callee.kind === ts.SyntaxKind.ImportKeyword ||
+          (ts.isIdentifier(callee) && callee.text === 'require')) {
+        add(node.arguments[0], true);
+      }
     }
     ts.forEachChild(node, visit);
   }
@@ -261,6 +262,21 @@ function architectureLayerOf(file) {
     ?? path.match(/^libs\/platform\/[^/]+\/src\/(adapters|infrastructure|interfaces)(?:\/|$)/)?.[1]
     ?? (/^libs\/platform\/persistence\/src\/prisma-/.test(path) ? 'infrastructure' : null)
     ?? null;
+}
+
+// A root alias that *only* republishes its own domain is a domain dependency,
+// even though the root index file has no layer in its path. Do not infer a layer
+// for mixed public/composition entrypoints or walk arbitrarily deep barrels.
+function isDomainOnlyContextRoot(file) {
+  const path = toProjectPath(file);
+  if (!/^libs\/[^/]+\/index\.ts$/.test(path)) return false;
+  const root = ts.createSourceFile(path, readFileSync(path, 'utf8'),
+    ts.ScriptTarget.Latest, false, ts.ScriptKind.TS);
+  return root.statements.length > 0 && root.statements.every((statement) =>
+    ts.isExportDeclaration(statement) &&
+    statement.moduleSpecifier &&
+    ts.isStringLiteral(statement.moduleSpecifier) &&
+    /^\.\/domain(?:\/|$)/.test(statement.moduleSpecifier.text));
 }
 
 // Exact current-main debt, not a permission to create new cross-context domain edges.
@@ -531,8 +547,10 @@ for (const file of globSync('libs/**/*.ts')) {
     const targetLayer = resolved ? architectureLayerOf(resolved) : null;
     const sourceLayer = architectureLayerOf(file);
 
-    if (sourceLayer === 'domain' && targetLayer === 'domain' &&
-        sourceContext && targetContext && sourceContext !== targetContext &&
+    if (sourceLayer === 'domain' && sourceContext && targetContext &&
+        sourceContext !== targetContext &&
+        (targetLayer === 'domain' ||
+          (targetLayer === null && isDomainOnlyContextRoot(resolved))) &&
         !legacyCrossContextDomainImports.has(toProjectPath(file) + '|' + specifier)) {
       addViolation(file, 'cross-context domain import is forbidden: ' + JSON.stringify(specifier) +
         ' resolves to ' + JSON.stringify(resolved));

@@ -252,6 +252,9 @@ Failure in a naïve strategy: interpret the requested 10k plan-line threshold as
 
 ### Review remediation — 2026-11-23
 
+Second independent CodeRabbit pass on the later exact source found two more actionable bypasses. Parenthesized/TS-asserted `require` *callees* were previously ignored even when the argument was a literal; the AST extractor now unwraps only transparent callee wrappers. A foreign context root index that exclusively re-exports its own `./domain` (verified in `libs/feed/index.ts`) also escaped because the index had no layer segment. The new bounded classifier treats only an all-domain-export context-root index as a domain target, avoiding unrelated mixed/application composition roots. Rejection tests cover wrapped require, domain-only root barrels and type-only root imports; a positive test protects non-domain module composition. No runtime files or historical exception tuples changed; final-head native E2E is still required.
+
+
 The first independent CodeRabbit pass found three actionable correctness gaps:
 - A commented-out static import/export was incorrectly interpreted as executable.
 - A foreign-domain `require(/* trivia */ '...')` or `import(/* trivia */ '...')` escaped the new boundary rule.
