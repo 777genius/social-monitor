@@ -99,7 +99,7 @@ for (const [name, sourcePath, source, targetPath] of [
     "void import(/* dependency */ '@social-monitor/ingestion/domain/example');",
     'libs/ingestion/domain/example.ts'],
   ['foreign domain dynamic import with multiline trivia', 'libs/summary/domain/example.ts',
-    "void import(/* dependency */\\n'@social-monitor/ingestion/domain/example');",
+    "void import(/* dependency */\n'@social-monitor/ingestion/domain/example');",
     'libs/ingestion/domain/example.ts'],
   ['legacy permission is path-exact', 'libs/summary/domain/policies/extra.ts',
     "import type { Foreign } from '@social-monitor/relevance/domain/reader-value/reader-value-assessment';",
@@ -151,7 +151,7 @@ test('ignores commented-out import, export, require and dynamic import declarati
       "/* void import('@social-monitor/ingestion/domain/example'); */",
       "const url = 'https://example.test/source';",
       "export const ok = url;",
-    ].join('\\n'),
+    ].join('\n'),
     'libs/ingestion/domain/example.ts': 'export type Foreign = number;',
   });
   assert.equal(result.status, 0, result.output);
@@ -163,7 +163,7 @@ test('preserves executable imports adjacent to line and block comments', () => {
       "// an ordinary comment before an actual import",
       "/* a header */",
       "import type { Foreign } from '@social-monitor/ingestion/domain/example';",
-    ].join('\\n'),
+    ].join('\n'),
     'libs/ingestion/domain/example.ts': 'export type Foreign = number;',
   });
   assert.equal(result.status, 1, result.output);
