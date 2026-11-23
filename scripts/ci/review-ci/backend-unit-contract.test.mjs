@@ -132,7 +132,7 @@ test('unit worker argv is bounded to shard2 and inventory is always serial', () 
         const args = readFileSync(argvFile, 'utf8').split('\0').slice(0, -1);
         assert.deepEqual(args, [
           'scripts/run-with-timeout.mjs', '--timeout-ms', kind === 'inventory' ? '120000' : '2700000',
-          '--node-options', kind === 'inventory' ? '--max-old-space-size=2048' : '--max-old-space-size=4096',
+          '--node-options', kind === 'inventory' ? '--max-old-space-size=2048' : '--max-old-space-size=4096 --experimental-vm-modules',
           '--', './node_modules/.bin/jest', '--config', 'jest.config.ts',
           kind === 'runtime' && shard === 2 ? '--maxWorkers=2' : '--runInBand',
           ...(kind === 'runtime' ? [`--shard=${shard}/6`] : []),
@@ -146,5 +146,13 @@ test('unit worker argv is bounded to shard2 and inventory is always serial', () 
     }
   } finally {
     rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('local Node16 Jest launch preserves VM imports and nested ts-node alias resolution', () => {
+  const scripts = JSON.parse(readFileSync('package.json', 'utf8')).scripts;
+  for (const name of ['test', 'check:postgres-runtime-pool-unit']) {
+    assert.match(scripts[name],
+      /--node-options "--max-old-space-size=\d+ --experimental-vm-modules" --env TS_NODE_BASEURL=\. -- jest\b/u);
   }
 });
