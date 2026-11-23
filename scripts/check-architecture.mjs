@@ -62,7 +62,7 @@ const compilerPaths = JSON.parse(readFileSync('tsconfig.json', 'utf8')).compiler
 const configuredAliases = Object.entries(compilerPaths)
   .sort(([left], [right]) => right.replace('*', '').length - left.replace('*', '').length);
 const boundedContexts = new Set(Object.values(compilerPaths).flat()
-  .map((target) => target.match(/^libs\/([^/]+)\//)?.[1])
+  .map((target) => target.match(/^(?:\.\/)?libs\/([^/]+)\//)?.[1])
   .filter((context) => context && !['platform', 'shared-kernel', 'contracts'].includes(context)));
 const businessContextImportPattern =
   /^@social-monitor\/([^/]+)\/(domain|features|adapters|interfaces)(?:\/|$)/;
