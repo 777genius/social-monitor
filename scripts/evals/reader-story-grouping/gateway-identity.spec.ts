@@ -4,7 +4,7 @@ import { approvedGatewayLlmSdkIdentity as sdk, historicalGatewayLlmSdkIdentity a
 import type { AgentRuntimeTaskResult } from "@social-monitor/summary/ports";
 import { loadDataset, readJson } from "./dataset";
 import { prepareBlock, type PreparedBlock } from "./replay";
-import { captureRequest, makeManifest, checkReceiptBinding, normalizeCapturedResponse,
+import { captureRequest, makeManifest, checkReceiptBinding, verifyCapturedRuntime, normalizeCapturedResponse,
   type RequestEnvelope, type CaptureReceipt } from "./requests";
 
 const gateway = { profileId: "TEST-codex", modelBackend: "openai-chatgpt", model: "gpt-6.1-sol",
@@ -55,7 +55,7 @@ it.each([sdk, historicalSdk])("replays the retained gateway route from $packageV
   expect(envelope.command.controls).toMatchObject({ model: "gpt-6.1-sol", reasoningEffort: "low" });
   expect(envelope.canonicalRequest).toMatchObject({ profileId: "TEST-codex", maxOutputTokens: 16_384 });
   expect(envelope.canonicalRequest).not.toHaveProperty("task");
-  expect(() => checkReceiptBinding(manifest, receipt)).not.toThrow();
+  expect(() => checkReceiptBinding(manifest, receipt, "retained")).not.toThrow();
   const ajv = new Ajv();
   expect(ajv.validate(readJson<object>("scripts/evals/reader-story-grouping/request-manifest.schema.json"), manifest)).toBe(true);
   expect(ajv.validate(readJson<object>("scripts/evals/reader-story-grouping/receipt.schema.json"), receipt)).toBe(true);
@@ -64,6 +64,13 @@ it.each([sdk, historicalSdk])("replays the retained gateway route from $packageV
   const legacy = await captureRequest(prepared);
   expect(legacy?.command.controls).toMatchObject({ model: "gpt-5.6-sol", reasoningEffort: "high" });
   expect(makeManifest(loadDataset(), [legacy!], source)).toMatchObject({ schemaVersion: 2 });
+});
+it("requires the current SDK for fresh capture but replays an intact retained SDK receipt", () => {
+  const { manifest, receipt, result } = fixture(historicalSdk);
+  expect(() => checkReceiptBinding(manifest, receipt)).toThrow("Gateway SDK identity mismatch");
+  expect(() => verifyCapturedRuntime(envelope, result, receipt.transport, gateway))
+    .toThrow("Gateway execution profile mismatch");
+  expect(() => checkReceiptBinding(manifest, receipt, "retained")).not.toThrow();
 });
 it.each(["old version/new digest", "new version/old digest", "current receipt/old attestation", "old receipt/current attestation"])(
   "rejects a crossed or mixed gateway capture: %s", (kind) => {
