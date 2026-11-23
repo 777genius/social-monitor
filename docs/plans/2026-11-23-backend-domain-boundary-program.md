@@ -2,7 +2,14 @@
 
 Status: **Draft implementation; not merge-ready**. Baseline: \`main\` \`c0f3ea3dd2f546ab5fd25f395e341cd2c5093541\` (2026-11-22). Owner: \`social-monitor\` backend. No production deployment authorized.
 
-This document is the reviewable, normative **plan**. The companion per-source inventory, when present, is a **non-authoritative audit index**, not a mandate to edit every indexed file. A line count is never a proof of changed architecture or working E2E.
+This document is the reviewable, normative **plan**. Its two companion per-source audit indexes are **non-authoritative scope ledgers**, not mandates to edit every indexed file. A line count is never a proof of changed architecture or working E2E.
+
+Detailed, exact-path baseline and change-admission inventory:
+
+- [Audit index 1/2](2026-11-23-backend-source-audit-index-1.md): baseline source entries 1–1,028.
+- [Audit index 2/2](2026-11-23-backend-source-audit-index-2.md): entries 1,029–2,055.
+
+The source-index pair contains **10,295 physical Markdown lines**; with this plan the documented program exceeds the requested 10,000-line threshold. About 2,055 source-file ownership/verification records are **not implementation tasks**. The runtime refactor remains bounded, evidence-driven and much smaller.
 
 ## 0. Executive decision
 
