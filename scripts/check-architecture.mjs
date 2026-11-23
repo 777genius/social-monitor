@@ -121,7 +121,22 @@ const forbiddenInSocialResearchMcpAdapter = [
   '@social-monitor/monitoring',
 ];
 
+// Preserve executable source and module string literals while replacing comment
+// trivia with whitespace. This keeps the existing import gates dependency-free,
+// ignores inert commented declarations, and permits /* ... */ inside call args.
+// Preserve line breaks so diagnostics and multiline imports remain unchanged.
+function withoutComments(source) {
+  const lexicalTokens =
+    /"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|`(?:\\[\s\S]|[^`\\])*`|\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g;
+  return source.replace(lexicalTokens, (token) => (
+    token.startsWith('//') || token.startsWith('/*')
+      ? token.replace(/[^\r\n]/g, ' ')
+      : token
+  ));
+}
+
 function importsOf(source) {
+  source = withoutComments(source);
   const specifiers = [];
   const patterns = [
     /(?:import|export)\s+(?:type\s+)?(?:[^'"]+from\s+)?['"]([^'"]+)['"]/g,
@@ -139,6 +154,7 @@ function importsOf(source) {
 }
 
 function runtimeImportsOf(source) {
+  source = withoutComments(source);
   const specifiers = [];
   const staticPatterns = [
     /\b(import|export)\s+([\s\S]*?)\s+from\s+['"]([^'"]+)['"]/g,
