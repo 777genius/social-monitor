@@ -48,7 +48,9 @@ jobs:
             console.log("Native TypeScript:", p.version);
           '
 
-      - name: Reject removed compiler configuration and malformed alias targets
+      - name: Prove unchanged alias identity and strict options without legacy compiler APIs
+        run: node --experimental-strip-types --test scripts/ci/typescript7-config-contract.test.ts
+
         shell: bash
         run: |
           set -euo pipefail
