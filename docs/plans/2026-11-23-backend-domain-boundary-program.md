@@ -270,10 +270,15 @@ Failure in a naïve strategy: interpret the requested 10k plan-line threshold as
 
 ### Review remediation — 2026-11-23
 
+Second independent CodeRabbit pass on the later exact source found two more actionable bypasses. Parenthesized/TS-asserted `require` *callees* were previously ignored even when the argument was a literal; the AST extractor now unwraps only transparent callee wrappers. A foreign context root index that exclusively re-exports its own `./domain` (verified in `libs/feed/index.ts`) also escaped because the index had no layer segment. The new bounded classifier treats only an all-domain-export context-root index as a domain target, avoiding unrelated mixed/application composition roots. Rejection tests cover wrapped require, domain-only root barrels and type-only root imports; a positive test protects non-domain module composition. No runtime files or historical exception tuples changed; final-head native E2E is still required.
+
+
 The first independent CodeRabbit pass found three actionable correctness gaps:
 - A commented-out static import/export was incorrectly interpreted as executable.
 - A foreign-domain `require(/* trivia */ '...')` or `import(/* trivia */ '...')` escaped the new boundary rule.
 - One `.e2e-spec.ts` was accidentally listed as production source. It is removed, and both indexes are continuously renumbered to 2,054 records (10,290 appendix lines).
+
+A further adversarial pass found that directly literal dynamic `import` / `require` calls wrapped in parentheses, `as` assertions, `satisfies` or non-null assertions were silently ignored by module-reference extraction. These wrappers are runtime-transparent, so the guard now unwraps only those syntax nodes before testing for a string literal; four negative tests cover them. Computed and nonliteral module paths are still not statically admitted by this scoped rule.
 
 First, minimal comment masking passed the targeted cases; a second adversarial pass found a bypass involving a regex literal `/[/*]/`, a real import and a later `/* ... */` marker. Regex masking could hide the real dependency. **Correction:** use the repository's existing TypeScript compiler syntax tree to extract actual static, CommonJS, type-query and literal dynamic module references. This is a development-tool use of an existing package, not a new runtime dependency. The compiler parser also excludes inert strings, regex literals and comments while preserving executable interpolation. The remaining limit is computed/nonliteral dynamic module specifiers, which the scoped gate does not claim to resolve. The legacy exception tuples and all production code remain unchanged.
 
@@ -318,4 +323,4 @@ These are forecasts, **not commitments to edit a fixed number of lines**. Do not
 
 If no real locked dependency installation or CI runner is accessible, it is valid to **push a Draft with implementation and tests but not merge**. Do not invent E2E PASS or substitute code review for execution.
 
-No deployment, production database query, provider API call, real account or externally billable workflow is authorized by this plan. 
+No deployment, production database query, provider API call, real account or externally billable workflow is authorized by this plan.
