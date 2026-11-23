@@ -109,7 +109,7 @@ Caution: GitHub code-search indexing is not a substitute for the executable full
 - Check both static value and type-only edges. Type-only imports do not produce runtime cycles, but do create compile-time architecture coupling.
 - Keep the existing previous diagnostics and add one clear new diagnostic for domain→foreign-domain violations.
 - Do not reject unrelated dependency edges that were previously allowed; retain this slice's precise scope.
-- Do not add a new lint framework, AST parser, workspace graph, flags, CI workflow or generator.
+- Reuse the already-declared TypeScript compiler's syntax tree for module-reference classification; do not introduce an additional parser package, lint framework, workspace graph, flag, CI workflow or generator. This requires the normal locked dependency installation before executing the gate.
 
 ### Synthetic test matrix
 
@@ -132,6 +132,7 @@ Caution: GitHub code-search indexing is not a substitute for the executable full
 Run on an actual clone with locked project dependencies:
 
 ```sh
+npm ci --ignore-scripts
 node scripts/check-architecture.mjs
 node --test scripts/check-architecture.test.mjs
 npm run check:source-line-cap
@@ -256,7 +257,7 @@ The first independent CodeRabbit pass found three actionable correctness gaps:
 - A foreign-domain `require(/* trivia */ '...')` or `import(/* trivia */ '...')` escaped the new boundary rule.
 - One `.e2e-spec.ts` was accidentally listed as production source. It is removed, and both indexes are continuously renumbered to 2,054 records (10,290 appendix lines).
 
-The change is constrained to normalizing comments before the existing dependency extraction and to synthetic regression fixtures. No TypeScript runtime parser or new dependency is introduced, no new production file is changed, and the legacy exceptions remain exact. This is **not a claim of complete TypeScript syntax coverage**: unusual template interpolation and regex-literal grammar still require separate parser-parity review before representing the architecture guard as a general-purpose compiler.
+First, minimal comment masking passed the targeted cases; a second adversarial pass found a bypass involving a regex literal `/[/*]/`, a real import and a later `/* ... */` marker. Regex masking could hide the real dependency. **Correction:** use the repository's existing TypeScript compiler syntax tree to extract actual static, CommonJS, type-query and literal dynamic module references. This is a development-tool use of an existing package, not a new runtime dependency. The compiler parser also excludes inert strings, regex literals and comments while preserving executable interpolation. The remaining limit is computed/nonliteral dynamic module specifiers, which the scoped gate does not claim to resolve. The legacy exception tuples and all production code remain unchanged.
 
 Review proof is code-specific: previous checks on 86ae016a are superseded by the remediation commits. Only full native checks on the latest resulting HEAD can qualify for merge. In particular, `node --test scripts/check-architecture.test.mjs` must distinguish a real import from an inert comment, while `node scripts/check-architecture.mjs` must validate the current repository without creating blanket exceptions.
 
