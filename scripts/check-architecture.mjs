@@ -251,7 +251,6 @@ function architectureLayerOf(file) {
 const legacyCrossContextDomainImports = new Set([
   'libs/conversation/domain/value-objects/conversation-signal-baseline-sample.ts|@social-monitor/feed/domain',
   'libs/conversation/domain/services/conversation-bundle-builder.ts|@social-monitor/feed/domain',
-  'libs/summary/domain/policies/reader-summary-github-projection-audit-types.ts|@social-monitor/ingestion/domain',
   'libs/summary/domain/policies/reader-summary-github-archived-projection.ts|@social-monitor/ingestion/domain',
   'libs/summary/domain/entities/reader-summary-promotion-order-validation.ts|@social-monitor/relevance/domain/reader-value/reader-value-assessment',
   'libs/delivery/domain/reader-summary-ready-projection.ts|@social-monitor/summary/domain/value-objects/reader-summary-period',
