@@ -131,10 +131,27 @@ function moduleReferencesOf(source) {
   const imports = [];
   const runtimeImports = [];
 
+  // Type assertions and grouping do not make an otherwise constant module
+  // path dynamic. Inspect the wrapped literal without evaluating expressions.
+  function unwrapModuleLiteral(expression) {
+    let node = expression;
+    while (node && (
+      ts.isParenthesizedExpression(node) ||
+      ts.isAsExpression(node) ||
+      ts.isTypeAssertionExpression(node) ||
+      ts.isSatisfiesExpression(node) ||
+      ts.isNonNullExpression(node)
+    )) {
+      node = node.expression;
+    }
+    return node;
+  }
+
   function add(specifier, isRuntime) {
-    if (!specifier || !(ts.isStringLiteral(specifier) || ts.isNoSubstitutionTemplateLiteral(specifier))) return;
-    imports.push(specifier.text);
-    if (isRuntime) runtimeImports.push(specifier.text);
+    const literal = unwrapModuleLiteral(specifier);
+    if (!literal || !(ts.isStringLiteral(literal) || ts.isNoSubstitutionTemplateLiteral(literal))) return;
+    imports.push(literal.text);
+    if (isRuntime) runtimeImports.push(literal.text);
   }
 
   function runtimeImportClause(clause) {
