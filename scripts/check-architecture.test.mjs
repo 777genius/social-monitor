@@ -101,6 +101,15 @@ for (const [name, sourcePath, source, targetPath] of [
   ['foreign domain dynamic import with multiline trivia', 'libs/summary/domain/example.ts',
     "void import(/* dependency */\n'@social-monitor/ingestion/domain/example');",
     'libs/ingestion/domain/example.ts'],
+  ['foreign domain import type query', 'libs/summary/domain/example.ts',
+    "export type Foreign = import('@social-monitor/ingestion/domain/example').Foreign;",
+    'libs/ingestion/domain/example.ts'],
+  ['foreign domain nested template expression', 'libs/summary/domain/example.ts',
+    "export const loaded = `${import('@social-monitor/ingestion/domain/example')}`;",
+    'libs/ingestion/domain/example.ts'],
+  ['foreign domain import after regex containing apparent comment', 'libs/summary/domain/example.ts',
+    "const re = /[/*]/;\nimport type { Foreign } from '@social-monitor/ingestion/domain/example';\n/* closing comment */",
+    'libs/ingestion/domain/example.ts'],
   ['legacy permission is path-exact', 'libs/summary/domain/policies/extra.ts',
     "import type { Foreign } from '@social-monitor/relevance/domain/reader-value/reader-value-assessment';",
     'libs/relevance/domain/reader-value/reader-value-assessment.ts'],
@@ -168,6 +177,20 @@ test('preserves executable imports adjacent to line and block comments', () => {
   });
   assert.equal(result.status, 1, result.output);
   assert.match(result.output, /cross-context domain import is forbidden/);
+});
+
+test('does not mistake string, template or regex content for real imports', () => {
+  const result = check({
+    'libs/summary/domain/example.ts': [
+      "const documentation = \"import { Foreign } from '@social-monitor/ingestion/domain/example'\";",
+      "const template = `export type { Foreign } from '@social-monitor/ingestion/domain/example'`;",
+      "const matcher = /[/*]/;",
+      "const notAnImport = \"require('@social-monitor/ingestion/domain/example')\";",
+      "export const accepted = [documentation, template, matcher, notAnImport];",
+    ].join('\n'),
+    'libs/ingestion/domain/example.ts': 'export type Foreign = number;',
+  });
+  assert.equal(result.status, 0, result.output);
 });
 
 const contextAliases = Object.keys(JSON.parse(config).compilerOptions.paths)
