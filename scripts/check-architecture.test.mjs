@@ -95,11 +95,32 @@ for (const [name, sourcePath, source, targetPath] of [
   ['foreign domain require with comment trivia', 'libs/summary/domain/example.ts',
     "const foreign = require(/* dependency */ '@social-monitor/ingestion/domain/example');",
     'libs/ingestion/domain/example.ts'],
+  ['foreign domain parenthesized require callee', 'libs/summary/domain/example.ts',
+    "const foreign = (require)('@social-monitor/ingestion/domain/example');",
+    'libs/ingestion/domain/example.ts'],
+  ['foreign domain nested require callee', 'libs/summary/domain/example.ts',
+    "const foreign = ((require))('@social-monitor/ingestion/domain/example');",
+    'libs/ingestion/domain/example.ts'],
+  ['foreign domain asserted require callee', 'libs/summary/domain/example.ts',
+    "const foreign = (require as typeof require)('@social-monitor/ingestion/domain/example');",
+    'libs/ingestion/domain/example.ts'],
   ['foreign domain dynamic import with comment trivia', 'libs/summary/domain/example.ts',
     "void import(/* dependency */ '@social-monitor/ingestion/domain/example');",
     'libs/ingestion/domain/example.ts'],
   ['foreign domain dynamic import with multiline trivia', 'libs/summary/domain/example.ts',
     "void import(/* dependency */\n'@social-monitor/ingestion/domain/example');",
+    'libs/ingestion/domain/example.ts'],
+  ['foreign domain dynamic import with as-const wrapper', 'libs/summary/domain/example.ts',
+    "void import(('@social-monitor/ingestion/domain/example' as const));",
+    'libs/ingestion/domain/example.ts'],
+  ['foreign domain require with nested grouping and type assertion', 'libs/summary/domain/example.ts',
+    "const foreign = require((('@social-monitor/ingestion/domain/example') as string));",
+    'libs/ingestion/domain/example.ts'],
+  ['foreign domain dynamic import with satisfies wrapper', 'libs/summary/domain/example.ts',
+    "void import(('@social-monitor/ingestion/domain/example' satisfies string));",
+    'libs/ingestion/domain/example.ts'],
+  ['foreign domain dynamic import with non-null assertion', 'libs/summary/domain/example.ts',
+    "void import(('@social-monitor/ingestion/domain/example'!));",
     'libs/ingestion/domain/example.ts'],
   ['foreign domain import type query', 'libs/summary/domain/example.ts',
     "export type Foreign = import('@social-monitor/ingestion/domain/example').Foreign;",
@@ -132,6 +153,36 @@ for (const [name, sourcePath, source, targetPath] of [
     assert.match(result.output, /cross-context domain import is forbidden/);
   });
 }
+
+test('rejects foreign domain-only root aliases without a deep path', () => {
+  const result = check({
+    'libs/summary/domain/example.ts': "import { foreign } from '@social-monitor/feed';",
+    'libs/feed/index.ts': "export * from './domain';",
+    'libs/feed/domain/index.ts': 'export const foreign = 1;',
+  });
+  assert.equal(result.status, 1, result.output);
+  assert.match(result.output, /cross-context domain import is forbidden/);
+});
+
+test('rejects type-only imports from foreign domain-only root aliases', () => {
+  const result = check({
+    'libs/summary/domain/example.ts': "import type { Foreign } from '@social-monitor/feed';",
+    'libs/feed/index.ts': "export type { Foreign } from './domain';",
+    'libs/feed/domain/index.ts': 'export type Foreign = number;',
+  });
+  assert.equal(result.status, 1, result.output);
+  assert.match(result.output, /cross-context domain import is forbidden/);
+});
+
+test('permits foreign domain-only root aliases in non-domain composition', () => {
+  const result = check({
+    'libs/summary/interfaces/rest/summary-rest.module.ts':
+      "import { foreign } from '@social-monitor/feed'; export const wired = foreign;",
+    'libs/feed/index.ts': "export * from './domain';",
+    'libs/feed/domain/index.ts': 'export const foreign = 1;',
+  });
+  assert.equal(result.status, 0, result.output);
+});
 
 test('permits the exact current-main cross-context domain debt, without broadening', () => {
   const result = check({
