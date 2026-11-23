@@ -132,7 +132,7 @@ Caution: GitHub code-search indexing is not a substitute for the executable full
 Run on an actual clone with locked project dependencies:
 
 ```sh
-npm ci --ignore-scripts
+npm ci
 node scripts/check-architecture.mjs
 node --test scripts/check-architecture.test.mjs
 npm run check:source-line-cap
