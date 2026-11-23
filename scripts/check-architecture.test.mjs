@@ -116,6 +116,15 @@ for (const [name, sourcePath, source, targetPath] of [
   ['legacy permission is specifier-exact', 'libs/summary/domain/policies/reader-promotion-ranking.ts',
     "import type { Foreign } from '@social-monitor/relevance/domain/reader-value/other';",
     'libs/relevance/domain/reader-value/other.ts'],
+  ['retired reader-v3 type-only edge', 'libs/summary/domain/policies/reader-post-promotion-v3.ts',
+    "import type { Foreign } from '@social-monitor/relevance/domain/reader-value/reader-value-assessment';",
+    'libs/relevance/domain/reader-value/reader-value-assessment.ts'],
+  ['retired ranking type-only edge', 'libs/summary/domain/policies/reader-promotion-ranking.ts',
+    "import type { Foreign } from '@social-monitor/relevance/domain/reader-value/reader-value-assessment';",
+    'libs/relevance/domain/reader-value/reader-value-assessment.ts'],
+  ['retired attestation type-only edge', 'libs/summary/domain/policies/reader-post-promotion-policy-contract.ts',
+    "import type { Foreign } from '@social-monitor/relevance/domain/reader-value/reader-value-assessment';",
+    'libs/relevance/domain/reader-value/reader-value-assessment.ts'],
 ]) {
   test('rejects ' + name, () => {
     const result = check({ [sourcePath]: source, [targetPath]: 'export type Foreign = number; export const foreign = 1;' });
@@ -126,8 +135,8 @@ for (const [name, sourcePath, source, targetPath] of [
 
 test('permits the exact current-main cross-context domain debt, without broadening', () => {
   const result = check({
-    'libs/summary/domain/policies/reader-promotion-ranking.ts':
-      "import type { Foreign } from '@social-monitor/relevance/domain/reader-value/reader-value-assessment';",
+    'libs/summary/domain/entities/reader-summary-promotion-order-validation.ts':
+      "import { validateReaderValueAnswers } from '@social-monitor/relevance/domain/reader-value/reader-value-assessment';",
     'libs/relevance/domain/reader-value/reader-value-assessment.ts': 'export type Foreign = number;',
     'libs/delivery/domain/reader-summary-ready-projection.ts':
       "import type { Foreign } from '@social-monitor/summary/domain/value-objects/reader-summary-scope';",
