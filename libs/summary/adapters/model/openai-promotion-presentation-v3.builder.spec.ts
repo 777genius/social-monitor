@@ -142,7 +142,7 @@ describe("OpenAI Promotion V3 presentation builder", () => {
       return presentationResponse([proposal("candidate-1")]);
     });
     const builder = new OpenAiPromotionPresentationV3Builder({
-      apiKey: "fixture",
+      apiKey: "test-openai-key",
       endpointUrl: "https://example.test/v1/responses",
       model: "gpt-5.4-mini",
       fetchFn,
@@ -166,7 +166,7 @@ describe("OpenAI Promotion V3 presentation builder", () => {
     expect(sentEndpoint).toBe("https://example.test/v1/responses");
     expect(sentInit?.method).toBe("POST");
     expect(sentInit?.headers).toEqual({
-      authorization: "Bearer fixture", "content-type": "application/json",
+      authorization: "Bearer test-openai-key", "content-type": "application/json",
     });
     expect(sentInit?.signal).toBeInstanceOf(AbortSignal);
     expect(sentBody).toMatchObject({
