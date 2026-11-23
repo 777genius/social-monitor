@@ -6,6 +6,7 @@ on:
     paths:
       - tsconfig.json
       - scripts/check-architecture.mjs
+      - scripts/ci/typescript7-config-contract.test.ts
       - .github/workflows/typescript7-configuration.yml
   workflow_dispatch:
 

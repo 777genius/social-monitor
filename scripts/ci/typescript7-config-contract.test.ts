@@ -8,7 +8,7 @@ function isRecord(value: unknown): value is StringRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-test('TypeScript 7 configuration preserves the reviewed alias graph and strict metadata', () => {
+void test('TypeScript 7 configuration preserves the reviewed alias graph and strict metadata', () => {
   const parsed: unknown = JSON.parse(readFileSync('tsconfig.json', 'utf8'));
   assert.ok(isRecord(parsed));
   const options = parsed.compilerOptions;
