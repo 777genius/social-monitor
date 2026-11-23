@@ -5,7 +5,14 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - tsconfig.json
+      - tsconfig.build.json
       - test/tsconfig.jest.json
+      - jest.config.ts
+      - test/jest-e2e.config.ts
+      - test/jest-broker-e2e.config.ts
+      - package.json
+      - package-lock.json
+      - scripts/rewrite-build-aliases.mjs
       - scripts/check-architecture.mjs
       - scripts/ci/typescript7-config-contract.test.ts
       - .github/workflows/typescript7-configuration.yml
