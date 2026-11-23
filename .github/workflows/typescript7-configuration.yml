@@ -1,0 +1,74 @@
+name: Native TypeScript 7 configuration qualification
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - tsconfig.json
+      - scripts/check-architecture.mjs
+      - .github/workflows/typescript7-configuration.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native_ts7:
+    name: Native TypeScript 7 compatibility (non-merge qualification)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact proposed source
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up supported backend Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: '24.22.3'
+          cache: npm
+
+      - name: Install declared project dependencies without running legacy compiler hooks
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Install an isolated exact native TypeScript 7.0.2 compiler
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/native-ts7"
+          npm --prefix "$RUNNER_TEMP/native-ts7" install \
+            --no-save --ignore-scripts --no-audit --no-fund \
+            --package-lock=false --save-exact typescript@7.0.2
+          TS7_DIR="$RUNNER_TEMP/native-ts7" node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const p = JSON.parse(readFileSync(process.env.TS7_DIR + "/node_modules/typescript/package.json", "utf8"));
+            if (p.version !== "7.0.2") throw new Error("Expected the exact native TypeScript 7.0.2 compiler");
+            console.log("Native TypeScript:", p.version);
+          '
+
+      - name: Reject removed compiler configuration and malformed alias targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const c = JSON.parse(readFileSync("tsconfig.json", "utf8")).compilerOptions;
+            if ("baseUrl" in c || "ignoreDeprecations" in c) throw new Error("Removed compiler option retained");
+            if (!c.strict || !c.emitDecoratorMetadata || !c.experimentalDecorators)
+              throw new Error("Existing strictness/decorator guarantees changed");
+            const aliases = Object.entries(c.paths ?? {});
+            if (aliases.length !== 34 || aliases.some(([name, targets]) =>
+                !name.startsWith("@social-monitor/") || !Array.isArray(targets) ||
+                targets.length === 0 || targets.some(path => !path.startsWith("./libs/"))))
+              throw new Error("Alias graph shape changed");
+            console.log("Strictness, decorator settings and", aliases.length, "relative aliases verified");
+          '
+
+      - name: Run the real native TypeScript 7.0.2 compiler on the root project
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/native-ts7/node_modules/.bin/tsc" --version
+          "$RUNNER_TEMP/native-ts7/node_modules/.bin/tsc" -p tsconfig.json --noEmit
