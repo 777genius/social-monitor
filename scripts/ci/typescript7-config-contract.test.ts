@@ -44,3 +44,15 @@ void test('TypeScript 7 configuration preserves the reviewed alias graph and str
   }
   assert.equal(fingerprint.toString(16).padStart(8, '0'), 'de9321e4');
 });
+
+void test('Jest uses a supported explicit module-resolution pair without changing the production profile', () => {
+  const raw: unknown = JSON.parse(readFileSync('test/tsconfig.jest.json', 'utf8'));
+  assert.ok(isRecord(raw));
+  assert.equal(raw.extends, '../tsconfig.json');
+  const options = raw.compilerOptions;
+  assert.ok(isRecord(options));
+  assert.equal(options.module, 'Node16');
+  assert.equal(options.moduleResolution, 'Node16');
+  assert.equal(options.isolatedModules, true);
+  assert.equal(Object.hasOwn(options, 'ignoreDeprecations'), false);
+});
