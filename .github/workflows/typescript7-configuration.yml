@@ -35,6 +35,10 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Generate the real Prisma client from the checked-in schema
+        # Prisma config validates DATABASE_URL even when generation does not connect to a DB.
+        # Deliberately local and credential-free; no production database is used.
+        env:
+          DATABASE_URL: postgresql://ci@127.0.0.1:5432/social_monitor_ci
         run: ./node_modules/.bin/prisma generate --schema prisma/schema.prisma
 
       - name: Install an isolated exact native TypeScript 7.0.2 compiler
