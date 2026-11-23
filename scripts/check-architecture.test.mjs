@@ -92,6 +92,15 @@ for (const [name, sourcePath, source, targetPath] of [
   ['foreign domain dynamic import', 'libs/summary/domain/example.ts',
     "void import('@social-monitor/ingestion/domain/example');",
     'libs/ingestion/domain/example.ts'],
+  ['foreign domain require with comment trivia', 'libs/summary/domain/example.ts',
+    "const foreign = require(/* dependency */ '@social-monitor/ingestion/domain/example');",
+    'libs/ingestion/domain/example.ts'],
+  ['foreign domain dynamic import with comment trivia', 'libs/summary/domain/example.ts',
+    "void import(/* dependency */ '@social-monitor/ingestion/domain/example');",
+    'libs/ingestion/domain/example.ts'],
+  ['foreign domain dynamic import with multiline trivia', 'libs/summary/domain/example.ts',
+    "void import(/* dependency */\\n'@social-monitor/ingestion/domain/example');",
+    'libs/ingestion/domain/example.ts'],
   ['legacy permission is path-exact', 'libs/summary/domain/policies/extra.ts',
     "import type { Foreign } from '@social-monitor/relevance/domain/reader-value/reader-value-assessment';",
     'libs/relevance/domain/reader-value/reader-value-assessment.ts'],
@@ -131,6 +140,34 @@ test('permits same-context domain imports and does not turn composition into dom
     'libs/feed/domain/index.ts': 'export const foreign = 1;',
   });
   assert.equal(result.status, 0, result.output);
+});
+
+test('ignores commented-out import, export, require and dynamic import declarations', () => {
+  const result = check({
+    'libs/summary/domain/example.ts': [
+      "// import type { Foreign } from '@social-monitor/ingestion/domain/example';",
+      "/* export type { Foreign } from '@social-monitor/ingestion/domain/example'; */",
+      "// const unused = require('@social-monitor/ingestion/domain/example');",
+      "/* void import('@social-monitor/ingestion/domain/example'); */",
+      "const url = 'https://example.test/source';",
+      "export const ok = url;",
+    ].join('\\n'),
+    'libs/ingestion/domain/example.ts': 'export type Foreign = number;',
+  });
+  assert.equal(result.status, 0, result.output);
+});
+
+test('preserves executable imports adjacent to line and block comments', () => {
+  const result = check({
+    'libs/summary/domain/example.ts': [
+      "// an ordinary comment before an actual import",
+      "/* a header */",
+      "import type { Foreign } from '@social-monitor/ingestion/domain/example';",
+    ].join('\\n'),
+    'libs/ingestion/domain/example.ts': 'export type Foreign = number;',
+  });
+  assert.equal(result.status, 1, result.output);
+  assert.match(result.output, /cross-context domain import is forbidden/);
 });
 
 const contextAliases = Object.keys(JSON.parse(config).compilerOptions.paths)
