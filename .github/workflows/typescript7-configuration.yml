@@ -51,23 +51,6 @@ jobs:
       - name: Prove unchanged alias identity and strict options without legacy compiler APIs
         run: node --experimental-strip-types --test scripts/ci/typescript7-config-contract.test.ts
 
-        shell: bash
-        run: |
-          set -euo pipefail
-          node --input-type=module -e '
-            import { readFileSync } from "node:fs";
-            const c = JSON.parse(readFileSync("tsconfig.json", "utf8")).compilerOptions;
-            if ("baseUrl" in c || "ignoreDeprecations" in c) throw new Error("Removed compiler option retained");
-            if (!c.strict || !c.emitDecoratorMetadata || !c.experimentalDecorators)
-              throw new Error("Existing strictness/decorator guarantees changed");
-            const aliases = Object.entries(c.paths ?? {});
-            if (aliases.length !== 34 || aliases.some(([name, targets]) =>
-                !name.startsWith("@social-monitor/") || !Array.isArray(targets) ||
-                targets.length === 0 || targets.some(path => !path.startsWith("./libs/"))))
-              throw new Error("Alias graph shape changed");
-            console.log("Strictness, decorator settings and", aliases.length, "relative aliases verified");
-          '
-
       - name: Run the real native TypeScript 7.0.2 compiler on the root project
         shell: bash
         run: |
