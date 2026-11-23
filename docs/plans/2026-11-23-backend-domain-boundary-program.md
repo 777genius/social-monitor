@@ -1,15 +1,15 @@
 # Social Monitor backend — critical architecture boundary program
 
-Status: **Draft implementation; not merge-ready**. Baseline: `main` `c0f3ea3dd2f546ab5fd25f395e341cd2c5093541` (2026-11-22). Owner: `social-monitor` backend. No production deployment authorized.
+Status: **Review remediation in progress; not merge-ready**. Baseline: `main` `c0f3ea3dd2f546ab5fd25f395e341cd2c5093541` (2026-11-22). Owner: `social-monitor` backend. No production deployment authorized.
 
 This document is the reviewable, normative **plan**. Its two companion per-source audit indexes are **non-authoritative scope ledgers**, not mandates to edit every indexed file. A line count is never a proof of changed architecture or working E2E.
 
 Detailed, exact-path baseline and change-admission inventory:
 
-- [Audit index 1/2](2026-11-23-backend-source-audit-index-1.md): baseline source entries 1–1,028.
-- [Audit index 2/2](2026-11-23-backend-source-audit-index-2.md): entries 1,029–2,055.
+- [Audit index 1/2](2026-11-23-backend-source-audit-index-1.md): baseline source entries 1–1,027.
+- [Audit index 2/2](2026-11-23-backend-source-audit-index-2.md): entries 1,028–2,054.
 
-The source-index pair contains **10,295 physical Markdown lines**; with this plan the documented program exceeds the requested 10,000-line threshold. About 2,055 source-file ownership/verification records are **not implementation tasks**. The runtime refactor remains bounded, evidence-driven and much smaller.
+The source-index pair contains **10,290 physical Markdown lines**; with this plan the documented program exceeds the requested 10,000-line threshold. About 2,054 source-file ownership/verification records are **not implementation tasks**. The runtime refactor remains bounded, evidence-driven and much smaller.
 
 ## 0. Executive decision
 
@@ -56,7 +56,7 @@ Do not edit `package.json` during this slice: other active PRs independently app
 
 ## 2. Baseline proof
 
-- Source audit counted approximately 2,055 non-generated backend production-like TS/JS files under `apps/` and `libs/` after excluding Flutter, test/spec suffixes and common generated roots. This is a tree-based inventory, not an exhaustive semantic classifier.
+- Source audit counted approximately 2,054 non-generated backend production-like TS/JS files under `apps/` and `libs/` after excluding Flutter, test/spec suffixes and common generated roots. This is a tree-based inventory, not an exhaustive semantic classifier.
 - Approximately 458 of these are under `features/`. Folder presence alone neither proves nor refutes Feature Module Standard conformance.
 - Most notable contexts by source size are `summary`, `ingestion`, `monitoring`, `relevance`, `delivery`, and `social-research`.
 - `scripts/check-architecture.mjs` already resolves TS aliases/relative dependencies, forbids inner→outer layer imports and checks production runtime cycles.
@@ -248,6 +248,17 @@ Failure in a naïve strategy: edit the existing #665 branch and `package.json` w
 ### Round 5 — code quality / measurable outcome
 
 Failure in a naïve strategy: interpret the requested 10k plan-line threshold as a demand to touch 10k runtime lines, or write thousands of speculative tests. **Correction:** plan detail may be exhaustive; code changes must be individually justified, evidence-backed, scoped and nonredundant. The per-source inventory is informational. Do not count documentation, tests, moved-only code or skipped jobs as substantive refactored implementation.
+
+### Review remediation — 2026-11-23
+
+The first independent CodeRabbit pass found three actionable correctness gaps:
+- A commented-out static import/export was incorrectly interpreted as executable.
+- A foreign-domain `require(/* trivia */ '...')` or `import(/* trivia */ '...')` escaped the new boundary rule.
+- One `.e2e-spec.ts` was accidentally listed as production source. It is removed, and both indexes are continuously renumbered to 2,054 records (10,290 appendix lines).
+
+The change is constrained to normalizing comments before the existing dependency extraction and to synthetic regression fixtures. No TypeScript runtime parser or new dependency is introduced, no new production file is changed, and the legacy exceptions remain exact. This is **not a claim of complete TypeScript syntax coverage**: unusual template interpolation and regex-literal grammar still require separate parser-parity review before representing the architecture guard as a general-purpose compiler.
+
+Review proof is code-specific: previous checks on 86ae016a are superseded by the remediation commits. Only full native checks on the latest resulting HEAD can qualify for merge. In particular, `node --test scripts/check-architecture.test.mjs` must distinguish a real import from an inert comment, while `node scripts/check-architecture.mjs` must validate the current repository without creating blanket exceptions.
 
 ## 8. Effort and confidence
 
