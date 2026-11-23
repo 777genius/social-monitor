@@ -300,4 +300,4 @@ These are forecasts, **not commitments to edit a fixed number of lines**. Do not
 
 If no real locked dependency installation or CI runner is accessible, it is valid to **push a Draft with implementation and tests but not merge**. Do not invent E2E PASS or substitute code review for execution.
 
-No deployment, production database query, provider API call, real account or externally billable workflow is authorized by this plan. 
+No deployment, production database query, provider API call, real account or externally billable workflow is authorized by this plan.
