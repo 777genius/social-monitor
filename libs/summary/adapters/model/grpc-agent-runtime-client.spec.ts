@@ -244,7 +244,7 @@ describe("gRPC agent runtime client", () => {
   it("ignores a late attested success after a caller has cancelled the unary task", async () => {
     const controller = new AbortController();
     let cancelCount = 0;
-    let deliverLate = (_value: AgentRuntimeTaskResponse): void => {
+    let deliverLate: (value: AgentRuntimeTaskResponse) => void = () => {
       throw new Error("Unary callback not installed");
     };
     const grpcClient = {

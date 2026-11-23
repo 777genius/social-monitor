@@ -1,7 +1,7 @@
 import type { AgentRuntimeReaderSummaryModelAdapterOptions } from "./agent-runtime-reader-summary-options";
 import { nonEmptyOrFallback, positiveIntegerOrFallback } from "./agent-runtime-model-support";
 import {
-  activeReaderSummaryProvider,
+  type activeReaderSummaryProvider,
   frozenLegacyReaderSummaryRecoveryContract,
 } from "./reader-summary-runtime-contract";
 import { activeReaderSummaryReasoningEffort } from "./codex-reader-summary-gateway-route-policy";

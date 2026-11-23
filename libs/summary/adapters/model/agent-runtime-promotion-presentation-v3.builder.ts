@@ -4,7 +4,7 @@ import {
   type ReaderPostPresentationV3Result,
 } from "../../domain/services/reader-post-presentation-v3";
 import type { AgentRuntimeClientPort } from "../../ports";
-import { activeReaderSummaryProvider } from "./reader-summary-runtime-contract";
+import type { activeReaderSummaryProvider } from "./reader-summary-runtime-contract";
 import type { ReaderSummaryGenerationBackend } from "./reader-summary-gateway-route-policy";
 import {
   resolvePromotionPresentationV3RuntimeOptions,

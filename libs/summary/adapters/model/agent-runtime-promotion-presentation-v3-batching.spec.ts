@@ -95,7 +95,8 @@ describe("agent-runtime promotion presentation batch admission", () => {
 
   it("does not dispatch later batches after a prior batch fails", async () => {
     const failure = new Error("Synthetic provider failure");
-    const dispatch = jest.fn(async (_batch: readonly ReaderPostPresentationV3Input[]) => {
+    const dispatch = jest.fn(async (batch: readonly ReaderPostPresentationV3Input[]) => {
+      expect(batch).toHaveLength(1);
       throw failure;
     });
     await expect(runAgentRuntimePromotionPresentationBatches(

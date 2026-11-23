@@ -164,7 +164,7 @@ describe("OpenAiResponsesReaderSummaryWeeklyModelAdapter", () => {
     const snapshot = JSON.stringify(input);
     const expected = weeklyOutput(input);
     const fetchFn = jest.fn(
-      async (_url: string | URL, _init?: RequestInit): Promise<Response> =>
+      async (): Promise<Response> =>
         response({
           status: "completed",
           output: [outputMessage(JSON.stringify(expected))],

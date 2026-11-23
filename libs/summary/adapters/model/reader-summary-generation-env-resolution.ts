@@ -1,7 +1,7 @@
 import { resolveReaderSummaryBackendSelectionFromEnv } from "./reader-summary-backend-selection";
 import { gatewayRouteModel, resolveGatewayReaderSummaryRoute } from "./reader-summary-gateway-route-policy";
 import type { ReaderSummaryGenerationBackend } from "./reader-summary-gateway-route-policy";
-import { mimoReaderSummaryBackend, activeReaderSummaryProvider } from "./reader-summary-runtime-contract";
+import { mimoReaderSummaryBackend, type activeReaderSummaryProvider } from "./reader-summary-runtime-contract";
 import {
   resolveCodexGatewayReaderSummaryRoute,
 } from "./codex-reader-summary-route";

@@ -2,8 +2,6 @@ import { admitGatewayReaderSummaryRoute } from "./reader-summary-gateway-route-a
 import { type codexReaderSummaryBackend } from "./codex-reader-summary-route";
 import { type mimoReaderSummaryBackend } from "./reader-summary-runtime-contract";
 import {
-  kimiCodeReaderSummaryBackend,
-  openRouterReaderSummaryBackend,
   isGatewayReaderSummaryBackend,
   type GatewayReaderSummaryBackend,
 } from "./reader-summary-gateway-model-policy";

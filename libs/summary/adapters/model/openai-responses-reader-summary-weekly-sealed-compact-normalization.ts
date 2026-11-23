@@ -1,6 +1,6 @@
 import { projectLegacyWeeklyDocument } from "./openai-responses-reader-summary-weekly-document-projection";
 import type { ReaderSummaryWeeklyModelInput } from "../../ports/reader-summary-weekly-model.port";
-import { sealedCompactOutputKeys } from "./openai-responses-reader-summary-weekly-sealed-shape-keys";
+import type { sealedCompactOutputKeys } from "./openai-responses-reader-summary-weekly-sealed-shape-keys";
 import { normalizeSealedCompactWeeklyStory } from "./openai-responses-reader-summary-weekly-sealed-story-normalization";
 import { exactLegacyCitationRange } from "./openai-responses-reader-summary-weekly-legacy-evidence-policy";
 
