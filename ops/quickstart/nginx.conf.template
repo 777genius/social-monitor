@@ -7,6 +7,13 @@ map $http_host $selfhost_host_allowed {
   ~*^(localhost|127\.0\.0\.1)(:[0-9]+)?$ 1;
 }
 
+# Compiler entrypoints are only immutable when the loader supplies its exact
+# release identity. Do not apply this to index.html or unversioned engine files.
+map $arg_v $selfhost_compiler_cache {
+  default "no-cache";
+  "~^[a-f0-9]{40}$" "public, max-age=31536000, immutable";
+}
+
 server {
   listen 80;
   server_name _;
@@ -14,6 +21,13 @@ server {
   index index.html;
   server_tokens off;
   client_max_body_size 1m;
+  # Keep browser downloads small, including Wasm, fallback JS and bundled fonts.
+  gzip on;
+  gzip_vary on;
+  gzip_comp_level 5;
+  gzip_min_length 1024;
+  gzip_types application/wasm application/javascript text/javascript
+    application/json application/octet-stream image/svg+xml text/css;
   # Local owner credentials must not be usable through DNS rebinding or a
   # cross-origin page, even if the development API permits that origin's CORS.
   if ($selfhost_host_allowed = 0) { return 403; }
@@ -45,6 +59,24 @@ server {
   }
   location /socket.io/ {
     proxy_pass http://api:3000;
+  }
+  # Preserve the compiled entrypoint version contract from flutter_bootstrap.js.
+  # A missing static resource must be a 404, never the SPA's index.html.
+  location ~ ^/main\.dart\.(?:wasm|mjs|js)$ {
+    types {
+      application/javascript js mjs;
+      application/wasm wasm;
+    }
+    add_header Cache-Control $selfhost_compiler_cache;
+    try_files $uri =404;
+  }
+  location ^~ /canvaskit/ {
+    add_header Cache-Control "no-cache";
+    try_files $uri =404;
+  }
+  location ^~ /assets/ {
+    add_header Cache-Control "no-cache";
+    try_files $uri =404;
   }
   location / {
     add_header Cache-Control "no-cache" always;

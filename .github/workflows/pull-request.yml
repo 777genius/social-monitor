@@ -904,6 +904,15 @@ jobs:
         with:
           node-version: 22
 
+      - name: Exercise self-hosted Flutter delivery through native Nginx
+        run: |
+          set -euo pipefail
+          if ! command -v nginx >/dev/null 2>&1; then
+            sudo env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=2 update -qq
+            sudo env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=2 install -y -qq --no-install-recommends nginx
+          fi
+          node --test scripts/e2e/selfhost-frontend-http.test.mjs
+
       - name: Resolve the exact Flutter cache version
         id: flutter_version
         run: |
@@ -993,6 +1002,12 @@ jobs:
           fi
           tar --format=ustar -C "$release" -czf "$artifact/frontend-release.tgz" public admin
           FRONTEND_ARTIFACT_DIR="$artifact" node --experimental-strip-types "$GITHUB_WORKSPACE/scripts/ci/frontend-artifact-manifest.mts"
+      - name: Build and verify self-hosted Wasm startup artifact
+        run: |
+          set -euo pipefail
+          bash -n ops/quickstart/build-frontend-release.sh
+          bash ops/quickstart/build-frontend-release.sh
+
       - name: Store qualified public and admin frontend artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
