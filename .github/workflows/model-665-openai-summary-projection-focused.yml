@@ -9,6 +9,8 @@ on:
       - .github/workflows/model-665-openai-summary-projection-focused.yml
       - scripts/audit-summary-model-original-files.mjs
       - scripts/audit-summary-model-original-files.test.mjs
+      - scripts/diagnose-summary-model-original-ast.mjs
+      - scripts/diagnose-summary-model-original-ast.test.mjs
       - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
       - libs/summary/adapters/model/openai-responses-summary-transport.ts
       - libs/summary/adapters/model/openai-responses-summary-http-response-admission.ts
@@ -155,6 +157,8 @@ jobs:
           set -euo pipefail
           node --test scripts/audit-summary-model-original-files.test.mjs
           node scripts/audit-summary-model-original-files.mjs
+          node --test scripts/diagnose-summary-model-original-ast.test.mjs
+          node scripts/diagnose-summary-model-original-ast.mjs
           npx tsc --noEmit
           npm run check:architecture
           npm run check:code-quality
