@@ -81,6 +81,41 @@ lint then found one new fixture reference missing the explicit `globalThis`
 qualifier. That one-line correction passed lint for all changed modules and the
 15 path-admission regressions; no lint configuration or memory limit was changed.
 
+## Native CI supervision correction
+
+The first Draft Static job on `ca99ab1a` reached the native Node 22.23.5 runtime
+and failed one of 19 supervision fixtures: the guardian failure case reported
+that the command had not exited before TERM escalation. It failed before the
+serial lint and architecture checks completed, so those gates remain unqualified.
+
+Independent review reproduced a defect in the test's process-state observer:
+it recognized Linux `Z` (zombie) but rejected the terminal `X` (dead) state,
+and it reread the state after already observing termination. Linux documents
+both states in [proc_pid_stat(5)](https://man7.org/linux/man-pages/man5/proc_pid_stat.5.html).
+A synthetic `Z`-to-`X` sequence proves the observer defect; the failed CI log
+does not record the sampled states, so that exact transition in CI is an inference.
+
+The fixture now shares one terminal-state decoder and retains its successful
+exit observation. A deterministic regression accepts `Z` and `X` and rejects
+all exercised live states, including process names containing parentheses.
+Production supervision code, fixture concurrency, deadlines, process-group
+ownership checks, status assertions and descendant cleanup checks are unchanged.
+
+The unchanged `node --test scripts/ci/check-release-gate-ci.test.mjs` command
+passed all 181 tests with zero skips or cancellations on local Node 24.22.3;
+the new deterministic regression also passed. The complete 20-case supervision
+run and scoped TypeScript compilation were killed before completion while local
+memory pressure was observed. The available counters do not prove the cause.
+The executor later became unavailable. Neither incomplete check is a pass. The reconstructed
+patch was verified byte-for-byte against the independently reviewed local diff
+using its Git blob identity. Final native CI must qualify the updated revision.
+
+The canonical evidence-runner command was also repeated on `ca99ab1a`:
+431/431 tests passed without skips or cancellations, followed by the real CLI
+checker exiting 0. A backend E2E retry on that revision was killed before Jest
+reported results; the 154-test E2E pass in the table above belongs to `4f6f8d49`.
+The full GitHub workflow is therefore the remaining final-revision E2E gate.
+
 ## Remaining qualification limits
 
 Draft is intentionally retained. This work neither merges to main nor deploys.
