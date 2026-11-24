@@ -1,3 +1,5 @@
+import { validateUniqueExternalBetaDryRunJobIds } from './external-beta-dry-run-job-identity.mjs';
+
 export function createExternalBetaDryRunPlanPolicy(dependencies) {
   for (const name of [
     'dryRun', 'runner', 'plan', 'dryRunPath', 'runnerPath', 'existsSync', 'assertSameSet', 'violations',
@@ -96,6 +98,7 @@ export function createExternalBetaDryRunPlanPolicy(dependencies) {
     }
 
     assertSameSet(plan.jobs?.map((job) => job.jobId) ?? [], dryRun.requiredJobIds ?? [], `${dryRunPath}: requiredJobIds`);
+    validateUniqueExternalBetaDryRunJobIds(plan.jobs, `${dryRunPath}: plan jobs`, violations);
     assertSameSet(plan.uniqueMissingEnv ?? [], dryRun.requiredMissingEnvWithoutCredentials ?? [], `${dryRunPath}: requiredMissingEnvWithoutCredentials`);
     assertSameSet(
       Object.keys(plan.readinessCounts ?? {}),

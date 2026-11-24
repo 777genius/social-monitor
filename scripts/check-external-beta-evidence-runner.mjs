@@ -22,7 +22,7 @@ import {
   durableBackendE2ePreflightEnv,
   redditOAuthPreflightEnv,
 } from './lib/external-beta-evidence-preflight-fixtures.mjs';
-import { validateRunnerImplementationMarkers, artifactShapePolicyPath, redactionPolicyPath, handoffPolicyPath, displayPolicyPath, consistencyPolicyPath, readinessPolicyPath, duplicatePathsPolicyPath, valuePolicyPath, planPrinterPath, envFileLoaderPath } from './lib/external-beta-evidence-runner-markers.mjs';
+import { validateRunnerImplementationMarkers, artifactShapePolicyPath, redactionPolicyPath, handoffPolicyPath, displayPolicyPath, consistencyPolicyPath, readinessPolicyPath, duplicatePathsPolicyPath, valuePolicyPath, planPrinterPath, envFileLoaderPath, evidencePathAdmissionPath } from './lib/external-beta-evidence-runner-markers.mjs';
 import {
   liveOpenConnectorsArtifact,
   redditCredentialLifecycleArtifact,
@@ -46,6 +46,7 @@ import {
 
 import { createExternalBetaArtifactValidationSmokes } from './lib/external-beta-artifact-validation-smokes.mjs';
 import { createExternalBetaRuntimePlanSmokes } from './lib/external-beta-runtime-plan-smokes.mjs';
+import { createExternalBetaDurableRuntimeArtifactSmokes } from './lib/external-beta-durable-runtime-artifact-smokes.mjs';
 import { createExternalBetaNegativeSmokeRuntime, childProcessErrorOutput, smokeOutputSnippet } from './lib/external-beta-negative-smoke-runtime.mjs';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -164,6 +165,16 @@ const {
 const { validateRunnerOutputRedactionSmoke, validateRunnerEnvFileSmokes } = createExternalBetaOutputSafetySmokes({
   contract, violations, completeExternalEvidencePreflightEnv,
   execFileSync, runnerSmokeTimeoutMs, childProcessErrorOutput, smokeOutputSnippet,
+});
+
+const {
+  validateRunnerPositiveDurableRuntimeArtifactSmoke,
+  validateRunnerNegativeDurableRuntimeArtifactSmokes,
+} = createExternalBetaDurableRuntimeArtifactSmokes({
+  contract, violations, shouldRunNegativeSmoke, negativeSmokeOptions,
+  durableRuntimeNegativeSmokeScenarios, runRunnerDurableRuntimeArtifactSmoke,
+  smokeOutputSnippet, mkdtempSync, tmpdir, join, writeFileSync, rmSync,
+  readJson, nowIso: () => new Date().toISOString(),
 });
 
 const allowedModes = new Set([
@@ -356,6 +367,7 @@ function validateRunnerImplementation() {
     selectionHelperSource,
     handoffSource: readFileSync(handoffPolicyPath, 'utf8'),
     displaySource: readFileSync(displayPolicyPath, 'utf8'), planPrinterSource: readFileSync(planPrinterPath, 'utf8'), envFileLoaderSource: readFileSync(envFileLoaderPath, 'utf8'),
+    evidencePathAdmissionSource: readFileSync(evidencePathAdmissionPath, 'utf8'),
     consistencyPolicySource: readFileSync(consistencyPolicyPath, 'utf8'),
     readinessPolicySource: readFileSync(readinessPolicyPath, 'utf8'),
     artifactShapePolicySource: readFileSync(artifactShapePolicyPath, 'utf8'),
@@ -425,85 +437,6 @@ function validateRunnerPositiveArtifactSmoke() {
   } finally {
     rmSync(tempDirectory, { recursive: true, force: true });
   }
-}
-
-function validateRunnerPositiveDurableRuntimeArtifactSmoke() {
-  const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-durable-positive-'));
-  try {
-    const artifactPath = writeDurableRuntimeSelectorArtifact(tempDirectory);
-    const result = runRunnerDurableRuntimeArtifactSmoke(artifactPath, { contractSmokeArtifactOnly: true });
-    if (result.exitCode !== 0) {
-      violations.push(`${contract.runnerFile}: runner positive durable runtime artifact smoke must accept a valid runtime selector artifact: ${smokeOutputSnippet(result.output)}`);
-    }
-  } finally {
-    rmSync(tempDirectory, { recursive: true, force: true });
-  }
-}
-
-function validateRunnerNegativeDurableRuntimeArtifactSmokes() {
-  const scenarios = durableRuntimeNegativeSmokeScenarios();
-
-  for (const scenario of scenarios) {
-    if (!shouldRunNegativeSmoke(scenario.label)) {
-      continue;
-    }
-    const tempDirectory = mkdtempSync(join(tmpdir(), 'external-beta-evidence-runner-durable-negative-'));
-    try {
-      const artifactPath = writeDurableRuntimeSelectorArtifact(tempDirectory, scenario);
-      const result = runRunnerDurableRuntimeArtifactSmoke(artifactPath, negativeSmokeOptions(scenario.label));
-      if (result.exitCode === 0) {
-        violations.push(`${contract.runnerFile}: runner negative durable runtime smoke must reject ${scenario.label}`);
-        continue;
-      }
-      if (!result.output.includes(scenario.expectedOutput)) {
-        violations.push(`${contract.runnerFile}: runner negative durable runtime smoke for ${scenario.label} must report "${scenario.expectedOutput}"`);
-      }
-    } finally {
-      rmSync(tempDirectory, { recursive: true, force: true });
-    }
-  }
-}
-
-function writeDurableRuntimeSelectorArtifact(tempDirectory, options = {}) {
-  const artifactPath = join(tempDirectory, 'durable-runtime-selector.json');
-  const artifact = durableRuntimeSelectorArtifact();
-  options.mutateArtifact?.(artifact);
-  const artifactContent = typeof options.artifactContent === 'function'
-    ? options.artifactContent(artifact)
-    : `${JSON.stringify(artifact, null, 2)}\n`;
-  writeFileSync(
-    artifactPath,
-    artifactContent,
-    { mode: 0o600 },
-  );
-  return artifactPath;
-}
-
-function durableRuntimeSelectorArtifact() {
-  const artifact = readJson('ops/release/fixtures/durable-runtime-selector-artifact-examples.json');
-  const now = new Date().toISOString();
-  const imageDigest = `sha256:${'d'.repeat(64)}`;
-  artifact.provenance = {
-    evidenceKind: 'staging_runtime_selector',
-    collectionMethod: 'Runtime selector snapshot captured from beta staging deployment.',
-    runner: 'scripts/capture-durable-runtime-selector.ts',
-    fixtureOnly: false,
-  };
-  artifact.environment = {
-    environmentId: 'staging-alpha-1',
-    imageDigest,
-    apiBaseUrl: 'https://api.staging.social-monitor.invalid',
-    sampledAt: now,
-    operator: 'release-operator-1',
-  };
-  artifact.services = artifact.services.map((service) => ({
-    ...service,
-    healthCheck: {
-      ...service.healthCheck,
-      checkedAt: now,
-    },
-  }));
-  return artifact;
 }
 
 function validateRunnerPositiveStagingReliabilityArtifactSmokes() {

@@ -1,3 +1,5 @@
+import { validateUniqueExternalBetaDryRunJobIds } from './external-beta-dry-run-job-identity.mjs';
+
 // Preserve the legacy JSON handoff admission contract and its diagnostic ordering.
 export function createExternalBetaDryRunHandoffPolicy(dependencies) {
   for (const name of [
@@ -48,7 +50,7 @@ export function createExternalBetaDryRunHandoffPolicy(dependencies) {
     if (handoff.safety?.evidencePathPolicy !== 'absolute_json_private_0600_non_workspace_non_fixture_path') {
       violations.push(`${dryRunPath}: JSON handoff must preserve evidence path safety policy`);
     }
-  
+
     const readiness = handoff.readiness ?? {};
     const expectedReadiness = {
       localContractJobs: plan.localContractJobCount,
@@ -73,8 +75,9 @@ export function createExternalBetaDryRunHandoffPolicy(dependencies) {
       plan.uniqueMissingOptionalEnv ?? [],
       `${dryRunPath}: JSON handoff uniqueMissingOptionalEnv`,
     );
-  
+
     assertSameSet(handoff.jobs?.map((job) => job.jobId) ?? [], dryRun.requiredJobIds ?? [], `${dryRunPath}: JSON handoff jobs`);
+    validateUniqueExternalBetaDryRunJobIds(handoff.jobs, `${dryRunPath}: JSON handoff jobs`, violations);
     const handoffJobsById = new Map((handoff.jobs ?? []).map((job) => [job.jobId, job]));
     const planJobsById = new Map((plan.jobs ?? []).map((job) => [job.jobId, job]));
     for (const jobId of dryRun.requiredJobIds ?? []) {
@@ -86,7 +89,7 @@ export function createExternalBetaDryRunHandoffPolicy(dependencies) {
       if (handoffJob.executionReadiness !== planJob.executionReadiness) {
         violations.push(`${dryRunPath}: JSON handoff ${jobId} readiness must match plan`);
       }
-      if (handoffJob.operatorAction?.length <= 0) {
+      if (typeof handoffJob.operatorAction !== 'string' || handoffJob.operatorAction.trim().length === 0) {
         violations.push(`${dryRunPath}: JSON handoff ${jobId} must include operatorAction`);
       }
       if (!Array.isArray(handoffJob.outputArtifacts) || handoffJob.outputArtifacts.length === 0) {
