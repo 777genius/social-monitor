@@ -50,7 +50,7 @@ it("keeps fluent once and listener receivers inside the private process realm", 
   const opaquePortReturn = Object.freeze({ offline: true });
   const observed = loadCuratedFirstpubCrashChild(entry, {
     cwd: process.cwd(), env: { NODE_ENV: "test", TS_NODE_TRANSPILE_ONLY: "true",
-      TS_NODE_PROJECT: resolve("test/tsconfig.jest.json"), TS_NODE_BASEURL: "." },
+      TS_NODE_PROJECT: resolve("test/tsconfig.jest.json"), TS_NODE_BASEURL: process.cwd() },
     execArgv: ["-r", resolve("node_modules/ts-node/register/transpile-only"), "-r", resolve("node_modules/tsconfig-paths/register")],
   }, {
     once: (event, listener) => { registrations.push({ event, listener }); return opaquePortReturn; },

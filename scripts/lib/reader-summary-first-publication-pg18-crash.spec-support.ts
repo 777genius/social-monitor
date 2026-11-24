@@ -19,7 +19,7 @@ export async function proveNativeFirstpubProcessCrash(f: NativeFirstpubClaimFixt
     execArgv: ["-r", resolve("node_modules/ts-node/register/transpile-only"), "-r", resolve("node_modules/tsconfig-paths/register")],
     // No inherited database URLs, passwords, provider settings or secrets.
     env: { NODE_ENV: "test", TS_NODE_TRANSPILE_ONLY: "true",
-      TS_NODE_PROJECT: resolve("test/tsconfig.jest.json"), TS_NODE_BASEURL: "." },
+      TS_NODE_PROJECT: resolve("test/tsconfig.jest.json"), TS_NODE_BASEURL: process.cwd() },
     stdio: ["ignore", "ignore", "ignore", "ipc"],
   });
   const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolveExit) => {
@@ -33,7 +33,7 @@ export async function proveNativeFirstpubProcessCrash(f: NativeFirstpubClaimFixt
         if (error === undefined) resolveCommit(); else rejectCommit(error);
       };
       child.once("error", finish);
-      child.once("exit", () => finish(new Error("Own crash child exited before COMMIT")));
+      child.once("exit", (code, signal) => finish(new Error(`Own crash child exited before COMMIT (code=${code}, signal=${signal})`)));
       child.once("message", (message: unknown) => {
         if (message === "FIRSTPUB_COMMITTED") finish();
         else finish(new Error("Own crash child failed reservation"));
