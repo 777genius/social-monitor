@@ -46,8 +46,8 @@ import {
 
 import { createExternalBetaArtifactValidationSmokes } from './lib/external-beta-artifact-validation-smokes.mjs';
 import { createExternalBetaRuntimePlanSmokes } from './lib/external-beta-runtime-plan-smokes.mjs';
+import { createExternalBetaNegativeSmokeRuntime, childProcessErrorOutput, smokeOutputSnippet } from './lib/external-beta-negative-smoke-runtime.mjs';
 import { execFileSync } from 'node:child_process';
-import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -140,6 +140,9 @@ const representativeSemanticNegativeSmokeLabels = new Set([
   'security sweep missing public error export',
   'reddit lifecycle hash mismatch',
 ]);
+const { negativeSmokeOptions, shouldRunNegativeSmoke } = createExternalBetaNegativeSmokeRuntime({
+  strictSemanticNegativeSmokeLabels, representativeSemanticNegativeSmokeLabels,
+});
 const runnerSmokeTimeoutMs = 30_000;
 const {
   validateRunnerLocalRuntimePlanSmoke,
@@ -929,55 +932,6 @@ function writeRedditArtifactPair(tempDirectory, options = {}) {
     { mode: 0o600 },
   );
   return { liveArtifactPath, lifecyclePath, lifecycleSha256 };
-}
-
-function negativeSmokeOptions(label) {
-  return {
-    contractSmokeArtifactOnly: !strictSemanticNegativeSmokeLabels.has(label),
-  };
-}
-
-function shouldRunNegativeSmoke(label) {
-  return (
-    !strictSemanticNegativeSmokeLabels.has(label) ||
-    representativeSemanticNegativeSmokeLabels.has(label)
-  );
-}
-
-
-
-
-function childProcessErrorOutput(error) {
-  const chunks = [
-    error.stdout,
-    error.stderr,
-    ...(Array.isArray(error.output) ? error.output : []),
-    error.message,
-  ];
-
-  return chunks
-    .filter((chunk) => chunk !== undefined && chunk !== null)
-    .map((chunk) => Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk))
-    .filter((chunk) => chunk.trim().length > 0)
-    .join('\n');
-}
-
-
-
-
-
-
-
-
-
-
-function smokeOutputSnippet(output) {
-  return String(output)
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .slice(-8)
-    .join(' | ');
 }
 
 function validateJobs() {
