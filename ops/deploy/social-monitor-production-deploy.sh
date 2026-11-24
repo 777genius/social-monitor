@@ -672,11 +672,12 @@ deploy_backend() (
   )
   local previous
   previous=$(backend_image_rescue_state_file "$sha")
-  if printf '%s\n' "${captured_services[@]}" | grep -qx daily-runner; then
+  # grep -q may close the pipe early; under pipefail this can skip required builds.
+  if printf '%s\n' "${captured_services[@]}" | grep -x daily-runner >/dev/null; then
     daily_runner_image_bootstrap_before_rescue "$from" "$sha" || \
       fail 'missing prior daily-runner image could not be reconstructed'
   fi
-  if printf '%s\n' "${captured_services[@]}" | grep -qx otel-collector; then
+  if printf '%s\n' "${captured_services[@]}" | grep -x otel-collector >/dev/null; then
     docker image inspect "$PINNED_OTEL_COLLECTOR_IMAGE" >/dev/null 2>&1 || \
       timeout 300 docker pull "$PINNED_OTEL_COLLECTOR_IMAGE" >/dev/null || \
       fail 'pinned collector image could not be pulled'
@@ -705,14 +706,14 @@ deploy_backend() (
   )
   local x_collector_candidate_image_id=
   for service in "${primary_build_order[@]}"; do
-    if printf '%s\n' "${services[@]}" | grep -qx "$service"; then
+    if printf '%s\n' "${services[@]}" | grep -x "$service" >/dev/null; then
       "${COMPOSE[@]}" --profile app --profile daily build "$service"
     fi
   done
-  if printf '%s\n' "${services[@]}" | grep -qx x-collector; then
+  if printf '%s\n' "${services[@]}" | grep -x x-collector >/dev/null; then
     x_collector_build_candidate "$sha" x_collector_candidate_image_id
   fi
-  if printf '%s\n' "${services[@]}" | grep -qx daily-runner; then
+  if printf '%s\n' "${services[@]}" | grep -x daily-runner >/dev/null; then
     "${COMPOSE[@]}" --profile daily build daily-runner
   fi
 
@@ -745,7 +746,7 @@ deploy_backend() (
       x_collector_verify_running_candidate \
         "$sha" "$x_collector_candidate_image_id"
     fi
-    if printf '%s\n' "${persistent[@]}" | grep -qx api && ! refresh_frontend_api_proxy; then
+    if printf '%s\n' "${persistent[@]}" | grep -x api >/dev/null && ! refresh_frontend_api_proxy; then
       fail 'frontend API proxy refresh failed'
     fi
     if [[ $database_replacement == true ]] && \
