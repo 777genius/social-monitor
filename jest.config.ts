@@ -34,11 +34,9 @@ const config: Config = {
     '^@social-monitor/social-research/(.*)$': '<rootDir>/libs/social-research/$1',
     '^@social-monitor/([^/]+)/(.*)$': '<rootDir>/libs/$1/$2',
   },
-  // The account-gateway SDK ships ESM only. Node loads it through require(esm);
-  // Jest's CommonJS registry cannot, so ts-jest transpiles that package.
-  transformIgnorePatterns: [
-    '/node_modules/(?!(?:@agent-teams/account-gateway|@get-modular/[^/]+)/)',
-  ],
+  // The installed Gateway SDK and Get Modular ship native ESM.
+  // Under VM modules, transpiling their JS as CommonJS raises "exports is not defined".
+  transformIgnorePatterns: ['/node_modules/'],
   collectCoverageFrom: ['apps/**/*.ts', 'libs/**/*.ts', '!**/*.spec.ts'],
   testPathIgnorePatterns: ['/node_modules/', '/dist/', '/prisma/generated/'],
   testEnvironment: 'node',

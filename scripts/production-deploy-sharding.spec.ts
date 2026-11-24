@@ -50,7 +50,7 @@ function check(text: string) {
   }
   expect(jobs.plan.if).toBe("${{ github.event_name != 'workflow_dispatch' || inputs.maintenance_action == 'none' }}");
   expect(JSON.parse(readFileSync('package.json', 'utf8')).scripts.test).toBe(
-    'node scripts/run-with-timeout.mjs --timeout-ms 600000 --node-options --max-old-space-size=2048 -- jest --config jest.config.ts --runInBand',
+    'node scripts/run-with-timeout.mjs --timeout-ms 600000 --node-options "--max-old-space-size=2048 --experimental-vm-modules" --env TS_NODE_BASEURL=. -- jest --config jest.config.ts --runInBand',
   );
 }
 

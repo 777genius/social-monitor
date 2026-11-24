@@ -340,11 +340,17 @@ class HandoffTests(unittest.TestCase):
         lock.write_bytes(b'foreign unfinished work\n')
         link = admin / 'external'
         link.symlink_to('/does-not-exist/foreign')
-        before = (lock.stat(), lock.read_bytes(), link.lstat(), os.readlink(link))
+        # Reading a foreign file can update atime (including via our own assertion).
+        # Preserve identity, mode, owner, bytes, mtime and ctime; exclude volatile atime.
+        def stable_stat(path, follow=True):
+            st = path.stat() if follow else path.lstat()
+            return (st.st_dev, st.st_ino, st.st_mode, st.st_nlink, st.st_uid,
+                    st.st_gid, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+        before = (stable_stat(lock), lock.read_bytes(), stable_stat(link, False), os.readlink(link))
         self.fx.review()
         self.apply()
         self.op.rollback(self.target, self.fx.approved)
-        self.assertEqual(before, (lock.stat(), lock.read_bytes(), link.lstat(), os.readlink(link)))
+        self.assertEqual(before, (stable_stat(lock), lock.read_bytes(), stable_stat(link, False), os.readlink(link)))
         (self.repo / '.git/index.lock').touch()
         with self.assertRaisesRegex(RuntimeError, 'Git symlink/lock hazard'):
             self.op.hazards()
