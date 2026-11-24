@@ -3,6 +3,14 @@ import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { minimumScanIntervalSecondsForProvider } from "@social-monitor/monitoring/features/shared/scan-cadence-policy";
+import {
+  createDurableBackendEvidencePollers, type ScheduledScanEvidence, type AutoSummaryEvidence,
+} from "./lib/durable-backend-e2e-evidence-pollers";
+import {
+  createDurableScanPolicyCadence, durableDeliveryDigestScheduleWindow,
+  scheduledInterestIdempotencyKey, bindingIdempotencyKey, policyIdempotencyKey,
+  scanIdempotencyKey, scheduledBindingIdempotencyKey, scheduledPolicyIdempotencyKey,
+} from "./lib/durable-backend-e2e-schedule-policy";
 import { defaultMemoStackTimeoutMs } from "@social-monitor/summary/adapters/memory/memo-stack-memory-client";
 import { MemoStackSummaryMemoryAdapter } from "@social-monitor/summary/adapters/memory/memo-stack-summary-memory.adapter";
 import type { SummaryMemoryContext } from "@social-monitor/summary/ports";
@@ -67,31 +75,6 @@ type SourceBindingEvidence = {
   readonly feedProviderKeys: readonly string[];
 };
 
-type ScheduledScanEvidence = {
-  readonly providerKey: DurableScanProviderKey;
-  readonly sourceBindingId: string;
-  readonly scanPolicyId: string;
-  readonly scanJobId: string;
-  readonly scheduledIdempotencyKey: string;
-  readonly status: "SUCCEEDED";
-  readonly completedAt: string;
-  readonly nextRunAtAfterSchedule: string;
-  readonly feedItemCount: number;
-  readonly feedItemIds: readonly string[];
-};
-
-type AutoSummaryEvidence = {
-  readonly summaryPolicyId: string;
-  readonly summaryJobId: string;
-  readonly summaryId: string;
-  readonly idempotencyKey: string;
-  readonly status: "completed" | "no_signal";
-  readonly requestedAt: string;
-  readonly completedAt: string;
-  readonly latestFeedItemObservedAt: string;
-  readonly newFeedItemCount: number;
-};
-
 
 const config = loadConfig(defaultMemoStackTimeoutMs);
 const { durableScanTargets, scheduledScanTarget } = createDurableScanTargets({ process, emptyToUndefined });
@@ -106,9 +89,10 @@ const ids: RuntimeIds = {
 };
 const pool = new Pool({ connectionString: config.databaseUrl, min: 0, max: 2 });
 const startedAt = nowIso();
-const DIGEST_EVIDENCE_FIRST_RUN_DELAY_MS = 3_000;
-const DIGEST_EVIDENCE_WINDOW_PADDING_MS = 30_000;
-const MIN_DIGEST_EVIDENCE_INTERVAL_SECONDS = 60;
+const { pollScheduledScanEvidence, pollAutoSummaryEvidence } = createDurableBackendEvidencePollers({
+  pool, scheduledScanEvidenceSnapshot, autoSummaryEvidenceSnapshot, readString, readNumber, readStringArray, delay,
+});
+const { durableScanPolicyCadence } = createDurableScanPolicyCadence({ minimumScanIntervalSecondsForProvider });
 
 void main().catch(async (error: unknown) => {
   await pool.end().catch(() => undefined);
@@ -963,177 +947,6 @@ async function pollSummaryMemoryEvidence(
   );
 }
 
-async function pollScheduledScanEvidence(
-  params: {
-    readonly tenantId: string;
-    readonly workspaceId: string;
-    readonly providerKey: DurableScanProviderKey;
-    readonly sourceBindingId: string;
-    readonly scanPolicyId: string;
-  },
-  options: { readonly timeoutMs: number; readonly label: string },
-): Promise<ScheduledScanEvidence> {
-  const deadline = Date.now() + options.timeoutMs;
-  let lastValue: JsonRecord | undefined;
-
-  while (Date.now() < deadline) {
-    const value = await scheduledScanEvidenceSnapshot(pool, params);
-    lastValue = value;
-
-    if (value !== undefined) {
-      const status = readString(value, "status");
-      if (status === "FAILED" || status === "CANCELLED") {
-        throw new Error(
-          `${options.label} ended with ${status}: ${String(value.failureReason ?? "")}`,
-        );
-      }
-
-      const feedItemCount = readNumber(value, "feedItemCount");
-      if (status === "SUCCEEDED" && feedItemCount > 0) {
-        return {
-          providerKey: params.providerKey,
-          sourceBindingId: params.sourceBindingId,
-          scanPolicyId: params.scanPolicyId,
-          scanJobId: readString(value, "scanJobId"),
-          scheduledIdempotencyKey: readString(value, "scheduledIdempotencyKey"),
-          status: "SUCCEEDED",
-          completedAt: readString(value, "completedAt"),
-          nextRunAtAfterSchedule: readString(value, "nextRunAtAfterSchedule"),
-          feedItemCount,
-          feedItemIds: readStringArray(value, "feedItemIds"),
-        };
-      }
-    }
-
-    await delay(1_000);
-  }
-
-  throw new Error(
-    `${options.label} did not complete before timeout; last=${JSON.stringify(lastValue ?? {})}`,
-  );
-}
-
-async function pollAutoSummaryEvidence(
-  params: {
-    readonly tenantId: string;
-    readonly workspaceId: string;
-    readonly interestId: string;
-    readonly summaryPolicyId: string;
-  },
-  options: { readonly timeoutMs: number; readonly label: string },
-): Promise<AutoSummaryEvidence> {
-  const deadline = Date.now() + options.timeoutMs;
-  let lastValue: JsonRecord | undefined;
-
-  while (Date.now() < deadline) {
-    const value = await autoSummaryEvidenceSnapshot(pool, params);
-    lastValue = value;
-
-    if (value !== undefined) {
-      const status = readString(value, "status");
-      if (status === "failed" || status === "rejected") {
-        throw new Error(
-          `${options.label} ended with ${status}: ${String(value.failureReason ?? "")}`,
-        );
-      }
-
-      if (
-        (status === "completed" || status === "no_signal") &&
-        readString(value, "summaryId").trim().length > 0
-      ) {
-        return {
-          summaryPolicyId: params.summaryPolicyId,
-          summaryJobId: readString(value, "summaryJobId"),
-          summaryId: readString(value, "summaryId"),
-          idempotencyKey: readString(value, "idempotencyKey"),
-          status,
-          requestedAt: readString(value, "requestedAt"),
-          completedAt: readString(value, "completedAt"),
-          latestFeedItemObservedAt: readString(
-            value,
-            "latestFeedItemObservedAt",
-          ),
-          newFeedItemCount: readNumber(value, "newFeedItemCount"),
-        };
-      }
-    }
-
-    await delay(1_000);
-  }
-
-  throw new Error(
-    `${options.label} did not complete before timeout; last=${JSON.stringify(lastValue ?? {})}`,
-  );
-}
-
-function durableScanPolicyCadence(providerKey: DurableScanProviderKey): {
-  readonly intervalSeconds: number;
-  readonly freshnessSeconds: number;
-} {
-  const intervalSeconds = minimumScanIntervalSecondsForProvider(providerKey);
-
-  return {
-    intervalSeconds,
-    freshnessSeconds: Math.max(intervalSeconds, 300),
-  };
-}
-
-function durableDeliveryDigestScheduleWindow(params: {
-  readonly loopStartedAt: Date;
-  readonly scheduledAt: Date;
-}): {
-  readonly intervalSeconds: number;
-  readonly nextRunAt: Date;
-} {
-  const nextRunAt = new Date(
-    params.scheduledAt.getTime() + DIGEST_EVIDENCE_FIRST_RUN_DELAY_MS,
-  );
-  const intervalMs = Math.max(
-    MIN_DIGEST_EVIDENCE_INTERVAL_SECONDS * 1000,
-    nextRunAt.getTime() -
-      params.loopStartedAt.getTime() +
-      DIGEST_EVIDENCE_WINDOW_PADDING_MS,
-  );
-
-  return {
-    intervalSeconds: Math.ceil(intervalMs / 1000),
-    nextRunAt,
-  };
-}
-
-function scheduledInterestIdempotencyKey(runId: string): string {
-  return `scheduled-topic-${runId}`;
-}
-
-function bindingIdempotencyKey(
-  providerKey: DurableScanProviderKey,
-  runId: string,
-): string {
-  return `binding-${providerKey}-${runId}`;
-}
-
-function policyIdempotencyKey(
-  providerKey: DurableScanProviderKey,
-  runId: string,
-): string {
-  return `policy-${providerKey}-${runId}`;
-}
-
-function scanIdempotencyKey(
-  providerKey: DurableScanProviderKey,
-  runId: string,
-): string {
-  return `scan-${providerKey}-${runId}`;
-}
-
-function scheduledBindingIdempotencyKey(runId: string): string {
-  return `scheduled-binding-rss-${runId}`;
-}
-
-function scheduledPolicyIdempotencyKey(runId: string): string {
-  return `scheduled-policy-rss-${runId}`;
-}
-
 function signalResult(
   signalId: string,
   evidence: JsonRecord,
@@ -1146,9 +959,6 @@ function signalResult(
     evidence,
   };
 }
-
-
-
 
 function nowIso(): string {
   return new Date().toISOString();
