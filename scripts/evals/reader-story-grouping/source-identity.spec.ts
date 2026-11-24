@@ -33,7 +33,7 @@ const commit = (message: string): void => {
 const script = (name: string, args: string[] = []) => spawnSync(process.execPath,
   ["-r", "ts-node/register/transpile-only", "-r", "tsconfig-paths/register", `${evaluator}/${name}.ts`, ...args], {
     cwd: root, encoding: "utf8", timeout: 60_000, maxBuffer: 2 * 1024 * 1024,
-    env: { ...process.env, NODE_OPTIONS: "--max-old-space-size=512", TS_NODE_PROJECT: `${evaluator}/tsconfig.json` },
+    env: { ...process.env, NODE_OPTIONS: "--max-old-space-size=512", TS_NODE_PROJECT: `${evaluator}/tsconfig.json`, TS_NODE_BASEURL: "." },
   });
 const succeed = (name: string, args: string[] = []): void => {
   const result = script(name, args);

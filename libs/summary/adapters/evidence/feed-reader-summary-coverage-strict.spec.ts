@@ -16,7 +16,7 @@ describe('coverage owns health and the complete feed workflow under strict Node'
       scenario,
     ], {
       cwd: process.cwd(),
-      env: { ...process.env, TS_NODE_PROJECT: 'test/tsconfig.jest.json' },
+      env: { ...process.env, TS_NODE_PROJECT: 'test/tsconfig.jest.json', TS_NODE_BASEURL: '.' },
       encoding: 'utf8',
       timeout: 20_000,
     });

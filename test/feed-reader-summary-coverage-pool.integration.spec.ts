@@ -227,7 +227,7 @@ if (require.main === module) {
         __filename,
       ], {
         cwd: process.cwd(),
-        env: { ...process.env, TS_NODE_PROJECT: 'test/tsconfig.jest.json' },
+        env: { ...process.env, TS_NODE_PROJECT: 'test/tsconfig.jest.json', TS_NODE_BASEURL: '.' },
         encoding: 'utf8',
         timeout: 20_000,
       });
