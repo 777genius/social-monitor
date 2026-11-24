@@ -71,6 +71,9 @@ if (ledger.schemaVersion !== 1 || ledger.baseline !== baseline || !Array.isArray
 const originalSet = new Set(originalPaths);
 const changedSet = new Set(changed);
 const usedPositions = new Set();
+// Distinct slices of the same original/owner pair share destination evidence.
+// Different originals may legitimately consolidate into one DRY specialist.
+const occurrencesByPair = new Map();
 let verifiedPositions = 0;
 for (const slice of ledger.slices) {
   const path = directory + slice.original;
@@ -84,7 +87,6 @@ for (const slice of ledger.slices) {
     fail(`missing explicit original coordinates/responsibility for ${path}`);
   }
   const frozenLines = git("show", `${baseline}:${path}`).replace(/\r\n/gu, "\n").split("\n");
-  const ownerBody = git("show", `HEAD:${owner}`).replace(/\r\n/gu, "\n");
   let currentOriginal = "";
   try {
     currentOriginal = git("show", `HEAD:${path}`);
@@ -100,10 +102,16 @@ for (const slice of ledger.slices) {
     if (inImport) importClausePositions.add(i + 1);
     if (inImport && /;\s*$/u.test(line)) inImport = false;
   }
-  const occurrences = new Map();
-  for (const line of ownerBody.split("\n")) {
-    const trimmed = line.trim();
-    occurrences.set(trimmed, (occurrences.get(trimmed) ?? 0) + 1);
+  const pair = JSON.stringify([path, owner]);
+  let occurrences = occurrencesByPair.get(pair);
+  if (occurrences === undefined) {
+    occurrences = new Map();
+    const ownerBody = git("show", `HEAD:${owner}`).replace(/\r\n/gu, "\n");
+    for (const line of ownerBody.split("\n")) {
+      const trimmed = line.trim();
+      occurrences.set(trimmed, (occurrences.get(trimmed) ?? 0) + 1);
+    }
+    occurrencesByPair.set(pair, occurrences);
   }
   for (const position of slice.originalPositions) {
     const coordinate = `${path}:${position}`;

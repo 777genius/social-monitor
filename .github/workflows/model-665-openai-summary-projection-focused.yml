@@ -7,6 +7,8 @@ on:
       - refactor/summary-model-adapters-10k-20261108
     paths:
       - .github/workflows/model-665-openai-summary-projection-focused.yml
+      - scripts/audit-summary-model-original-files.mjs
+      - scripts/audit-summary-model-original-files.test.mjs
       - docs/iterations/2026-11-08-summary-model-adapters-10k-positions.json
       - libs/summary/adapters/model/openai-responses-summary-transport.ts
       - libs/summary/adapters/model/openai-responses-summary-http-response-admission.ts
@@ -151,6 +153,7 @@ jobs:
       - name: Verify strict types and architectural hard gates
         run: |
           set -euo pipefail
+          node --test scripts/audit-summary-model-original-files.test.mjs
           node scripts/audit-summary-model-original-files.mjs
           npx tsc --noEmit
           npm run check:architecture
