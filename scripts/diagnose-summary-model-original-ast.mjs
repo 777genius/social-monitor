@@ -49,7 +49,7 @@ export const runtimeTokenLines = (text, filename = 'original.ts') => {
     const last = source.getLineAndCharacterOfPosition(node.end - 1).line;
     for (let line = first; line <= last; line += 1) {
       const value = lines[line].trim();
-      if (value && !/^[(){}\[\],:;`]+$/u.test(value)) positions.add(line + 1);
+      if (value && !/^[(){}[\],:;`]+$/u.test(value)) positions.add(line + 1);
     }
   };
   visit(source);
