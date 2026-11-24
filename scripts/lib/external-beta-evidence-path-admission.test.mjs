@@ -31,7 +31,7 @@ function sandbox(t) {
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const env = {};
   let currentDirectory = workspace;
-  const contract = { executionSafety: structuredClone(safety) };
+  const contract = { executionSafety: globalThis.structuredClone(safety) };
   const dependencies = {
     contract, env, cwd: () => currentDirectory,
     jobInputEnvNames: item => [...item.requiredEnv, ...item.optionalEnv],

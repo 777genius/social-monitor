@@ -37,10 +37,14 @@ them as distinct test cases.
 | `check:external-beta-evidence-dry-run` | PASS, exit 0. |
 | Architecture boundary scan and tests | Boundary scan and 56/56 boundary tests PASS. |
 | Full `check:architecture` chain | NOT PASS: 142 tests completed before the existing `--experimental-default-type=module` flag was rejected by local Node 24. Native workflow selects Node 22; local Node 22 installation was unavailable after the network approval request was cancelled. No flag or gate was weakened. |
+| Supplemental remaining architecture commands on Node 24 | 185 test executions PASS, zero skipped/cancelled. The 12 affected commands omit only the unsupported invocation flag; the other 10 commands are unchanged. The existing chain repeats 18 cases. The actual synthetic Docker staging bundle validator also passed without launching Docker. This does not replace the canonical Node 22 gate. |
 | `check:code-quality` | Exit 0; lifecycle runner test PASS. Python checks: 33 executed successfully, four PostgreSQL18 cases skipped because no explicit isolated database URL was supplied. Skips are not PASS. |
 | `check:source-line-cap` | PASS; 5823 source/test files scanned, cap 1000, no legacy exception. |
 | `git diff --check` | PASS. |
-| Raw `npm audit --json` | Exit 1: 24 affected entries (5 high, 18 moderate, 1 low, 0 critical). Unchanged dependencies; existing security HOLD remains. |
+| Raw `npm audit --json` | Exit 1: 24 affected entries (5 high, 18 moderate, 1 low, 0 critical). The lockfile and exception policy are identical to main; this remains accepted baseline debt, not a clean raw audit. |
+| Canonical `check:dependencies` | PASS, exit 0, under the unchanged existing exceptions expiring 2026-12-04. No exception was added, widened or extended. |
+| Canonical local `lint` | NOT PASS: V8 heap exhaustion near the configured 3072 MiB limit, before its 240-second timeout. Native CI must qualify the full command. |
+| ESLint on all 32 changed `.mjs` files | PASS with unchanged configuration after the one-line `globalThis.structuredClone` fixture correction. The 15 path-admission tests also passed again with zero skipped/cancelled. |
 
 Four new real sandbox CLI scenarios prove admission-before-side-effect: reject a
 workspace-target output symlink without invoking the synthetic producer or
@@ -72,14 +76,23 @@ At intake all existing inline threads were already resolved (7 on #783, 11 on
 agent review with no remaining confirmed findings. Historical incomplete bot
 reviews are not counted as approval.
 
+The subsequent whole-repository lint attempt exhausted its local heap. Focused
+lint then found one new fixture reference missing the explicit `globalThis`
+qualifier. That one-line correction passed lint for all changed modules and the
+15 path-admission regressions; no lint configuration or memory limit was changed.
+
 ## Remaining qualification limits
 
 Draft is intentionally retained. This work neither merges to main nor deploys.
 Final GitHub jobs must be reported from their actual source revision; queued,
 skipped, cancelled or earlier-revision jobs do not qualify the final revision.
-The GitHub connector supports commit/ref changes but not workflow dispatch, `gh`
-has no authenticated host, the local browser connection timed out, and the cloud
-GitHub session was signed out. A canonical manual full run was not dispatched.
+This document records local evidence before the final GitHub qualification run.
+The existing `workflow_dispatch` entrypoint runs full qualification on this PR's
+branch while retaining Draft status, without changing workflow gates. The PR
+description records the final tested head, run links and actual terminal results.
+The four optional, unchanged PostgreSQL18 Telegram grant cases require their own
+fresh disposable cluster and explicit test URL; the current full workflow does
+not provision that fixture, so its success cannot be claimed as their execution.
 
 The deterministic tests do not establish live external-beta readiness. The
 existing race between path admission and a separately executed producer's later
