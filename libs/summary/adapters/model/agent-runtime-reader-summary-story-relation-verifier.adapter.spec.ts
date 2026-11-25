@@ -1,3 +1,9 @@
+import { buildAgentRuntimeStoryRelationEvidencePairs as projectDirectPairs } from "./agent-runtime-reader-summary-story-relation-pair-binding";
+import { createHash } from "node:crypto";
+import { projectAgentRuntimeStoryRelationLaneContract } from "./agent-runtime-reader-summary-story-relation-lane-policy";
+import { readerSummaryScopeKey } from "../../domain";
+import { buildAgentRuntimeRequestId } from "./agent-runtime-model-support";
+import { buildAgentRuntimeStoryRelationIdentity } from "./agent-runtime-reader-summary-story-relation-identity";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import type {
@@ -12,8 +18,106 @@ import {
   resolveAgentRuntimeReaderSummaryStoryRelationVerifierOptions,
 } from "./agent-runtime-reader-summary-story-relation-verifier.adapter";
 import { withTestExecutionAttestation, withTestGatewayExecutionAttestation } from "./reader-summary-execution-attestation.spec-support";
+import { buildAgentRuntimeStoryRelationEvidencePairs } from "./agent-runtime-reader-summary-story-evidence-prompt";
+import { buildAgentRuntimeReaderSummaryStoryRelationVerifierPrompt } from "./agent-runtime-reader-summary-story-relation-verifier-prompt";
 
 describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
+  it("pins lane-specific scoped idempotency and correlation identities without dispatch", () => {
+    const base = input();
+    const scope = readerSummaryScopeKey(base.scope);
+    const independentDigest = createHash("sha256")
+      .update(buildAgentRuntimeReaderSummaryStoryRelationVerifierPrompt(base))
+      .digest("hex").slice(0, 24);
+    const lanes = [
+      { lane: undefined, suffix: "", related: false },
+      { lane: "safe_recall_shadow" as const, suffix: ":safe-recall-shadow", related: false },
+      { lane: "related_topic" as const, suffix: ":related-topic", related: true },
+      { lane: "independent_news" as const, suffix: `:independent-news:${independentDigest}`, related: false },
+    ];
+    for (const { lane, suffix, related } of lanes) {
+      const scoped = { ...base, ...(lane === undefined ? {} : { verificationLane: lane }) };
+      const identity = buildAgentRuntimeStoryRelationIdentity(scoped);
+      expect(identity.relatedTopicLane).toBe(related);
+      expect(identity.requestId).toBe(buildAgentRuntimeRequestId(
+        related ? "reader-summary-related-topic-relations" : "reader-summary-story-relations",
+        base.tenantId, base.workspaceId, `${scope}${suffix}`, base.requestedAt,
+      ));
+      expect(identity.correlationId).toBe(buildAgentRuntimeRequestId(
+        related ? "reader-summary-related-topic-relations-correlation" : "reader-summary-story-relations-correlation",
+        base.tenantId, base.workspaceId, `${scope}${suffix}`, base.requestedAt,
+      ));
+    }
+    expect(buildAgentRuntimeStoryRelationIdentity(base).requestId)
+      .not.toBe(buildAgentRuntimeStoryRelationIdentity({ ...base, verificationLane: "safe_recall_shadow" }).requestId);
+    const independent = { ...base, verificationLane: "independent_news" as const };
+    const changedEvidence = { ...independent, evidence: independent.evidence.map((item, index) =>
+      index === 0 ? { ...item, title: item.title + " corrected" } : item) };
+    expect(buildAgentRuntimeStoryRelationIdentity(independent).requestId)
+      .not.toBe(buildAgentRuntimeStoryRelationIdentity(changedEvidence).requestId);
+    expect(buildAgentRuntimeStoryRelationIdentity(base).requestId)
+      .toBe(buildAgentRuntimeStoryRelationIdentity({ ...base, evidence: changedEvidence.evidence }).requestId);
+  });
+
+  it("projects exact default, shadow, independent-news and related-topic lane contracts without dispatch", () => {
+    const base = input();
+    const settings = {
+      promptVersion: "reader_summary.story_relation.agent_runtime.v3",
+      relatedTopicPromptVersion: "reader_summary.related_topic_relation.agent_runtime.v1",
+      timeoutMs: 300_000,
+      relatedTopicTimeoutMs: 15_000,
+    } as const;
+    const before = JSON.stringify(base);
+    const standard = projectAgentRuntimeStoryRelationLaneContract(base, settings);
+    expect(standard).toMatchObject({
+      purpose: "social_monitor.reader_summary.verify_story_relations.v2",
+      schemaVersion: "reader_summary.story_relation.v1",
+      outputSchemaName: "social_monitor_reader_summary_story_relations",
+      timeoutMs: 300_000,
+      metadata: { promptVersion: settings.promptVersion },
+    });
+    expect(standard.metadata).not.toHaveProperty("verificationLane");
+    expect(standard.metadata).not.toHaveProperty("taskRole");
+
+    const shadow = projectAgentRuntimeStoryRelationLaneContract({
+      ...base, verificationLane: "safe_recall_shadow", timeoutMs: 55_000,
+    }, settings);
+    expect(shadow.outputSchema).toBe(standard.outputSchema);
+    expect(shadow.timeoutMs).toBe(55_000);
+    expect(shadow.metadata).toMatchObject({ verificationLane: "safe_recall_shadow" });
+    expect(shadow.metadata).not.toHaveProperty("taskRole");
+
+    const independent = projectAgentRuntimeStoryRelationLaneContract({
+      ...base, verificationLane: "independent_news",
+    }, settings);
+    expect(independent.systemPrompt).toContain("independently named publishers");
+    expect(standard.systemPrompt).not.toContain("independently named publishers");
+    expect(independent.metadata.promptVersion)
+      .toBe("reader_summary.story_relation.agent_runtime.v3.independent_news.v1");
+    expect(independent.timeoutMs).toBe(300_000);
+
+    const related = projectAgentRuntimeStoryRelationLaneContract({
+      ...base,
+      verificationLane: "related_topic",
+      candidates: base.candidates.map((candidate) => ({
+        ...candidate, subjectFeedItemId: "feed:hn", officialAnchorFeedItemId: "feed:rss",
+        subjectStoryClusterId: "story:hn", targetStoryClusterId: "story:rss",
+      })),
+    }, settings);
+    expect(related).toMatchObject({
+      purpose: "social_monitor.reader_summary.verify_related_topic_relations.v2",
+      schemaVersion: "reader_summary.related_topic_relation.v1",
+      outputSchemaName: "social_monitor_reader_summary_related_topic_relations",
+      timeoutMs: 15_000,
+      metadata: {
+        taskRole: "related_topic_relation",
+        verificationLane: "related_topic",
+        promptVersion: settings.relatedTopicPromptVersion,
+      },
+    });
+    expect(related.outputSchema).not.toBe(standard.outputSchema);
+    expect(JSON.stringify(base)).toBe(before);
+  });
+
   it("uses subscription runtime and decides every shortlisted pair", async () => {
     const client = new CapturingAgentRuntimeClient({
       status: "completed",
@@ -75,6 +179,40 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
     expect(promptPair.left.bodyPreview.length).toBeLessThanOrEqual(640);
     expect(promptPair.left.sourceText.length).toBeLessThanOrEqual(4_096);
     expect(promptPair.left.sourceText).toContain("bounded incident evidence");
+  });
+
+  it("snapshots resolved verifier routing controls instead of retaining mutable caller options", async () => {
+    const client = new CapturingAgentRuntimeClient({
+      status: "completed",
+      structuredOutput: { decisions: [] },
+      warnings: [],
+    }, true);
+    const options = {
+      client,
+      model: "gpt-6.1-sol",
+      reasoningEffort: "low",
+      timeoutMs: 42_000,
+      maxOutputTokens: 1_024,
+    };
+    const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier(options);
+    options.model = "changed-after-construction";
+    options.reasoningEffort = "high";
+    options.timeoutMs = 1;
+    options.maxOutputTokens = 8;
+
+    await verifier.verify(input());
+    await verifier.verify({ ...input(), verificationLane: "independent_news" });
+
+    expect(client.commands).toHaveLength(2);
+    for (const command of client.commands) {
+      expect(command.controls).toMatchObject({
+        model: "gpt-6.1-sol",
+        reasoningEffort: "low",
+        maxOutputTokens: 1_024,
+      });
+      expect(command.timeoutMs).toBe(42_000);
+    }
+    expect(client.commands[0]?.requestId).not.toBe(client.commands[1]?.requestId);
   });
 
   it("routes independent news through Codex with its own request and conservative prompt", async () => {
@@ -313,6 +451,40 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
     }, client)).toThrow("conflicts with purpose policy");
   });
 
+  it("fails closed when the attestation audit sink rejects a verified response", async () => {
+    const client = new CapturingAgentRuntimeClient({
+      status: "completed",
+      structuredOutput: {
+        decisions: [{
+          leftFeedItemId: "feed:hn",
+          rightFeedItemId: "feed:rss",
+          sameStory: true,
+          confidenceScore: 0.96,
+          rationale: "Matching synthetic story.",
+        }],
+      },
+      warnings: [],
+    });
+    const record = jest.fn(async () => {
+      throw new Error("synthetic-attestation-write-failure");
+    });
+    const verifier = new AgentRuntimeReaderSummaryStoryRelationVerifier({
+      client,
+      verifiedAttestationSink: { record },
+    });
+
+    await expect(verifier.verify(input())).rejects.toThrow(
+      "synthetic-attestation-write-failure",
+    );
+    expect(client.commands).toHaveLength(1);
+    expect(record).toHaveBeenCalledTimes(1);
+    expect(record).toHaveBeenCalledWith(expect.objectContaining({
+      taskRole: "story_relation",
+      attempt: "primary",
+      normalizedOutputSha256: expect.any(String),
+    }));
+  });
+
   it("isolates shadow task identity and metadata from the production lane", async () => {
     const client = new CapturingAgentRuntimeClient({
       status: "completed",
@@ -394,6 +566,125 @@ describe("AgentRuntimeReaderSummaryStoryRelationVerifier", () => {
         targetStoryClusterId: "story:rss",
       }],
     })).rejects.toMatchObject({ failure: { kind: "invalid_schema", retryable: false } });
+  });
+  it("keeps evidence-pair bindings identical across projection and serialized prompt", () => {
+    const base = input();
+    const scoped = {
+      ...base,
+      evidence: base.evidence.map((item) => ({
+        ...item,
+        authorHandle: item.feedItemId === "feed:hn" ? "  AUTHOR-One " : "author-one",
+      })),
+    };
+    const pairs = buildAgentRuntimeStoryRelationEvidencePairs(scoped);
+    const prompt = JSON.parse(buildAgentRuntimeReaderSummaryStoryRelationVerifierPrompt(scoped));
+    expect(prompt.pairs).toEqual(pairs);
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0]).toMatchObject({
+      leftFeedItemId: "feed:hn",
+      rightFeedItemId: "feed:rss",
+      retrievalSignals: {
+        sameProvider: false,
+        sameAuthor: true,
+        sharedTopicTokens: ["compiler", "rewrite", "typescript"],
+      },
+      left: { providerKey: "hacker-news" },
+      right: { providerKey: "rss" },
+    });
+    expect(JSON.stringify(prompt.pairs)).toBe(JSON.stringify(pairs));
+    expect(pairs[0]?.left).toMatchObject({
+      sourceText: expect.stringContaining("bounded incident evidence"),
+    });
+  });
+
+  it("keeps scoped pair evidence and prompt serialization identical for frozen inputs", () => {
+    const original = input();
+    const frozen = {
+      ...original,
+      evidence: Object.freeze(original.evidence.map((item) => Object.freeze({ ...item }))),
+      candidates: Object.freeze(original.candidates.map((item) => Object.freeze({ ...item }))),
+    };
+    const before = JSON.stringify(frozen);
+    const projected = projectDirectPairs(frozen);
+    expect(projected).toEqual(buildAgentRuntimeStoryRelationEvidencePairs(frozen));
+    expect(JSON.parse(buildAgentRuntimeReaderSummaryStoryRelationVerifierPrompt(frozen)).pairs)
+      .toEqual(projected);
+    expect(projected[0]).toMatchObject({
+      leftFeedItemId: "feed:hn",
+      rightFeedItemId: "feed:rss",
+      retrievalSignals: { sameProvider: false, sameAuthor: false },
+      left: { providerKey: "hacker-news" },
+      right: { providerKey: "rss" },
+    });
+    expect(JSON.stringify(frozen)).toBe(before);
+  });
+
+  it("keeps multiple candidate bindings isolated when evidence is shared", () => {
+    const original = input();
+    const third = Object.freeze({
+      ...original.evidence[0]!,
+      feedItemId: "feed:third",
+      sourceItemId: "source:third",
+      sourceBindingId: "binding:third",
+      providerKey: "reddit",
+      title: "Unrelated local event",
+      sourceText: "Only this source describes the third event.",
+    });
+    const first = Object.freeze({ ...original.candidates[0]! });
+    const second = Object.freeze({
+      ...original.candidates[0]!,
+      leftFeedItemId: "feed:third",
+      rightFeedItemId: "feed:rss",
+      leftClusterId: "story:third",
+      sharedTopicTokens: Object.freeze(["third"]),
+      sharedAnchorTokens: Object.freeze([]),
+      sharedEventTokens: Object.freeze([]),
+      sharedSpecificProductTokens: Object.freeze(["third"]),
+    });
+    const scoped = {
+      ...original,
+      evidence: Object.freeze([...original.evidence.map((item) => Object.freeze({ ...item })), third]),
+      candidates: Object.freeze([first, second]),
+    };
+    const before = JSON.stringify(scoped);
+    const pairs = projectDirectPairs(scoped);
+    expect(pairs).toHaveLength(2);
+    expect(pairs[0]).toMatchObject({
+      leftFeedItemId: "feed:hn",
+      rightFeedItemId: "feed:rss",
+      left: { providerKey: "hacker-news", title: "TypeScript compiler rewrite moves to Go" },
+      retrievalSignals: { sharedTopicTokens: ["compiler", "rewrite", "typescript"] },
+    });
+    expect(pairs[1]).toMatchObject({
+      leftFeedItemId: "feed:third",
+      rightFeedItemId: "feed:rss",
+      left: { providerKey: "reddit", title: "Unrelated local event" },
+      right: { providerKey: "rss", title: "Go rewrite changes the TypeScript compiler" },
+      retrievalSignals: { sharedTopicTokens: ["third"], sharedSpecificProductTokens: ["third"] },
+    });
+    expect(JSON.parse(buildAgentRuntimeReaderSummaryStoryRelationVerifierPrompt(scoped)).pairs)
+      .toEqual(pairs);
+    expect(JSON.stringify(scoped)).toBe(before);
+
+    const missingLater = { ...scoped, candidates: Object.freeze([
+      first, Object.freeze({ ...second, rightFeedItemId: "feed:missing" }),
+    ]) };
+    expect(() => projectDirectPairs(missingLater))
+      .toThrow("Unknown story relation evidence feed:missing");
+    expect(() => buildAgentRuntimeReaderSummaryStoryRelationVerifierPrompt(missingLater))
+      .toThrow("Unknown story relation evidence feed:missing");
+  });
+
+  it("never substitutes another feed's evidence for a missing candidate identity", () => {
+    const scoped = input();
+    const candidate = scoped.candidates[0]!;
+    const missing = { ...scoped, candidates: [
+      { ...candidate, rightFeedItemId: "feed:unknown" },
+    ] };
+    expect(() => buildAgentRuntimeStoryRelationEvidencePairs(missing))
+      .toThrow("Unknown story relation evidence feed:unknown");
+    expect(() => buildAgentRuntimeReaderSummaryStoryRelationVerifierPrompt(missing))
+      .toThrow("Unknown story relation evidence feed:unknown");
   });
 });
 

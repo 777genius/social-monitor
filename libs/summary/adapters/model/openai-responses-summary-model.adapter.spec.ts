@@ -10,6 +10,16 @@ import { join } from 'node:path';
 import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import type { SummaryModelInput } from '../../ports';
+import { buildInstructions, buildPromptPayload } from './openai-responses-summary-prompt';
+import { openAiSummaryJsonSchema } from './openai-responses-summary-schema';
+import { runOpenAiResponsesSummaryGeneration } from './openai-responses-summary-generation';
+import { completeOpenAiSummaryAttempt as completeOpenAiSummaryAttemptFromInterpreter } from './openai-responses-summary-attempt-completion';
+import { resolveOpenAiSummaryRuntimeSettings } from './openai-responses-summary-runtime-settings';
+import { buildOpenAiSummaryRequest } from './openai-responses-summary-request-contract';
+import {
+  completeOpenAiSummaryAttempt,
+  validateOpenAiSummaryResponse,
+} from './openai-responses-summary-response-policy';
 import { validateSummaryCitationsAgainstEvidence } from '../../features/shared/summary-citation-validator';
 import {
   OpenAiResponsesSummaryModelAdapter,
@@ -17,6 +27,172 @@ import {
 } from './openai-responses-summary-model.adapter';
 
 describe('OpenAiResponsesSummaryModelAdapter', () => {
+  it('isolates the exact no-retention Responses request contract from provider dispatch', () => {
+    const input = buildInput();
+    const request = buildOpenAiSummaryRequest(input, 'selected-model', 321);
+    expect(request).toEqual({
+      model: 'selected-model',
+      store: false,
+      max_output_tokens: 321,
+      instructions: buildInstructions(input),
+      input: buildPromptPayload(input),
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'social_monitor_summary_artifact',
+          strict: true,
+          schema: openAiSummaryJsonSchema,
+        },
+      },
+    });
+  });
+
+  it('retains completion export identity and rejects invalid JSON before observing usage', () => {
+    const responseJson = Object.freeze({ output_text: "[]" });
+    const estimateUsage = jest.fn(() => ({
+      inputTokens: 10, outputTokens: 10, estimatedCostUsd: 0,
+    }));
+    expect(completeOpenAiSummaryAttempt).toBe(completeOpenAiSummaryAttemptFromInterpreter);
+    expect(() => completeOpenAiSummaryAttemptFromInterpreter({
+      responseJson,
+      input: buildInput(),
+      selectedRoute: {
+        provider: 'openai-responses',
+        model: 'selected-model',
+        promptVersion: 'summary.prompt.openai.responses.v1',
+        schemaVersion: 'summary.artifact.v1',
+      },
+      estimateUsage,
+      evalDatasetVersion: 'summary.eval.mvp.v1',
+    })).toThrow();
+    expect(estimateUsage).not.toHaveBeenCalled();
+    expect(responseJson.output_text).toBe("[]");
+  });
+
+  it('fails closed without estimating usage when the provider omits summary output', () => {
+    const estimateUsage = jest.fn(() => ({
+      inputTokens: 10,
+      outputTokens: 10,
+      estimatedCostUsd: 0,
+    }));
+    const input = buildInput();
+    expect(() => completeOpenAiSummaryAttempt({
+      responseJson: { status: 'completed', output: [] },
+      input,
+      selectedRoute: {
+        provider: 'openai-responses',
+        model: 'selected-model',
+        promptVersion: 'summary.prompt.openai.responses.v1',
+        schemaVersion: 'summary.artifact.v1',
+      },
+      estimateUsage,
+      evalDatasetVersion: 'summary.eval.mvp.v1',
+    })).toThrow('OpenAI response did not contain summary output text');
+    expect(estimateUsage).not.toHaveBeenCalled();
+  });
+
+  it.each(['incomplete', 'failed', 'in_progress'])(
+    'rejects an HTTP-successful %s response even if its output is valid JSON',
+    (status) => {
+      const estimateUsage = jest.fn(() => ({
+        inputTokens: 10, outputTokens: 10, estimatedCostUsd: 0,
+      }));
+      expect(() => completeOpenAiSummaryAttempt({
+        responseJson: { status, output_text: JSON.stringify(validProviderDraft()) },
+        input: buildInput(),
+        selectedRoute: {
+          provider: 'openai-responses', model: 'selected-model',
+          promptVersion: 'summary.prompt.openai.responses.v1',
+          schemaVersion: 'summary.artifact.v1',
+        },
+        estimateUsage, evalDatasetVersion: 'summary.eval.mvp.v1',
+      })).toThrow('OpenAI summary response did not complete');
+      expect(estimateUsage).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects reported provider errors before accepting valid-looking JSON output', () => {
+    const estimateUsage = jest.fn(() => ({
+      inputTokens: 10, outputTokens: 10, estimatedCostUsd: 0,
+    }));
+    expect(() => completeOpenAiSummaryAttempt({
+      responseJson: {
+        status: 'completed', error: { code: 'synthetic_error' },
+        output_text: JSON.stringify(validProviderDraft()),
+      },
+      input: buildInput(),
+      selectedRoute: {
+        provider: 'openai-responses', model: 'selected-model',
+        promptVersion: 'summary.prompt.openai.responses.v1',
+        schemaVersion: 'summary.artifact.v1',
+      },
+      estimateUsage, evalDatasetVersion: 'summary.eval.mvp.v1',
+    })).toThrow('OpenAI summary response reported an error');
+    expect(estimateUsage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["nested refusal", { output: [{ type: "message", content: [{ type: "refusal", refusal: "synthetic" }] }] },
+      "OpenAI summary response was refused"],
+    ["nested error", { output: [{ type: "error", error: { code: "synthetic" } }] },
+      "OpenAI summary response reported an error"],
+    ["nested incomplete", { output: [{ type: "message", status: "in_progress" }] },
+      "OpenAI summary response did not complete"],
+    ["truncated", { incomplete_details: { reason: "max_output_tokens" } },
+      "OpenAI summary response did not complete"],
+  ])('rejects %s even with syntactically valid aggregate output', (_name, envelope, message) => {
+    const estimateUsage = jest.fn(() => ({
+      inputTokens: 10, outputTokens: 10, estimatedCostUsd: 0,
+    }));
+    expect(() => completeOpenAiSummaryAttempt({
+      responseJson: { status: 'completed', output_text: JSON.stringify(validProviderDraft()), ...envelope },
+      input: buildInput(),
+      selectedRoute: {
+        provider: 'openai-responses', model: 'selected-model',
+        promptVersion: 'summary.prompt.openai.responses.v1',
+        schemaVersion: 'summary.artifact.v1',
+      },
+      estimateUsage, evalDatasetVersion: 'summary.eval.mvp.v1',
+    })).toThrow(message);
+    expect(estimateUsage).not.toHaveBeenCalled();
+  });
+
+  it('rejects post-normalization provider and schema route mismatches', async () => {
+    const adapter = new OpenAiResponsesSummaryModelAdapter({
+      apiKey: fakeOpenAiApiKey,
+      fetchFn: async () => jsonResponse(200, { output_text: JSON.stringify(validProviderDraft()) }),
+    });
+    const input = buildInput();
+    const route = adapter.route(input, {
+      preferredProvider: 'openai-responses',
+      maxInputTokens: 12_000,
+      maxOutputTokens: 4_000,
+      maxEstimatedCostUsd: 1,
+    }, {
+      remainingTokens: 20_000,
+      remainingCostUsd: 1,
+    });
+    const attempt = await adapter.summarize(input, route);
+    expect(validateOpenAiSummaryResponse({
+      ...attempt,
+      route: { ...attempt.route, provider: 'unexpected-provider' as typeof attempt.route.provider },
+    })).toEqual({
+      ok: false,
+      failure: {
+        kind: 'invalid_schema',
+        retryable: false,
+        message: 'Unexpected summary provider route',
+      },
+    });
+    expect(validateOpenAiSummaryResponse({
+      ...attempt,
+      route: { ...attempt.route, schemaVersion: 'unsupported-schema' as typeof attempt.route.schemaVersion },
+    })).toMatchObject({
+      ok: false,
+      failure: { kind: 'invalid_schema', message: 'Unsupported summary schema version' },
+    });
+  });
+
   it('creates a Responses API request with structured summary output contract', async () => {
     const capturedCalls: CapturedFetchCall[] = [];
     const adapter = new OpenAiResponsesSummaryModelAdapter({
@@ -543,6 +719,72 @@ describe('OpenAiResponsesSummaryModelAdapter', () => {
     });
 
     await expect(adapter.summarize(input, route)).rejects.toThrow('No-signal summary must include no_signal quality flag');
+  });
+
+  it('keeps direct task execution and adapter dispatch identical for frozen evidence', async () => {
+    const requests: string[] = [];
+    const options = {
+      apiKey: fakeOpenAiApiKey,
+      fetchFn: async (_url: string | URL, init?: RequestInit) => {
+        requests.push(String(init?.body));
+        return jsonResponse(200, {
+          output_text: JSON.stringify(validProviderDraft()),
+          usage: { input_tokens: 321, output_tokens: 123 },
+        });
+      },
+    };
+    const adapter = new OpenAiResponsesSummaryModelAdapter(options);
+    const input = buildInput();
+    const route = adapter.route(input, {
+      preferredProvider: 'openai-responses',
+      maxInputTokens: 12_000,
+      maxOutputTokens: 4_000,
+      maxEstimatedCostUsd: 1,
+    }, {
+      remainingTokens: 20_000,
+      remainingCostUsd: 1,
+    });
+
+    const directly = await runOpenAiResponsesSummaryGeneration({
+      input,
+      selectedRoute: route,
+      settings: resolveOpenAiSummaryRuntimeSettings(options),
+      estimateUsage: () => adapter.estimate(input, route),
+    });
+    const viaPort = await adapter.summarize(input, route);
+
+    expect(viaPort).toEqual(directly);
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toEqual(requests[0]);
+    expect(viaPort.draft.citationMap[0]?.feedItemId).toBe('feed-1');
+  });
+
+  it('rejects a missing provider key before dispatch, but keeps no-signal offline', async () => {
+    const fetchFn = jest.fn(async () => jsonResponse(200, { output: [] }));
+    const adapter = new OpenAiResponsesSummaryModelAdapter({ fetchFn });
+    const policy = {
+      preferredProvider: 'openai-responses' as const,
+      maxInputTokens: 12_000,
+      maxOutputTokens: 4_000,
+      maxEstimatedCostUsd: 1,
+    };
+    const budget = { remainingTokens: 20_000, remainingCostUsd: 1 };
+    const input = buildInput();
+    const route = adapter.route(input, policy, budget);
+
+    await expect(runOpenAiResponsesSummaryGeneration({
+      input,
+      selectedRoute: route,
+      settings: resolveOpenAiSummaryRuntimeSettings({ fetchFn }),
+      estimateUsage: () => adapter.estimate(input, route),
+    })).rejects.toThrow('SUMMARY_MODEL_PROVIDER=openai-responses requires OPENAI_API_KEY');
+    expect(fetchFn).not.toHaveBeenCalled();
+
+    const noSignalInput = buildInput({ evidenceItems: [] });
+    const noSignalRoute = adapter.route(noSignalInput, policy, budget);
+    const attempt = await adapter.summarize(noSignalInput, noSignalRoute);
+    expect(attempt.draft.qualityFlags).toContain('no_signal');
+    expect(fetchFn).not.toHaveBeenCalled();
   });
 
   it('requires an OpenAI API key when openai-responses mode is selected', () => {

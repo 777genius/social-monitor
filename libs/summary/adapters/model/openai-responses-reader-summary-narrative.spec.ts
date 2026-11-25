@@ -1,8 +1,46 @@
+import { watchEligibleCitationIds } from "./openai-responses-reader-summary-watch-evidence-policy";
 import type { ReaderSummaryCitation } from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
 import { normalizeOpenAiReaderSummaryNarrative } from "./openai-responses-reader-summary-narrative";
+import { admitOpenAiReaderSummaryNarrativeInput } from "./openai-responses-reader-summary-narrative-input-admission";
+import { plannedFallbackNarrativeCitationIds } from "./openai-responses-reader-summary-fallback-evidence-policy";
 
 describe("normalizeOpenAiReaderSummaryNarrative", () => {
+
+  it("admits only object records without mutating the untrusted narrative array", () => {
+    const rawSections = [null, 7, { kind: "lead" }, "ignore"];
+    const original = [...rawSections];
+    const admission = admitOpenAiReaderSummaryNarrativeInput({
+      rawSections,
+      input: modelInput(),
+      citationMap: citations,
+    });
+    expect(admission.kind).toBe("grounded");
+    if (admission.kind !== "grounded") throw new Error("Grounded admission expected");
+    expect(admission.rawSections).toEqual([{ kind: "lead" }]);
+    expect([...admission.knownCitationIds]).toEqual(citations.map((item) => item.citationId));
+    expect(admission.citationsAllowed("watch", ["c4"])).toBe(false);
+    expect(rawSections).toEqual(original);
+  });
+
+  it("returns fallback without creating a citation policy for absent secondary-free sections", () => {
+    const input = modelInput();
+    const admission = admitOpenAiReaderSummaryNarrativeInput({
+      rawSections: [undefined, 9, "not a record"],
+      input: { ...input, coveragePlan: { ...input.coveragePlan, secondary: [] } },
+      citationMap: citations,
+    });
+    expect(admission).toEqual({ kind: "fallback" });
+  });
+
+  it("rejects missing narrative before fallback when secondary citations are required", () => {
+    expect(() => admitOpenAiReaderSummaryNarrativeInput({
+      rawSections: [undefined, null],
+      input: modelInput(),
+      citationMap: citations,
+    })).toThrow("planned cited lead and secondary signals");
+  });
+
   it("requires structured narrative when secondary signals are planned", () => {
     expect(() =>
       normalizeOpenAiReaderSummaryNarrative({
@@ -122,6 +160,56 @@ describe("normalizeOpenAiReaderSummaryNarrative", () => {
     ).toThrow("must include a cited lead");
   });
 
+  it("keeps only planned lead evidence in its source order and caps fallback at three citations", () => {
+    const ordered = Object.freeze([
+      citation("outside", "feed-watch"),
+      citation("lead-third", "feed-lead"),
+      citation("lead-first", "feed-lead"),
+      citation("lead-second", "feed-lead"),
+      citation("lead-overflow", "feed-lead"),
+      citation("secondary", "feed-security"),
+    ]);
+    expect(plannedFallbackNarrativeCitationIds({
+      input: modelInput(),
+      citationMap: ordered,
+    })).toEqual(["lead-third", "lead-first", "lead-second"]);
+    expect(ordered.map((item) => item.citationId)).toEqual([
+      "outside", "lead-third", "lead-first", "lead-second", "lead-overflow", "secondary",
+    ]);
+  });
+
+  it("admits secondary feed items for synthesis evidence without accepting unrelated citations", () => {
+    const input = modelInput();
+    const synthesisInput = {
+      ...input,
+      coveragePlan: { ...input.coveragePlan, mode: "daily_synthesis" as const },
+    };
+    const ordered = [
+      citation("security", "feed-security"),
+      citation("unplanned", "feed-watch"),
+      citation("lead", "feed-lead"),
+      citation("database", "feed-database"),
+    ];
+    expect(plannedFallbackNarrativeCitationIds({
+      input: synthesisInput,
+      citationMap: ordered,
+    })).toEqual(["security", "lead", "database"]);
+    expect(input.coveragePlan.mode).toBe("single_story");
+  });
+
+  it("refuses to publish fallback copy when no planned source can be cited", () => {
+    const input = modelInput();
+    expect(normalizeOpenAiReaderSummaryNarrative({
+      rawSections: undefined,
+      legacyExecutiveSummary: "",
+      input: { ...input, coveragePlan: { ...input.coveragePlan, secondary: [] } },
+      citationMap: [citation("unplanned", "feed-watch")],
+      storyTitlesByClusterId: new Map(),
+      storySummariesByClusterId: new Map(),
+      storySummariesByCitationId: new Map(),
+    })).toEqual([]);
+  });
+
   it("binds the fallback narrative to the planned lead cluster", () => {
     const input = modelInput();
     const result = normalizeOpenAiReaderSummaryNarrative({
@@ -239,6 +327,16 @@ describe("normalizeOpenAiReaderSummaryNarrative", () => {
     );
   });
 
+  it("does not trust false independent support from an RSS mirror", () => {
+    expect([...watchEligibleCitationIds(modelInput([strongWatchEvidence]), citations)]).toContain("c4");
+    const mirrored = watchEligibleCitationIds(
+      modelInput([lowEngagementWatchEvidence, rssMirrorWatchEvidence], [mirrorCluster]),
+      citations,
+    );
+    expect(mirrored.has("c4")).toBe(false);
+    expect(mirrored.has("c6")).toBe(false);
+  });
+
   it("drops a watch when any cited evidence is ineligible", () => {
     const result = normalize(
       [
@@ -275,6 +373,41 @@ describe("normalizeOpenAiReaderSummaryNarrative", () => {
 
     expect(result.some((item) => item.kind === "watch")).toBe(false);
   });
+  it("keeps provider section indices after rejecting an ungrounded optional watch", () => {
+    const result = normalize([
+      section("lead", "lead", "c1"),
+      section("watch", "rumor", "c1"),
+      section("secondary_signal", "security", "c2"),
+      section("secondary_signal", "database", "c3"),
+    ]);
+
+    expect(result.map((item) => item.id)).toEqual([
+      "narrative-1",
+      "narrative-3",
+      "narrative-4",
+    ]);
+  });
+
+  it("prunes invented citation IDs before checking synthesis lead coverage", () => {
+    const input = modelInput();
+    const result = normalize(
+      [
+        { ...section("lead", "lead", "c1"), citationIds: ["c1", "invented", "c2"] },
+        section("secondary_signal", "security", "c2"),
+        section("secondary_signal", "database", "c3"),
+      ],
+      {
+        ...input,
+        coveragePlan: { ...input.coveragePlan, mode: "daily_synthesis" },
+      },
+    );
+
+    expect(result[0]).toMatchObject({
+      kind: "lead",
+      citationIds: ["c1", "c2"],
+    });
+  });
+
 });
 
 const normalize = (

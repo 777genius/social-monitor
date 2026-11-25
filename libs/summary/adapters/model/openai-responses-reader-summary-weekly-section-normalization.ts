@@ -1,0 +1,40 @@
+import type { ReaderSummaryWeeklyModelInput } from "../../ports/reader-summary-weekly-model.port";
+import { expandedLegacySectionKeys, expandedLegacySectionKeysWithoutClaimType } from "./openai-responses-reader-summary-weekly-legacy-shape-keys";
+import { hasExactKeys, normalizeExpandedLegacySectionKind } from "./openai-responses-reader-summary-weekly-response-shapes";
+import { exactLegacyCitationRange } from "./openai-responses-reader-summary-weekly-legacy-evidence-policy";
+import { exactLegacyClaimType, legacyClaimTypeFromStories } from "./openai-responses-reader-summary-weekly-legacy-claim-policy";
+
+// The two wire envelopes share only section admission, not story validation.
+export const normalizeExpandedWeeklySection = (
+  input: ReaderSummaryWeeklyModelInput,
+  rawSection: unknown,
+  stories: unknown,
+  label: string,
+) => {
+  // Historical key-shape errors start uppercase; evidence/claim errors do not.
+  const evidenceLabel = label.charAt(0).toLowerCase() + label.slice(1);
+  const section = hasExactKeys(rawSection, expandedLegacySectionKeys)
+    ? rawSection
+    : hasExactKeys(rawSection, expandedLegacySectionKeysWithoutClaimType)
+      ? {
+          ...rawSection,
+          claimType: legacyClaimTypeFromStories(stories, rawSection.storyId, evidenceLabel),
+        }
+      : undefined;
+  if (section === undefined) {
+    throw new Error(`${label} must contain exactly the supported fields`);
+  }
+  const citationIds = exactLegacyCitationRange(input, section, evidenceLabel);
+  return {
+    sectionId: section.sectionId,
+    storyId: section.storyId,
+    kind: normalizeExpandedLegacySectionKind(section.kind),
+    claimType: exactLegacyClaimType(section.claimType, evidenceLabel),
+    heading: section.headline,
+    text: section.synthesis,
+    observedFrom: section.observedFrom,
+    observedThrough: section.observedThrough,
+    citationIds,
+  };
+};
+

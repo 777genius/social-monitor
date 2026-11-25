@@ -3,10 +3,39 @@ import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 import {
   READER_SUMMARY_EDITORIAL_SLATE_VERSION,
   type ReaderSummaryCitation,
+  type ReaderSummaryTopStory,
   type ReaderSummaryEditorialSlateEntry,
 } from "../../domain";
 import type { ReaderSummaryModelInput } from "../../ports";
 import { normalizeTopStories } from "./openai-responses-reader-summary-story-normalizer";
+import { projectTrustedModelStoryCitations } from "./openai-responses-reader-summary-story-citation-projection";
+import {
+  reconcileModelTopStoriesWithCitations,
+  clusterIdByFeedItemId,
+  clusterIdsFromCitations,
+  completeClusterCitationCoverage,
+  providerKeysCoveredByCitations,
+} from "./openai-responses-reader-summary-story-citations";
+import {
+  clusterIdByFeedItemId as clusterIndexOwner,
+  clusterIdsFromCitations as clusterIdsOwner,
+} from "./openai-responses-reader-summary-cluster-citations";
+import {
+  completeClusterCitationCoverage as citationCoverageOwner,
+  providerKeysCoveredByCitations as providerKeysOwner,
+} from "./openai-responses-reader-summary-citation-coverage";
+import {
+  fallbackTopStories, immutableEditorialSlateTopStories,
+  ensureCoveragePlanStories, topUpTopStories,
+} from "./openai-responses-reader-summary-story-fallback";
+import { fallbackTopStories as fallbackEvidenceOwner } from "./openai-responses-reader-summary-story-fallback-evidence";
+import { immutableEditorialSlateTopStories as slateOwner } from "./openai-responses-reader-summary-story-fallback-slate";
+import {
+  ensureCoveragePlanStories as coverageOwner,
+  topUpTopStories as topUpOwner,
+} from "./openai-responses-reader-summary-story-fallback-coverage";
+import { ensureCoveragePlanStories as plannedCoverageOwner } from "./openai-responses-reader-summary-story-fallback-plan";
+import { topUpTopStories as distinctTopUpOwner } from "./openai-responses-reader-summary-story-fallback-topup";
 
 describe("normalizeTopStories coverage alignment", () => {
   it("adds the approved coverage lead when the model returns eight other stories", () => {
@@ -201,6 +230,192 @@ describe("normalizeTopStories coverage alignment", () => {
     expect(normalized).not.toContainEqual(expect.objectContaining({
       storyClusterId: "story:3",
     }));
+  });
+  it("rejects unknown, cross-cluster and mismatched provider citations before fallback", () => {
+    const input = modelInput(2);
+    const citations = citationMap(2);
+    const proposed = (storyClusterId: string, citationIds: string[]) => ({
+      storyClusterId,
+      title: "Provider assertions are untrusted",
+      summary: "A bounded synthetic claim",
+      interestIds: ["model-invented-interest"],
+      providerKeys: ["model-invented-provider"],
+      citationIds,
+    });
+
+    expect(reconcileModelTopStoriesWithCitations(
+      [proposed("story:1", ["unknown-id"])], input, citations,
+    )).toEqual([]);
+    expect(reconcileModelTopStoriesWithCitations(
+      [proposed("story:1", ["c1", "c2"])], input, citations,
+    )).toEqual([]);
+    expect(reconcileModelTopStoriesWithCitations(
+      [proposed("story:2", ["c1"])], input, citations,
+    )).toEqual([]);
+    expect(reconcileModelTopStoriesWithCitations(
+      [proposed("story:1", ["c1"])], input, citations,
+    )).toEqual([expect.objectContaining({
+      storyClusterId: "story:1",
+      citationIds: ["c1"],
+      providerKeys: ["reddit"],
+    })]);
+  });
+
+});
+
+
+describe("trusted citation cluster and provider coverage owners", () => {
+  it("retains the historical function objects after responsibility separation", () => {
+    expect(clusterIdByFeedItemId).toBe(clusterIndexOwner);
+    expect(clusterIdsFromCitations).toBe(clusterIdsOwner);
+    expect(completeClusterCitationCoverage).toBe(citationCoverageOwner);
+    expect(providerKeysCoveredByCitations).toBe(providerKeysOwner);
+  });
+
+  it("ignores unknown citations and preserves first-seen trusted cluster order", () => {
+    const input = modelInput(2);
+    const citationById = new Map(citationMap(2).map((citation) =>
+      [citation.citationId, citation] as const,
+    ));
+    expect(clusterIdsFromCitations(
+      ["c2", "not-trusted", "c1", "c2"],
+      citationById,
+      clusterIdByFeedItemId(input),
+    )).toEqual(["story:2", "story:1"]);
+  });
+
+  it("completes provider coverage from only the cited cluster", () => {
+    const input = modelInputWithCrossProviderDuplicate();
+    const cluster = input.evidence.clusters[0];
+    if (cluster === undefined) throw new Error("Missing synthetic cluster");
+    const citations: readonly ReaderSummaryCitation[] = [
+      ...citationMap(1),
+      {
+        citationId: "c2", feedItemId: "feed-1-hn",
+        sourceItemId: "source-1-hn", providerKey: "hacker-news",
+        field: "title", canonicalUrl: "https://news.ycombinator.com/item?id=1",
+      },
+      {
+        citationId: "foreign", feedItemId: "unrelated-feed",
+        sourceItemId: "unrelated-source", providerKey: "hacker-news",
+        field: "title", canonicalUrl: "https://example.com/other",
+      },
+    ];
+    const citationById = new Map(citations.map((citation) =>
+      [citation.citationId, citation] as const,
+    ));
+    const citationIds = completeClusterCitationCoverage({
+      citationIds: ["c1", "foreign", "unknown"],
+      providerKeys: ["hacker-news", "reddit"],
+      cluster,
+      citationById,
+    });
+    expect(citationIds).toEqual(["c2", "c1"]);
+    expect(providerKeysCoveredByCitations(
+      ["hacker-news", "rss", "reddit"],
+      citationIds,
+      citationById,
+    )).toEqual(["hacker-news", "reddit"]);
+  });
+});
+
+describe("trusted story citation projection boundary", () => {
+  it("adds only same-cluster cited providers without mutating the model story or evidence", () => {
+    const input = modelInputWithCrossProviderDuplicate();
+    const cluster = input.evidence.clusters[0]!;
+    const first = citationMap(1)[0]!;
+    const trusted = [first, {
+      ...first, citationId: "c-hn", feedItemId: "feed-1-hn",
+      providerKey: "hacker-news",
+    }];
+    const byId = new Map(trusted.map((item) => [item.citationId, item] as const));
+    const story: ReaderSummaryTopStory = {
+      storyClusterId: "story:1", title: "Selected story",
+      summary: "Grounded by cited sources", interestIds: ["model-interest"],
+      providerKeys: ["forged-provider"], citationIds: ["c1"],
+    };
+    const before = JSON.stringify({ story, cluster, trusted });
+    expect(projectTrustedModelStoryCitations(story, "story:1", cluster, ["c1"], byId))
+      .toEqual({
+        ...story, interestIds: ["model-interest", "ai-developer-tools"],
+        providerKeys: ["reddit", "hacker-news"], citationIds: ["c1", "c-hn"],
+      });
+    expect(JSON.stringify({ story, cluster, trusted })).toBe(before);
+  });
+
+  it("does not project a story with no trusted cluster citations", () => {
+    const cluster = modelInput(1).evidence.clusters[0]!;
+    const story: ReaderSummaryTopStory = {
+      storyClusterId: "story:1", title: "Unsupported", summary: "Unsupported",
+      interestIds: [], providerKeys: ["reddit"], citationIds: [],
+    };
+    expect(projectTrustedModelStoryCitations(
+      story, "story:1", cluster, [], new Map(),
+    )).toBeUndefined();
+  });
+});
+
+describe("story fallback ownership", () => {
+  it("keeps the historical entrypoint as the exact specialist exports", () => {
+    expect(fallbackTopStories).toBe(fallbackEvidenceOwner);
+    expect(immutableEditorialSlateTopStories).toBe(slateOwner);
+    expect(ensureCoveragePlanStories).toBe(coverageOwner);
+    expect(topUpTopStories).toBe(topUpOwner);
+    expect(coverageOwner).toBe(plannedCoverageOwner);
+    expect(topUpOwner).toBe(distinctTopUpOwner);
+  });
+
+  it("preserves selected-evidence citations and planned coverage order", () => {
+    const input = modelInput(3);
+    const citations = citationMap(3);
+    const fallback = fallbackTopStories(input, citations);
+    expect(fallback.map((story) => story.citationIds)).toEqual([["c1"], ["c2"], ["c3"]]);
+    const covered = ensureCoveragePlanStories(fallback.slice(0, 2), input, citations);
+    expect(covered.map((story) => story.storyClusterId))
+      .toEqual(["story:3", "story:1", "story:2"]);
+    expect(topUpTopStories(covered, input, citations)).toBe(covered);
+    expect(topUpTopStories(fallback.slice(0, 1), input, citations)).toEqual(fallback);
+  });
+
+  it("isolates planned lead precedence from duplicate-citation-safe top-ups", () => {
+    const input = modelInput(3);
+    const citations = citationMap(3);
+    const unplanned = fallbackTopStories(input, citations).slice(0, 1);
+    const snapshot = structuredClone(unplanned);
+
+    const planned = plannedCoverageOwner(unplanned, input, citations);
+    expect(planned.map((story) => story.storyClusterId)).toEqual([
+      "story:3", "story:1",
+    ]);
+    const topInput = modelInput(2);
+    const topCitations = citationMap(2);
+    const overlapping = [{
+      ...fallbackTopStories(topInput, topCitations)[0]!,
+      citationIds: ["c1", "c2"],
+    }];
+    expect(distinctTopUpOwner(overlapping, topInput, topCitations)).toEqual(overlapping);
+    expect(unplanned).toEqual(snapshot);
+    expect(plannedCoverageOwner(unplanned, input, citations)).toEqual(planned);
+  });
+
+  it("rejects an immutable editorial Top without any trusted cited source", () => {
+    const base = modelInput(1);
+    const missing = slateEntry("missing-feed", "story:missing", "top", 1);
+    const input: ReaderSummaryModelInput = {
+      ...base,
+      evidence: {
+        ...base.evidence,
+        editorialSlate: {
+          policyVersion: READER_SUMMARY_EDITORIAL_SLATE_VERSION,
+          top: [missing], additional: [], excluded: [],
+          orderedCandidateIds: [missing.candidateId],
+          orderedCanonicalIdentities: [missing.canonicalIdentity],
+          digestInputs: [missing.digestInput], digestMaterial: "fixture-digest",
+        },
+      },
+    };
+    expect(() => immutableEditorialSlateTopStories([], input, citationMap(1)))
+      .toThrow("Editorial slate Top entry has no citable evidence: missing-feed");
   });
 });
 

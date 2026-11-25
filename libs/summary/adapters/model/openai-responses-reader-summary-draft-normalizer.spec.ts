@@ -1,9 +1,12 @@
+import { normalizeCitedReaderSummaryStoriesAndNarrative } from "./openai-responses-reader-summary-story-narrative-composition";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 import { dailyEvidenceSelection } from
   "../../domain/policies/reader-summary-publication-evidence-test-fixtures";
 import type { ReaderSummaryModelInput } from "../../ports";
-import { normalizeOpenAiReaderSummaryDraft } from
+import { buildOpenAiReaderSummaryLineage, normalizeOpenAiReaderSummaryDraft } from
   "./openai-responses-reader-summary-draft-normalizer";
+import { buildOpenAiReaderSummaryLineage as directLineage } from
+  "./openai-responses-reader-summary-lineage";
 
 describe("normalizeOpenAiReaderSummaryDraft", () => {
   it("uses normalized story copy when canonical and legacy narrative are empty", () => {
@@ -59,7 +62,41 @@ describe("normalizeOpenAiReaderSummaryDraft", () => {
       estimatedCostUsd: 0,
     }, "test");
 
+    const modelSections = { topStories: [], narrativeSections: [] };
+    const grounded = normalizeCitedReaderSummaryStoriesAndNarrative(
+      modelSections, input, draft.citationMap, "",
+    );
+    expect(grounded.normalizedTopStories).toEqual(draft.topStories);
+    expect(grounded.narrativeSections).toEqual(
+      normalizeCitedReaderSummaryStoriesAndNarrative(
+        modelSections, input, draft.citationMap, "",
+      ).narrativeSections,
+    );
+    expect(modelSections).toEqual({ topStories: [], narrativeSections: [] });
+
     expect(draft.executiveSummary).toBe(draft.topStories[0]?.summary);
     expect(draft.executiveSummary.trim()).not.toBe("");
+    expect(draft.content?.headline).toBe(draft.headline);
+    expect(draft.content?.topReads.length).toBeGreaterThan(0);
+    expect(draft.content?.qualityState).toBeDefined();
+    expect(draft.citationMap.length).toBeGreaterThan(0);
+    expect(buildOpenAiReaderSummaryLineage).toBe(directLineage);
+    expect(draft.lineage).toEqual(directLineage(input, {
+      provider: "offline-test", model: "fixture", promptVersion: "test",
+      schemaVersion: "reader_summary.artifact.v1",
+    }, "test"));
+    expect(draft.lineage).toMatchObject({
+      promptVersion: "test",
+      schemaVersion: "reader_summary.artifact.v1",
+      modelVersion: "fixture",
+      providerVersion: "offline-test",
+      rulesVersion: "test-no-signal-fallback",
+      evalDatasetVersion: "test",
+    });
+    expect(draft.usage).toEqual({
+      inputTokens: 0,
+      outputTokens: 0,
+      estimatedCostUsd: 0,
+    });
   });
 });

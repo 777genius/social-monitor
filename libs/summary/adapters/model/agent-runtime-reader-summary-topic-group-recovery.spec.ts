@@ -1,3 +1,11 @@
+import {
+  normalizeExistingGroups as legacyNormalizeExistingGroups,
+  supportedAnchorsForActiveGroups as legacySupportedAnchorsForActiveGroups,
+} from "./agent-runtime-reader-summary-topic-group-consensus";
+import {
+  normalizeExistingGroups,
+  supportedAnchorsForActiveGroups,
+} from "./agent-runtime-reader-summary-topic-group-existing-admission";
 import { READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID } from "../../domain";
 import type { ReaderSummaryTopicLabelCandidate } from "../../ports";
 import { recoverGroundedTopicGroups } from "./agent-runtime-reader-summary-topic-group-recovery";
@@ -181,4 +189,61 @@ const candidate = (
   interestIds: ["ai"],
   keywords,
   labelCandidates: [],
+});
+
+
+describe("existing topic group membership policy", () => {
+  it("keeps the old policy exports identical to the direct owner", () => {
+    expect(legacyNormalizeExistingGroups).toBe(normalizeExistingGroups);
+    expect(legacySupportedAnchorsForActiveGroups).toBe(supportedAnchorsForActiveGroups);
+  });
+
+  it("drops an incidental third member while keeping supported membership and inputs intact", () => {
+    const labels = [
+      { nodeId: "topic:one", label: "Acme One", groupId: "group:acme", keywords: ["Acme"] },
+      { nodeId: "topic:two", label: "Acme Two", groupId: "group:acme", keywords: ["Acme"] },
+      { nodeId: "topic:intruder", label: "Nimble Three", groupId: "group:acme", keywords: ["Nimble"] },
+    ];
+    const anchorsByNodeId = new Map([
+      ["topic:one", new Set(["acme", "one"])],
+      ["topic:two", new Set(["acme", "two"])],
+      ["topic:intruder", new Set(["nimble"])],
+    ]);
+    const explicitAnchorsByGroup = new Map([["group:acme", ["Acme"]]]);
+    const admission = { nodeLabels: labels, anchorsByNodeId, explicitAnchorsByGroup };
+    const normalized = normalizeExistingGroups(admission);
+    expect(normalized.map((label) => label.groupId)).toEqual([
+      "group:acme", "group:acme", READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID,
+    ]);
+    expect(normalized[0]).toBe(labels[0]);
+    expect(normalized[1]).toBe(labels[1]);
+    expect(labels.every((label) => label.groupId === "group:acme")).toBe(true);
+    expect(anchorsByNodeId.get("topic:intruder")).toEqual(new Set(["nimble"]));
+
+    const activeAnchors = supportedAnchorsForActiveGroups({ ...admission, nodeLabels: normalized });
+    expect(activeAnchors.has("group:acme")).toBe(true);
+    expect(activeAnchors.get("group:acme")).toHaveLength(1);
+    expect(activeAnchors.has(READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID)).toBe(false);
+  });
+
+  it("cannot retain a group through an explicit label without corroborating node identity", () => {
+    const labels = [
+      { nodeId: "topic:first", label: "One", groupId: "group:acme" },
+      { nodeId: "topic:second", label: "Two", groupId: "group:acme" },
+    ];
+    const anchorsByNodeId = new Map([
+      ["topic:first", new Set(["one"])],
+      ["topic:second", new Set(["two"])],
+    ]);
+    const normalized = normalizeExistingGroups({
+      nodeLabels: labels,
+      anchorsByNodeId,
+      explicitAnchorsByGroup: new Map([["group:acme", ["Acme"]]]),
+    });
+    expect(normalized.map((label) => label.groupId)).toEqual([
+      READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID,
+      READER_SUMMARY_TOPIC_MAP_UNGROUPED_ID,
+    ]);
+    expect(labels.map((label) => label.groupId)).toEqual(["group:acme", "group:acme"]);
+  });
 });

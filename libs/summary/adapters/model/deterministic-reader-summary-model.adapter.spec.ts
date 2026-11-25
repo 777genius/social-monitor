@@ -10,8 +10,25 @@ import {
 import type {
   ProviderReaderSummaryAttempt,
   ReaderSummaryModelInput,
+  ReaderSummaryModelRoute,
 } from "../../ports";
 import { DeterministicReaderSummaryModelAdapter } from "./deterministic-reader-summary-model.adapter";
+import { selectDeterministicReaderSummaryHeadlineEvidence } from "./deterministic-reader-summary-headline-evidence";
+import { deterministicReaderSummaryPublicationAssessment } from "./deterministic-reader-summary-publication-assessment";
+
+import { projectDeterministicReaderSummaryAttempt } from "./deterministic-reader-summary-generation";
+import {
+  selectClustersForEvidence,
+  selectProviderDiverseRankedEvidence,
+} from "./deterministic-reader-summary-evidence-selection";
+import { selectDeterministicReaderSummaryCoverage } from "./deterministic-reader-summary-coverage-selection";
+import {
+  buildDeterministicReaderSummaryStoryProjection,
+  buildInterestHighlights,
+} from "./deterministic-reader-summary-story-projection";
+import { buildInterestHighlights as ownedInterestHighlights } from "./deterministic-reader-summary-interest-highlights";
+import { projectRepeatedReaderSummarySignals } from "./deterministic-reader-summary-repeated-signals";
+import { indexDeterministicReaderSummaryCitations } from "./deterministic-reader-summary-citation-index";
 import { acceptedDeterministicFixtureHeadline } from "./deterministic-reader-summary-model.spec-support";
 import {
   composeReaderSummaryEditorialSlate,
@@ -19,6 +36,110 @@ import {
 } from "../evidence/reader-summary-editorial-slate";
 
 describe("DeterministicReaderSummaryModelAdapter", () => {
+  it("keeps trusted editorial headline ordering, missing IDs, duplicate IDs, and immutable evidence", () => {
+    const input = dailySynthesisReaderSummaryInput();
+    const evidence = input.evidence.selectedEvidence;
+    const first = evidence[0];
+    const second = evidence[1];
+    const slate = input.evidence.editorialSlate;
+    if (first === undefined || second === undefined || slate === undefined) {
+      throw new Error("Headline provenance fixture needs two evidence items and a slate");
+    }
+    const unslated: ReaderSummaryModelInput = {
+      ...input, evidence: { ...input.evidence, editorialSlate: undefined },
+    };
+    expect(selectDeterministicReaderSummaryHeadlineEvidence(unslated, evidence)).toBe(evidence);
+    const ordered: ReaderSummaryModelInput = {
+      ...input,
+      evidence: {
+        ...input.evidence,
+        editorialSlate: {
+          ...slate,
+          orderedCandidateIds: [second.feedItemId, "missing-evidence", first.feedItemId, first.feedItemId],
+        },
+      },
+    };
+    const before = JSON.stringify(ordered);
+    expect(selectDeterministicReaderSummaryHeadlineEvidence(ordered, [first]))
+      .toEqual([second, first, first]);
+    expect(JSON.stringify(ordered)).toBe(before);
+  });
+
+  it("keeps risk, limited-source and confidence admission independent from document assembly", () => {
+    const input = dailySynthesisReaderSummaryInput();
+    const evidence = input.evidence.selectedEvidence;
+    const first = evidence[0];
+    if (first === undefined || evidence.length < 3) {
+      throw new Error("Publication assessment fixture needs three primary items");
+    }
+    const limited = deterministicReaderSummaryPublicationAssessment(input, [first]);
+    expect(limited.risksAndUnknowns).toEqual([{
+      description: "This deterministic reader summary only uses selected primary evidence titles.",
+      citationIds: ["c1"], reason: "source_limit",
+    }]);
+    expect(limited.qualityFlags).toEqual(["limited_sources"]);
+    expect(limited.confidence).toMatchObject({ level: "low", score: 0.35 });
+    const full = deterministicReaderSummaryPublicationAssessment({
+      ...input, policy: { ...input.policy, includeRisks: false },
+    }, evidence.slice(0, 3));
+    expect(full.risksAndUnknowns).toEqual([]);
+    expect(full.qualityFlags).toEqual([]);
+    expect(full.confidence).toMatchObject({ level: "medium", score: 0.65 });
+  });
+
+
+  it.each(["no_signal", "daily_synthesis"] as const)(
+    "keeps direct and public deterministic generation identical for %s",
+    async (kind) => {
+      const adapter = new DeterministicReaderSummaryModelAdapter();
+      const input = kind === "no_signal"
+        ? readerSummaryInputForEvidence(readerSummaryEvidence([]))
+        : dailySynthesisReaderSummaryInput();
+      const selectedRoute = adapter.route(input, {
+        preferredProvider: "deterministic-local",
+        maxInputTokens: 24_000,
+        maxOutputTokens: 2_500,
+        maxEstimatedCostUsd: 1,
+      }, { remainingTokens: 32_000, remainingCostUsd: 2 });
+      const inputBefore = JSON.stringify(input);
+      const direct = projectDeterministicReaderSummaryAttempt({
+        input, selectedRoute, usage: adapter.estimate(input, selectedRoute),
+      });
+      expect(await adapter.generate(input, selectedRoute)).toEqual(direct);
+      expect(JSON.stringify(input)).toBe(inputBefore);
+    },
+  );
+
+  it("preserves the deterministic no-primary-evidence contract", async () => {
+    const adapter = new DeterministicReaderSummaryModelAdapter();
+    const input = readerSummaryInputForEvidence(readerSummaryEvidence([]));
+    const selectedRoute = adapter.route(
+      input,
+      {
+        preferredProvider: "deterministic-local",
+        maxInputTokens: 24_000,
+        maxOutputTokens: 2_500,
+        maxEstimatedCostUsd: 1,
+      },
+      { remainingTokens: 32_000, remainingCostUsd: 2 },
+    );
+    const attempt = await adapter.generate(input, selectedRoute);
+    expect(attempt.draft).toMatchObject({
+      headline: "No reliable workspace signal yet",
+      executiveSummary: "No eligible feed items were available for this summary window.",
+      topStories: [],
+      interestHighlights: [],
+      repeatedSignals: [],
+      qualityFlags: ["no_signal", "limited_sources"],
+      confidence: { level: "none", score: 0 },
+      noSignalReason: "No eligible evidence items selected for this summary scope.",
+      usage: { inputTokens: 0, outputTokens: 64, estimatedCostUsd: 0 },
+      lineage: { modelVersion: "deterministic-reader-summary-v1" },
+    });
+    expect(attempt.draft.citationMap).toEqual([]);
+    expect(attempt.draft.content).toBeDefined();
+  });
+
   it("keeps a provider-diverse first page while preserving ranked order", async () => {
     const adapter = new DeterministicReaderSummaryModelAdapter();
     const input = dailySynthesisReaderSummaryInput();
@@ -202,6 +323,242 @@ describe("DeterministicReaderSummaryModelAdapter", () => {
     expect(attempt.draft.headline).not.toBe(sourceTitle);
     expectPublished(input, attempt);
   });
+
+  it("keeps citations attached to original evidence when ranked presentation order differs", () => {
+    const input = dailySynthesisReaderSummaryInput();
+    const citedEvidence = input.evidence.selectedEvidence;
+    const firstItem = citedEvidence[0];
+    if (firstItem === undefined) {
+      throw new Error("Projection fixture needs primary evidence");
+    }
+    const projection = buildDeterministicReaderSummaryStoryProjection({
+      input,
+      citedEvidence,
+      selectedEvidence: [...citedEvidence].reverse(),
+      topStoryClusters: input.evidence.clusters,
+      firstItem,
+    });
+
+    expect(projection.citationMap.map((item) => item.feedItemId)).toEqual(
+      citedEvidence.map((item) => item.feedItemId),
+    );
+    for (const story of projection.topStories) {
+      const representative = input.evidence.clusters.find(
+        (cluster) => cluster.id === story.storyClusterId,
+      );
+      const citation = projection.citationMap.find(
+        (item) => item.feedItemId === representative?.representativeFeedItemId,
+      );
+      expect(story.citationIds).toEqual([citation?.citationId ?? "c1"]);
+    }
+  });
+
+  it("keeps the first cited feed identity in top stories, interest highlights and repeated signals", () => {
+    const input = dailySynthesisReaderSummaryInput();
+    const firstItem = input.evidence.selectedEvidence[0];
+    const firstCluster = input.evidence.clusters[0];
+    if (firstItem === undefined || firstCluster === undefined) {
+      throw new Error("Citation identity regression requires evidence and a cluster");
+    }
+    const repeatedCluster = {
+      ...firstCluster,
+      representativeFeedItemId: firstItem.feedItemId,
+      interestIds: ["interest-0", "interest-1"],
+    };
+    const projection = buildDeterministicReaderSummaryStoryProjection({
+      input: {
+        ...input,
+        evidence: { ...input.evidence, clusters: [repeatedCluster] },
+      },
+      citedEvidence: [firstItem, firstItem],
+      selectedEvidence: [firstItem],
+      topStoryClusters: [repeatedCluster],
+      firstItem,
+    });
+    expect(projection.citationMap.map((entry) => entry.citationId)).toEqual(["c1", "c2"]);
+    expect(projection.topStories[0]?.citationIds).toEqual(["c1"]);
+    expect(projection.interestHighlights[0]?.citationIds).toEqual(["c1"]);
+    expect(projection.repeatedSignals[0]?.citationIds).toEqual(["c1"]);
+  });
+
+  it("preserves first-evidence fallbacks and repeated-interest policy on missing cluster representatives", () => {
+    const input = dailySynthesisReaderSummaryInput();
+    const firstItem = input.evidence.selectedEvidence[0];
+    const firstCluster = input.evidence.clusters[0];
+    if (firstItem === undefined || firstCluster === undefined) {
+      throw new Error("Projection fixture needs a cluster and evidence");
+    }
+    const missingRepresentative = {
+      ...firstCluster,
+      id: "story:missing-representative",
+      representativeFeedItemId: "feed-not-selected",
+      interestIds: ["interest-0", "interest-1"],
+    };
+    const projection = buildDeterministicReaderSummaryStoryProjection({
+      input: {
+        ...input,
+        evidence: { ...input.evidence, clusters: [missingRepresentative] },
+      },
+      citedEvidence: input.evidence.selectedEvidence,
+      selectedEvidence: [firstItem],
+      topStoryClusters: [missingRepresentative],
+      firstItem,
+    });
+    expect(projection.topStories[0]).toMatchObject({
+      storyClusterId: missingRepresentative.id,
+      title: firstItem.title,
+      citationIds: ["c1"],
+    });
+    expect(projection.repeatedSignals).toEqual([{
+      storyClusterId: missingRepresentative.id,
+      title: firstItem.title,
+      interestIds: ["interest-0", "interest-1"],
+      citationIds: ["c1"],
+    }]);
+    expect(projection.interestHighlights).toHaveLength(1);
+
+    const disabled = buildDeterministicReaderSummaryStoryProjection({
+      input: {
+        ...input,
+        policy: {
+          ...input.policy,
+          includeInterestHighlights: false,
+          includeRepeatedSignals: false,
+        },
+      },
+      citedEvidence: input.evidence.selectedEvidence,
+      selectedEvidence: [firstItem],
+      topStoryClusters: [missingRepresentative],
+      firstItem,
+    });
+    expect(disabled.interestHighlights).toEqual([]);
+    expect(disabled.repeatedSignals).toEqual([]);
+  });
+
+  it("keeps deterministic document risk, confidence, citation identity and headline synchronized", async () => {
+    const adapter = new DeterministicReaderSummaryModelAdapter();
+    const input = dailySynthesisReaderSummaryInput();
+    const selectedRoute: ReaderSummaryModelRoute = {
+      provider: "deterministic-local",
+      model: "deterministic-reader-summary-v1",
+      promptVersion: "reader_summary.prompt.v1",
+      schemaVersion: "reader_summary.artifact.v1",
+    };
+    const attempt = await adapter.generate(input, selectedRoute);
+
+    expect(attempt.draft.risksAndUnknowns).toEqual([{
+      description: "This deterministic reader summary only uses selected primary evidence titles.",
+      citationIds: ["c1"],
+      reason: "source_limit",
+    }]);
+    expect(attempt.draft.qualityFlags).toEqual([]);
+    expect(attempt.draft.confidence).toEqual({
+      level: "medium",
+      score: 0.65,
+      rationale: "Confidence is derived from selected primary evidence count in this deterministic adapter.",
+    });
+    expect(attempt.draft.content?.headline).toBe(attempt.draft.headline);
+    expect(attempt.draft.lineage.promptVersion).toBe(selectedRoute.promptVersion);
+    expect(attempt.draft.usage).toEqual(adapter.estimate(input, selectedRoute));
+    expect(attempt.draft.citationMap[0]?.feedItemId)
+      .toBe(input.evidence.selectedEvidence[0]?.feedItemId);
+  });
+
+  it("retains limited-source confidence and excludes disabled risks", async () => {
+    const adapter = new DeterministicReaderSummaryModelAdapter();
+    const original = readerSummaryInputForEvidence(
+      readerSummaryEvidence([evidenceItem("hacker-news", 1, 3)]),
+    );
+    const input: ReaderSummaryModelInput = {
+      ...original,
+      policy: { ...original.policy, includeRisks: false },
+    };
+    const selectedRoute: ReaderSummaryModelRoute = {
+      provider: "deterministic-local",
+      model: "deterministic-reader-summary-v1",
+      promptVersion: "reader_summary.prompt.v1",
+      schemaVersion: "reader_summary.artifact.v1",
+    };
+    const attempt = await adapter.generate(input, selectedRoute);
+
+    expect(attempt.draft.risksAndUnknowns).toEqual([]);
+    expect(attempt.draft.qualityFlags).toEqual(["limited_sources"]);
+    expect(attempt.draft.confidence).toMatchObject({ level: "low", score: 0.35 });
+    expect(attempt.draft.content?.headline).toBe(attempt.draft.headline);
+  });
+
+  it("keeps trusted editorial slate evidence and cluster identity instead of re-ranking it", () => {
+    const input = dailySynthesisReaderSummaryInput();
+    const primary = primaryReaderSummaryEvidence(input.evidence);
+    expect(input.evidence.editorialSlate).toBeDefined();
+    const selected = selectDeterministicReaderSummaryCoverage(input, primary);
+    expect(selected.selectedEvidence).toBe(primary.selectedEvidence);
+    expect(selected.topStoryClusters).toBe(primary.clusters);
+  });
+
+  it("uses provider diversity and explicit coverage pins only without an editorial slate", () => {
+    const original = dailySynthesisReaderSummaryInput();
+    const input: ReaderSummaryModelInput = {
+      ...original,
+      evidence: { ...original.evidence, editorialSlate: undefined },
+    };
+    const primary = primaryReaderSummaryEvidence(input.evidence);
+    const selected = selectDeterministicReaderSummaryCoverage(input, primary);
+    expect(selected.selectedEvidence).toEqual(
+      selectProviderDiverseRankedEvidence(primary.selectedEvidence, input.policy.maxStories),
+    );
+    const pinned = [
+      ...(input.coveragePlan.lead === undefined ? [] : [input.coveragePlan.lead.clusterId]),
+      ...input.coveragePlan.secondary.map((item) => item.clusterId),
+    ];
+    expect(selected.topStoryClusters.map((cluster) => cluster.id)).toEqual(
+      selectClustersForEvidence(
+        input.evidence.clusters,
+        selected.selectedEvidence,
+        input.policy.maxStories,
+        pinned,
+      ).map((cluster) => cluster.id),
+    );
+    expect(new Set(selected.topStoryClusters.map((cluster) => cluster.id)).size)
+      .toBe(selected.topStoryClusters.length);
+  });
+
+  it("preserves independent interest and repeated-signal owners and citation identity", () => {
+    const input = dailySynthesisReaderSummaryInput();
+    const firstItem = input.evidence.selectedEvidence[0];
+    const firstCluster = input.evidence.clusters[0];
+    if (firstItem === undefined || firstCluster === undefined) {
+      throw new Error("Projection regression requires selected evidence");
+    }
+    const repeatedCluster = {
+      ...firstCluster,
+      interestIds: ["interest-alpha", "interest-beta"],
+      representativeFeedItemId: "missing-representative",
+    };
+    const selectedEvidence = [firstItem];
+    const focusedInput: ReaderSummaryModelInput = {
+      ...input,
+      evidence: { ...input.evidence, clusters: [repeatedCluster] },
+    };
+    const projection = buildDeterministicReaderSummaryStoryProjection({
+      input: focusedInput,
+      citedEvidence: [firstItem, firstItem],
+      selectedEvidence,
+      topStoryClusters: [repeatedCluster],
+      firstItem,
+    });
+    const citationIndex = indexDeterministicReaderSummaryCitations(projection.citationMap);
+    expect(buildInterestHighlights).toBe(ownedInterestHighlights);
+    expect(buildInterestHighlights(selectedEvidence, projection.citationMap))
+      .toEqual(projection.interestHighlights);
+    expect(projectRepeatedReaderSummarySignals(
+      focusedInput.evidence.clusters, selectedEvidence, firstItem, citationIndex,
+    )).toEqual(projection.repeatedSignals);
+    expect(projection.interestHighlights[0]?.citationIds).toEqual(["c1"]);
+    expect(projection.repeatedSignals[0]?.citationIds).toEqual(["c1"]);
+    expect(focusedInput.evidence.clusters).toEqual([repeatedCluster]);
+  });
+
 });
 
 const expectPublished = (
