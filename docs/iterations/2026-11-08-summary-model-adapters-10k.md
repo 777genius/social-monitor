@@ -59,10 +59,20 @@ The [position ledger](2026-11-08-summary-model-adapters-10k-positions.json) and
 | Eligible frozen source files | 84 | Excludes tests, fixtures and generated output. |
 | Frozen physical lines | 15,318 | Includes syntax, types, comments and blanks; not refactoring credit. |
 | Originals changed / unchanged | 78 / 6 | Six unchanged files remain cohesive; changing them solely for credit is unjustified. |
-| Machine-verified positions | 5,565 | Provisional unique original implementation coordinates, not independently accepted meaningful LOC. |
+| Machine-verified positions | 5,561 | Provisional unique original implementation coordinates, not independently accepted meaningful LOC. |
 | Ownership slices / original files represented | 377 / 74 | No duplicate original coordinate; exact specialist evidence is checked. |
 | Maximum positions passing current lexical exclusions | 9,776 | All 84 frozen files, before owner availability, changed-responsibility and semantic discounts. |
 | Requested meaningful original LOC | 10,000 | **Not achieved.** |
+
+The final-source audit on `77eed422` retired three coordinates whose source
+text changed during the safety fixes: `openai-responses-reader-summary-response-parser.ts:30`
+and `openai-promotion-presentation-v3.builder.ts:64,66`. They no longer have
+exact specialist evidence and are not reassigned or credited elsewhere. The
+HTTP diagnostic privacy correction additionally retires
+`openai-responses-summary-model-error.ts:69`, whose raw-body fallback changed.
+The strict audit on corrected source `4c99ed54` passes **5,561 positions / 377
+slices / 74 originals**. Historical results below retain their original counts;
+audit rules are unchanged.
 
 The 9,776 ceiling was calculated by applying the current auditor's exact
 line-exclusion and import-clause rules to every frozen source line, without
@@ -101,26 +111,33 @@ protected checks.
    produced 13 failures before the initial correction, published as
    [b1030cfa](https://github.com/777genius/social-monitor/commit/b1030cfa2e040694f95376863e28fa6eed76f712).
    Subsequent review found that this guard also rejects legitimate
-   `reasoning_text` alongside generated output. The guard and extraction
-   policy are being corrected together; initial regression success is not
-   final acceptance of this boundary.
+   `reasoning_text` alongside generated output. The shared guard/extraction
+   correction is published in
+   [66b231a2](https://github.com/777genius/social-monitor/commit/66b231a2cc93cd8f8d4d52a5aef698011eb63ea7)
+   and passed cross-review. Initial regression success alone did not qualify
+   this boundary.
 3. **Regression and evidence review.** Re-ran affected suites and checked export
    and source provenance. Initial gateway/runtime review found no reproduced
    P0/P1/P2 in its inspected paths. Additional differential passes compared
    344 ordinary/reader/deterministic cases and 59 weekly cases with main
    `876ea247`: accepted output and rejection contracts matched. A later pass
    found a separate V3 presentation defect: raw JSON parse errors can carry
-   provider text into a persisted failure reason. Sanitizing that failure and
-   correcting the OpenAI reasoning-text case remain in progress. Both require
-   negative regression proof and another review before final acceptance.
+   provider text into a persisted failure reason. The sanitized parser and
+   persistence regressions are published in
+   [77eed422](https://github.com/777genius/social-monitor/commit/77eed422e775c0c84aa295df1a782ec66d392a2c)
+   and passed cross-review. Another narrow finding concerns raw non-JSON HTTP
+   bodies entering ordinary-summary failure diagnostics. Its isolated correction
+   [corrected source 4c99ed54](https://github.com/777genius/social-monitor/commit/4c99ed54dabe5a4e3b98b50d6528a8b3ceb50d16)
+   is published and passed 43 targeted tests. Final independent review and
+   source qualification remain outstanding.
 
 ## Executed evidence
 
 Counts overlap across targeted runs; do not add them into a unique-test total.
 An earlier source pass does not qualify a later production change.
 The initial output-admission correction was tested locally and published as
-`b1030cfa`; the rows below describe that equivalent patch, before the two
-subsequent findings above. They do not qualify the corrections now in progress.
+`b1030cfa`; rows for that patch describe the state before subsequent findings.
+Each later result is tied separately to the source it actually examined.
 
 | Surface | Source examined | Executed result |
 | --- | --- | --- |
@@ -132,11 +149,16 @@ subsequent findings above. They do not qualify the corrections now in progress.
 | Differential weekly strict/legacy normalization | main `876ea247` vs initial correction's model graph | **59 cases PASS**: 12 accepted, 47 identical rejections |
 | Backend E2E before output-admission fix integration | `482100e2` | **80 suites / 160 tests PASS** |
 | Source provenance | `482100e2` | **5,565 positions / 377 slices PASS**; no 10k acceptance |
+| Source provenance after generated-text and V3 privacy fixes | `77eed422`, corrected ledger | **5,562 positions / 377 slices PASS**; three inexact coordinates retired |
+| Source provenance including final HTTP privacy correction | `4c99ed54`, corrected ledger | **5,561 positions / 377 slices PASS**; four inexact coordinates retired in total |
+| Cross-review of generated-text and V3 privacy corrections | `66b231a2` and `77eed422` | **PASS** for those corrections; additional HTTP diagnostic finding remains in progress |
+| Ordinary-summary HTTP diagnostic privacy correction | Corrected source `4c99ed54` | **3 suites / 43 tests PASS** for the isolated HTTP patch; independent review and final-source qualification pending |
 | Provenance auditor and AST diagnostic regressions | `482100e2` | **6 tests PASS** |
 | Canonical request identity and V3 request boundaries | `482100e2` | **2 suites / 5 tests PASS** |
 | Core architecture checker and its Node tests | `482100e2` | Core checker and **56 tests PASS**; full `check:architecture` not yet qualified |
-| Final-source typecheck, code quality and full architecture | Final integrated source | **Pending** |
-| Protected full PR CI / post-merge CI | Final reviewed source / merge result | **Pending** |
+| Full local architecture command | Node 22 execution | **PASS**, exit 0; final-source protected CI remains distinct |
+| Final-source typecheck, lint and code quality | Final integrated source | **Pending** |
+| Protected full PR CI / post-merge CI | Final reviewed source / merge result | **Pending**; earlier Ready run [45516307821](https://github.com/777genius/social-monitor/actions/runs/45516307821) is superseded by later fixes and cannot qualify final source |
 
 The gateway and OpenAI suites use deterministic outbound provider/runtime
 fixtures. Backend E2E exercises application/API boundaries but does not prove
@@ -164,11 +186,11 @@ Reproduce targeted Jest with `--config jest.config.ts --runInBand` and these
 - [x] Remove 19 temporary model workflows and register all six provenance-auditor
   and AST regression tests in the canonical architecture command, preserving
   required checks: [ea0332d7](https://github.com/777genius/social-monitor/commit/ea0332d71caec58900d901aef0fa1ef087325664).
-- [ ] Correct the OpenAI guard/extractor treatment of legitimate reasoning text
+- [x] Correct the OpenAI guard/extractor treatment of legitimate reasoning text
   and sanitize V3 JSON parse failures before persistence; prove both fixes with
   negative regressions and another independent review.
-- [ ] Integrate those fixes and required E2E additions, push immediately to #665,
-  and repeat affected checks on the resulting source.
+- [ ] Correct ordinary-summary non-JSON HTTP failure privacy, publish immediately
+  to #665, then repeat affected checks and final-source E2E.
 - [ ] Finish build, TypeScript, full architecture, code quality, source cap,
   runtime profile and affected security/contracts checks.
 - [ ] Record the unmet 10k target and its frozen-scope ceiling in final acceptance;
@@ -196,11 +218,13 @@ do not constitute external review acceptance; refresh them for final source.
 
 ## Remaining size, risk and rollback
 
-Remaining implementation consists of the two reproduced defects above and any
-further concrete findings from their review. Their final production/test LOC
-will be reported after integration; the first correction's size is not an
-estimate for all remaining work. Existing decomposition is complete enough for
-behavioral review, so no volume-driven rewrite is planned.
+The generated-text, V3 privacy and HTTP diagnostic corrections are published.
+The HTTP correction passed targeted tests; final independent review and
+source qualification remain to be recorded.
+Final production/test LOC will be reported after integration; the first
+correction's size is not an estimate for all remaining work. Existing
+decomposition is sufficient for behavioral review; no volume-driven rewrite
+is planned.
 
 Current assessment: integration complexity **7/10**, residual regression risk
 **6/10** until final-source CI completes, confidence in the reviewed model

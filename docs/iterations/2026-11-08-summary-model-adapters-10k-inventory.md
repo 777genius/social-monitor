@@ -2,10 +2,20 @@
 
 **Current audit, 2026-11-25:** baseline `3fa1b9e9ee5bd1302840d1164a975cde3f0eeaba`
 remains **84 original files / 15,318 physical lines**. Strict source provenance
-passes with **5,565 provisional unique positions / 377 slices / 74 originals**.
+on corrected source `4c99ed54`
+passes with **5,561 provisional unique positions / 377 slices / 74 originals**.
 The unchanged lexical exclusions admit at most **9,776 positions** across the
 entire baseline, before semantic discounts; the requested **10,000 meaningful
 original LOC is not achieved**. No scope or accounting rule has been changed.
+
+Final-source audit on `77eed422` retired only three now-inexact coordinates:
+`openai-responses-reader-summary-response-parser.ts:30` and
+`openai-promotion-presentation-v3.builder.ts:64,66`. Generated-text admission
+and sanitized JSON parsing changed those original statements; they are not
+reassigned or replaced with new credit. The final HTTP diagnostic correction
+also retires `openai-responses-summary-model-error.ts:69`, replacing the unsafe
+raw-body fallback. Total retired coordinates: four. Historical counts below
+remain intact.
 
 Use the [completion plan](2026-11-08-summary-model-adapters-10k.md) for current
 scope, review evidence and remaining checks. The baseline table and provenance
