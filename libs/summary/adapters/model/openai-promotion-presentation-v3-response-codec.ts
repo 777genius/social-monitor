@@ -1,5 +1,14 @@
 import { record } from "./openai-promotion-presentation-v3-response-contract";
 
+/** Parser diagnostics must not carry provider text into persisted failures. */
+export const parsePresentationJson = (text: string): unknown => {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new SyntaxError("V3 presentation response must be valid JSON");
+  }
+};
+
 export const boundedResponseText = async (response: Response): Promise<string> => {
   const reader = response.body?.getReader();
   if (reader === undefined) throw new Error("V3 presentation response is missing");

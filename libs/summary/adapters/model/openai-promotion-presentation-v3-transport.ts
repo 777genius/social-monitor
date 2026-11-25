@@ -1,7 +1,7 @@
 import type { ReaderPostPresentationV3Input } from "../../domain/services/reader-post-presentation-v3";
 import { presentationInstructions, presentationSchema } from "./openai-promotion-presentation-v3-schema";
 import { validatedPresentationRoot } from "./openai-promotion-presentation-v3-response-contract";
-import { boundedResponseText, outputText } from "./openai-promotion-presentation-v3-response-codec";
+import { boundedResponseText, outputText, parsePresentationJson } from "./openai-promotion-presentation-v3-response-codec";
 
 type PresentationV3Fetch = (
   input: string | URL,
@@ -46,8 +46,8 @@ export const fetchOpenAiPresentationV3Proposals = async (params: {
     body: params.requestBody,
   });
   if (!response.ok) throw new Error(`V3 presentation failed with HTTP ${response.status}`);
-  const payload = JSON.parse(await boundedResponseText(response)) as Record<string, unknown>;
+  const payload = parsePresentationJson(await boundedResponseText(response)) as Record<string, unknown>;
   const text = outputText(payload);
-  const parsed: unknown = JSON.parse(text);
+  const parsed = parsePresentationJson(text);
   return validatedPresentationRoot(parsed, params.inputs);
 };
