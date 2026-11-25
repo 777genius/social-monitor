@@ -67,6 +67,30 @@ describe("daily cursor fixture cleanup", () => {
     await expect(endDailyCursorFixturePool(new Pool({ min: 0, max: 1 }))).resolves.toBeUndefined();
   });
 
+  it("waits for every released client in the publication runtime pool", async () => {
+    const pool = new Pool({ Client: WireClient, min: 0, max: 2 } as unknown as PoolConfig);
+    const first = await pool.connect();
+    const second = await pool.connect();
+    first.release();
+    second.release();
+    expect(pool.idleCount).toBe(2);
+    const trace: string[] = [];
+    const close = endDailyCursorFixturePool(pool).then(() => { trace.push("drop fixture"); });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(pool.totalCount).toBe(0);
+    const firstWire = first as unknown as WireClient;
+    const secondWire = second as unknown as WireClient;
+    expect(firstWire.disconnect).toBeDefined();
+    expect(secondWire.disconnect).toBeDefined();
+    firstWire.disconnect!();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(trace).toEqual([]);
+    secondWire.disconnect!();
+    await close;
+    expect(trace).toEqual(["drop fixture"]);
+    expect(pool.listenerCount("remove")).toBe(0);
+  });
+
   it("does not swallow unexpected idle connection errors", async () => {
     const { pool, wire } = await idleFixture();
     const error = Object.assign(new Error("unexpected connection error"), { code: "08006" });
