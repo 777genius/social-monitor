@@ -10,15 +10,24 @@ import { OpenAiPromotionPresentationV3Builder } from
 
 const invalidJson = '{"draft":PRIVATE_SYNTHETIC_SOURCE_FRAGMENT}';
 const responses = [
-  ["HTTP envelope", invalidJson],
-  ["generated output", JSON.stringify({ status: "completed", output: [{
+  ["malformed HTTP envelope", invalidJson, "V3 presentation response must be valid JSON"],
+  ["malformed generated output", JSON.stringify({ status: "completed", output: [{
     type: "message", role: "assistant", status: "completed",
     content: [{ type: "output_text", text: invalidJson }],
-  }] })],
+  }] }), "V3 presentation response must be valid JSON"],
+  ["refused presentation", JSON.stringify({ status: "completed", output: [{
+    type: "message", role: "assistant", status: "completed",
+    content: [{ type: "output_text", text: JSON.stringify({ presentations: [{
+      candidateId: candidate(1, "useful", "central").id,
+      status: "available", kind: "claim", text: "Useful method",
+      support: [{ field: "bodyPreview", start: 0, end: 12, quote: "Useful body " }],
+      qualifications: [], confidence: 0.9, qualificationJudgment: "none",
+    }] }) }, { type: "refusal", refusal: "PRIVATE_SYNTHETIC_SOURCE_FRAGMENT" }],
+  }] }), "V3 presentation did not complete"],
 ] as const;
 
 describe("OpenAI V3 presentation failure privacy", () => {
-  it.each(responses)("redacts malformed %s before persisting a dependency failure", async (_stage, body) => {
+  it.each(responses)("rejects %s before persisting a dependency failure", async (_stage, body, failureReason) => {
     const fetchFn = jest.fn(async () => new Response(body));
     const presentation = new OpenAiPromotionPresentationV3Builder({
       apiKey: "fixture", fetchFn,
@@ -44,7 +53,7 @@ describe("OpenAI V3 presentation failure privacy", () => {
     });
     expect(stored?.toSnapshot()).toMatchObject({
       status: "failed", terminalFailureCode: "presentation_dependency_unavailable",
-      failureReason: "V3 presentation response must be valid JSON",
+      failureReason,
     });
     expect(JSON.stringify(stored?.toSnapshot())).not.toContain("PRIVATE");
     expect(JSON.stringify(result)).not.toContain("PRIVATE");
