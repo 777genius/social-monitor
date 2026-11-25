@@ -69,10 +69,11 @@ export const buildDeterministicReaderSummaryStoryProjection = ({
   const interestHighlights = input.policy.includeInterestHighlights
     ? buildInterestHighlightsWithIndex(selectedEvidence, citationIdsByFeedItemId)
     : [];
+  // Repeated clusters can include Additional stories outside the Top selection.
   const repeatedSignals = input.policy.includeRepeatedSignals
     ? projectRepeatedReaderSummarySignals(
         input.evidence.clusters,
-        selectedEvidence,
+        citedEvidence,
         firstItem,
         citationIdsByFeedItemId,
       )
