@@ -87,6 +87,12 @@ it.each(["old version/new digest", "new version/old digest", "current receipt/ol
     if (kind === "current receipt/old attestation") Object.assign(result.executionAttestation!, old);
     if (kind === "old receipt/current attestation") Object.assign(receipt.transport, old);
     expect(() => checkReceiptBinding(manifest, receipt)).toThrow();
+    // Retained mode admits both complete SDK pairs, never a crossed pair or
+    // different valid installations in the receipt and its attestation.
+    expect(() => checkReceiptBinding(manifest, receipt, "retained")).toThrow(
+      kind === "old version/new digest" || kind === "new version/old digest"
+        ? "Gateway SDK identity mismatch" : "Runtime installation changed",
+    );
   });
 it.each(["canonical", "output", "sdk", "profile", "requestRef", "executionRef", "observedModel", "cliLabel"])(
   "rejects changed gateway %s proof", (kind) => {
