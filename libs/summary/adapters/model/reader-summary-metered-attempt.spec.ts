@@ -1,0 +1,113 @@
+import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
+import type { ReaderSummaryModelRoute } from "../../ports";
+import { attachFailedDailyEditorUsage, readFailedDailyEditorUsage } from "./reader-summary-failed-daily-editor-usage";
+import { meterReaderSummaryAttempt } from "./reader-summary-metered-attempt";
+
+const route = { model: "synthetic-model", provider: "codex" } as ReaderSummaryModelRoute;
+const usage = { inputTokens: 7, outputTokens: 5, estimatedCostUsd: 0.2 };
+
+it("keeps the success status, usage and original result", async () => {
+  const metrics = new InMemoryMetricsRecorder();
+  const result = { usage };
+  await expect(meterReaderSummaryAttempt({
+    metrics, route, execute: async () => result,
+    usageOnSuccess: (attempt) => attempt.usage,
+    classifyFailure: () => "unused",
+  })).resolves.toBe(result);
+  expect(metrics.counters("summary_model_requests_total").map((entry) => entry.labels.status))
+    .toEqual(["started", "succeeded"]);
+  expect(metrics.counterValue("summary_model_tokens_total", {
+    job_type: "reader_summary", model: route.model, provider: route.provider, token_type: "input",
+  })).toBe(7);
+  expect(metrics.counterValue("summary_model_estimated_cost_usd", {
+    job_type: "reader_summary", model: route.model, provider: route.provider,
+  })).toBeCloseTo(0.2);
+});
+
+it("records spent daily-editor usage and rethrows the identical frozen failure", async () => {
+  const metrics = new InMemoryMetricsRecorder();
+  const error = Object.freeze(new Error("rejected daily plan"));
+  attachFailedDailyEditorUsage(error, usage);
+  const usageOnSuccess = jest.fn(() => usage);
+  const classifyFailure = jest.fn(() => "invalid_schema");
+  await expect(meterReaderSummaryAttempt({
+    metrics, route, execute: async () => { throw error; },
+    usageOnSuccess, classifyFailure, failedUsage: readFailedDailyEditorUsage,
+  })).rejects.toBe(error);
+  expect(usageOnSuccess).not.toHaveBeenCalled();
+  expect(classifyFailure).toHaveBeenCalledWith(error);
+  expect(metrics.counters("summary_model_requests_total").map((entry) => entry.labels.status))
+    .toEqual(["started", "failed"]);
+  expect(metrics.counters("summary_model_requests_total")[1]?.labels.failure_kind).toBe("invalid_schema");
+  expect(metrics.counterValue("summary_model_tokens_total", {
+    job_type: "reader_summary", model: route.model, provider: route.provider, token_type: "output",
+  })).toBe(5);
+});
+
+it("never infers token cost from an unattested generation failure", async () => {
+  const metrics = new InMemoryMetricsRecorder();
+  const error = new Error("provider timeout");
+  await expect(meterReaderSummaryAttempt({
+    metrics, route, execute: async () => { throw error; },
+    usageOnSuccess: () => { throw new Error("must not record success"); },
+    classifyFailure: () => "provider_unavailable",
+  })).rejects.toBe(error);
+  expect(metrics.counters("summary_model_tokens_total")).toHaveLength(0);
+  expect(metrics.counters("summary_model_estimated_cost_usd")).toHaveLength(0);
+  expect(metrics.counters("summary_model_requests_total").map((entry) => entry.labels.status))
+    .toEqual(["started", "failed"]);
+});
+
+it("records exactly one successful attempt for zero-token usage without inventing tokens", async () => {
+  const metrics = new InMemoryMetricsRecorder();
+  const result = { usage: { inputTokens: 0, outputTokens: 0, estimatedCostUsd: 0 } };
+  const usageOnSuccess = jest.fn((attempt: typeof result) => attempt.usage);
+  await expect(meterReaderSummaryAttempt({
+    metrics, route, execute: async () => result,
+    usageOnSuccess, classifyFailure: () => "unused",
+  })).resolves.toBe(result);
+  expect(usageOnSuccess).toHaveBeenCalledTimes(1);
+  expect(metrics.counters("summary_model_requests_total").map((entry) => entry.labels.status))
+    .toEqual(["started", "succeeded"]);
+  expect(metrics.counterValue("summary_model_tokens_total", {
+    job_type: "reader_summary", model: route.model, provider: route.provider, token_type: "input",
+  })).toBe(0);
+  expect(metrics.counterValue("summary_model_estimated_cost_usd", {
+    job_type: "reader_summary", model: route.model, provider: route.provider,
+  })).toBe(0);
+});
+
+it("preserves unknown token usage as unknown rather than billing fabricated tokens", async () => {
+  const metrics = new InMemoryMetricsRecorder();
+  const result = { usage: { inputTokens: null, outputTokens: null, estimatedCostUsd: 0.15 } };
+  await expect(meterReaderSummaryAttempt({
+    metrics, route, execute: async () => result,
+    usageOnSuccess: (attempt) => attempt.usage,
+    classifyFailure: () => "unused",
+  })).resolves.toBe(result);
+  expect(metrics.counters("summary_model_tokens_total")).toHaveLength(0);
+  expect(metrics.counterValue("summary_model_estimated_cost_usd", {
+    job_type: "reader_summary", model: route.model, provider: route.provider,
+  })).toBeCloseTo(0.15);
+  expect(metrics.counters("summary_model_requests_total").map((entry) => entry.labels.status))
+    .toEqual(["started", "succeeded"]);
+});
+
+it("keeps generation success unrecorded if usage projection rejects its result", async () => {
+  const metrics = new InMemoryMetricsRecorder();
+  const failure = Object.freeze(new Error("unreadable generation usage"));
+  const result = {
+    get usage(): never { throw failure; },
+  };
+  const classifyFailure = jest.fn(() => "invalid_schema");
+  await expect(meterReaderSummaryAttempt({
+    metrics, route, execute: async () => result,
+    usageOnSuccess: (attempt) => attempt.usage,
+    classifyFailure,
+  })).rejects.toBe(failure);
+  expect(classifyFailure).toHaveBeenCalledWith(failure);
+  expect(metrics.counters("summary_model_requests_total").map((entry) => entry.labels.status))
+    .toEqual(["started", "failed"]);
+  expect(metrics.counters("summary_model_tokens_total")).toHaveLength(0);
+  expect(metrics.counters("summary_model_estimated_cost_usd")).toHaveLength(0);
+});

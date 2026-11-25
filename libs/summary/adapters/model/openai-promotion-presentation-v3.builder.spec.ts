@@ -3,6 +3,8 @@ import { READER_POST_PRESENTATION_V3_MAX_REQUEST_BYTES,
   "../../domain/services/reader-post-presentation-v3";
 import { OpenAiPromotionPresentationV3Builder } from
   "./openai-promotion-presentation-v3.builder";
+import { dispatchOpenAiPromotionPresentationBatch } from
+  "./openai-promotion-presentation-v3-batch-admission";
 
 const input = (index: number): ReaderPostPresentationV3Input => ({
   tenantId: "tenant", workspaceId: "workspace", interestId: "interest",
@@ -40,6 +42,37 @@ describe("OpenAI Promotion V3 presentation builder", () => {
     expect(fetchFn).toHaveBeenCalledTimes(2);
     expect(requestSizes.every((size) =>
       size <= READER_POST_PRESENTATION_V3_MAX_REQUEST_BYTES)).toBe(true);
+  });
+
+  it("fails closed on a mixed-scope batch before HTTP dispatch", async () => {
+    const fetchFn = jest.fn(async () => presentationResponse([]));
+    const builder = new OpenAiPromotionPresentationV3Builder({ apiKey: "fixture", fetchFn });
+    for (const second of [
+      { ...input(2), tenantId: "other-tenant" },
+      { ...input(2), workspaceId: "other-workspace" },
+    ]) {
+      await expect(builder.build([input(1), second]))
+        .rejects.toThrow("V3 presentation batch mixes tenant or workspace scopes");
+    }
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it("rejects direct admission of mixed-scope evidence before creating an HTTP request", async () => {
+    const buildSubset = jest.fn(async () => []);
+    const executeWithinBudget = jest.fn(async () => []);
+    for (const other of [
+      { ...input(2), tenantId: "another-tenant" },
+      { ...input(2), workspaceId: "another-workspace" },
+    ]) {
+      await expect(dispatchOpenAiPromotionPresentationBatch({
+        inputs: [input(1), other],
+        model: "gpt-5.4-mini",
+        buildSubset,
+        executeWithinBudget,
+      })).rejects.toThrow("V3 presentation batch mixes tenant or workspace scopes");
+    }
+    expect(buildSubset).not.toHaveBeenCalled();
+    expect(executeWithinBudget).not.toHaveBeenCalled();
   });
 
   it("rejects an oversized response body", async () => {
@@ -100,6 +133,73 @@ describe("OpenAI Promotion V3 presentation builder", () => {
     await expect(builder.build([{ ...input(1), body: "body" },
       { ...input(2), body: "body" }])).rejects.toThrow(/presentation/u);
   });
+  it("preserves the OpenAI wire format, isolated transport and exact request scope", async () => {
+    let sentEndpoint: string | URL | undefined;
+    let sentInit: RequestInit | undefined;
+    const fetchFn = jest.fn(async (endpoint: string | URL, init?: RequestInit) => {
+      sentEndpoint = endpoint;
+      sentInit = init;
+      return presentationResponse([proposal("candidate-1")]);
+    });
+    const builder = new OpenAiPromotionPresentationV3Builder({
+      apiKey: "test-openai-key",
+      endpointUrl: "https://example.test/v1/responses",
+      model: "gpt-5.4-mini",
+      fetchFn,
+    });
+    await expect(builder.build([{ ...input(1), body: "Source body" }]))
+      .resolves.toEqual([{ status: "unavailable", reason: "insufficient_support" }]);
+
+    const sentBody = JSON.parse(String(sentInit?.body)) as {
+      readonly model: string;
+      readonly store: boolean;
+      readonly max_output_tokens: number;
+      readonly instructions: string;
+      readonly input: string;
+      readonly text: { readonly format: {
+        readonly type: string;
+        readonly name: string;
+        readonly strict: boolean;
+      } };
+    };
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(sentEndpoint).toBe("https://example.test/v1/responses");
+    expect(sentInit?.method).toBe("POST");
+    expect(sentInit?.headers).toEqual({
+      authorization: "Bearer test-openai-key", "content-type": "application/json",
+    });
+    expect(sentInit?.signal).toBeInstanceOf(AbortSignal);
+    expect(sentBody).toMatchObject({
+      model: "gpt-5.4-mini", store: false, max_output_tokens: 2_400,
+      text: { format: { type: "json_schema",
+        name: "reader_post_presentation_v3", strict: true } },
+    });
+    expect(sentBody.instructions).toBe(
+      "Create a short reader headline for every candidate using only its exact title and sourceText. Preserve every material qualification. Return unavailable when support is insufficient. Evidence offsets are JavaScript UTF-16 offsets into title or the complete sourceText, named bodyPreview. Never use outside knowledge, popularity, prior scores, or candidate order.",
+    );
+    expect(JSON.parse(sentBody.input)).toEqual({
+      candidates: [{ candidateId: "candidate-1", title: "title-1", sourceText: "Source body" }],
+    });
+  });
+
+  it("rejects non-success HTTP transport results before decoding output", async () => {
+    const builder = new OpenAiPromotionPresentationV3Builder({
+      apiKey: "fixture",
+      fetchFn: async () => new Response("untrusted", { status: 503 }),
+    });
+    await expect(builder.build([{ ...input(1), body: "Source body" }]))
+      .rejects.toThrow("V3 presentation failed with HTTP 503");
+  });
+
+  it("fails closed on incomplete provider envelopes", async () => {
+    const builder = new OpenAiPromotionPresentationV3Builder({
+      apiKey: "fixture",
+      fetchFn: async () => new Response(JSON.stringify({ status: "incomplete", output: [] })),
+    });
+    await expect(builder.build([{ ...input(1), body: "Source body" }]))
+      .rejects.toThrow("V3 presentation did not complete");
+  });
+
 });
 
 function proposal(candidateId: string) { return { candidateId, status: "unavailable",

@@ -334,15 +334,29 @@ describe("AgentRuntimePromotionPresentationV3Builder", () => {
     expect(client.commands[0]?.prompt).not.toContain(input.trustedIntent);
   });
 
-  it("keeps the canonical Codex wire for gpt-6.1-sol/low on the gateway transport", async () => {
+  it("defaults the presentation gateway to Terra/medium with the canonical Codex wire", async () => {
     const client = new PresentationRuntimeClient();
     const builder = new AgentRuntimePromotionPresentationV3Builder(
       resolveAgentRuntimePromotionPresentationV3BuilderOptions({
         AGENT_RUNTIME_TRANSPORT: "gateway-llm",
         AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
-        AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-6.1-sol",
+      }, client));
+    expect((await builder.build([fixtureInput()]))[0]).toMatchObject({ status: "available" });
+    expect(client.commands[0]?.controls).toEqual(expect.objectContaining({
+      model: "gpt-6.1-terra", reasoningEffort: "medium" }));
+    expect(client.commands[0]?.controls).not.toHaveProperty("modelBackend");
+  });
+
+  it("keeps the canonical Codex wire for explicitly selected gpt-6.1-sol/low on the gateway transport", async () => {
+    const client = new PresentationRuntimeClient();
+    const builder = new AgentRuntimePromotionPresentationV3Builder(
+      resolveAgentRuntimePromotionPresentationV3BuilderOptions({
+        AGENT_RUNTIME_TRANSPORT: "gateway-llm",
+        AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
         AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.6-sol",
         AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "high",
+        AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-6.1-sol",
+        AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "low",
       }, client));
     expect((await builder.build([fixtureInput()]))[0]).toMatchObject({ status: "available" });
     expect(client.commands[0]?.controls).toEqual(expect.objectContaining({

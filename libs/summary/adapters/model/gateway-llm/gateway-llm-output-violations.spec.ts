@@ -42,4 +42,30 @@ describe("collectOutputViolations", () => {
     expect(collectOutputViolations(toGatewayOutputSchema(openAiReaderSummaryJsonSchema as unknown as Node), many, 3))
       .toHaveLength(3);
   });
+
+  it("preserves nullable branch and referenced-array diagnostics across traversal", () => {
+    const nullable = { anyOf: [{ type: "string", maxLength: 2 }, { type: "null" }] };
+    expect(collectOutputViolations(nullable, "overflow")).toEqual(["$:maxLength=2"]);
+    expect(collectOutputViolations(nullable, null)).toEqual([]);
+
+    const referenced = { type: "array", items: { $ref: "#/$defs/token" },
+      $defs: { token: { type: "string", maxLength: 1 } } };
+    expect(collectOutputViolations(referenced, ["x", "private provider payload"]))
+      .toEqual(["$[1]:maxLength=1"]);
+  });
+
+  it("retains deterministic limits, schema-only paths and immutable input behavior", () => {
+    const output = Object.freeze({ expected: "private provider payload", invented: "do not echo" });
+    const schema = Object.freeze({ type: "object", additionalProperties: false,
+      required: ["expected"], properties: Object.freeze({
+        expected: Object.freeze({ type: "string", maxLength: 2 }),
+      }) });
+    expect(collectOutputViolations(schema, output, 0)).toEqual([]);
+    expect(collectOutputViolations(schema, output, 1)).toEqual(["$.expected:maxLength=2"]);
+    const findings = collectOutputViolations(schema, output, 2);
+    expect(findings).toEqual(["$.expected:maxLength=2", "$:additionalProperties"]);
+    expect(findings.every((entry) => safeOutputViolationPattern.test(entry))).toBe(true);
+    expect(JSON.stringify(findings)).not.toMatch(/private|provider|invented|echo/u);
+    expect(output.expected).toBe("private provider payload");
+  });
 });

@@ -254,9 +254,25 @@ describe("AgentRuntimeReaderSummaryTopicLabeler", () => {
         nodeLabels: [{ ...mimoOutput.nodeLabels[0], keywords: undefined }] },
       warnings: [],
     });
+    const invalidOutputSink = { record: jest.fn() };
     await expect(new AgentRuntimeReaderSummaryTopicLabeler({
       ...mimoOptions, client: invalidMimo,
+      verifiedAttestationSink: invalidOutputSink,
     }).label(input)).rejects.toThrow("purpose schema");
+    expect(invalidOutputSink.record).not.toHaveBeenCalled();
+
+    const failingReceiptSink = {
+      record: jest.fn(async () => {
+        throw new Error("topic label receipt unavailable");
+      }),
+    };
+    await expect(new AgentRuntimeReaderSummaryTopicLabeler({
+      ...mimoOptions, client: mimoClient,
+      verifiedAttestationSink: failingReceiptSink,
+    }).label(input)).rejects.toThrow("topic label receipt unavailable");
+    expect(failingReceiptSink.record).toHaveBeenCalledWith(
+      expect.objectContaining({ taskRole: "topic_label", attempt: "1" }),
+    );
     const extraField = new CapturingAgentRuntimeClient({
       status: "completed", structuredOutput: { ...mimoOutput, unrelated: true },
       warnings: [],

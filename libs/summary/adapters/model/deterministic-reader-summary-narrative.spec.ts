@@ -4,6 +4,7 @@ import type {
   ReaderSummaryModelInput,
 } from "../../ports";
 import { buildDeterministicReaderSummaryNarrative } from "./deterministic-reader-summary-narrative";
+import { buildDeterministicReaderLeadSection } from "./deterministic-reader-summary-lead-section";
 
 type DraftCitation =
   ProviderReaderSummaryAttempt["draft"]["citationMap"][number];
@@ -59,6 +60,130 @@ describe("buildDeterministicReaderSummaryNarrative", () => {
         .map((section) => section.citationIds),
     ).toEqual([["c3"], ["c4"], ["c5"]]);
   });
+
+  it("keeps secondary order, selected story copy and strictly grounded citations", () => {
+    const lead = planItem("lead", ["lead-feed"], ["rss"]);
+    const secondary = [
+      planItem("secondary-1", ["feed-1"], ["rss"]),
+      planItem("secondary-2", ["feed-2"], ["rss"]),
+      { ...planItem("secondary-3", ["feed-3"], ["rss"]), whyImportant: [] },
+    ];
+    const sections = buildDeterministicReaderSummaryNarrative({
+      input: {
+        coveragePlan: { mode: "daily_synthesis", lead, secondary },
+      } as unknown as ReaderSummaryModelInput,
+      executiveSummary: "A concise synthetic lead.",
+      citationMap: [citation("trusted-citation", "feed-1", "rss")],
+      topStories: [
+        {
+          storyClusterId: "secondary-1",
+          title: "Selected top-story title",
+          summary: "Selected top-story summary",
+        },
+      ] as unknown as ProviderReaderSummaryAttempt["draft"]["topStories"],
+    });
+
+    expect(sections.slice(1)).toEqual([
+      {
+        id: "narrative-deterministic-secondary-1",
+        kind: "secondary_signal",
+        title: "Selected top-story title",
+        text: "Selected top-story summary",
+        citationIds: ["trusted-citation"],
+        storyClusterId: "secondary-1",
+      },
+      {
+        id: "narrative-deterministic-secondary-2",
+        kind: "secondary_signal",
+        title: "Additional monitored signal 2",
+        text: "Relevant monitored signal",
+        citationIds: [],
+        storyClusterId: "secondary-2",
+      },
+      {
+        id: "narrative-deterministic-secondary-3",
+        kind: "secondary_signal",
+        title: "Additional monitored signal 3",
+        text: "A distinct monitored signal also appeared in this window.",
+        citationIds: [],
+        storyClusterId: "secondary-3",
+      },
+    ]);
+  });
+
+  it("never includes secondary material on the single-story route", () => {
+    const lead = planItem("lead", ["lead-feed"], ["rss"]);
+    const sections = buildDeterministicReaderSummaryNarrative({
+      input: {
+        coveragePlan: {
+          mode: "single_story",
+          lead,
+          secondary: [planItem("unrelated", ["other"], ["rss"])],
+        },
+      } as unknown as ReaderSummaryModelInput,
+      executiveSummary: "One synthetic lead.",
+      citationMap: [citation("lead-citation", "lead-feed", "rss")],
+      topStories: [],
+    });
+    expect(sections).toHaveLength(1);
+    expect(sections[0]).toMatchObject({
+      kind: "lead",
+      storyClusterId: "lead",
+      citationIds: ["lead-citation"],
+    });
+  });
+  it("isolates daily lead projection without attributing a single cluster", () => {
+    const lead = Object.freeze(planItem("lead", ["synthetic-feed"], ["rss"]));
+    const citationIds = Object.freeze(["trusted-citation"]);
+    const input = { coveragePlan: {
+      mode: "daily_synthesis",
+      lead,
+      secondary: [],
+    } as ReaderSummaryModelInput["coveragePlan"] };
+    const section = buildDeterministicReaderLeadSection({
+      input,
+      executiveSummary: "A concise daily synthesis.",
+      lead,
+      leadStory: {
+        storyClusterId: "lead",
+        title: "Story-specific title",
+      } as ProviderReaderSummaryAttempt["draft"]["topStories"][number],
+      leadCitationIds: citationIds,
+    });
+    expect(section).toEqual({
+      id: "narrative-deterministic-lead",
+      kind: "lead",
+      title: "Daily synthesis",
+      text: "A concise daily synthesis.",
+      citationIds: ["trusted-citation"],
+    });
+    expect(citationIds).toEqual(["trusted-citation"]);
+    expect(lead.clusterId).toBe("lead");
+  });
+
+  it("isolates single-story lead identity, title and empty citation fallback", () => {
+    const lead = planItem("lead", ["synthetic-feed"], ["rss"]);
+    const section = buildDeterministicReaderLeadSection({
+      input: { coveragePlan: {
+        mode: "single_story",
+        lead,
+        secondary: [],
+      } as ReaderSummaryModelInput["coveragePlan"] },
+      executiveSummary: "A single grounded story.",
+      lead,
+      leadStory: undefined,
+      leadCitationIds: [],
+    });
+    expect(section).toEqual({
+      id: "narrative-deterministic-lead",
+      kind: "lead",
+      title: "Main signal",
+      text: "A single grounded story.",
+      citationIds: [],
+      storyClusterId: "lead",
+    });
+  });
+
 });
 
 const planItem = (
