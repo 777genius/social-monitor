@@ -1,4 +1,5 @@
 import { asRecord } from "./openai-responses-summary-json";
+import { isOpenAiGeneratedTextContent } from "./openai-responses-completion-state";
 
 export const extractOpenAiSummaryOutputText = (
   responseJson: Record<string, unknown>,
@@ -37,6 +38,7 @@ export const extractOpenAiSummaryOutputText = (
       }
 
       if (
+        isOpenAiGeneratedTextContent(outputRecord, contentRecord, responseJson.status === 'completed') &&
         typeof contentRecord.text === 'string' &&
         contentRecord.text.trim().length > 0
       ) {

@@ -9,6 +9,16 @@ const record = (value: unknown): Record<string, unknown> | undefined =>
     ? value as Record<string, unknown> : undefined;
 const present = (value: unknown): boolean => value !== null && value !== undefined;
 
+/** Shared message selection for admission and both legacy text decoders. */
+export const isOpenAiGeneratedTextContent = (
+  output: Readonly<Record<string, unknown>>,
+  content: Readonly<Record<string, unknown>>,
+  requireTypes: boolean,
+): boolean =>
+  (output.type === "message" || (!requireTypes && output.type === undefined)) &&
+  (output.role === undefined || output.role === "assistant") &&
+  (content.type === "output_text" || (!requireTypes && content.type === undefined));
+
 export const openAiResponsesCompletionIssue = (
   response: Readonly<Record<string, unknown>>,
 ): OpenAiResponsesCompletionIssue | null => {
@@ -34,16 +44,16 @@ export const openAiResponsesCompletionIssue = (
       if (content === undefined) continue;
       if (content.type === "error" || present(content.error)) return "error";
       if (content.type === "refusal" || present(content.refusal)) return "refusal";
-      // Legacy decoders read any nonempty text field. Admit only generated
-      // assistant text before those decoders can interpret input or reasoning
-      // as a draft; retain the historical untyped, statusless fixture shape.
-      if (typeof content.text === "string" && content.text.trim().length > 0 && (
-        (content.type !== undefined && content.type !== "output_text") ||
-        (output.type !== undefined && output.type !== "message") ||
-        (output.role !== undefined && output.role !== "assistant") ||
-        (response.status === "completed" &&
-          (content.type !== "output_text" || output.type !== "message"))
-      )) return "not_completed";
+      // Responses permits reasoning_text metadata before the assistant message.
+      // Validate its shape without counting or decoding it as generated output.
+      if (output.type === "reasoning" && content.type === "reasoning_text") {
+        if (typeof content.text !== "string") return "not_completed";
+        continue;
+      }
+      if (typeof content.text === "string" && content.text.trim().length > 0 &&
+        !isOpenAiGeneratedTextContent(output, content, response.status === "completed")) {
+        return "not_completed";
+      }
       if (content.type === "output_text") {
         if (typeof content.text !== "string" || content.text.trim().length === 0) {
           return "not_completed";

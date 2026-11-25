@@ -4,6 +4,8 @@ import { openAiResponsesCompletionIssue } from "./openai-responses-completion-st
 import { readOpenAiDailyEditorialResponse } from "./openai-responses-reader-summary-daily-editor-response";
 import { completeOpenAiReaderSummaryAttempt } from "./openai-responses-reader-summary-response-policy";
 import { completeOpenAiSummaryAttempt } from "./openai-responses-summary-attempt-completion";
+import { extractOpenAiOutputText } from "./openai-responses-reader-summary-output-text";
+import { extractOpenAiSummaryOutputText } from "./openai-responses-summary-output-text";
 
 const text = '{"headline":"Synthetic text is not proof of generated output"}';
 const responseWith = (output: Record<string, unknown>) => ({
@@ -14,7 +16,8 @@ const invalidOutput = [
   ["input text", { type: "message", content: [{ type: "input_text", text }] }],
   ["unknown content", { type: "message", content: [{ type: "future_content", text }] }],
   ["untyped content", { type: "message", content: [{ text }] }],
-  ["reasoning text", { type: "reasoning", content: [{ type: "output_text", text }] }],
+  ["misplaced output text in reasoning", { type: "reasoning", content: [{ type: "output_text", text }] }],
+  ["malformed reasoning text", { type: "reasoning", content: [{ type: "reasoning_text", text: 12 }] }],
   ["untyped output", { content: [{ type: "output_text", text }] }],
   ["user message", { type: "message", role: "user", content: [{ type: "output_text", text }] }],
 ] as const;
@@ -71,5 +74,36 @@ describe("generated OpenAI output admission", () => {
     })).toBeNull();
     expect(openAiResponsesCompletionIssue({ output: [{ content: [{ text }] }] })).toBeNull();
     expect(openAiResponsesCompletionIssue({ output_text: text })).toBeNull();
+  });
+
+  it.each([undefined, "", text])("selects generated text after legitimate reasoning content with aggregate %p", (aggregate) => {
+    const response = {
+      status: "completed",
+      ...(aggregate === undefined ? {} : { output_text: aggregate }),
+      output: [
+        { type: "function_call", status: "completed", arguments: '{"synthetic":true}' },
+        { type: "reasoning", status: "completed", summary: [],
+          content: [{ type: "reasoning_text", text: "Synthetic reasoning metadata" }] },
+        { type: "message", role: "assistant", status: "completed",
+          content: [{ type: "output_text", text }] },
+      ],
+    };
+    expect(openAiResponsesCompletionIssue(response)).toBeNull();
+    expect(extractOpenAiSummaryOutputText(response)).toBe(text);
+    expect(extractOpenAiOutputText(response)).toBe(text);
+  });
+
+  it("never treats reasoning-only text as generated summary output", () => {
+    const response = responseWith({ type: "reasoning", status: "completed", summary: [],
+      content: [{ type: "reasoning_text", text }] });
+    expect(openAiResponsesCompletionIssue(response)).toBeNull();
+    expect(extractOpenAiSummaryOutputText(response)).toBeUndefined();
+    expect(extractOpenAiOutputText(response)).toBeUndefined();
+  });
+
+  it("still rejects refusal fields attached to reasoning content", () => {
+    expect(openAiResponsesCompletionIssue(responseWith({
+      type: "reasoning", content: [{ type: "reasoning_text", text, refusal: "synthetic" }],
+    }))).toBe("refusal");
   });
 });
