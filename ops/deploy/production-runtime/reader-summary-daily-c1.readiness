@@ -1,4 +1,0 @@
-schemaVersion=reader_summary.daily_delivery_readiness.c1
-state=READY
-requires=H_GREEN,C0_GREEN,C1_SCAN_TERMINAL_REPAIR_GREEN
-activation=reviewed

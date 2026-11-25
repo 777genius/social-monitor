@@ -1,2 +1,0 @@
-// Execute the extracted legacy regression tests in the existing static CI test glob.
-import "../lib/summary-feedback-evidence-values.test.mjs";

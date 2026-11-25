@@ -60,7 +60,8 @@ export const readOpenAiResponseBody = async (
   try {
     return JSON.parse(text);
   } catch {
-    return { error: { message: text } };
+    // Raw provider text must not become a persisted or public failure message.
+    return { error: {} };
   }
 };
 
