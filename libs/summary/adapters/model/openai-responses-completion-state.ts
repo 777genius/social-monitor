@@ -34,6 +34,16 @@ export const openAiResponsesCompletionIssue = (
       if (content === undefined) continue;
       if (content.type === "error" || present(content.error)) return "error";
       if (content.type === "refusal" || present(content.refusal)) return "refusal";
+      // Legacy decoders read any nonempty text field. Admit only generated
+      // assistant text before those decoders can interpret input or reasoning
+      // as a draft; retain the historical untyped, statusless fixture shape.
+      if (typeof content.text === "string" && content.text.trim().length > 0 && (
+        (content.type !== undefined && content.type !== "output_text") ||
+        (output.type !== undefined && output.type !== "message") ||
+        (output.role !== undefined && output.role !== "assistant") ||
+        (response.status === "completed" &&
+          (content.type !== "output_text" || output.type !== "message"))
+      )) return "not_completed";
       if (content.type === "output_text") {
         if (typeof content.text !== "string" || content.text.trim().length === 0) {
           return "not_completed";
