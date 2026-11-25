@@ -11,27 +11,153 @@ import {
   AgentRuntimeSummaryModelAdapter,
   resolveAgentRuntimeSummaryModelOptions,
 } from "./agent-runtime-summary-model.adapter";
+import { resolveAgentRuntimeSummaryRuntimeSettings } from "./agent-runtime-summary-runtime-settings";
+import { interpretAgentRuntimeSummaryTaskResult } from "./agent-runtime-summary-result-interpretation";
 import { gatewayModelTaskFixture } from "../composition/gateway-model-task.spec-support";
 import { resolveGatewayLlmTransportConfig } from "../composition/reader-summary-agent-runtime-transport";
 
 describe("AgentRuntimeSummaryModelAdapter", () => {
-  it("executes an ordinary summary through the real gateway SDK request contract", async () => {
+  it("interprets a completed task with bounded physical usage and unchanged route identity", () => {
+    const input = buildInput();
+    const selectedRoute = {
+      provider: "agent-runtime", model: "codex:summary-test",
+      promptVersion: "summary.prompt.agent_runtime.v1",
+      schemaVersion: "summary.artifact.v1",
+    } as const;
+    const estimateUsage = jest.fn(() => ({
+      inputTokens: 23, outputTokens: 41, estimatedCostUsd: 0.125,
+    }));
+    const result = interpretAgentRuntimeSummaryTaskResult({
+      result: {
+        status: "completed", structuredOutput: validProviderDraft(), warnings: [],
+        usage: {
+          inputTokens: -2, outputTokens: 1.5, totalTokens: 0,
+          estimatedCostUsd: Number.POSITIVE_INFINITY,
+        },
+      },
+      input, selectedRoute, evalDatasetVersion: "summary.eval.mvp.v1",
+      estimateUsage,
+    });
+
+    expect(estimateUsage).toHaveBeenCalledTimes(1);
+    expect(result.route).toBe(selectedRoute);
+    expect(result.draft.headline).toBe("Backend signals are converging");
+    expect(result.draft.usage).toEqual({
+      inputTokens: 23, outputTokens: 41, estimatedCostUsd: 0.125,
+    });
+    expect(input.evidence.items).toHaveLength(2);
+  });
+
+  it("rejects untrusted output before metering or publication", () => {
+    const input = buildInput();
+    const selectedRoute = {
+      provider: "agent-runtime", model: "codex:summary-test",
+      promptVersion: "summary.prompt.agent_runtime.v1",
+      schemaVersion: "summary.artifact.v1",
+    } as const;
+    const estimateUsage = jest.fn(() => ({
+      inputTokens: 23, outputTokens: 41, estimatedCostUsd: 0.125,
+    }));
+    const interpret = (result: AgentRuntimeTaskResult) =>
+      interpretAgentRuntimeSummaryTaskResult({
+        result, input, selectedRoute,
+        evalDatasetVersion: "summary.eval.mvp.v1", estimateUsage,
+      });
+    expect(() => interpret({
+      status: "completed", outputText: "{invalid-json", warnings: [],
+    })).toThrow();
+    expect(() => interpret({
+      status: "waiting_for_input", warnings: [],
+    })).toThrow("requested interactive input");
+    expect(estimateUsage).not.toHaveBeenCalled();
+  });
+
+
+  it("preserves default and explicitly supplied execution options", () => {
+    const client = new CapturingAgentRuntimeClient({ status: "completed", warnings: [] });
+    expect(resolveAgentRuntimeSummaryRuntimeSettings({
+      client, model: " ", promptVersion: "", timeoutMs: -1,
+      maxOutputTokens: 0, inputTokenDivisor: Number.NaN,
+    })).toEqual({
+      agentProvider: "codex", providerInstanceId: undefined,
+      model: "agent-runtime-summary", routeControls: {},
+      promptVersion: "summary.prompt.agent_runtime.v1",
+      evalDatasetVersion: "summary.eval.mvp.v1",
+      timeoutMs: 120_000, maxOutputTokens: 4_000, inputTokenDivisor: 4,
+    });
+    expect(resolveAgentRuntimeSummaryRuntimeSettings({
+      client, agentProvider: "claude", providerInstanceId: "fixture-instance",
+      model: "synthetic-model", promptVersion: "custom.prompt.v1",
+      evalDatasetVersion: "synthetic-eval.v1", timeoutMs: 60_000,
+      maxOutputTokens: 512, inputTokenDivisor: 8,
+    })).toEqual({
+      agentProvider: "claude", providerInstanceId: "fixture-instance",
+      model: "synthetic-model", routeControls: {},
+      promptVersion: "custom.prompt.v1", evalDatasetVersion: "synthetic-eval.v1",
+      timeoutMs: 60_000, maxOutputTokens: 512, inputTokenDivisor: 8,
+    });
+  });
+
+  it.each([
+    { agentProvider: "codex" as const, model: "agent-runtime-summary" },
+    { agentProvider: "claude" as const, model: "synthetic-model-v2" },
+  ])("snapshots the $agentProvider route identity before caller option mutation", ({ agentProvider, model }) => {
+    const client = new CapturingAgentRuntimeClient({ status: "completed", warnings: [] });
+    const options = { client, agentProvider, model, promptVersion: "summary.snapshot.v1" };
+    const adapter = new AgentRuntimeSummaryModelAdapter(options);
+    options.model = "mutated-after-construction";
+    options.promptVersion = "mutated-prompt";
+    const route = adapter.route(buildInput(), {
+      preferredProvider: "agent-runtime", maxInputTokens: 12_000,
+      maxOutputTokens: 4_000, maxEstimatedCostUsd: 1,
+    }, { remainingTokens: 20_000, remainingCostUsd: 1 });
+    expect(route).toEqual({ provider: "agent-runtime", model: `${agentProvider}:${model}`,
+      promptVersion: "summary.snapshot.v1", schemaVersion: "summary.artifact.v1" });
+    expect(client.commands).toHaveLength(0);
+  });
+
+  it("admits exact remaining tokens but rejects one token less before dispatch", () => {
+    const client = new CapturingAgentRuntimeClient({ status: "completed", warnings: [] });
+    const adapter = new AgentRuntimeSummaryModelAdapter({ client });
+    const input = buildInput();
+    const policy = { preferredProvider: "agent-runtime" as const,
+      maxInputTokens: 12_000, maxOutputTokens: 4_000, maxEstimatedCostUsd: 1 };
+    const route = adapter.route(input, policy, { remainingTokens: 20_000, remainingCostUsd: 1 });
+    const estimate = adapter.estimate(input, route);
+    const exactTokens = estimate.inputTokens + estimate.outputTokens;
+    expect(adapter.route(input, policy, { remainingTokens: exactTokens, remainingCostUsd: 1 })).toEqual(route);
+    expect(() => adapter.route(input, policy, {
+      remainingTokens: exactTokens - 1, remainingCostUsd: 1,
+    })).toThrow("Summary model budget exceeded");
+    expect(client.commands).toHaveLength(0);
+  });
+
+  it.each([
+    { label: "default Terra/medium", extra: {}, model: "gpt-6.1-terra", effort: "medium" },
+    { label: "explicit Sol/low",
+      extra: { AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-6.1-sol",
+        AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "low" },
+      model: "gpt-6.1-sol", effort: "low" },
+  ])("executes $label through the real gateway SDK request contract", async ({ extra, model, effort }) => {
     const env = { AGENT_RUNTIME_TRANSPORT: "gateway-llm", AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
       AGENT_RUNTIME_GATEWAY_LLM_CONTROL_ORIGIN: "https://gateway.example.test",
       AGENT_RUNTIME_GATEWAY_LLM_CONTROL_TOKEN_FILE: "/fixture/control-token",
       AGENT_RUNTIME_GATEWAY_LLM_ACCOUNT_REFS: "synthetic-account",
       AGENT_RUNTIME_GATEWAY_LLM_POLICY_SUBJECT_REF: "synthetic-social-monitor",
-      AGENT_RUNTIME_GATEWAY_LLM_POLICY_REVISION: "1", AGENT_RUNTIME_GATEWAY_LLM_BINDING_REVISION: "0" };
-    const fixture = gatewayModelTaskFixture(resolveGatewayLlmTransportConfig(env).route, validProviderDraft());
+      AGENT_RUNTIME_GATEWAY_LLM_POLICY_REVISION: "1", AGENT_RUNTIME_GATEWAY_LLM_BINDING_REVISION: "0", ...extra };
+    const gatewayRoute = resolveGatewayLlmTransportConfig(env).route;
+    expect(gatewayRoute).toMatchObject({ model, reasoningEffort: effort,
+      modelBackend: "openai-chatgpt" });
+    const fixture = gatewayModelTaskFixture(gatewayRoute, validProviderDraft());
     const adapter = new AgentRuntimeSummaryModelAdapter(resolveAgentRuntimeSummaryModelOptions(env, fixture.client));
     const input = buildInput();
     const route = adapter.route(input, { preferredProvider: "agent-runtime", maxInputTokens: 12_000,
       maxOutputTokens: 4_000, maxEstimatedCostUsd: 1 }, { remainingTokens: 20_000, remainingCostUsd: 1 });
     const attempt = await adapter.summarize(input, route);
-    expect(attempt.route.model).toBe("codex:gpt-6.1-terra");
+    expect(attempt.route.model).toBe(`codex:${model}`);
     expect(attempt.draft.headline).toBe("Backend signals are converging");
     expect(fixture.bodies).toHaveLength(1);
-    expect(fixture.bodies[0]).toMatchObject({ model: "gpt-6.1-terra", reasoning: { effort: "medium" },
+    expect(fixture.bodies[0]).toMatchObject({ model, reasoning: { effort },
       max_output_tokens: 16_384, text: { format: { type: "json_schema", strict: true } } });
   });
 
@@ -60,6 +186,8 @@ describe("AgentRuntimeSummaryModelAdapter", () => {
   it.each([
     { AGENT_RUNTIME_SUMMARY_MODEL: "gpt-5.6-sol" },
     { AGENT_RUNTIME_SUMMARY_REASONING_EFFORT: "high" },
+    { AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-6.1-sol",
+      AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "medium" },
     { AGENT_RUNTIME_PROVIDER: "claude" },
   ])("rejects a conflicting gateway summary identity: %o", (extra) => {
     expect(() => resolveAgentRuntimeSummaryModelOptions({
@@ -117,6 +245,13 @@ describe("AgentRuntimeSummaryModelAdapter", () => {
         outputSchemaName: "social_monitor_summary_artifact",
       }),
     });
+    expect(command?.requestId).toContain(String(input.tenantId));
+    expect(command?.requestId).toContain(String(input.workspaceId));
+    expect(command?.correlationId).toContain("summary-correlation");
+    expect(command?.metadata).toMatchObject({
+      adapter: "agent-runtime-summary",
+      promptVersion: route.promptVersion,
+    });
     expect(command?.systemPrompt).toContain("Social Monitor");
     expect(command?.prompt).toContain("Backend signals are converging");
     expect(attempt.draft).toMatchObject({
@@ -127,6 +262,46 @@ describe("AgentRuntimeSummaryModelAdapter", () => {
       },
     });
     expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
+  });
+
+  it("rejects malformed completed provider JSON without returning a draft", async () => {
+    const client = new CapturingAgentRuntimeClient({
+      status: "completed",
+      outputText: "{not-valid-json",
+      warnings: [],
+    });
+    const adapter = new AgentRuntimeSummaryModelAdapter({ client });
+    const input = buildInput();
+    const route = adapter.route(input, {
+      preferredProvider: "agent-runtime",
+      maxInputTokens: 12_000,
+      maxOutputTokens: 4_000,
+      maxEstimatedCostUsd: 1,
+    }, { remainingTokens: 20_000, remainingCostUsd: 1 });
+
+    await expect(adapter.summarize(input, route)).rejects.toThrow();
+    expect(client.commands).toHaveLength(1);
+  });
+
+  it("keeps no-evidence fallback local and never dispatches a provider task", async () => {
+    const client = new CapturingAgentRuntimeClient({ status: "completed", warnings: [] });
+    const adapter = new AgentRuntimeSummaryModelAdapter({ client });
+    const sourceInput = buildInput();
+    const input: SummaryModelInput = {
+      ...sourceInput,
+      evidence: { ...sourceInput.evidence, items: [] },
+    };
+    const route = adapter.route(input, {
+      preferredProvider: "agent-runtime",
+      maxInputTokens: 12_000,
+      maxOutputTokens: 4_000,
+      maxEstimatedCostUsd: 1,
+    }, { remainingTokens: 20_000, remainingCostUsd: 1 });
+
+    const attempt = await adapter.summarize(input, route);
+    expect(attempt.draft.qualityFlags).toContain("no_signal");
+    expect(attempt.route).toEqual(route);
+    expect(client.commands).toHaveLength(0);
   });
 
   it("does not send the default lineage alias as a Codex runtime model", async () => {

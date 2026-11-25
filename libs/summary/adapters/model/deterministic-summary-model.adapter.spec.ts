@@ -2,6 +2,9 @@ import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { defaultSummaryGenerationPolicy } from '../../domain';
 import { DeterministicSummaryModelAdapter } from './deterministic-summary-model.adapter';
+import { buildDeterministicSummaryAttempt } from './deterministic-summary-draft';
+import { buildDeterministicSummaryNoSignalAttempt } from './deterministic-summary-no-signal-attempt';
+import { buildDeterministicSummaryCitedAttempt } from './deterministic-summary-cited-attempt';
 
 describe('DeterministicSummaryModelAdapter', () => {
   it('returns a no-signal draft when evidence is empty', async () => {
@@ -41,6 +44,11 @@ describe('DeterministicSummaryModelAdapter', () => {
     expect(attempt.draft.qualityFlags).toContain('no_signal');
     expect(attempt.draft.keyPoints).toEqual([]);
     expect(attempt.draft.noSignalReason).toEqual('No eligible evidence items selected for this interest.');
+    expect(buildDeterministicSummaryNoSignalAttempt(
+      input, route, attempt.draft.usage, attempt.draft.lineage,
+    )).toEqual(attempt);
+    expect(buildDeterministicSummaryAttempt(input, route, attempt.draft.usage)).toEqual(attempt);
+    expect(input.evidence.items).toEqual([]);
     expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
   });
 
@@ -100,6 +108,12 @@ describe('DeterministicSummaryModelAdapter', () => {
 
     const attempt = await adapter.summarize(input, route);
 
+    const before = JSON.stringify(input);
+    expect(buildDeterministicSummaryCitedAttempt(
+      input, route, attempt.draft.usage, attempt.draft.lineage,
+    )).toEqual(attempt);
+    expect(buildDeterministicSummaryAttempt(input, route, attempt.draft.usage)).toEqual(attempt);
+    expect(JSON.stringify(input)).toBe(before);
     expect(attempt.draft.headline).toBe('Interest summary: 1 item across 1 source (GitHub)');
     expect(attempt.draft.headline).not.toBe('Agents runtime improves orchestration');
     expect(attempt.draft.sourceHighlights[0]).toContain('Matches memory preference');

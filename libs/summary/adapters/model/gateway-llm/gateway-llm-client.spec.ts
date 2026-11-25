@@ -1,9 +1,10 @@
+import { readFileSync } from "node:fs";
 import type { Prepare, SafeError } from "@agent-teams/account-gateway/contracts";
 import { GatewayError } from "@agent-teams/account-gateway/http";
 import type { NativeResponse } from "@agent-teams/account-gateway/http";
 import { createLlmClient, LLM_DEFAULT_OUTPUT_BYTES, LLM_MAX_OUTPUT_BYTES } from "@agent-teams/account-gateway/llm";
 import type { ConsumerControlPort, ExecutionPort } from "@agent-teams/account-gateway/llm";
-import { isAttestedRuntimeIdentity } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
+import { isAttestedRuntimeIdentity, selectedAgentRuntimeOutput } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import type { AgentRuntimeTaskCommand, ReaderSummaryTopicLabelerInput } from "../../../ports";
@@ -19,11 +20,14 @@ import { RunScopedGatewayLlmAttempts } from "./gateway-llm-attempts";
 import { GatewayLlmClient, type GatewayLlmRoute } from "./gateway-llm-client";
 import { approvedGatewayLlmSdkIdentity } from "./gateway-llm-sdk-identity";
 import { gatewayLlmDeadline, gatewayLlmSettlementGraceMs } from "./gateway-llm-deadline";
+import { gatewayLlmCanonicalRequest, gatewayLlmCanonicalRequestSha256 } from "./gateway-llm-request-identity";
 
 type Access = Awaited<ReturnType<ConsumerControlPort["runAccess"]>>;
 type Script = {
   readonly access?: (intent: Prepare) => Promise<Access>;
   readonly request?: (call: number) => Promise<NativeResponse>;
+  readonly onSleep?: (ms: number) => void;
+  readonly clock?: () => Date;
 };
 
 const accountA = "00000000-0000-4000-8000-00000000000a";
@@ -46,12 +50,13 @@ const grant = (intent: Prepare, accountRef = intent.accountRefs[0]!): Access => 
     expiresAt: intent.deadline },
 });
 
-const completedStream = (text: string, model = "k3-256k", cached?: number): NativeResponse => {
+const completedStream = (text: string, model = "k3-256k", cached?: number, reasoning?: number): NativeResponse => {
   const bytes = new TextEncoder().encode(`data: ${JSON.stringify({ type: "response.completed",
     response: { id: "resp-1", model, status: "completed",
       output: [{ type: "message", content: [{ type: "output_text", text }] }],
       usage: { input_tokens: 40, output_tokens: 9,
-        ...(cached === undefined ? {} : { input_tokens_details: { cached_tokens: cached } }) } } })}\n\n`);
+        ...(cached === undefined ? {} : { input_tokens_details: { cached_tokens: cached } }),
+        ...(reasoning === undefined ? {} : { output_tokens_details: { reasoning_tokens: reasoning } }) } } })}\n\n`);
   const body = new ReadableStream<Uint8Array>({ start(controller) {
     controller.enqueue(bytes);
     controller.close();
@@ -93,8 +98,8 @@ const harness = (script: Script = {}, runId = "run-1", route: GatewayLlmRoute = 
     accounts: new CooldownRotatingAccountSelector({ busyCooldownMs: 30_000,
       unauthorizedCooldownMs: 3_600_000 }),
     sdk: approvedGatewayLlmSdkIdentity,
-    clock: { now: () => new Date() },
-    sleep: async (ms) => { sleeps.push(ms); },
+    clock: { now: script.clock ?? (() => new Date()) },
+    sleep: async (ms) => { sleeps.push(ms); script.onSleep?.(ms); },
   });
   return { client, prepares, bodies, sleeps, requests: () => requests };
 };
@@ -332,9 +337,10 @@ describe("GatewayLlmClient", () => {
   it("serves a Codex topic label configured from env at gpt-6.1-sol/low end to end", async () => {
     const env: NodeJS.ProcessEnv = { AGENT_RUNTIME_TRANSPORT: "gateway-llm",
       AGENT_RUNTIME_READER_SUMMARY_BACKEND: "openai-chatgpt",
-      AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-6.1-sol",
       AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.6-sol",
-      AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "high" };
+      AGENT_RUNTIME_READER_SUMMARY_REASONING_EFFORT: "high",
+      AGENT_RUNTIME_GATEWAY_LLM_MODEL: "gpt-6.1-sol",
+      AGENT_RUNTIME_GATEWAY_LLM_REASONING_EFFORT: "low" };
     const output = { nodeLabels: [{ nodeId: "topic:story:codex", topicId: null,
       subject: "Codex", parentSubject: "OpenAI", claimType: "other", qualifier: null,
       confidenceScore: 0.92, groupId: "group:agent-tools", keywords: ["codex"],
@@ -490,6 +496,83 @@ describe("GatewayLlmClient", () => {
     expect(result.executionAttestation?.gateway?.accountRef).toBe(secondPrepare!.accountRefs[0]);
   });
 
+  it("does not replay after cancellation during dispatch-free backoff", async () => {
+    const controller = new AbortController();
+    const fake = harness({
+      request: async () => {
+        throw safe("not_dispatched", "admission_limited",
+          { kind: "after", milliseconds: 1 });
+      },
+      onSleep: () => controller.abort(),
+    });
+    const result = await fake.client.runTask(command(), { signal: controller.signal });
+    expect(result).toMatchObject({ status: "failed",
+      failure: { code: "task_cancelled", retryable: false,
+        details: { gatewayEffect: "not_dispatched" } } });
+    expect(fake.requests()).toBe(1);
+    expect(fake.prepares).toHaveLength(1);
+    expect(fake.sleeps).toEqual([1]);
+  });
+
+  it("does not replay if backoff passes the hard task deadline", async () => {
+    let nowMs = Date.now();
+    const fake = harness({
+      clock: () => new Date(nowMs),
+      request: async () => {
+        throw safe("not_dispatched", "admission_limited",
+          { kind: "after", milliseconds: 1 });
+      },
+      onSleep: () => { nowMs += 32_000; },
+    });
+    const result = await fake.client.runTask(command({ timeoutMs: 1_000 }));
+    expect(result).toMatchObject({ status: "failed",
+      failure: { code: "task_timeout", retryable: false,
+        details: { gatewayEffect: "not_dispatched" } } });
+    expect(fake.requests()).toBe(1);
+    expect(fake.prepares).toHaveLength(1);
+    expect(fake.sleeps).toEqual([1]);
+  });
+
+  it("bounds repeated nondispatched admission failures to two safe replays", async () => {
+    const fake = harness({ request: async () => {
+      // Even when the low-level failure says never, the SDK marks this
+      // admission refusal as dispatch-free and eligible for bounded replay.
+      throw safe("not_dispatched", "admission_limited", { kind: "never" });
+    } });
+    const result = await fake.client.runTask(command());
+
+    expect(result.status).toBe("failed");
+    expect(result.executionAttestation).toBeUndefined();
+    expect(fake.prepares.map((prepare) => prepare.attemptRef)).toEqual(["a1", "a2", "a3"]);
+    expect(fake.requests()).toBe(3);
+    expect(fake.sleeps).toHaveLength(2);
+  });
+
+  it("preserves terminal paid-failure diagnostics without attestation or duplicate dispatch", async () => {
+    const fake = harness({ request: async () => {
+      throw safe("dispatch_started", "upstream_failure");
+    } });
+    const result = await fake.client.runTask(command({ timeoutMs: 1_000 }));
+    expect(result).toMatchObject({
+      status: "failed",
+      failure: {
+        code: "provider_failed", retryable: true,
+        details: {
+          gatewayMayDuplicateCost: "true",
+          gatewayAttempt: "1",
+          gatewayElapsedMs: expect.stringMatching(/^\d+$/u),
+          gatewaySoftTimeoutMs: "1000",
+          gatewayHardTimeoutMs: "31000",
+        },
+      },
+    });
+    expect(result.executionAttestation).toBeUndefined();
+    expect(result.structuredOutput).toBeUndefined();
+    expect(fake.prepares).toHaveLength(1);
+    expect(fake.requests()).toBe(1);
+    expect(fake.sleeps).toEqual([]);
+  });
+
   it("leaves a possibly paid failure to the caller", async () => {
     const fake = harness({ request: async () => { throw safe("dispatch_started", "upstream_failure"); } });
     const result = await fake.client.runTask(command());
@@ -512,5 +595,110 @@ describe("GatewayLlmClient", () => {
     await expect(harness().client.checkHealth()).resolves.toEqual({ status: "serving",
       runtimeEngine: "gateway-llm", runtimeVersion: approvedGatewayLlmSdkIdentity.packageVersion,
       launcherSha256: approvedGatewayLlmSdkIdentity.archiveSha256, warnings: [] });
+  });
+});
+
+describe("GatewayLlmClient preparation and completion boundaries", () => {
+  it.each([
+    ["model/backend route mismatch", { controls: { model: "other", modelBackend: "kimi-code" } }, "unsupported_route"],
+    ["effort mismatch", { controls: { model: "k3-256k", modelBackend: "kimi-code", reasoningEffort: "high" } }, "invalid_request"],
+    ["missing instructions", { systemPrompt: "  " }, "invalid_request"],
+    ["nonpositive deadline", { timeoutMs: 0 }, "invalid_request"],
+  ] as readonly (readonly [string, Partial<AgentRuntimeTaskCommand>, string])[])(
+    "rejects %s before choosing accounts or dispatching",
+    async (_description, overrides, code) => {
+      const fake = harness();
+      const result = await fake.client.runTask(command(overrides));
+      expect(result).toMatchObject({ status: "failed", failure: {
+        code, retryable: false, details: { gatewayEffect: "not_dispatched" },
+      } });
+      expect(fake.prepares).toHaveLength(0);
+      expect(fake.requests()).toBe(0);
+    },
+  );
+
+  it("preserves text-only output without structured-schema decoding", async () => {
+    const fake = harness({ request: async () => completedStream("plain provider output") });
+    const result = await fake.client.runTask(command({ outputSchema: {} }));
+    expect(result).toMatchObject({ status: "completed", outputText: "plain provider output" });
+    expect(result.structuredOutput).toBeUndefined();
+    expect(result.executionAttestation).toMatchObject({ selectedOutputKind: "output_text" });
+    expect(fake.requests()).toBe(1);
+  });
+});
+
+describe("gateway usage accounting across outcome boundaries", () => {
+  it("retains cached and reasoning usage on a verified completion", async () => {
+    const fake = harness({ request: async () =>
+      completedStream('{"label":"AI agents","note":null}', "k3-256k", 12, 3) });
+    const result = await fake.client.runTask(command());
+
+    expect(result).toMatchObject({ status: "completed",
+      usage: { inputTokens: 40, outputTokens: 9, totalTokens: 49,
+        cachedInputTokens: 12, reasoningTokens: 3 } });
+    const selected = selectedAgentRuntimeOutput({ structuredOutput: { label: "AI agents" } });
+    expect(result.executionAttestation).toMatchObject({
+      selectedOutputKind: selected.kind,
+      selectedOutputSha256: selected.sha256,
+      canonicalRequestSha256: gatewayLlmCanonicalRequestSha256(command(), kimiRoute),
+      gateway: { observedModel: "k3-256k", profileId: kimiRoute.profileId },
+    });
+    expect(fake.requests()).toBe(1);
+  });
+
+  it("preserves provider usage but never attests a mismatched observed model", async () => {
+    const fake = harness({ request: async () =>
+      completedStream('{"label":"wrong model","note":null}', "other-model", 12, 3) });
+    const result = await fake.client.runTask(command());
+
+    expect(result).toMatchObject({ status: "failed",
+      failure: { code: "provider_model_mismatch" },
+      usage: { inputTokens: 40, outputTokens: 9, totalTokens: 49,
+        cachedInputTokens: 12, reasoningTokens: 3 } });
+    expect(result.executionAttestation).toBeUndefined();
+    expect(result.structuredOutput).toBeUndefined();
+    expect(fake.requests()).toBe(1);
+  });
+});
+
+describe("gateway config dependency boundary", () => {
+  it("uses only the shared route/options contract from dispatch and preparation", () => {
+    for (const moduleName of [
+      "gateway-llm-dispatch-loop.ts", "gateway-llm-task-preparation.ts",
+      "gateway-llm-task-route-admission.ts", "gateway-llm-request-identity.ts",
+    ]) {
+      const source = readFileSync(
+        `libs/summary/adapters/model/gateway-llm/${moduleName}`, "utf8",
+      );
+      expect(source).toContain('from "./gateway-llm-client-contract"');
+      expect(source).not.toContain('from "./gateway-llm-client"');
+    }
+  });
+});
+
+
+describe("gateway output-token admission stays bound to the attested request", () => {
+  it.each([
+    ["omitted", undefined, 32_768],
+    ["negative", -1, 32_768],
+    ["zero", 0, 32_768],
+    ["fractional", 12.5, 32_768],
+    ["NaN", Number.NaN, 32_768],
+    ["infinite", Number.POSITIVE_INFINITY, 32_768],
+    ["below route floor", 16_000, 32_768],
+    ["above route floor", 35_000, 35_000],
+  ] as const)("uses one validated token ceiling for %s", async (_label, requested, expected) => {
+    const controls = Object.freeze({ ...command().controls, maxOutputTokens: requested });
+    const task = Object.freeze(command({ controls }));
+    const fake = harness();
+    const result = await fake.client.runTask(task);
+
+    expect(result.status).toBe("completed");
+    expect(gatewayLlmCanonicalRequest(task, kimiRoute).maxOutputTokens).toBe(expected);
+    expect(fake.prepares[0]).toMatchObject({ limits: { tokens: expected } });
+    expect(fake.bodies[0]).toMatchObject({ max_output_tokens: expected });
+    expect(result.executionAttestation?.canonicalRequestSha256)
+      .toBe(gatewayLlmCanonicalRequestSha256(task, kimiRoute));
+    expect(fake.requests()).toBe(1);
   });
 });

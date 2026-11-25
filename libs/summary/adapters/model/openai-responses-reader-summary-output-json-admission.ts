@@ -1,0 +1,24 @@
+import { requiredRecord } from "./openai-responses-reader-summary-json";
+
+/** Untrusted model JSON syntax, object-shape admission and sanitized diagnostics. */
+export const parseOpenAiReaderSummaryJsonObject = (
+  value: string,
+): Record<string, unknown> => {
+  try {
+    return requiredRecord(JSON.parse(value), "OpenAI reader summary output");
+  } catch (error) {
+    // SyntaxError.message may contain raw model output including private
+    // evidence. Preserve the wrapped error identity without echoing it.
+    const detail = error instanceof SyntaxError
+      ? "malformed JSON"
+      : error instanceof Error ? error.message : "unknown parse failure";
+    throw new OpenAiReaderSummaryOutputParseError(detail);
+  }
+};
+
+export class OpenAiReaderSummaryOutputParseError extends Error {
+  constructor(readonly detail: string) {
+    super(`OpenAI reader summary output must be JSON: ${detail}`);
+    this.name = "OpenAiReaderSummaryOutputParseError";
+  }
+}

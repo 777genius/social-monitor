@@ -214,6 +214,15 @@ describe("OpenAI reader summary prompt contract", () => {
     expect(payload.additionalStoryClusters.map((cluster) => cluster.id)).toEqual([
       additionalCluster.id,
     ]);
+    expect(Object.keys(payload.storyClusters[0]!)).toEqual([
+      "id", "storyKey", "representativeFeedItemId", "duplicateFeedItemIds",
+      "interestIds", "providerKeys", "score", "observedAtRange", "whyImportant",
+    ]);
+    expect(Object.keys(payload.additionalStoryClusters[0]!)).toEqual([
+      "id", "storyKey", "representativeFeedItemId", "duplicateFeedItemIds",
+      "interestIds", "providerKeys", "score", "whyImportant",
+    ]);
+    expect(payload.additionalStoryClusters[0]).not.toHaveProperty("observedAtRange");
     expect(JSON.stringify(payload.evidence)).toContain(topItem.feedItemId);
     expect(JSON.stringify(payload.evidence)).not.toContain(
       additionalItem.feedItemId,

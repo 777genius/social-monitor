@@ -1,0 +1,130 @@
+import { mapAgentRuntimeFailure as mapTaskFailureDirectly } from "./agent-runtime-model-task-failure";
+import { classifyAgentRuntimeError, mapAgentRuntimeFailure } from "./agent-runtime-model-failure";
+import { usageFromAgentRuntime, sumReaderSummaryUsage, assertReaderSummaryRepairWithinBudget } from "./agent-runtime-model-usage";
+import { assertReaderSummaryRepairWithinBudget as admitPaidRepair } from "./agent-runtime-reader-summary-repair-budget-policy";
+
+describe("Agent Runtime failure and usage policies", () => {
+  it("keeps missing runtime failure fail-closed and retryable", () => {
+    expect(mapAgentRuntimeFailure(undefined, "synthetic task failed")).toEqual({
+      kind: "provider_unavailable", retryable: true, message: "synthetic task failed",
+    });
+    expect(classifyAgentRuntimeError(new Error("synthetic schema invalid"), "fallback"))
+      .toMatchObject({ kind: "invalid_schema", retryable: false });
+  });
+
+  it("tracks physical usage across paid repair attempts", () => {
+    const estimate = { inputTokens: 100, outputTokens: 20, estimatedCostUsd: 0.1 };
+    expect(usageFromAgentRuntime(undefined, estimate)).toEqual(estimate);
+    // The synthetic/custom runtime port may bypass JSON/gRPC's number rules;
+    // do not let unsafe counters corrupt the paid repair budget.
+    expect(usageFromAgentRuntime({
+      inputTokens: Number.MAX_SAFE_INTEGER + 1,
+      outputTokens: Number.NaN,
+      totalTokens: Number.MAX_SAFE_INTEGER + 1,
+      estimatedCostUsd: Number.POSITIVE_INFINITY,
+    }, estimate)).toEqual(estimate);
+    const spent = sumReaderSummaryUsage(estimate, estimate);
+    expect(spent).toEqual({ inputTokens: 200, outputTokens: 40, estimatedCostUsd: 0.2 });
+    expect(() => assertReaderSummaryRepairWithinBudget(spent, estimate, {
+      remainingTokens: 250, remainingCostUsd: 1,
+    })).toThrow("Daily editorial writer cannot repair within the shared model budget");
+  });
+});
+
+describe("agent runtime trust-boundary regression cases", () => {
+  const failure = (overrides: Partial<NonNullable<Parameters<typeof mapAgentRuntimeFailure>[0]>> = {}) => ({
+    code: "execution_failed",
+    safeMessage: "Synthetic failure",
+    retryable: false,
+    reconnectRequired: false,
+    causeCategory: "worker",
+    details: {},
+    ...overrides,
+  });
+
+  it("never lets untrusted validation path override the failure category", () => {
+    expect(mapAgentRuntimeFailure(failure({
+      details: { outputValidationPath: "quota_rate_limit" },
+    }), "fallback")).toEqual({
+      kind: "unknown", retryable: false,
+      message: "Synthetic failure at quota_rate_limit",
+    });
+    expect(mapAgentRuntimeFailure(failure({
+      code: "rate_limited", retryable: true,
+      safeMessage: "Synthetic limit",
+      details: { outputValidationPath: "draft.json" },
+    }), "fallback")).toEqual({
+      kind: "provider_rate_limited", retryable: true,
+      message: "Synthetic limit at draft.json",
+    });
+  });
+
+  it("retains reconnect advice without silently upgrading failure classification", () => {
+    expect(mapAgentRuntimeFailure(failure({
+      safeMessage: "", reconnectRequired: true,
+    }), "Synthetic fallback")).toEqual({
+      kind: "unknown", retryable: true, message: "Synthetic fallback",
+    });
+  });
+
+  it("refuses paid repair at exact cost exhaustion, even with zero estimated tokens", () => {
+    expect(() => assertReaderSummaryRepairWithinBudget(
+      { inputTokens: 30, outputTokens: 5, estimatedCostUsd: 0.2 },
+      { inputTokens: 0, outputTokens: 0, estimatedCostUsd: 0 },
+      { remainingTokens: 100, remainingCostUsd: 0.2 },
+    )).toThrow("Daily editorial writer cannot repair within the shared model budget");
+  });
+});
+
+describe("structured task failure admission isolation", () => {
+  it("keeps the legacy public function identity while exposing the pure owner", () => {
+    expect(mapAgentRuntimeFailure).toBe(mapTaskFailureDirectly);
+  });
+
+  it("preserves exact task classification and does not trust diagnostic path for category", () => {
+    const task = {
+      code: "provider_output_invalid",
+      causeCategory: "worker",
+      safeMessage: "schema normalization failed",
+      retryable: true,
+      reconnectRequired: false,
+      details: { outputValidationPath: "quota_rate_limit" },
+    };
+    expect(mapTaskFailureDirectly(task, "fallback")).toEqual({
+      kind: "invalid_schema",
+      retryable: false,
+      message: "schema normalization failed at quota_rate_limit",
+    });
+    expect(mapTaskFailureDirectly({ ...task, safeMessage: "", code: "execution_failed",
+      details: { outputValidationPath: "schema" } }, "task fallback")).toEqual({
+      kind: "provider_unavailable",
+      retryable: true,
+      message: "task fallback at schema",
+    });
+  });
+});
+
+
+describe("independent paid-repair admission policy", () => {
+  it("retains the exact legacy function object and does not mutate budget or usage", () => {
+    expect(assertReaderSummaryRepairWithinBudget).toBe(admitPaidRepair);
+    const spent = Object.freeze({ inputTokens: 40, outputTokens: 10, estimatedCostUsd: 1 });
+    const next = Object.freeze({ inputTokens: 5, outputTokens: 5, estimatedCostUsd: 2 });
+    const budget = Object.freeze({ remainingTokens: 60, remainingCostUsd: 3 });
+    expect(() => admitPaidRepair(spent, next, budget)).not.toThrow();
+    expect(spent).toEqual({ inputTokens: 40, outputTokens: 10, estimatedCostUsd: 1 });
+    expect(next).toEqual({ inputTokens: 5, outputTokens: 5, estimatedCostUsd: 2 });
+    expect(budget).toEqual({ remainingTokens: 60, remainingCostUsd: 3 });
+  });
+
+  it("admits token equality but rejects a single-token overflow before paid repair", () => {
+    const spent = { inputTokens: 40, outputTokens: 10, estimatedCostUsd: 1 };
+    const next = { inputTokens: 5, outputTokens: 5, estimatedCostUsd: 2 };
+    expect(() => admitPaidRepair(spent, next, {
+      remainingTokens: 60, remainingCostUsd: 3,
+    })).not.toThrow();
+    expect(() => admitPaidRepair(spent, next, {
+      remainingTokens: 59, remainingCostUsd: 3,
+    })).toThrow("Daily editorial writer cannot repair within the shared model budget");
+  });
+});

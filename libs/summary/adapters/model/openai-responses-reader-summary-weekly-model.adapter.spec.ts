@@ -17,7 +17,11 @@ import {
   buildOpenAiReaderSummaryWeeklyInstructions,
   buildOpenAiReaderSummaryWeeklyPromptPayload,
 } from "./openai-responses-reader-summary-weekly-prompt";
-import { buildOpenAiReaderSummaryWeeklyResponseFormat } from "./openai-responses-reader-summary-weekly-schema";
+import { buildOpenAiReaderSummaryWeeklyJsonSchema, buildOpenAiReaderSummaryWeeklyResponseFormat } from "./openai-responses-reader-summary-weekly-schema";
+import { projectOpenAiReaderSummaryWeeklyDocumentSchema } from "./openai-responses-reader-summary-weekly-document-schema";
+import { admitOpenAiReaderSummaryWeeklyOutput } from "./openai-responses-reader-summary-weekly-output-admission";
+import { executeOpenAiReaderSummaryWeeklyGeneration } from "./openai-responses-reader-summary-weekly-generation";
+import { normalizeOpenAiReaderSummaryWeeklyOptions } from "./openai-responses-reader-summary-weekly-options";
 import {
   OpenAiReaderSummaryWeeklyModelError,
   OpenAiResponsesReaderSummaryWeeklyModelAdapter,
@@ -43,6 +47,59 @@ describe("OpenAiResponsesReaderSummaryWeeklyModelAdapter", () => {
     if (keyDirectory !== undefined) {
       rmSync(keyDirectory, { recursive: true, force: true });
       keyDirectory = undefined;
+    }
+  });
+
+  it("preserves the sealed weekly artifact through output admission", () => {
+    const input = weeklyInput();
+    const output = weeklyOutput(input);
+    expect(admitOpenAiReaderSummaryWeeklyOutput(input, JSON.stringify(output))).toEqual(output);
+  });
+
+  it("keeps the admitted sealed-weekly schema equal to its pure document projection", () => {
+    const input = Object.freeze(weeklyInput());
+    const snapshot = JSON.stringify(input);
+    const projected = projectOpenAiReaderSummaryWeeklyDocumentSchema(
+      input,
+      input.stories.map((story) => story.storyId),
+      input.citations.map((citation) => citation.citationId),
+      input.days.map((day) => day.date),
+    );
+    expect(projected).toEqual(buildOpenAiReaderSummaryWeeklyJsonSchema(input));
+    expect(projected).toMatchObject({
+      additionalProperties: false,
+      properties: {
+        sealId: { const: input.sealId },
+        sealSha: { const: input.sealSha },
+        headlineCitationIds: { items: { enum: input.citations.map((citation) => citation.citationId) } },
+      },
+      $defs: {
+        story: { properties: { storyId: { enum: input.stories.map((story) => story.storyId) } } },
+        section: { additionalProperties: false },
+      },
+    });
+    expect(JSON.stringify(input)).toBe(snapshot);
+  });
+
+  it("rejects a mismatched weekly seal before building the public JSON schema", () => {
+    const input = weeklyInput();
+    expect(() => buildOpenAiReaderSummaryWeeklyJsonSchema({
+      ...input, sealSha: "0".repeat(64),
+    })).toThrow();
+  });
+
+  it.each(["{", "{}"])("rejects malformed weekly output %s without retry", (value) => {
+    const input = weeklyInput();
+    try {
+      admitOpenAiReaderSummaryWeeklyOutput(input, value);
+      throw new Error("expected malformed output rejection");
+    } catch (error) {
+      expect(error).toBeInstanceOf(OpenAiReaderSummaryWeeklyModelError);
+      expect((error as OpenAiReaderSummaryWeeklyModelError).failure).toMatchObject({
+        kind: "output_validation",
+        retryable: false,
+      });
+      expect((error as Error).message).toContain("OpenAI reader summary weekly output is invalid");
     }
   });
 
@@ -100,6 +157,56 @@ describe("OpenAiResponsesReaderSummaryWeeklyModelAdapter", () => {
     expect(fetchFn.mock.calls[0]?.[0]).toBe(
       "https://api.openai.com/v1/responses",
     );
+  });
+
+  it("has identical direct and adapter execution for an immutable sealed weekly input", async () => {
+    const input = Object.freeze(weeklyInput());
+    const snapshot = JSON.stringify(input);
+    const expected = weeklyOutput(input);
+    const fetchFn = jest.fn(
+      async (): Promise<Response> =>
+        response({
+          status: "completed",
+          output: [outputMessage(JSON.stringify(expected))],
+        }),
+    );
+    const settings = normalizeOpenAiReaderSummaryWeeklyOptions({
+      apiKey: fakeDirectKey,
+      model: "weekly-model-test",
+      fetchFn,
+    });
+    const direct = await executeOpenAiReaderSummaryWeeklyGeneration(input, settings);
+    const adapter = new OpenAiResponsesReaderSummaryWeeklyModelAdapter({
+      apiKey: fakeDirectKey,
+      model: "weekly-model-test",
+      fetchFn,
+    });
+    const delegated = await adapter.generate(input);
+    expect(direct).toEqual(expected);
+    expect(delegated).toEqual(direct);
+    expect(Object.isFrozen(direct)).toBe(true);
+    expect(JSON.stringify(input)).toBe(snapshot);
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects malformed input before missing credentials in the direct execution owner", async () => {
+    const fetchFn = jest.fn(async (): Promise<Response> => {
+      throw new Error("unexpected network dispatch");
+    });
+    const settings = normalizeOpenAiReaderSummaryWeeklyOptions({ fetchFn });
+    const malformed = {
+      ...weeklyInput(),
+      sealSha: "0".repeat(64),
+    } as ReaderSummaryWeeklyModelInput;
+    await expect(executeOpenAiReaderSummaryWeeklyGeneration(malformed, settings))
+      .rejects.toMatchObject({
+        failure: { kind: "invalid_input", retryable: false },
+      });
+    await expect(executeOpenAiReaderSummaryWeeklyGeneration(weeklyInput(), settings))
+      .rejects.toMatchObject({
+        failure: { kind: "configuration", retryable: false },
+      });
+    expect(fetchFn).not.toHaveBeenCalled();
   });
 
   it("rejects zero-evidence input before network I/O", async () => {
