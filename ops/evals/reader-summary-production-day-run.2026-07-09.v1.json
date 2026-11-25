@@ -1,0 +1,160 @@
+{
+  "schemaVersion": 1,
+  "artifactFormat": "reader-summary-production-day-run-v1",
+  "generatedBy": "npm run run:reader-summary-production-day",
+  "requestedDate": "2026-07-09",
+  "collectionDate": "2026-07-09",
+  "model": {
+    "liveCollection": false,
+    "summaryModel": "agent-runtime",
+    "physicalModel": "gpt-5.5",
+    "reasoningEffort": "xhigh",
+    "topicLabeler": "agent-runtime",
+    "writesProductionData": true,
+    "allowDegraded": false,
+    "allowHistorical": true,
+    "rawProviderPayloadPersistedInReport": false,
+    "rawPostTextPersistedInReport": false
+  },
+  "inputs": {
+    "periodStartedAt": "2026-07-09T00:00:00.000Z",
+    "periodEndedAt": "2026-07-10T00:00:00.000Z",
+    "tenantFingerprint": "ec29f9d19b2f",
+    "workspaceFingerprint": "c27aefd6f61b",
+    "evidencePath": "/var/folders/7b/ydmc_b0n251bc4hss4tz8y880000gn/T/social-monitor/reader-summary-production-day/2026-07-09/durable-reader-summary-2026-07-09.v1.json",
+    "frontendFixturePath": "/var/folders/7b/ydmc_b0n251bc4hss4tz8y880000gn/T/social-monitor/reader-summary-production-day/2026-07-09/frontend-reader-summary-2026-07-09.fixture.v1.json"
+  },
+  "run": {
+    "startedAt": "2026-07-11T16:53:05.469Z",
+    "completedAt": "2026-07-11T17:03:54.171Z"
+  },
+  "summary": {
+    "evidenceArtifactId": "durable-reader-summary-postgres-evidence-v1",
+    "readerSummaryId": "d82265fe-93d5-485b-8335-511ed9c998ca",
+    "readerSummaryJobId": "ddab164f-b587-485f-b163-4ff2eacc9252",
+    "headline": "Claude Reflect leads a day of agent-workflow shifts and Claude Code scrutiny"
+  },
+  "steps": [
+    {
+      "id": "migrate",
+      "command": "npm run migrate:deploy",
+      "status": "passed",
+      "durationMs": 6116,
+      "exitCode": 0
+    },
+    {
+      "id": "collect",
+      "command": "npm run run:reader-summary-clean-real-day-collection -- skipped",
+      "status": "skipped",
+      "durationMs": 0,
+      "exitCode": null
+    },
+    {
+      "id": "collection-quality",
+      "command": "npm run check:yesterday-social-collection-quality -- --update --date 2026-07-09 --write-failed-report --allow-historical",
+      "status": "passed",
+      "durationMs": 2321,
+      "exitCode": 0
+    },
+    {
+      "id": "durable-reader-summary",
+      "command": "npm run capture:durable-reader-summary",
+      "status": "passed",
+      "durationMs": 617623,
+      "exitCode": 0
+    },
+    {
+      "id": "artifact-quality",
+      "command": "npm run check:yesterday-reader-summary-artifact-quality -- --update --date 2026-07-09 --allow-historical",
+      "status": "passed",
+      "durationMs": 13161,
+      "exitCode": 0
+    },
+    {
+      "id": "quality-dashboard",
+      "command": "npm run check:reader-summary-quality-dashboard -- --update --date 2026-07-09 --allow-historical",
+      "status": "passed",
+      "durationMs": 3591,
+      "exitCode": 0
+    },
+    {
+      "id": "top-read-ranking",
+      "command": "npm run check:reader-summary-top-read-ranking -- --update --date 2026-07-09",
+      "status": "passed",
+      "durationMs": 2253,
+      "exitCode": 0
+    },
+    {
+      "id": "source-quality-trace",
+      "command": "npm run check:reader-summary-source-quality-trace -- --update --date 2026-07-09",
+      "status": "passed",
+      "durationMs": 3598,
+      "exitCode": 0
+    },
+    {
+      "id": "clean-day-e2e",
+      "command": "npm run check:reader-summary-clean-real-day-e2e -- skipped for historical production-day date",
+      "status": "skipped",
+      "durationMs": 0,
+      "exitCode": null
+    }
+  ],
+  "stats": {
+    "collectedFeedItemCount": 738,
+    "publishedInsideWindowFeedItemCount": 738,
+    "observedButPublishedOutsideWindowFeedItemCount": 285,
+    "duplicateFeedItemCount": 0,
+    "lowRelevanceFeedItemCount": 0,
+    "summaryCandidateFeedItemCount": 668,
+    "selectedFeedItemCount": 120,
+    "topReadCount": 8,
+    "providerCounts": {
+      "github-trending-page": 70,
+      "hacker-news": 136,
+      "reddit": 262,
+      "rss": 207,
+      "x-twitter": 63
+    },
+    "xAccountCount": 2,
+    "xAccountUsageEventCount": 533,
+    "xAccounts": [
+      {
+        "accountFingerprint": "305b9c91ff51",
+        "priorityRank": 0,
+        "prioritySource": "account_profile",
+        "dailyRequests": 29,
+        "dailyTweets": 387,
+        "passSucceededCount": 148,
+        "passFailedCount": 0,
+        "rateLimitCount": 0,
+        "cooldownObservedCount": 0,
+        "lastUsedAt": "2026-07-11 15:46:01",
+        "cooldownUntil": null
+      },
+      {
+        "accountFingerprint": "8ca1818c55b8",
+        "priorityRank": 100,
+        "prioritySource": "account_profile",
+        "dailyRequests": 26,
+        "dailyTweets": 317,
+        "passSucceededCount": 99,
+        "passFailedCount": 0,
+        "rateLimitCount": 26,
+        "cooldownObservedCount": 0,
+        "lastUsedAt": "2026-07-11 15:46:00",
+        "cooldownUntil": null
+      }
+    ]
+  },
+  "qualityGates": {
+    "allRequiredStepsPassed": true,
+    "degradedFailuresAreExplicitlyAllowed": true,
+    "collectionQualityReported": true,
+    "durableSummaryCaptured": true,
+    "durableSummaryPersisted": true,
+    "xAccountPoolReported": true,
+    "reportDateMatchesRequestedDate": true,
+    "noRawSecretFragments": true
+  },
+  "blockingPassed": true
+}

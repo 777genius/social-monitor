@@ -1,0 +1,280 @@
+{
+  "schemaVersion": 1,
+  "artifactFormat": "summary-feedback-eval-backlog-v1",
+  "evalRunId": "summary-feedback-eval-backlog-v1",
+  "generatedBy": "npm run check:summary-feedback-eval-backlog",
+  "gitShaPolicy": "release pipeline records the exact git sha next to this deterministic report",
+  "model": {
+    "judge": "none",
+    "mapper": "summary-feedback-eval-backlog-policy",
+    "liveNetwork": false
+  },
+  "source": {
+    "inputPath": "ops/release/fixtures/redacted-summary-feedback-samples-examples.json",
+    "inputArtifactFormat": "redacted-summary-feedback-samples-v1",
+    "sampleCount": 3
+  },
+  "qualityGates": {
+    "allFeedbackCategoriesMapped": true,
+    "missingPolicyCategories": [],
+    "requiredBlockingLabels": [
+      "factuality_regression",
+      "citation_regression",
+      "evidence_recall_regression",
+      "relevance_regression"
+    ],
+    "missingBlockingLabels": [],
+    "releaseBlockingItemsHaveAction": true,
+    "releaseBlockingItemsMissingAction": [],
+    "evalFixtureItemsHaveTarget": true,
+    "evalFixtureItemsMissingTarget": [],
+    "requiredEvidenceComplete": true,
+    "itemsMissingRequiredEvidence": [],
+    "noRawSecretFragments": true
+  },
+  "blockingPassed": true,
+  "policyCoverage": [
+    {
+      "category": "wrong_fact",
+      "label": "factuality_regression",
+      "defaultPriority": "p0_blocker",
+      "targetEvalSuites": [
+        "summary_quality"
+      ],
+      "actionType": "eval_fixture"
+    },
+    {
+      "category": "missing_source",
+      "label": "evidence_recall_regression",
+      "defaultPriority": "p1_high",
+      "targetEvalSuites": [
+        "summary_quality",
+        "source_ranking"
+      ],
+      "actionType": "ranking_tuning"
+    },
+    {
+      "category": "bad_citation",
+      "label": "citation_regression",
+      "defaultPriority": "p0_blocker",
+      "targetEvalSuites": [
+        "summary_quality"
+      ],
+      "actionType": "citation_validator"
+    },
+    {
+      "category": "low_relevance",
+      "label": "relevance_regression",
+      "defaultPriority": "p2_medium",
+      "targetEvalSuites": [
+        "source_ranking",
+        "summary_quality"
+      ],
+      "actionType": "ranking_tuning"
+    },
+    {
+      "category": "too_verbose",
+      "label": "style_quality_gap",
+      "defaultPriority": "p3_low",
+      "targetEvalSuites": [
+        "summary_quality"
+      ],
+      "actionType": "summary_prompt_review"
+    },
+    {
+      "category": "too_terse",
+      "label": "style_quality_gap",
+      "defaultPriority": "p3_low",
+      "targetEvalSuites": [
+        "summary_quality"
+      ],
+      "actionType": "summary_prompt_review"
+    },
+    {
+      "category": "source_request",
+      "label": "source_request_signal",
+      "defaultPriority": "p2_medium",
+      "targetEvalSuites": [
+        "source_query_planner"
+      ],
+      "actionType": "source_planner_review"
+    },
+    {
+      "category": "ux_confusing",
+      "label": "ux_quality_gap",
+      "defaultPriority": "p3_low",
+      "targetEvalSuites": [],
+      "actionType": "runbook_action"
+    },
+    {
+      "category": "other",
+      "label": "support_triage_signal",
+      "defaultPriority": "p3_low",
+      "targetEvalSuites": [],
+      "actionType": "runbook_action"
+    }
+  ],
+  "rollup": {
+    "itemCount": 3,
+    "labelCounts": {
+      "citation_regression": 1,
+      "factuality_regression": 1,
+      "evidence_recall_regression": 1
+    },
+    "priorityCounts": {
+      "p0_blocker": 2,
+      "p1_high": 1
+    },
+    "targetEvalSuiteCounts": {
+      "summary_quality": 3,
+      "source_ranking": 1
+    },
+    "evalFixtureEligibleItems": 3,
+    "releaseBlockingItems": 3
+  },
+  "items": [
+    {
+      "itemId": "summary-feedback-eval-redacted-feedback-bad-citation-001",
+      "feedbackId": "redacted-feedback-bad-citation-001",
+      "category": "bad_citation",
+      "label": "citation_regression",
+      "priority": "p0_blocker",
+      "triageOwner": "summary-owner",
+      "evalFixtureEligible": true,
+      "releaseBlocking": true,
+      "targetEvalSuites": [
+        "summary_quality"
+      ],
+      "requiredEvidence": [
+        "summary",
+        "interest",
+        "citation",
+        "feed_item",
+        "source_item",
+        "provider"
+      ],
+      "missingEvidence": [],
+      "summaryEvidence": {
+        "summaryId": "summary-redacted-sample-002",
+        "interestId": "topic-redacted-sample-001",
+        "citationId": "citation-redacted-sample-002",
+        "feedItemId": "feed-item-redacted-sample-002",
+        "sourceItemId": "source-item-redacted-sample-002",
+        "providerKey": "github"
+      },
+      "recommendedAction": {
+        "actionType": "citation_validator",
+        "command": "npm run test",
+        "artifact": "libs/summary/features/shared/summary-citation-validator.spec.ts",
+        "fixtureIds": [
+          "feedback-bad-citation-grounding"
+        ],
+        "exitCondition": "Bad-citation sample remains covered by citation validator regression before beta promotion."
+      },
+      "reasonCodes": [
+        "category:bad_citation",
+        "citation_does_not_support_claim",
+        "eval_fixture_candidate",
+        "label:citation_regression",
+        "release_blocking",
+        "summary_quality_blocker"
+      ],
+      "sourceArtifact": "ops/release/fixtures/redacted-summary-feedback-samples-examples.json"
+    },
+    {
+      "itemId": "summary-feedback-eval-redacted-feedback-wrong-fact-001",
+      "feedbackId": "redacted-feedback-wrong-fact-001",
+      "category": "wrong_fact",
+      "label": "factuality_regression",
+      "priority": "p0_blocker",
+      "triageOwner": "summary-owner",
+      "evalFixtureEligible": true,
+      "releaseBlocking": true,
+      "targetEvalSuites": [
+        "summary_quality"
+      ],
+      "requiredEvidence": [
+        "summary",
+        "interest",
+        "citation",
+        "feed_item",
+        "source_item",
+        "provider"
+      ],
+      "missingEvidence": [],
+      "summaryEvidence": {
+        "summaryId": "summary-redacted-sample-001",
+        "interestId": "topic-redacted-sample-001",
+        "citationId": "citation-redacted-sample-001",
+        "feedItemId": "feed-item-redacted-sample-001",
+        "sourceItemId": "source-item-redacted-sample-001",
+        "providerKey": "rss"
+      },
+      "recommendedAction": {
+        "actionType": "eval_fixture",
+        "command": "npm run check:summary-evals",
+        "artifact": "ops/evals/summary-eval-output.json",
+        "fixtureIds": [
+          "feedback-wrong-fact-grounding"
+        ],
+        "exitCondition": "Wrong-fact sample remains covered by a blocking grounding eval before beta promotion."
+      },
+      "reasonCodes": [
+        "category:wrong_fact",
+        "claim_not_grounded",
+        "eval_fixture_candidate",
+        "label:factuality_regression",
+        "release_blocking",
+        "summary_quality_blocker"
+      ],
+      "sourceArtifact": "ops/release/fixtures/redacted-summary-feedback-samples-examples.json"
+    },
+    {
+      "itemId": "summary-feedback-eval-redacted-feedback-missing-source-001",
+      "feedbackId": "redacted-feedback-missing-source-001",
+      "category": "missing_source",
+      "label": "evidence_recall_regression",
+      "priority": "p1_high",
+      "triageOwner": "summary-owner",
+      "evalFixtureEligible": true,
+      "releaseBlocking": true,
+      "targetEvalSuites": [
+        "summary_quality",
+        "source_ranking"
+      ],
+      "requiredEvidence": [
+        "summary",
+        "interest",
+        "citation",
+        "feed_item",
+        "source_item",
+        "provider"
+      ],
+      "missingEvidence": [],
+      "summaryEvidence": {
+        "summaryId": "summary-redacted-sample-003",
+        "interestId": "topic-redacted-sample-001",
+        "citationId": "citation-redacted-sample-003",
+        "feedItemId": "feed-item-redacted-sample-003",
+        "sourceItemId": "source-item-redacted-sample-003",
+        "providerKey": "reddit"
+      },
+      "recommendedAction": {
+        "actionType": "ranking_tuning",
+        "command": "npm run check:summary-window",
+        "artifact": "scripts/check-summary-window-freshness-smoke.ts",
+        "fixtureIds": [],
+        "exitCondition": "Summary window freshness gate stays release-blocking when newer feed evidence exists."
+      },
+      "reasonCodes": [
+        "category:missing_source",
+        "eval_fixture_candidate",
+        "evidence_selector_recall",
+        "important_evidence_missing",
+        "label:evidence_recall_regression",
+        "release_blocking"
+      ],
+      "sourceArtifact": "ops/release/fixtures/redacted-summary-feedback-samples-examples.json"
+    }
+  ]
+}

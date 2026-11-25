@@ -1,0 +1,13 @@
+[Unit]
+Description=Social Monitor daily post collection
+After=social-monitor-prod.service network-online.target
+Requires=social-monitor-prod.service
+
+[Service]
+Type=oneshot
+ExecStart=/var/data/social-monitor/control/daily-collection-run.sh
+TimeoutStartSec=5400
+Restart=no
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6

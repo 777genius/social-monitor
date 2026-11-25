@@ -1,0 +1,234 @@
+{
+  "schemaVersion": 1,
+  "dashboardId": "mvp-health",
+  "title": "MVP Health",
+  "owner": "platform",
+  "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md",
+  "panels": [
+    {
+      "panelId": "scan-queue-backlog",
+      "title": "Scan Queue Backlog",
+      "metric": "queue_commands_backlog",
+      "labels": {
+        "command_type": "ingestion.scan.execute",
+        "queue": "scan"
+      },
+      "safeDiagnosticQuestion": "Is accepted scan work waiting for workers?"
+    },
+    {
+      "panelId": "scan-queue-enqueued",
+      "title": "Scan Queue Enqueued",
+      "metric": "queue_commands_enqueued_total",
+      "labels": {
+        "command_type": "ingestion.scan.execute",
+        "job_type": "scan",
+        "status": "enqueued"
+      },
+      "safeDiagnosticQuestion": "How much scan work did the API accept?"
+    },
+    {
+      "panelId": "scan-queue-lag",
+      "title": "Scan Queue Lag",
+      "metric": "queue_command_delivery_lag_seconds",
+      "labels": {
+        "command_type": "ingestion.scan.execute",
+        "queue": "scan",
+        "worker": "ingestion-worker"
+      },
+      "safeDiagnosticQuestion": "How old is accepted scan work when workers receive it?"
+    },
+    {
+      "panelId": "scan-worker-started",
+      "title": "Scan Jobs Started",
+      "metric": "scan_jobs_total",
+      "labels": {
+        "job_type": "scan",
+        "status": "started",
+        "worker": "ingestion-worker"
+      },
+      "safeDiagnosticQuestion": "Are ingestion workers pulling scan jobs?"
+    },
+    {
+      "panelId": "scan-worker-failed",
+      "title": "Scan Jobs Failed",
+      "metric": "scan_jobs_total",
+      "labels": {
+        "job_type": "scan",
+        "status": "failed",
+        "worker": "ingestion-worker"
+      },
+      "safeDiagnosticQuestion": "Are scan jobs failing after workers start them?"
+    },
+    {
+      "panelId": "summary-queue-backlog",
+      "title": "Summary Queue Backlog",
+      "metric": "queue_commands_backlog",
+      "labels": {
+        "command_type": "summary.job.execute",
+        "queue": "summary"
+      },
+      "safeDiagnosticQuestion": "Is summary work waiting for intelligence workers?"
+    },
+    {
+      "panelId": "summary-queue-lag",
+      "title": "Summary Queue Lag",
+      "metric": "queue_command_delivery_lag_seconds",
+      "labels": {
+        "command_type": "summary.job.execute",
+        "queue": "summary",
+        "worker": "intelligence-worker"
+      },
+      "safeDiagnosticQuestion": "How old is accepted summary work when workers receive it?"
+    },
+    {
+      "panelId": "delivery-queue-backlog",
+      "title": "Delivery Queue Backlog",
+      "metric": "queue_commands_backlog",
+      "labels": {
+        "command_type": "delivery.attempt.send",
+        "queue": "delivery"
+      },
+      "safeDiagnosticQuestion": "Is delivery work waiting for delivery workers?"
+    },
+    {
+      "panelId": "delivery-queue-lag",
+      "title": "Delivery Queue Lag",
+      "metric": "queue_command_delivery_lag_seconds",
+      "labels": {
+        "command_type": "delivery.attempt.send",
+        "queue": "delivery",
+        "worker": "delivery-service"
+      },
+      "safeDiagnosticQuestion": "How old is accepted delivery work when workers receive it?"
+    },
+    {
+      "panelId": "delivery-attempts-failed",
+      "title": "Delivery Attempts Failed",
+      "metric": "delivery_attempts_total",
+      "labels": {
+        "channel": "webhook",
+        "resource_type": "digest",
+        "status": "failed"
+      },
+      "safeDiagnosticQuestion": "Are webhook delivery attempts failing?"
+    },
+    {
+      "panelId": "provider-unavailable-failures",
+      "title": "Provider Unavailable Failures",
+      "metric": "scan_failures_total",
+      "labels": {
+        "failure_class": "provider_unavailable",
+        "job_type": "scan",
+        "worker": "ingestion-worker"
+      },
+      "safeDiagnosticFields": ["provider_key", "source_binding_id", "failure_class", "correlation_id"],
+      "safeDiagnosticQuestion": "Are scan failures caused by provider availability?"
+    },
+    {
+      "panelId": "provider-rate-limit-failures",
+      "title": "Provider Rate Limit Failures",
+      "metric": "scan_failures_total",
+      "labels": {
+        "failure_class": "provider_rate_limited",
+        "job_type": "scan",
+        "worker": "ingestion-worker"
+      },
+      "safeDiagnosticFields": ["provider_key", "source_binding_id", "failure_class", "correlation_id"],
+      "safeDiagnosticQuestion": "Are scan failures caused by provider rate limits?"
+    },
+    {
+      "panelId": "scan-retry-backlog",
+      "title": "Scan Retry Backlog",
+      "metric": "scan_failure_queue_backlog",
+      "labels": {
+        "queue": "scan-retry"
+      },
+      "safeDiagnosticQuestion": "Are failed scans waiting for retry?"
+    },
+    {
+      "panelId": "scan-dlq-backlog",
+      "title": "Scan DLQ Backlog",
+      "metric": "scan_failure_queue_backlog",
+      "labels": {
+        "queue": "scan-dlq"
+      },
+      "safeDiagnosticFields": ["scan_id", "source_binding_id", "failure_class", "correlation_id"],
+      "safeDiagnosticQuestion": "Do failed scans require manual triage?"
+    },
+    {
+      "panelId": "summary-model-cost",
+      "title": "Summary Model Estimated Cost",
+      "metric": "summary_model_estimated_cost_usd",
+      "labels": {
+        "model": "summary-fake-v1",
+        "provider": "deterministic-local"
+      },
+      "safeDiagnosticFields": ["provider", "model", "tenant_id", "workspace_id", "correlation_id"],
+      "safeDiagnosticQuestion": "Is summary model spend growing faster than expected?"
+    },
+    {
+      "panelId": "summary-model-output-tokens",
+      "title": "Summary Model Output Tokens",
+      "metric": "summary_model_tokens_total",
+      "labels": {
+        "model": "summary-fake-v1",
+        "provider": "deterministic-local",
+        "token_type": "output"
+      },
+      "safeDiagnosticQuestion": "Are summary outputs larger than expected?"
+    },
+    {
+      "panelId": "summary-story-ranking-cross-provider-share",
+      "title": "Story Ranking Cross Provider Share",
+      "metric": "summary_story_ranking_cross_provider_cluster_share",
+      "labels": {
+        "ranking_policy_version": "story_ranking_v1"
+      },
+      "safeDiagnosticFields": ["ranking_policy_version", "tenant_id", "workspace_id", "correlation_id"],
+      "safeDiagnosticQuestion": "Are top summary stories confirmed by multiple providers?"
+    },
+    {
+      "panelId": "summary-story-ranking-title-only-share",
+      "title": "Story Ranking Title Only Share",
+      "metric": "summary_story_ranking_title_only_cluster_share",
+      "labels": {
+        "ranking_policy_version": "story_ranking_v1"
+      },
+      "safeDiagnosticFields": ["ranking_policy_version", "tenant_id", "workspace_id", "correlation_id"],
+      "safeDiagnosticQuestion": "Are summaries depending on title-only story keys?"
+    },
+    {
+      "panelId": "summary-story-ranking-missing-provider-metrics",
+      "title": "Story Ranking Missing Provider Metrics",
+      "metric": "summary_story_ranking_clusters_without_provider_metrics",
+      "labels": {
+        "ranking_policy_version": "story_ranking_v1"
+      },
+      "safeDiagnosticFields": ["ranking_policy_version", "tenant_id", "workspace_id", "correlation_id"],
+      "safeDiagnosticQuestion": "Are ranked story clusters missing raw provider metrics?"
+    },
+    {
+      "panelId": "summary-story-ranking-provider-domination",
+      "title": "Story Ranking Provider Domination",
+      "metric": "summary_story_ranking_top_provider_cluster_share",
+      "labels": {
+        "ranking_policy_version": "story_ranking_v1",
+        "top_provider_key": "unknown"
+      },
+      "safeDiagnosticFields": ["ranking_policy_version", "top_provider_key", "tenant_id", "workspace_id", "correlation_id"],
+      "safeDiagnosticQuestion": "Is one provider dominating ranked story clusters?"
+    },
+    {
+      "panelId": "delivery-webhook-failures",
+      "title": "Webhook Delivery Failures",
+      "metric": "delivery_failures_total",
+      "labels": {
+        "channel": "webhook",
+        "resource_type": "digest",
+        "retryable": "true"
+      },
+      "safeDiagnosticFields": ["attempt_id", "channel", "resource_type", "correlation_id"],
+      "safeDiagnosticQuestion": "Are webhook delivery failures increasing?"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+[project]
+name = "social-monitor-social-research"
+version = "0.1.0"
+description = "Contract-backed Python client for Social Monitor social research"
+requires-python = ">=3.11,<3.14"
+dependencies = []
+
+[build-system]
+requires = ["setuptools>=83.0.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

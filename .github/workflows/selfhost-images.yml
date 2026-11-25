@@ -1,0 +1,73 @@
+name: Self-host images
+on:
+  push:
+    branches: [codex/docker-one-command]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the tested immutable preview release
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: selfhost-images-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  images:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {runner: ubuntu-24.04, arch: amd64}
+          - {runner: ubuntu-24.04-arm, arch: arm64}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+      - name: Build precompiled images
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          docker build --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            -t ghcr.io/777genius/social-monitor-backend:selfhost-preview-20261018 .
+          docker build --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            -f ops/quickstart/frontend.Dockerfile \
+            -t ghcr.io/777genius/social-monitor-web:selfhost-preview-20261018 .
+          mkdir -p images
+          for component in backend web; do
+            docker save "ghcr.io/777genius/social-monitor-$component:selfhost-preview-20261018" | gzip -1 > "images/$component-$ARCH.tar.gz"
+          done
+          cd images
+          sha256sum *.tar.gz > "SHA256SUMS-$ARCH"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: selfhost-images-${{ matrix.arch }}
+          path: images/*
+          retention-days: 7
+          if-no-files-found: error
+  publish:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
+    permissions:
+      contents: write
+    needs: images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          pattern: selfhost-images-*
+          path: images
+          merge-multiple: true
+      - name: Publish immutable preview artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cat images/SHA256SUMS-* > images/SHA256SUMS
+          tag=selfhost-preview-20261018
+          printf 'Precompiled Docker images for commit `%s`. Local single-owner preview.\n' "$GITHUB_SHA" > notes.txt
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --prerelease --title "Self-host preview ${GITHUB_SHA:0:12}" --notes-file notes.txt \
+            images/backend-*.tar.gz images/web-*.tar.gz images/SHA256SUMS

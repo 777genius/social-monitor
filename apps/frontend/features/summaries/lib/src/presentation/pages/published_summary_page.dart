@@ -1,0 +1,270 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:social_monitor_design_system/social_monitor_design_system.dart';
+import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
+
+import '../../domain/aggregates/reader_summary.dart';
+import '../components/reader_summary_top_posts_section_sliver.dart';
+import '../components/reader_summary_unpublished_posts_sliver.dart';
+import '../components/reader_summary_view.dart';
+import '../components/workspace_summary_period_shell.dart';
+import '../stores/published_summary_store.dart';
+import '../stores/reader_posts_browse_store.dart';
+import '../stores/top_posts_sort_store.dart';
+
+class PublishedSummaryPage extends StatefulWidget {
+  const PublishedSummaryPage({
+    super.key,
+    required this.store,
+    this.topPostsSortStore,
+    this.readerPostsBrowseStore,
+  });
+
+  final PublishedSummaryStore store;
+  final TopPostsSortStore? topPostsSortStore;
+  final ReaderPostsBrowseStore? readerPostsBrowseStore;
+
+  @override
+  State<PublishedSummaryPage> createState() => _PublishedSummaryPageState();
+}
+
+class _PublishedSummaryPageState extends State<PublishedSummaryPage> {
+  @override
+  void initState() {
+    super.initState();
+    unawaited(widget.store.load());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final page = AnimatedBuilder(
+      animation: widget.store,
+      builder: (context, _) {
+        final state = widget.store.state;
+        final summary = switch (state) {
+          ReadyViewState<ReaderSummary>(:final value) => value,
+          LoadingViewState<ReaderSummary>(:final previousValue) =>
+            previousValue,
+          _ => null,
+        };
+        if (summary != null) {
+          return _PublishedSummaryArticle(
+            store: widget.store,
+            topPostsSortStore: widget.topPostsSortStore,
+            readerPostsBrowseStore: widget.readerPostsBrowseStore,
+            summary: summary,
+            isRefreshing: state is LoadingViewState<ReaderSummary>,
+            onOpenUrl: (url) => unawaited(widget.store.openUrl(url)),
+          );
+        }
+
+        if (summary == null &&
+            (state is EmptyViewState<ReaderSummary> ||
+                state is FailureViewState<ReaderSummary>) &&
+            widget.readerPostsBrowseStore != null &&
+            widget.store.canBrowseUnpublishedDaily) {
+          return _PublishedUnpublishedDay(
+            store: widget.store,
+            browseStore: widget.readerPostsBrowseStore!,
+            summaryLoadError: switch (state) {
+              FailureViewState<ReaderSummary>(:final failure) =>
+                failure.message,
+              _ => null,
+            },
+            onOpenUrl: (url) => unawaited(widget.store.openUrl(url)),
+          );
+        }
+
+        final body = switch (state) {
+          ReadyViewState<ReaderSummary>() => const SizedBox.shrink(),
+          InitialViewState<ReaderSummary>() ||
+          LoadingViewState<ReaderSummary>() => const Center(
+            child: CircularProgressIndicator(),
+          ),
+          EmptyViewState<ReaderSummary>(:final reason) => AppEmptyState(
+            title: 'The next story is being prepared',
+            message: reason,
+            icon: Icons.auto_stories_outlined,
+          ),
+          FailureViewState<ReaderSummary>(:final failure) => AppInlineProblem(
+            title: 'Summary unavailable',
+            message: failure.message,
+            tone: AppProblemTone.warning,
+            actionLabel: 'Retry',
+            onAction: () => unawaited(widget.store.load()),
+          ),
+          PermissionRequiredViewState<ReaderSummary>(:final message) =>
+            AppInlineProblem(title: 'Access unavailable', message: message),
+          RetryingViewState<ReaderSummary>() => const Center(
+            child: CircularProgressIndicator(),
+          ),
+        };
+
+        return CustomScrollView(
+          key: const PageStorageKey<String>('published-summary-scroll-view'),
+          slivers: [
+            SliverPadding(
+              padding: appPageSurfaceInsets(context),
+              sliver: SliverToBoxAdapter(child: body),
+            ),
+          ],
+        );
+      },
+    );
+    return AppWebFindInPage(child: page);
+  }
+}
+
+class _PublishedSummaryArticle extends StatelessWidget {
+  const _PublishedSummaryArticle({
+    required this.store,
+    required this.topPostsSortStore,
+    required this.readerPostsBrowseStore,
+    required this.summary,
+    required this.isRefreshing,
+    required this.onOpenUrl,
+  });
+
+  final PublishedSummaryStore store;
+  final TopPostsSortStore? topPostsSortStore;
+  final ReaderPostsBrowseStore? readerPostsBrowseStore;
+  final ReaderSummary summary;
+  final bool isRefreshing;
+  final ValueChanged<String> onOpenUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final pageInsets = appPageSurfaceInsets(context);
+    final articlePadding = EdgeInsets.fromLTRB(
+      pageInsets.left,
+      AppSpacing.md,
+      pageInsets.right,
+      0,
+    );
+    final topPostsPadding = EdgeInsets.fromLTRB(
+      pageInsets.left,
+      0,
+      pageInsets.right,
+      pageInsets.bottom,
+    );
+    return CustomScrollView(
+      key: const PageStorageKey<String>('published-summary-scroll-view'),
+      slivers: [
+        SliverToBoxAdapter(
+          child: WorkspaceSummaryPeriodShell(
+            selectedPeriod: store.selectedPeriod,
+            selectedPreset: store.selectedPeriodPreset,
+            availableSummaryPeriods: store.availablePeriods,
+            canNavigateToPreviousPeriod: store.canNavigateToPreviousPeriod,
+            canNavigateToNextPeriod: store.canNavigateToNextPeriod,
+            onPeriodChanged: (preset) =>
+                unawaited(store.selectPeriodPreset(preset)),
+            onPreviousPeriod: () => unawaited(store.showPreviousPeriod()),
+            onNextPeriod: () => unawaited(store.showNextPeriod()),
+            onCalendarDateSelected: (date) =>
+                unawaited(store.selectCalendarDate(date)),
+            isGenerating: false,
+            isLoading: isRefreshing,
+            exportSummary: summary,
+            showRefreshSchedule: store.isViewingLatestDailySummary,
+            allowUnpublishedDates:
+                store.canBrowseUnpublishedDaily && readerPostsBrowseStore != null,
+            onRefreshDue: () => unawaited(store.refreshIfNewer()),
+            contentPadding: articlePadding,
+            child: ReaderSummaryView.readOnly(
+              key: const ValueKey('published-reader-summary-view'),
+              summary: summary,
+              isRefreshing: isRefreshing,
+              onOpenUrl: onOpenUrl,
+              includeTopPosts: false,
+            ),
+          ),
+        ),
+        ReaderSummaryTopPostsSectionSliver(
+          summary: summary,
+          contentPadding: topPostsPadding,
+          sortStore: topPostsSortStore,
+          browseStore: readerPostsBrowseStore,
+          onOpenUrl: onOpenUrl,
+        ),
+      ],
+    );
+  }
+}
+
+
+/// Public reader view when the selected day has posts but no published summary.
+class _PublishedUnpublishedDay extends StatelessWidget {
+  const _PublishedUnpublishedDay({
+    required this.store,
+    required this.browseStore,
+    required this.summaryLoadError,
+    required this.onOpenUrl,
+  });
+
+  final PublishedSummaryStore store;
+  final ReaderPostsBrowseStore browseStore;
+  final String? summaryLoadError;
+  final ValueChanged<String> onOpenUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final pageInsets = appPageSurfaceInsets(context);
+    return CustomScrollView(
+      key: const PageStorageKey<String>('published-summary-scroll-view'),
+      slivers: [
+        SliverToBoxAdapter(
+          child: WorkspaceSummaryPeriodShell(
+            selectedPeriod: store.selectedPeriod,
+            selectedPreset: store.selectedPeriodPreset,
+            availableSummaryPeriods: store.availablePeriods,
+            canNavigateToPreviousPeriod: store.canNavigateToPreviousPeriod,
+            canNavigateToNextPeriod: store.canNavigateToNextPeriod,
+            onPeriodChanged: (preset) =>
+                unawaited(store.selectPeriodPreset(preset)),
+            onPreviousPeriod: () => unawaited(store.showPreviousPeriod()),
+            onNextPeriod: () => unawaited(store.showNextPeriod()),
+            onCalendarDateSelected: (date) =>
+                unawaited(store.selectCalendarDate(date)),
+            allowUnpublishedDates: true,
+            isGenerating: false,
+            exportSummary: null,
+            contentPadding: EdgeInsets.fromLTRB(
+              pageInsets.left,
+              AppSpacing.md,
+              pageInsets.right,
+              0,
+            ),
+            child: summaryLoadError == null
+                ? const AppInlineProblem(
+                    title: 'No AI summary for this day',
+                    message: 'Showing collected original posts below, ordered by '
+                        'likes or source score. No AI-generated headlines or descriptions.',
+                    tone: AppProblemTone.neutral,
+                  )
+                : AppInlineProblem(
+                    title: 'Summary unavailable',
+                    message: '$summaryLoadError Original posts are still '
+                        'available below.',
+                    tone: AppProblemTone.warning,
+                    actionLabel: 'Retry',
+                    onAction: () => unawaited(store.load()),
+                  ),
+          ),
+        ),
+        ReaderSummaryUnpublishedPostsSliver(
+          store: browseStore,
+          period: store.selectedPeriod,
+          contentPadding: EdgeInsets.fromLTRB(
+            pageInsets.left,
+            AppSpacing.md,
+            pageInsets.right,
+            pageInsets.bottom,
+          ),
+          onOpenUrl: onOpenUrl,
+        ),
+      ],
+    );
+  }
+}

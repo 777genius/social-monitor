@@ -1,0 +1,17 @@
+version=social-monitor-production-forward-bridge-blobs-v1
+bridge 100644 56bf845458ec97f704a328906e51944d8c25835d ops/deploy/production-transition-b0-host-control.sh
+head 100644 0867fe9abdfe4b0af31e9c9dd33640762e12aa89 .github/workflows/production-deploy.yml
+head 100644 930d8b0966f0556a227068d7aa1564c7e8fea83a ops/deploy/deploy-control-bridge-runtime-helper.test.sh
+head 100755 ae3d1e344efd54970e06721fc67a060dbc703da6 ops/deploy/github-production-deploy-client.sh
+head 100755 933cc3009d04cc8011ffcaf63b15d6967d34dcbb ops/deploy/github-production-deploy-client.test.sh
+head 100755 d0ded4cdbd36577537bdf00c91c5829fd120f3c4 ops/deploy/production-forward-bootstrap-marker-resume.test.sh
+head 100755 cf27559253df7a0f3fca8bace5d39a789de281d6 ops/deploy/production-forward-bridge.test.sh
+head 100755 73673a20e6abe803bfbaf0cc00383b68036aeced ops/deploy/production-release-b-bridge-order.test.sh
+head 100755 75c765a3003c952ade9e69865287ebb782e5b1d9 ops/deploy/production-transition-b0-host-control.test.sh
+head 100644 57a52e56ec879624eb33f3c77834b5b005fa9412 ops/deploy/rabbitmq-quorum-deploy-bridge-transition.test.sh
+head 100755 15e0a2797dd694b535b4f80cbf1fffb166ba6590 ops/deploy/social-monitor-production-deploy.test.sh
+head 100644 ad399a5f6df8939793a7344535a9a5c509630470 ops/deploy/x-collector-image-deploy-lib.test.sh
+head 100644 83483f76535ae0f870b9052968c58f1e117ff5c7 package-lock.json
+head 100644 79b118b7679a4110ac8e5bce86a50f07892bcecd package.json
+head 100644 195ee0e7fe780ab6ce8e396b340432d1988b32c7 scripts/check-review-ci.mjs
+rolling 100644 abd0057d6cc840bbfec90e969d474afad4e28328 ops/deploy/social-monitor-production-deploy.sh

@@ -1,0 +1,247 @@
+import { Module } from '@nestjs/common';
+import { resolvePostgresRuntimePoolConfig } from '@social-monitor/platform-persistence';
+import { IdentityRestModule } from '@social-monitor/identity/interfaces/rest/identity-rest.module';
+import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
+import { METRICS_RECORDER } from '@social-monitor/platform-metrics/nest/metrics-runtime.module';
+import { SystemClock, CryptoIdGenerator } from '@social-monitor/shared-kernel';
+
+import { PrismaIngestionConnection } from '../../adapters/persistence/prisma/prisma-ingestion-connection';
+import type { PrismaIngestionClient } from '../../adapters/persistence/prisma/prisma-ingestion-client';
+import { PrismaScanFailureQueueAdapter } from '../../adapters/persistence/prisma/prisma-scan-failure-queue.adapter';
+import { InMemoryScanFailureQueueAdapter } from '../../adapters/queue/in-memory-scan-failure-queue.adapter';
+import { FakeSourceProvider } from '../../adapters/source/fake-source.provider';
+import { FixtureGitHubClient } from '../../adapters/source/github/fixture-github-client';
+import {
+  GITHUB_ISSUES_PROVIDER_KEY,
+  GitHubSourceProvider,
+  LEGACY_GITHUB_ISSUES_PROVIDER_KEY,
+} from '../../adapters/source/github/github-source.provider';
+import { FixtureGitHubRepoRadarClient } from '../../adapters/source/github-repo-radar/fixture-github-repo-radar-client';
+import { FixtureGitHubRepositoryLiveVerifier } from '../../adapters/source/github-repo-radar/fixture-github-repository-live-verifier';
+import { GitHubRepoRadarSourceProvider } from '../../adapters/source/github-repo-radar/github-repo-radar-source.provider';
+import { FixtureGitHubTrendingPageClient } from '../../adapters/source/github-trending-page/fixture-github-trending-page-client';
+import { GitHubTrendingPageSourceProvider } from '../../adapters/source/github-trending-page/github-trending-page-source.provider';
+import { FixtureHackerNewsClient } from '../../adapters/source/hacker-news/fixture-hacker-news-client';
+import { HackerNewsSourceProvider } from '../../adapters/source/hacker-news/hacker-news-source.provider';
+import { InMemorySourceProviderRegistry } from '../../adapters/source/in-memory-source-provider.registry';
+import { FixtureRedditClient } from '../../adapters/source/reddit/fixture-reddit-client';
+import { RedditSourceProvider } from '../../adapters/source/reddit/reddit-source.provider';
+import { StaticRedditTokenProvider } from '../../adapters/source/reddit/static-reddit-token-provider';
+import { FixtureRssClient } from '../../adapters/source/rss/fixture-rss-client';
+import { RssSourceProvider } from '../../adapters/source/rss/rss-source.provider';
+import { FixtureTelegramPreviewClient } from '../../adapters/source/telegram/fixture-telegram-preview-client';
+import { TelegramSourceProvider } from '../../adapters/source/telegram/telegram-source.provider';
+import { sourceReadinessProfilesForRuntime } from '../../adapters/source/source-readiness-profiles';
+import {
+  resolveSourceProviderRuntimeScope,
+  selectRuntimeSourceProviders,
+} from '../../adapters/source/source-provider-runtime-scope';
+import { xTwitterCapabilityProfile } from '../../adapters/source/x-twitter-experimental-daily/x-twitter-experimental-daily-source.provider';
+import { ListScanDeadLettersUseCase } from '../../features/list-scan-dead-letters/list-scan-dead-letters.use-case';
+import { ListSourceProfilesUseCase } from '../../features/list-source-profiles/list-source-profiles.use-case';
+import type { ScanFailureInspectionPort } from '../../ports';
+import {
+  INGESTION_SCAN_FAILURE_INSPECTION,
+  INGESTION_SUPPORT_PERSISTENCE_MODE,
+  INGESTION_SUPPORT_PRISMA_CLIENT,
+  type IngestionSupportPersistenceMode,
+  ingestionSupportPersistenceModeProvider,
+} from './ingestion-provider-tokens';
+import { ScanDeadLetterController } from './scan-dead-letter.controller';
+import { SourceProfileController } from './source-profile.controller';
+
+@Module({
+  imports: [IdentityRestModule],
+  controllers: [SourceProfileController, ScanDeadLetterController],
+  providers: [
+    ingestionSupportPersistenceModeProvider,
+    {
+      provide: INGESTION_SUPPORT_PRISMA_CLIENT,
+      useFactory: async (
+        mode: IngestionSupportPersistenceMode,
+      ): Promise<PrismaIngestionClient | null> =>
+        mode === 'prisma'
+          ? PrismaIngestionConnection.create(
+              resolvePostgresRuntimePoolConfig(process.env),
+            )
+          : null,
+      inject: [INGESTION_SUPPORT_PERSISTENCE_MODE],
+    },
+    {
+      provide: InMemoryScanFailureQueueAdapter,
+      useFactory: (metrics: MetricsRecorderPort) =>
+        new InMemoryScanFailureQueueAdapter(metrics),
+      inject: [METRICS_RECORDER],
+    },
+    {
+      provide: INGESTION_SCAN_FAILURE_INSPECTION,
+      useFactory: (
+        mode: IngestionSupportPersistenceMode,
+        prisma: PrismaIngestionClient | null,
+        inMemoryFailures: InMemoryScanFailureQueueAdapter,
+        metrics: MetricsRecorderPort,
+      ): ScanFailureInspectionPort =>
+        mode === 'prisma'
+          ? new PrismaScanFailureQueueAdapter(
+              requirePrismaIngestionClient(prisma),
+              metrics,
+              new CryptoIdGenerator(),
+            )
+          : inMemoryFailures,
+      inject: [
+        INGESTION_SUPPORT_PERSISTENCE_MODE,
+        INGESTION_SUPPORT_PRISMA_CLIENT,
+        InMemoryScanFailureQueueAdapter,
+        METRICS_RECORDER,
+      ],
+    },
+    FakeSourceProvider,
+    FixtureGitHubClient,
+    FixtureGitHubRepoRadarClient,
+    FixtureGitHubRepositoryLiveVerifier,
+    FixtureGitHubTrendingPageClient,
+    FixtureHackerNewsClient,
+    FixtureRedditClient,
+    {
+      provide: StaticRedditTokenProvider,
+      useFactory: () =>
+        new StaticRedditTokenProvider('fixture-reddit-app-token'),
+    },
+    FixtureRssClient,
+    {
+      provide: HackerNewsSourceProvider,
+      useFactory: (client: FixtureHackerNewsClient) =>
+        new HackerNewsSourceProvider(client, new SystemClock()),
+      inject: [FixtureHackerNewsClient],
+    },
+    {
+      provide: GitHubSourceProvider,
+      useFactory: (client: FixtureGitHubClient) =>
+        new GitHubSourceProvider(client),
+      inject: [FixtureGitHubClient],
+    },
+    {
+      provide: GitHubRepoRadarSourceProvider,
+      useFactory: (
+        radarClient: FixtureGitHubRepoRadarClient,
+        liveVerifier: FixtureGitHubRepositoryLiveVerifier,
+      ) =>
+        new GitHubRepoRadarSourceProvider(radarClient, liveVerifier, {
+          now: () => new Date('2026-06-23T12:00:00.000Z'),
+        }),
+      inject: [
+        FixtureGitHubRepoRadarClient,
+        FixtureGitHubRepositoryLiveVerifier,
+      ],
+    },
+    {
+      provide: GitHubTrendingPageSourceProvider,
+      useFactory: (client: FixtureGitHubTrendingPageClient) =>
+        new GitHubTrendingPageSourceProvider(client, {
+          now: () => new Date('2026-06-24T12:00:00.000Z'),
+        }),
+      inject: [FixtureGitHubTrendingPageClient],
+    },
+    {
+      provide: RssSourceProvider,
+      useFactory: (client: FixtureRssClient) => new RssSourceProvider(client),
+      inject: [FixtureRssClient],
+    },
+    {
+      provide: RedditSourceProvider,
+      useFactory: (
+        client: FixtureRedditClient,
+        tokenProvider: StaticRedditTokenProvider,
+      ) => new RedditSourceProvider(client, tokenProvider),
+      inject: [FixtureRedditClient, StaticRedditTokenProvider],
+    },
+    {
+      provide: TelegramSourceProvider,
+      useFactory: () => {
+        const clock = new SystemClock();
+        return new TelegramSourceProvider(new FixtureTelegramPreviewClient(clock), clock);
+      },
+    },
+    {
+      provide: InMemorySourceProviderRegistry,
+      useFactory: (
+        fakeProvider: FakeSourceProvider,
+        githubProvider: GitHubSourceProvider,
+        githubRepoRadarProvider: GitHubRepoRadarSourceProvider,
+        githubTrendingPageProvider: GitHubTrendingPageSourceProvider,
+        hackerNewsProvider: HackerNewsSourceProvider,
+        redditProvider: RedditSourceProvider,
+        rssProvider: RssSourceProvider,
+        telegramProvider: TelegramSourceProvider,
+      ) => {
+        const runtimeScope = resolveSourceProviderRuntimeScope(process.env);
+
+        return new InMemorySourceProviderRegistry(
+          selectRuntimeSourceProviders(
+            [
+              fakeProvider,
+              githubProvider,
+              githubRepoRadarProvider,
+              githubTrendingPageProvider,
+              hackerNewsProvider,
+              redditProvider,
+              rssProvider,
+              telegramProvider,
+            ],
+            runtimeScope,
+          ),
+          sourceReadinessProfilesForRuntime(runtimeScope),
+          [
+            {
+              providerKey: LEGACY_GITHUB_ISSUES_PROVIDER_KEY,
+              canonicalProviderKey: GITHUB_ISSUES_PROVIDER_KEY,
+            },
+          ],
+          runtimeScope.xCollectorRuntimeConfigured
+            ? [xTwitterCapabilityProfile]
+            : [],
+        );
+      },
+      inject: [
+        FakeSourceProvider,
+        GitHubSourceProvider,
+        GitHubRepoRadarSourceProvider,
+        GitHubTrendingPageSourceProvider,
+        HackerNewsSourceProvider,
+        RedditSourceProvider,
+        RssSourceProvider,
+        TelegramSourceProvider,
+      ],
+    },
+    {
+      provide: ListSourceProfilesUseCase,
+      useFactory: (registry: InMemorySourceProviderRegistry) =>
+        new ListSourceProfilesUseCase(registry),
+      inject: [InMemorySourceProviderRegistry],
+    },
+    {
+      provide: ListScanDeadLettersUseCase,
+      useFactory: (failures: ScanFailureInspectionPort) =>
+        new ListScanDeadLettersUseCase(failures),
+      inject: [INGESTION_SCAN_FAILURE_INSPECTION],
+    },
+  ],
+  exports: [
+    InMemoryScanFailureQueueAdapter,
+    INGESTION_SCAN_FAILURE_INSPECTION,
+    ListScanDeadLettersUseCase,
+  ],
+})
+export class IngestionRestModule {}
+
+const requirePrismaIngestionClient = (
+  client: PrismaIngestionClient | null,
+): PrismaIngestionClient => {
+  if (client === null) {
+    throw new Error(
+      'Prisma ingestion client is required when INGESTION_SUPPORT_PERSISTENCE=prisma',
+    );
+  }
+
+  return client;
+};

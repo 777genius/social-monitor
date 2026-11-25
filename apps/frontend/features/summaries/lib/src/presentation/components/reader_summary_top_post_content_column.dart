@@ -1,0 +1,224 @@
+part of 'reader_summary_brief_surface.dart';
+
+const _topPostDescriptionMaxLines = 4;
+const _topPostInlinePreviewMinWidth = 480.0;
+const _topPostOriginalControlWidth = 88.0;
+
+class _TopPostContentColumn extends StatelessWidget {
+  const _TopPostContentColumn({
+    required this.item,
+    required this.reservePreviewSpace,
+    required this.showOriginal,
+    required this.showOriginalControl,
+    required this.originalExpanded,
+    required this.onOriginalChanged,
+    required this.onOriginalExpandedChanged,
+  });
+
+  final TopRead item;
+  final bool reservePreviewSpace;
+  final bool showOriginal;
+  final bool showOriginalControl;
+  final bool originalExpanded;
+  final ValueChanged<bool> onOriginalChanged;
+  final ValueChanged<bool> onOriginalExpandedChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final media = item.previewMedia;
+    final hasPreview = reservePreviewSpace && media != null;
+    if (!hasPreview) {
+      return _TopPostTextBody(
+        item: item,
+        showOriginal: showOriginal,
+        showOriginalControl: showOriginalControl,
+        originalExpanded: originalExpanded,
+        onOriginalChanged: onOriginalChanged,
+        onOriginalExpandedChanged: onOriginalExpandedChanged,
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final previewSize = constraints.maxWidth >= 720 ? 112.0 : 92.0;
+        final preview = _TopPostPreviewSlot(
+          item: item,
+          size: previewSize,
+          reservePreviewSpace: false,
+        );
+        final textBody = _TopPostTextBody(
+          item: item,
+          showOriginal: showOriginal,
+          showOriginalControl: showOriginalControl,
+          originalExpanded: originalExpanded,
+          onOriginalChanged: onOriginalChanged,
+          onOriginalExpandedChanged: onOriginalExpandedChanged,
+        );
+
+        if (constraints.maxWidth < _topPostInlinePreviewMinWidth) {
+          return Column(
+            key: const ValueKey('reader-summary-top-post-preview-stacked'),
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              textBody,
+              const SizedBox(height: AppSpacing.sm),
+              preview,
+            ],
+          );
+        }
+
+        return Row(
+          key: const ValueKey('reader-summary-top-post-preview-inline'),
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            preview,
+            const SizedBox(width: AppSpacing.md),
+            Expanded(child: textBody),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _TopPostTextBody extends StatelessWidget {
+  const _TopPostTextBody({
+    required this.item,
+    required this.showOriginal,
+    required this.showOriginalControl,
+    required this.originalExpanded,
+    required this.onOriginalChanged,
+    required this.onOriginalExpandedChanged,
+  });
+
+  final TopRead item;
+  final bool showOriginal;
+  final bool showOriginalControl;
+  final bool originalExpanded;
+  final ValueChanged<bool> onOriginalChanged;
+  final ValueChanged<bool> onOriginalExpandedChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    if (showOriginal) {
+      return _TopPostOriginalBody(
+        item: item,
+        expanded: originalExpanded,
+        showControl: true,
+        onOriginalChanged: onOriginalChanged,
+        onExpandedChanged: onOriginalExpandedChanged,
+      );
+    }
+    final tags = item.matchedRules
+        .map(readablePostTag)
+        .whereType<String>()
+        .take(3)
+        .toList(growable: false);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Padding(
+              padding: EdgeInsets.only(
+                right: showOriginalControl && item.capturedSource != null
+                    ? _topPostOriginalControlWidth
+                    : 0,
+              ),
+              child: Text(
+                _topPostDisplayHeadline(item),
+                key: ObjectKey(item),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: textTheme.bodyMedium?.copyWith(
+                  fontWeight: isGitHubTrendingBreakout(item)
+                      ? FontWeight.w900
+                      : FontWeight.w700,
+                  letterSpacing: 0,
+                  height: 1.35,
+                ),
+              ),
+            ),
+            if (showOriginalControl && item.capturedSource != null)
+              Positioned(
+                top: -4,
+                right: 0,
+                child: _TopPostOriginalSwitch(
+                  value: false,
+                  onChanged: onOriginalChanged,
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        _TopPostSummaryText(item: item),
+        if (tags.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.sm),
+          Wrap(
+            spacing: AppSpacing.xs + 2,
+            runSpacing: AppSpacing.xs + 2,
+            children: [for (final tag in tags) _TopPostTagPill(label: tag)],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _TopPostSummaryText extends StatelessWidget {
+  const _TopPostSummaryText({required this.item});
+
+  final TopRead item;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final style = Theme.of(context).textTheme.bodySmall?.copyWith(
+      color: colorScheme.onSurfaceVariant,
+      letterSpacing: 0,
+      height: 1.4,
+    );
+    final text = _topPostDisplaySummary(item);
+    return Text(
+      text,
+      maxLines: _topPostDescriptionMaxLines,
+      overflow: TextOverflow.ellipsis,
+      style: style,
+    );
+  }
+}
+
+class _TopPostTagPill extends StatelessWidget {
+  const _TopPostTagPill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
+        border: Border.all(color: colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm + 2,
+          vertical: 3,
+        ),
+        child: Text(
+          label,
+          style: textTheme.labelSmall?.copyWith(
+            color: colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0,
+          ),
+        ),
+      ),
+    );
+  }
+}

@@ -1,0 +1,86 @@
+import 'package:social_monitor_summaries/src/infrastructure/api/summary_api_dto.dart';
+
+const sampleTopicMapApiDto = ReaderSummaryTopicMapApiDto(
+  generatedBy: 'agent-runtime',
+  confidence: ReaderSummaryTopicMapConfidenceApiDto(
+    level: 'high',
+    score: 0.86,
+    rationale: 'Grouped from related source evidence.',
+  ),
+  nodes: [
+    ReaderSummaryTopicMapNodeApiDto(
+      id: 'topic:story:ai-tools',
+      label: 'AI tools',
+      groupId: 'group:agent-tools',
+      storyClusterIds: ['story:ai-tools'],
+      popularityScore: 100,
+      sizeWeight: 1,
+      evidenceCount: 3,
+      providerKeys: ['github-repo-radar', 'reddit'],
+      interestIds: ['ai-developer-tools'],
+      citationIds: ['bc-1'],
+      keywords: ['ai', 'tools', 'agents'],
+      rationale: 'Multiple sources discuss AI developer tooling.',
+    ),
+    ReaderSummaryTopicMapNodeApiDto(
+      id: 'topic:story:codex',
+      label: 'Codex',
+      groupId: 'group:agent-tools',
+      storyClusterIds: ['story:codex'],
+      popularityScore: 64,
+      sizeWeight: 0.8,
+      evidenceCount: 2,
+      providerKeys: ['github-trending-page'],
+      interestIds: ['ai-developer-tools'],
+      citationIds: ['bc-1'],
+      keywords: ['codex', 'agents'],
+      rationale: 'Repo evidence points to Codex usage.',
+    ),
+    ReaderSummaryTopicMapNodeApiDto(
+      id: 'topic:story:mcp',
+      label: 'MCP',
+      groupId: 'group:protocols',
+      storyClusterIds: ['story:mcp'],
+      popularityScore: 42,
+      sizeWeight: 0.65,
+      evidenceCount: 1,
+      providerKeys: ['rss'],
+      interestIds: ['ai-developer-tools'],
+      citationIds: ['bc-1'],
+      keywords: ['mcp', 'protocols'],
+      rationale: 'Protocol discussion appears in the window.',
+    ),
+  ],
+  groups: [
+    ReaderSummaryTopicMapGroupApiDto(
+      id: 'group:agent-tools',
+      label: 'Agent tools',
+      colorKey: 'blue',
+      nodeIds: ['topic:story:ai-tools', 'topic:story:codex'],
+      confidence: ReaderSummaryTopicMapConfidenceApiDto(
+        level: 'high',
+        score: 0.9,
+        rationale: 'Both nodes discuss agent tooling.',
+      ),
+    ),
+    ReaderSummaryTopicMapGroupApiDto(
+      id: 'group:protocols',
+      label: 'Protocols',
+      colorKey: 'green',
+      nodeIds: ['topic:story:mcp'],
+      confidence: ReaderSummaryTopicMapConfidenceApiDto(
+        level: 'medium',
+        score: 0.72,
+        rationale: 'Protocol node is related but smaller.',
+      ),
+    ),
+  ],
+  edges: [
+    ReaderSummaryTopicMapEdgeApiDto(
+      sourceNodeId: 'topic:story:ai-tools',
+      targetNodeId: 'topic:story:codex',
+      weight: 0.8,
+      reason: 'Same semantic topic group',
+    ),
+  ],
+);

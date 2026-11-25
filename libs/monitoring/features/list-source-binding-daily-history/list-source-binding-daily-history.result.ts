@@ -1,0 +1,73 @@
+import type { ScanProviderHealthState } from '../shared/scan-provider-health-summary';
+import type { ScanSchedulerSkipBreakdownView } from '../shared/scan-scheduler-decision-summary';
+import type { ScanPolicyCadenceView } from '../shared/scan-policy-presenter';
+
+export type SourceBindingDailyHistorySchedulerSkipBreakdownView = ScanSchedulerSkipBreakdownView;
+
+export type SourceBindingDailyHistoryDayView = {
+  readonly date: string;
+  readonly windowStartedAt: string;
+  readonly windowEndedAt: string;
+  readonly providerHealthState: ScanProviderHealthState;
+  readonly totalScans: number;
+  readonly succeededScans: number;
+  readonly failedScans: number;
+  readonly activeScans: number;
+  readonly rateLimitedScans: number;
+  readonly providerUnavailableScans: number;
+  readonly consecutiveFailures: number;
+  readonly schedulerDecisionCount: number;
+  readonly schedulerEnqueuedCount: number;
+  readonly schedulerSkippedCount: number;
+  readonly schedulerSkippedByReason: SourceBindingDailyHistorySchedulerSkipBreakdownView;
+  readonly lastSchedulerEvaluatedAt?: string;
+  readonly fetched: number;
+  readonly inserted: number;
+  readonly skippedDuplicates: number;
+  readonly projected: number;
+  readonly lastScanRequestedAt?: string;
+  readonly lastCompletedAt?: string;
+  readonly operatorAction: string;
+  readonly signals: readonly string[];
+};
+
+export type SourceBindingDailyHistorySummaryView = {
+  readonly providerHealthState: ScanProviderHealthState;
+  readonly totalScans: number;
+  readonly succeededScans: number;
+  readonly failedScans: number;
+  readonly activeScans: number;
+  readonly rateLimitedScans: number;
+  readonly providerUnavailableScans: number;
+  readonly consecutiveFailures: number;
+  readonly schedulerDecisionCount: number;
+  readonly schedulerEnqueuedCount: number;
+  readonly schedulerSkippedCount: number;
+  readonly schedulerSkippedByReason: SourceBindingDailyHistorySchedulerSkipBreakdownView;
+  readonly lastSchedulerEvaluatedAt?: string;
+  readonly fetched: number;
+  readonly inserted: number;
+  readonly skippedDuplicates: number;
+  readonly projected: number;
+  readonly daysWithScans: number;
+  readonly daysWithFailures: number;
+  readonly daysWithRateLimits: number;
+  readonly lastScanRequestedAt?: string;
+  readonly lastCompletedAt?: string;
+  readonly operatorAction: string;
+  readonly signals: readonly string[];
+};
+
+export type ListSourceBindingDailyHistoryResult = {
+  readonly sourceBindingId: string;
+  readonly interestId: string;
+  readonly providerKey: string;
+  readonly sourceBindingStatus: 'enabled' | 'paused';
+  readonly cadence?: ScanPolicyCadenceView;
+  readonly windowStartedAt: string;
+  readonly windowEndedAt: string;
+  readonly summary?: SourceBindingDailyHistorySummaryView;
+  readonly days: readonly SourceBindingDailyHistoryDayView[];
+  readonly truncated: boolean;
+  readonly maxScanJobs: number;
+};

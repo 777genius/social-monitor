@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "artifactFormat": "summary-feedback-calibration-report-v1",
+  "generatedBy": "npm run check:summary-feedback-calibration-report",
+  "model": {
+    "mode": "shadow",
+    "liveNetwork": false,
+    "rankingInfluenceAllowed": false,
+    "rawPostTextPersistedInReport": false,
+    "rawUserFeedbackPersistedInReport": false,
+    "riskClassifier": "deterministic-post-rating-risk-v1"
+  },
+  "inputs": {
+    "database": "local-postgres",
+    "minMatchedRatingCount": 20,
+    "minNegativeRatingCount": 5
+  },
+  "scope": {},
+  "status": "no_feedback",
+  "totals": {
+    "ratingCount": 0,
+    "negativeRatingCount": 0,
+    "positiveRatingCount": 0,
+    "matchedFeedItemRatingCount": 0,
+    "unmatchedRatingCount": 0,
+    "negativeRatingsWithReasonCount": 0,
+    "negativeRatingsMissingReasonCount": 0
+  },
+  "reasonCorrelation": [
+    {
+      "reason": "duplicate",
+      "negativeRatingCount": 0,
+      "matchedFeedItemRatingCount": 0,
+      "riskMatchedCount": 0,
+      "riskMatchRate": 0
+    },
+    {
+      "reason": "off_topic",
+      "negativeRatingCount": 0,
+      "matchedFeedItemRatingCount": 0,
+      "riskMatchedCount": 0,
+      "riskMatchRate": 0
+    },
+    {
+      "reason": "weak_source",
+      "negativeRatingCount": 0,
+      "matchedFeedItemRatingCount": 0,
+      "riskMatchedCount": 0,
+      "riskMatchRate": 0
+    },
+    {
+      "reason": "too_old",
+      "negativeRatingCount": 0,
+      "matchedFeedItemRatingCount": 0,
+      "riskMatchedCount": 0,
+      "riskMatchRate": 0
+    },
+    {
+      "reason": "low_quality",
+      "negativeRatingCount": 0,
+      "matchedFeedItemRatingCount": 0,
+      "riskMatchedCount": 0,
+      "riskMatchRate": 0
+    }
+  ],
+  "riskSignalCounts": {},
+  "providerNegativeRates": [],
+  "qualityGates": {
+    "rankingInfluenceDisabled": true,
+    "calibrationStatusExplicit": true,
+    "rankingInfluenceRequiresCalibratedStatus": true,
+    "lowRatingReasonCoverageReadyForInfluence": true,
+    "noRawSecretFragments": true
+  },
+  "blockingPassed": true
+}

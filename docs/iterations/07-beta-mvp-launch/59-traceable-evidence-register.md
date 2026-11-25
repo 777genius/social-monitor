@@ -1,0 +1,115 @@
+# Iteration 07 - Traceable Evidence Register
+
+## Evidence Goal
+Prove that beta validated the MVP loop and produced actionable post-MVP decisions.
+
+## Critical Audit Evidence
+- Launch evidence bundle covers E2E, source certification, summary eval, security and restore.
+- Known limitations are visible to users and support.
+- Beta ring expansion decisions are go/hold/rework with evidence.
+- Post-MVP backlog separates blockers, accepted gaps, evidence-based opportunities and deferred ideas.
+- Capacity envelope, degradation behavior and ring expansion thresholds are visible in launch evidence.
+
+## Decision Evidence
+- Beta scope freeze.
+- Supported source list.
+- Launch/rollback gates.
+- Feedback taxonomy.
+- Post-MVP source expansion criteria.
+
+## Ticket Evidence
+- Onboarding tickets link to walkthrough results.
+- Launch tickets link to checklist status.
+- Feedback tickets link to classified examples.
+- Roadmap tickets link to demand/risk/cost evidence.
+
+## Review Evidence
+- Cross-functional beta review is complete.
+- Support owner confirms known limitations.
+- Architecture owner reviews post-MVP backlog safety.
+
+## Handoff Evidence
+- Post-MVP owners accept prioritized backlog.
+- ADR and quality-gate updates are linked.
+
+## Executable Evidence Added
+- `npm run check:mvp-core-loop` proves the backend MVP loop without network or paid provider access:
+  topic creation -> source binding -> scan policy -> scan request queue -> ingestion execution -> feed projection -> summary request/execution -> digest assembly -> queued delivery attempt -> feedback classification -> `summary.ready` event -> realtime projection/replay.
+- The same gate now proves launch pause safety for the core loop: source binding pause blocks new manual scan requests before quota reservation or queue enqueue, then resume allows the validated scan/feed/summary path to continue.
+- The gate uses real use cases and ports across monitoring, ingestion, feed, summary and delivery. Only external source/model dependencies are deterministic adapters.
+- Digest evidence in the same gate proves completed summaries and scanned feed items become digest provenance and a non-empty digest queues an in-app delivery attempt.
+- Summary feedback now records category, triage owner, immutable summary/citation evidence and eval-fixture eligibility.
+- The gate is now a blocking release evidence item in `ops/release/mvp-release-evidence-contract.json` and is included in `npm run verify`.
+- `npm run check:hn-smoke` and `npm run check:rss-smoke` prove the two enabled real-source worker paths with deterministic clients: queue handler, provider registry, normalized source item persistence, feed projection, cursor commit and scan success reporting.
+- `npm run check:beta-scope-policy` proves unsupported/deferred providers stay out of the beta binding catalog, binding attempts are rejected, and source demand is captured as `source_request` feedback routed to `source-owner`.
+- `npm run check:beta-ring-policy` proves ring expansion thresholds link capacity, cost, source health and degradation evidence before inviting more users.
+- `npm run check:beta-ring-decision` proves the static pre-evidence beta ring decision record is explicit go/hold/rework evidence: clean-env baseline stays conservative while feedback, durable runtime and source evidence are missing from the local repository.
+- `npm run --silent backend:mvp:status:current` is the promoted current decision source. It loads `/tmp/social-monitor-evidence/external-beta-current-package.env`; after artifact validation passes, the effective backend-only status can be `complete/go` while static clean-env baseline artifacts remain conservative `hold`.
+- `npm run check:beta-launch-support` proves the beta launch support REST API exposes scoped known limitations, supported/deferred source coverage and post-MVP backlog classification for users/support/operator clients.
+- The same launch-support gate cross-checks supported/deferred source lists against `ops/ingestion/source-provider-certification.json`, preventing user-visible launch metadata from drifting from certified provider evidence.
+- `npm run check:beta-feedback-report` proves beta feedback classification has a release artifact: sanitized feedback examples map to supported categories, deterministic triage owners, blocker/gap/opportunity/deferred classifications, eval-fixture eligibility, source-request no-binding behavior, backlog items and ring expansion impact.
+- `npm run check:persistence-readiness` proves runtime in-memory/noop state adapters are not hidden in the static baseline: every API/worker module gap has owner, risk and durable replacement plan, and promoted external status must come from the current evidence package rather than from baseline docs.
+- `npm run check:monitoring-persistence` proves the first monitoring Prisma adapter foundation and runtime selectors: topics round-trip, source binding pause status persists through source catalog provider rehydration, scan policy `nextRunAt` is stored for durable scheduling, scan job status transitions persist across requested/enqueued/succeeded states, monitoring domain events append to the durable outbox as pending records, idempotency response payloads persist across adapter instances, `MONITORING_PERSISTENCE=prisma` is only valid with `DATABASE_URL`, and `MONITORING_SCAN_QUEUE=rabbitmq` is only valid with `RABBITMQ_URL`.
+- `npm run check:cross-process-scheduler` proves the scheduler boundary across durable-style adapters: one Prisma adapter instance persists source binding and scan policy state, a separate scheduler adapter instance reads due policies, writes the scan job as `ENQUEUED`, advances `nextRunAt`, and publishes `ingestion.scan.execute` through `RabbitMqQueuePublisher` to the scan queue route.
+- Scan command transport now has broker-backed runtime paths on both sides: monitoring can publish through `AmqplibRabbitMqChannel`/`RabbitMqQueuePublisher`, and ingestion worker can drain commands through `RabbitMqScanCommandQueueReader` with ack/nack delivery semantics.
+- Summary job transport now has broker-backed runtime paths on both sides: Summary REST can publish `summary.job.execute` through `RabbitMqQueuePublisher` with `SUMMARY_JOB_QUEUE_MODE=rabbitmq`, and intelligence worker can drain commands through `RabbitMqSummaryJobQueueReader` plus `SummaryJobQueueDrainLoop` with ack/nack delivery semantics. Repository polling remains a local fallback and is disabled by default when the RabbitMQ reader mode is selected.
+- Delivery attempt transport now has broker-backed runtime paths on both sides: delivery dispatch can publish `delivery.attempt.send` commands through `RabbitMqQueuePublisher` with `DELIVERY_ATTEMPT_DISPATCH_TARGET=queue` and `DELIVERY_ATTEMPT_DISPATCH_QUEUE=rabbitmq`, and delivery-service can drain commands through `RabbitMqDeliveryAttemptQueueReader` plus `DeliveryAttemptQueueDrainLoop` with ack/nack delivery semantics. Direct dispatch remains the local fallback.
+- `npm run check:delivery-attempt-queue-drain-loop` proves the delivery queue boundary in deterministic mode: a queued attempt is published as a dispatch command, marked in flight, drained by the worker loop, sent through the provider port and persisted as delivered.
+- Webhook delivery now has a signed HTTP provider adapter behind `DeliveryProviderPort`: `DELIVERY_WEBHOOK_PROVIDER=http` posts `digest.ready.v1` payloads with HMAC headers to enabled webhook endpoints while preserving in-memory provider mode for deterministic local smoke.
+- `npm run check:http-webhook-delivery-provider` proves the HTTP webhook provider signs the payload, sends JSON with configured timeout/user-agent, surfaces provider message id from a 2xx response and rejects unsupported webhook resource types without retry.
+- Runtime compose now has an `app` profile for `api`, `ingestion-worker`, `intelligence-worker`, `delivery-service` and `event-relay`, wired to shared Postgres/RabbitMQ URLs and the durable Prisma/RabbitMQ feature flags used by the MVP workers.
+- `npm run check:runtime-compose` proves the compose file keeps every runtime service mapped to an npm start target and preserves the required durable runtime markers for scan, summary, delivery and event relay paths.
+- Platform event durability now has executable runtime paths: `PrismaOutboxStoreAdapter` dispatches pending outbox rows and marks published/failed states, `RabbitMqEventPublisher` publishes event envelopes to a topic exchange, `start:event-relay` runs the dedicated relay worker, and `PrismaInboxStoreAdapter` persists processed-event dedupe across adapter restarts. Full external beta still requires deployment evidence for shared `DATABASE_URL`/`RABBITMQ_URL` and cross-process scheduler execution.
+- `npm run check:ingestion-feed-persistence` proves the first ingestion/feed Prisma adapter foundation plus feed API, ingestion-worker and ingestion-support runtime selectors: provider-level source item dedupe, scan cursor roundtrip, feed canonical URL dedupe, feed search/list, feed item rehydration, durable scan retry/dead-letter persistence, durable scan attempt terminal-state persistence, scan lease fencing/release behavior, `FEED_PERSISTENCE=prisma` validation, `INGESTION_WORKER_PERSISTENCE=prisma` validation and `INGESTION_SUPPORT_PERSISTENCE=prisma` validation.
+- `npm run check:summary-persistence` proves the first summary Prisma adapter foundation and summary runtime selector: summary job idempotency/status transitions, completed/no-signal artifact JSON payload rehydration, paginated artifact list/read behavior, feedback idempotency/evidence roundtrip, `summary.ready` event append to durable outbox as pending records, and `SUMMARY_PERSISTENCE=prisma` validation.
+- `npm run check:identity-persistence` proves the first identity Prisma adapter foundation and identity runtime selector: API key create/list/verify/revoke, required scope enforcement, revoked-key rejection, no secret-hash exposure in key views, and `IDENTITY_PERSISTENCE=prisma` validation.
+- `npm run check:usage-persistence` proves the first usage Prisma adapter foundation and usage runtime selector: public API audit event persistence with redacted metadata, rate-limit bucket counting, quota bucket reservation/rejection, and `USAGE_PERSISTENCE=prisma` validation.
+- Ingestion worker scan execution reporting now has an explicit runtime selector: default `noop` remains valid for isolated deterministic worker smoke, while `INGESTION_SCAN_REPORTER=monitoring` is accepted only together with `MONITORING_PERSISTENCE=prisma`.
+
+## Missing Evidence Blocks
+- Static baseline feedback classification in `ops/release/beta-feedback-classification-report.json` remains deterministic pre-beta evidence for clean repository checks; promoted current feedback evidence is attached through the packaged evidence env file and validated by the external beta evidence runner.
+- Static beta ring decision in `ops/release/beta-ring-expansion-decision-record.json` remains a conservative hold record for clean repository checks; current ring status is computed by `npm run --silent backend:mvp:status:current`.
+- Static durable runtime readiness remains conservative without deployment evidence in the repository; promoted current durable runtime proof is accepted only when the packaged evidence env file validates Postgres, RabbitMQ and backend E2E artifacts.
+
+## PR 14 Beta Feedback Classification Report Evidence
+
+- Implementation slice: `chore: add beta feedback classification gate`
+
+Verified commands:
+
+- `npm run check:beta-feedback-report`
+- `npm run check:release`
+- `npm run check:code-quality`
+- `npm run check:secrets`
+- `git diff --check`
+
+Evidence notes:
+
+- Added `ops/release/beta-feedback-classification-report.json` as a deterministic pre-beta release artifact for feedback triage.
+- The report models blocker, accepted MVP gap, evidence-based opportunity and deferred idea classifications without storing raw provider payloads or PII.
+- `source_request` feedback is explicitly routed to `source-owner`, excluded from summary eval fixtures and prevented from changing beta source binding state.
+- The gate verifies owner routing stays aligned with the summary feedback domain taxonomy and that blocker feedback holds ring expansion until a regression fixture or runbook action exists.
+
+## PR 13 Beta Launch Support API Evidence
+
+- Implementation slice: `feat: expose beta launch support API`
+
+Verified commands:
+
+- `npm run check:beta-launch-support`
+- `npm run update:openapi`
+- `npm run check:openapi`
+- `npm run check:release`
+- `npm run build`
+- `npm run check:architecture`
+- `npm run check:code-quality`
+- `npm run check:secrets`
+- `git diff --check`
+
+Evidence notes:
+
+- Added a `launch` bounded context with domain snapshot types, a read-model port, static MVP adapter, `GetBetaLaunchSupportUseCase` and REST adapter.
+- `GET /beta/launch-support`, `GET /beta/launch-support/known-limitations` and `GET /beta/launch-support/post-mvp-backlog` expose user/support-visible launch limitations and post-MVP backlog classifications.
+- The endpoints require tenant/workspace headers through `requireTenantScope`, preserving the repo-wide REST scoping rule even for read-only launch metadata.
+- The smoke proves unsupported/deferred source visibility matches source readiness profiles and the source certification artifact, and that backlog items keep architecture guardrails.
+- The beta MVP release contract now includes `beta-launch-support` as a blocking gate, and `npm run verify` includes `check:beta-launch-support`.

@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "checkId": "summary-quality-loop-v1",
+  "generatedBy": "npm run check:summary-quality-loop",
+  "evalOutputPath": "ops/evals/summary-eval-output.json",
+  "blocksRelease": true,
+  "requiredGuarantees": [
+    "schema-valid-summary-artifacts",
+    "claims-grounded-in-cited-evidence",
+    "real-citations-to-selected-evidence",
+    "secret-like-output-blocked",
+    "prompt-injection-output-blocked",
+    "stale-marker-present-on-user-visible-summary"
+  ],
+  "evalProof": {
+    "blockingPassed": true,
+    "fixtureCount": 7,
+    "fixtureGroups": [
+      "citation_regression",
+      "empty_no_signal",
+      "hn_golden",
+      "prompt_injection",
+      "secret_redaction",
+      "stale_marker"
+    ],
+    "missingFixtureGroups": [],
+    "checkedKeyPointCount": 9,
+    "groundedKeyPointCount": 9,
+    "secretLeakCount": 0,
+    "staleFixtureIds": [
+      "stale-window-marker-regression"
+    ]
+  },
+  "runtimeProof": {
+    "staleMarker": {
+      "blockingPassed": true,
+      "summaryId": "summary-quality-artifact-1",
+      "summaryStatus": "completed",
+      "citationCount": 1,
+      "freshnessStatus": "stale",
+      "newestFeedItemId": "feed-quality-new",
+      "newestObservedAt": "2026-06-06T00:02:00.000Z",
+      "eventCount": 1
+    }
+  },
+  "blockingPassed": true
+}

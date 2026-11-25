@@ -1,0 +1,430 @@
+import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
+
+import type {
+  AgentRuntimeClientPort,
+  AgentRuntimeHealthResult,
+  AgentRuntimeTaskCommand,
+  AgentRuntimeTaskResult,
+  ReaderSummaryTopicRelationVerifierInput,
+} from "../../ports";
+import {
+  AgentRuntimeReaderSummaryTopicRelationVerifier,
+  resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions,
+} from "./agent-runtime-reader-summary-topic-relation-verifier.adapter";
+import { withTestExecutionAttestation } from "./reader-summary-execution-attestation.spec-support";
+import { buildAgentRuntimeReaderSummaryTopicRelationVerifierPrompt } from "./agent-runtime-reader-summary-topic-relation-verifier-prompt";
+import { projectAgentRuntimeReaderSummaryTopicRelationPairs } from "./agent-runtime-reader-summary-topic-relation-pair-projection";
+
+describe("AgentRuntimeReaderSummaryTopicRelationVerifier", () => {
+  it("uses the shared runtime and parses one decision per requested pair", async () => {
+    const client = new CapturingAgentRuntimeClient({
+      status: "completed",
+      structuredOutput: {
+        decisions: [
+          {
+            sourceNodeId: "node:a",
+            targetNodeId: "node:b",
+            sameTopic: true,
+            confidenceScore: 0.94,
+            rationale: "Both announce the same work product.",
+          },
+        ],
+      },
+      warnings: [],
+    });
+    const verifier = new AgentRuntimeReaderSummaryTopicRelationVerifier({
+      client,
+    });
+
+    await expect(
+      verifier.verify(input(), { attemptNumber: 1, totalAttempts: 2 }),
+    ).resolves.toEqual([
+      {
+        sourceNodeId: "node:a",
+        targetNodeId: "node:b",
+        sameTopic: true,
+        confidenceScore: 0.94,
+        rationale: "Both announce the same work product.",
+      },
+    ]);
+    expect(client.commands[0]).toMatchObject({
+      provider: "codex",
+      purpose: "social_monitor.reader_summary.topic_map.verify_relations.v2",
+      metadata: {
+        promptVersion: "reader_summary.topic_relation.agent_runtime.v3",
+        attemptNumber: "1",
+        totalAttempts: "2",
+      },
+    });
+    expect(
+      JSON.parse(client.commands[0]?.prompt ?? "{}").pairs[0],
+    ).toMatchObject({
+      sharedTerms: ["codex", "work"],
+      source: {
+        label: "ChatGPT Work Rollout",
+        subject: "ChatGPT Work Rollout",
+        claimType: "release",
+        parentSubject: "OpenAI",
+        semanticConfidenceScore: 0.9,
+        evidenceSamples: [expect.objectContaining({ authorHandle: "openai" })],
+      },
+    });
+
+    await verifier.verify(input(), { attemptNumber: 2, totalAttempts: 2 });
+    expect(client.commands[1]?.requestId).not.toBe(
+      client.commands[0]?.requestId,
+    );
+    expect(client.commands[1]?.correlationId).toBe(
+      client.commands[0]?.correlationId,
+    );
+    expect(client.commands[1]?.metadata).toMatchObject({
+      attemptNumber: "2",
+      totalAttempts: "2",
+    });
+  });
+
+  it("grounds each paired node in its own evidence cluster when reversing the relation", () => {
+    const request = input();
+    expect(JSON.parse(buildAgentRuntimeReaderSummaryTopicRelationVerifierPrompt(request)))
+      .toMatchObject({
+        pairs: [{
+          sourceNodeId: "node:a",
+          targetNodeId: "node:b",
+          source: { evidenceSamples: [{ authorHandle: "openai" }] },
+          target: { evidenceSamples: [{ authorHandle: "sama" }] },
+        }],
+      });
+
+    expect(JSON.parse(buildAgentRuntimeReaderSummaryTopicRelationVerifierPrompt({
+      ...request,
+      relations: [{
+        sourceNodeId: "node:b",
+        targetNodeId: "node:a",
+        sharedTerms: ["codex", "work"],
+      }],
+    }))).toMatchObject({
+      pairs: [{
+        sourceNodeId: "node:b",
+        targetNodeId: "node:a",
+        source: { evidenceSamples: [{ authorHandle: "sama" }] },
+        target: { evidenceSamples: [{ authorHandle: "openai" }] },
+      }],
+    });
+  });
+
+  it("keeps ordered pair-to-evidence binding independent of the JSON prompt", () => {
+    const request = input();
+    const originalRelation = request.relations[0]!;
+    const reversed = {
+      ...originalRelation,
+      sourceNodeId: "node:b",
+      targetNodeId: "node:a",
+    };
+    const pairRequest = { ...request, relations: [originalRelation, reversed] };
+    const before = JSON.stringify(pairRequest.relations);
+    const pairs = projectAgentRuntimeReaderSummaryTopicRelationPairs(pairRequest);
+
+    expect(pairs).toEqual(
+      JSON.parse(buildAgentRuntimeReaderSummaryTopicRelationVerifierPrompt(pairRequest)).pairs,
+    );
+    expect(pairs).toMatchObject([
+      {
+        sourceNodeId: "node:a", targetNodeId: "node:b",
+        source: { evidenceSamples: [{ authorHandle: "openai" }] },
+        target: { evidenceSamples: [{ authorHandle: "sama" }] },
+      },
+      {
+        sourceNodeId: "node:b", targetNodeId: "node:a",
+        source: { evidenceSamples: [{ authorHandle: "sama" }] },
+        target: { evidenceSamples: [{ authorHandle: "openai" }] },
+      },
+    ]);
+    expect(JSON.stringify(pairRequest.relations)).toBe(before);
+    expect(projectAgentRuntimeReaderSummaryTopicRelationPairs({
+      ...request, relations: [],
+    })).toEqual([]);
+  });
+
+  it("fails closed on missing candidates and labels instead of inventing relation context", () => {
+    const request = input();
+    expect(() => buildAgentRuntimeReaderSummaryTopicRelationVerifierPrompt({
+      ...request,
+      candidates: request.candidates.filter((candidate) => candidate.nodeId !== "node:b"),
+    })).toThrow("Unknown topic relation node node:b");
+
+    expect(() => buildAgentRuntimeReaderSummaryTopicRelationVerifierPrompt({
+      ...request,
+      labelPlan: {
+        ...request.labelPlan,
+        nodeLabels: request.labelPlan.nodeLabels.filter((label) => label.nodeId !== "node:a"),
+      },
+    })).toThrow("Unknown topic relation node node:a");
+  });
+
+  it.each(["candidate", "label"] as const)(
+    "refuses ambiguous requested %s identity before model dispatch and attestation",
+    async (kind) => {
+      const client = new CapturingAgentRuntimeClient({
+        status: "completed", structuredOutput: { decisions: [] }, warnings: [],
+      });
+      const record = jest.fn();
+      const verifier = new AgentRuntimeReaderSummaryTopicRelationVerifier({
+        client, verifiedAttestationSink: { record },
+      });
+      const original = input();
+      const duplicate: ReaderSummaryTopicRelationVerifierInput = kind === "candidate"
+        ? { ...original, candidates: [...original.candidates, original.candidates[0]!] }
+        : { ...original, labelPlan: {
+          ...original.labelPlan,
+          nodeLabels: [...original.labelPlan.nodeLabels, original.labelPlan.nodeLabels[0]!],
+        } };
+      await expect(verifier.verify(duplicate)).rejects.toThrow(
+        `Ambiguous topic relation ${kind} node:a`,
+      );
+      expect(client.commands).toHaveLength(0);
+      expect(record).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not change the prompt for unused duplicate labels or candidates", () => {
+    const original = input();
+    const unrelated = {
+      ...original,
+      candidates: [...original.candidates, candidate("node:other", "story:a"),
+        candidate("node:other", "story:b")],
+      labelPlan: {
+        ...original.labelPlan,
+        nodeLabels: [...original.labelPlan.nodeLabels,
+          label("node:other", "topic:other", "Other"),
+          label("node:other", "topic:other", "Other")],
+      },
+    };
+    expect(buildAgentRuntimeReaderSummaryTopicRelationVerifierPrompt(unrelated))
+      .toBe(buildAgentRuntimeReaderSummaryTopicRelationVerifierPrompt(original));
+  });
+
+  it("rejects incomplete pair decisions", async () => {
+    const verifier = new AgentRuntimeReaderSummaryTopicRelationVerifier({
+      client: new CapturingAgentRuntimeClient({
+        status: "completed",
+        structuredOutput: { decisions: [] },
+        warnings: [],
+      }),
+    });
+
+    await expect(verifier.verify(input())).rejects.toThrow(
+      "must decide every requested pair exactly once",
+    );
+  });
+
+  it("refuses duplicate unordered relation requests before invoking the model", async () => {
+    const client = new CapturingAgentRuntimeClient({
+      status: "completed", structuredOutput: { decisions: [] }, warnings: [],
+    });
+    const record = jest.fn();
+    const verifier = new AgentRuntimeReaderSummaryTopicRelationVerifier({
+      client, verifiedAttestationSink: { record },
+    });
+    const request = input();
+    const repeated = {
+      ...request,
+      relations: [...request.relations, {
+        sourceNodeId: "node:b", targetNodeId: "node:a",
+        sharedTerms: ["synthetic"],
+      }],
+    };
+    await expect(verifier.verify(repeated)).rejects.toThrow(
+      "requested unordered topic relation pairs must be unique",
+    );
+    expect(client.commands).toHaveLength(0);
+    expect(record).not.toHaveBeenCalled();
+  });
+
+  it("does not dispatch or record when no topic relation is requested", async () => {
+    const client = new CapturingAgentRuntimeClient({
+      status: "completed", structuredOutput: { decisions: [] }, warnings: [],
+    });
+    const record = jest.fn();
+    const verifier = new AgentRuntimeReaderSummaryTopicRelationVerifier({
+      client, verifiedAttestationSink: { record },
+    });
+    await expect(verifier.verify({ ...input(), relations: [] })).resolves.toEqual([]);
+    expect(client.commands).toHaveLength(0);
+    expect(record).not.toHaveBeenCalled();
+  });
+
+  it("never records malformed topic relation decisions", async () => {
+    const client = new CapturingAgentRuntimeClient({
+      status: "completed", structuredOutput: { decisions: [] }, warnings: [],
+    });
+    const record = jest.fn();
+    const verifier = new AgentRuntimeReaderSummaryTopicRelationVerifier({
+      client, verifiedAttestationSink: { record },
+    });
+    await expect(verifier.verify(input())).rejects.toThrow(
+      "must decide every requested pair exactly once",
+    );
+    expect(client.commands).toHaveLength(1);
+    expect(record).not.toHaveBeenCalled();
+  });
+
+  it("rejects verified topic decisions when attestation persistence fails", async () => {
+    const client = new CapturingAgentRuntimeClient({
+      status: "completed",
+      structuredOutput: { decisions: [{
+        sourceNodeId: "node:a", targetNodeId: "node:b",
+        sameTopic: true, confidenceScore: 0.94, rationale: "Same synthetic event.",
+      }] },
+      warnings: [],
+    });
+    const record = jest.fn().mockRejectedValue(new Error("synthetic receipt store failure"));
+    const verifier = new AgentRuntimeReaderSummaryTopicRelationVerifier({
+      client, verifiedAttestationSink: { record },
+    });
+    await expect(verifier.verify(input())).rejects.toThrow("synthetic receipt store failure");
+    expect(client.commands).toHaveLength(1);
+    expect(record).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes topic relations through MiMo with strict schema and attestation", async () => {
+    const client = new CapturingAgentRuntimeClient({
+      status: "completed",
+      structuredOutput: { decisions: [{ sourceNodeId: "node:a", targetNodeId: "node:b",
+        sameTopic: true, confidenceScore: 0.94, rationale: "Same synthetic topic." }] },
+      warnings: [],
+    });
+    const options = resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions({
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "xiaomi-mimo-token-plan",
+      AGENT_RUNTIME_READER_SUMMARY_MODEL: "gpt-5.6-sol",
+    }, client);
+    await expect(new AgentRuntimeReaderSummaryTopicRelationVerifier(options).verify(input()))
+      .resolves.toHaveLength(1);
+    expect(client.commands[0]?.controls).toMatchObject({
+      model: "mimo-v2.6-pro", modelBackend: "xiaomi-mimo-token-plan",
+      toolsEnabled: false, toolPolicy: "none",
+    });
+    const invalid = new CapturingAgentRuntimeClient({ status: "completed",
+      structuredOutput: { decisions: [{ sourceNodeId: "node:a", targetNodeId: "node:b",
+        sameTopic: "yes", confidenceScore: 2, rationale: "Synthetic." }] },
+      warnings: [] });
+    await expect(new AgentRuntimeReaderSummaryTopicRelationVerifier({
+      ...options, client: invalid,
+    }).verify(input())).rejects.toMatchObject({ failure: { kind: "invalid_schema" } });
+    expect(() => resolveAgentRuntimeReaderSummaryTopicRelationVerifierOptions({
+      AGENT_RUNTIME_READER_SUMMARY_BACKEND: "xiaomi-mimo-token-plan",
+      AGENT_RUNTIME_READER_SUMMARY_TOPIC_RELATION_VERIFIER_MODEL: "gpt-5.6-sol",
+    }, client)).toThrow("conflicts with purpose policy");
+  });
+});
+
+const input = (): ReaderSummaryTopicRelationVerifierInput => ({
+  tenantId: tenantId("tenant-relation-verifier"),
+  workspaceId: workspaceId("workspace-relation-verifier"),
+  scope: { type: "workspace" },
+  period: {
+    cadence: "daily",
+    startedAt: new Date("2026-07-09T00:00:00.000Z"),
+    endedAt: new Date("2026-07-10T00:00:00.000Z"),
+    timezone: "UTC",
+    periodKey: "2026-07-09",
+  },
+  requestedAt: new Date("2026-07-10T01:00:00.000Z"),
+  clusters: [cluster("story:a", "feed:a"), cluster("story:b", "feed:b")],
+  selectedEvidence: [
+    evidence("feed:a", "openai", "ChatGPT Work launches with Codex"),
+    evidence("feed:b", "sama", "Codex powers our new work product"),
+  ],
+  candidates: [candidate("node:a", "story:a"), candidate("node:b", "story:b")],
+  labelPlan: {
+    nodeLabels: [
+      label("node:a", "topic:chatgpt-work", "ChatGPT Work Rollout"),
+      label("node:b", "topic:codex-work", "Codex Work Rollout"),
+    ],
+    groups: [],
+  },
+  relations: [
+    {
+      sourceNodeId: "node:a",
+      targetNodeId: "node:b",
+      sharedTerms: ["codex", "work"],
+    },
+  ],
+});
+
+const cluster = (id: string, representativeFeedItemId: string) => ({
+  id,
+  storyKey: id,
+  representativeFeedItemId,
+  duplicateFeedItemIds: [],
+  interestIds: ["ai"],
+  providerKeys: ["x-twitter"],
+  score: 2,
+  observedAtRange: {
+    startedAt: new Date("2026-07-09T01:00:00.000Z"),
+    endedAt: new Date("2026-07-09T01:00:00.000Z"),
+  },
+  whyImportant: ["Fixture"],
+});
+
+const evidence = (feedItemId: string, authorHandle: string, title: string) => ({
+  feedItemId,
+  sourceItemId: `source:${feedItemId}`,
+  sourceBindingId: "binding:x",
+  interestId: "ai",
+  providerKey: "x-twitter",
+  canonicalUrl: `https://x.test/${feedItemId}`,
+  title,
+  authorHandle,
+  publishedAt: new Date("2026-07-09T01:00:00.000Z"),
+  observedAt: new Date("2026-07-09T01:01:00.000Z"),
+  score: 2,
+  whyImportant: ["Fixture"],
+});
+
+const candidate = (nodeId: string, storyClusterId: string) => ({
+  nodeId,
+  storyClusterId,
+  fallbackLabel: nodeId,
+  score: 50,
+  evidenceCount: 1,
+  providerKeys: ["x-twitter"],
+  interestIds: ["ai"],
+  keywords: ["codex", "work"],
+  labelCandidates: [],
+});
+
+const label = (nodeId: string, topicId: string, value: string) => ({
+  nodeId,
+  topicId,
+  label: value,
+  semantic: {
+    subject: value,
+    parentSubject: "OpenAI",
+    claimType: "release" as const,
+    confidenceScore: 0.9,
+  },
+  groupId: "group:openai",
+});
+
+class CapturingAgentRuntimeClient implements AgentRuntimeClientPort {
+  readonly commands: AgentRuntimeTaskCommand[] = [];
+
+  constructor(private readonly result: AgentRuntimeTaskResult) {}
+
+  async runTask(
+    command: AgentRuntimeTaskCommand,
+  ): Promise<AgentRuntimeTaskResult> {
+    this.commands.push(command);
+
+    return withTestExecutionAttestation(command, this.result);
+  }
+
+  async checkHealth(): Promise<AgentRuntimeHealthResult> {
+    return {
+      status: "serving",
+      runtimeEngine: "test",
+      runtimeVersion: "test",
+      warnings: [],
+    };
+  }
+}

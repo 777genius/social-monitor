@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "evaluationId": "reader-value-heldout-quality-v1",
+  "corpus": {
+    "days": ["2026-09-13", "2026-09-14", "2026-09-15", "2026-09-16", "2026-09-17"],
+    "inventoryCount": 3888,
+    "scoredCount": 3888,
+    "cutoffKind": "read_only_export_snapshot_not_historical_replay",
+    "cutoff": "2026-09-21T19:42:09.586Z",
+    "corpusDigest": "01161f0dc37507035769b40f8e9e25e164a7bb8866162dc8d82fa16164f3c06f",
+    "scorerCorpusDigest": "42274c539fab88aa4834a101164ac994d659ac4a0acd4173516d08cca8fe170e"
+  },
+  "scorer": {
+    "requestedModel": "typesafe/jev-1.13",
+    "resolvedModel": "typesafe/jev-1.13-20260917",
+    "provider": "TypeSafe",
+    "rubricVersion": "reader-value-jev-r2.1",
+    "configSha256": "173e7ae816ebd2902d1cf6b8ee8f4f71a52f14783df14f88c9c5aa1ce61be2fc",
+    "errors": 0,
+    "inputTokens": 5445308,
+    "costUsd": 0.22870293599999927,
+    "latencyMs": { "p50": 356, "p95": 503, "mean": 377 }
+  },
+  "blindEvaluation": {
+    "judge": { "model": "gpt-6-astra", "effort": "medium", "groundTruth": "model_judged" },
+    "labeledCandidates": 156,
+    "excludedSampleCount": 100,
+    "packetSha256": "22cf1beea04d9a7a62e404748fcdcb19b25f5db7c5dfcccfe53310879ab29862",
+    "seed": "reader-value-heldout-2026-09-13-17-excluded-v1",
+    "daily": [
+      { "day": "2026-09-13", "legacy": { "selected": 2, "usefulUniqueStories": 0, "noise": 0 }, "jevReviewer": { "selected": 8, "usefulUniqueStories": 7, "noise": 0 } },
+      { "day": "2026-09-14", "legacy": { "selected": 2, "usefulUniqueStories": 1, "noise": 0 }, "jevReviewer": { "selected": 8, "usefulUniqueStories": 7, "noise": 0 } },
+      { "day": "2026-09-15", "legacy": { "selected": 8, "usefulUniqueStories": 2, "noise": 3 }, "jevReviewer": { "selected": 8, "usefulUniqueStories": 7, "noise": 0 } },
+      { "day": "2026-09-16", "legacy": { "selected": 4, "usefulUniqueStories": 4, "noise": 0 }, "jevReviewer": { "selected": 8, "usefulUniqueStories": 8, "noise": 0 } },
+      { "day": "2026-09-17", "legacy": { "selected": 0, "usefulUniqueStories": 0, "noise": 0 }, "jevReviewer": { "selected": 8, "usefulUniqueStories": 8, "noise": 0 } }
+    ],
+    "totals": {
+      "legacy": { "availableTopSlots": 40, "selected": 16, "usefulUniqueStoriesAt8": 7, "noise": 3, "noiseFraction": 0.1875, "borderline": 3, "insufficientData": 3 },
+      "jevReviewer": { "availableTopSlots": 40, "selected": 40, "usefulUniqueStoriesAt8": 37, "noise": 0, "noiseFraction": 0, "borderline": 3, "insufficientData": 0 }
+    },
+    "verdict": "reviewer_only_quality_pass",
+    "productReady": false
+  },
+  "limitations": [
+    "The legacy comparator is the persisted production Top, not a fresh V2 replay on the exported snapshot.",
+    "The source text is a later read-only snapshot, not historical-at-publication text.",
+    "The measured rubric is R2.1 while implementation uses reader-value.v1.",
+    "V3 presentation, headline failures, final summary cost, and display-ready Top were not measured.",
+    "Labels are model-judged, not human ground truth."
+  ]
+}

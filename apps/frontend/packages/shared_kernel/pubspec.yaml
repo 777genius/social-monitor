@@ -1,0 +1,11 @@
+name: social_monitor_shared_kernel
+description: Shared frontend kernel for domain-safe primitives.
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.11.5
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.30.0

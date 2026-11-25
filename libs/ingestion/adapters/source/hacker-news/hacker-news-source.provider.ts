@@ -1,0 +1,232 @@
+import {
+  redactSensitiveText,
+  type Clock,
+} from "@social-monitor/shared-kernel";
+
+import type {
+  ProviderFailure,
+  SourceCapabilityProfile,
+  SourceProviderPort,
+  SourceProviderScanContext,
+  SourceProviderScanPlan,
+  SourceProviderScanResult,
+  SourceProviderValidationResult,
+  SourceQuery,
+} from "../../../ports";
+import type {
+  HackerNewsClientPort,
+  HackerNewsListing,
+} from "./hacker-news-client.port";
+import { normalizeHackerNewsStoriesWithOptionalComments } from './hacker-news-comment-enrichment';
+import { collectHackerNewsScanPasses } from './hacker-news-multi-pass-collector';
+import {
+  hackerNewsRecencyWarnings,
+  hackerNewsWarnings,
+} from "./hacker-news-item-normalizer";
+import { readScanPasses } from './hacker-news-scan-pass-support';
+import {
+  decodeTimeCursor,
+  encodeTimeCursor,
+  filterItemsByMaxAge,
+  readOptionalPositiveInteger,
+  readPositiveInteger,
+  readTargetPublishedWindow,
+  searchOptionsForMaxItemAge,
+  searchOptionsForTargetWindow,
+} from "./hacker-news-source-window";
+
+const capabilityProfile: SourceCapabilityProfile = {
+  providerKey: "hacker-news",
+  displayName: "Hacker News",
+  version: 1,
+  productionSafe: true,
+  supportedContentUnits: ["post", "comment", "link"],
+  supportedQueryModes: ["search", "listing"],
+  cursorModel: "time",
+  stableIdentity: ["providerId", "canonicalUrl"],
+  quotaModel: "per_app",
+  limitations: [
+    "Uses public HN Firebase listings and HN Algolia search; no credentials required. Rate-limit and retry budget still apply.",
+  ],
+};
+
+const supportedListings: readonly HackerNewsListing[] = [
+  "top",
+  "new",
+  "best",
+  "ask",
+  "show",
+  "job",
+];
+
+export class HackerNewsSourceProvider implements SourceProviderPort {
+  constructor(
+    private readonly client: HackerNewsClientPort,
+    private readonly clock: Clock,
+  ) {}
+
+  key(): string {
+    return capabilityProfile.providerKey;
+  }
+
+  capabilityProfile(): SourceCapabilityProfile {
+    return capabilityProfile;
+  }
+
+  validateBinding(query: SourceQuery): SourceProviderValidationResult {
+    if (!capabilityProfile.supportedQueryModes.includes(query.mode)) {
+      return { ok: false, reason: `Unsupported query mode: ${query.mode}` };
+    }
+
+    if (query.query.trim().length === 0) {
+      return { ok: false, reason: "Query must be non-empty" };
+    }
+
+    if (
+      query.mode === "listing" &&
+      !supportedListings.includes(query.query as HackerNewsListing)
+    ) {
+      return {
+        ok: false,
+        reason: `Unsupported Hacker News listing: ${query.query}`,
+      };
+    }
+
+    return { ok: true };
+  }
+
+  planScan(
+    query: SourceQuery,
+    context: SourceProviderScanContext,
+  ): SourceProviderScanPlan {
+    return {
+      query,
+      maxItems: readPositiveInteger(context.config?.maxItems, 30, 1, 100),
+    };
+  }
+
+  async scan(
+    plan: SourceProviderScanPlan,
+    context: SourceProviderScanContext,
+  ): Promise<SourceProviderScanResult> {
+    const scanPasses = readScanPasses(context.config);
+    const maxItemAgeHours = readOptionalPositiveInteger(
+      context.config?.maxItemAgeHours,
+      24 * 31,
+    );
+    const includeComments = context.config?.includeComments === true;
+    const maxCommentedStories = readOptionalPositiveInteger(
+      context.config?.maxCommentedStories ?? context.config?.maxCommentedPosts,
+      100,
+    );
+    const maxCommentsPerPost = readOptionalPositiveInteger(
+      context.config?.maxCommentsPerPost,
+      100,
+    );
+    const commentDepth = readPositiveInteger(
+      context.config?.commentDepth,
+      2,
+      0,
+      10,
+    );
+    const targetWindow = readTargetPublishedWindow(context.config);
+    const searchOptions = searchOptionsForTargetWindow(targetWindow) ??
+      searchOptionsForMaxItemAge(maxItemAgeHours, this.clock.now());
+    const recencyFilterHours =
+      targetWindow === undefined ? maxItemAgeHours : undefined;
+
+    if (scanPasses.length > 0) {
+      return collectHackerNewsScanPasses(this.client, this.clock, {
+        plan,
+        passes: scanPasses,
+        maxItemAgeHours,
+        searchOptions,
+        recencyFilterHours,
+        fallbackIncludeComments: includeComments,
+        fallbackMaxCommentedStories: maxCommentedStories,
+        fallbackMaxCommentsPerPost: maxCommentsPerPost,
+        fallbackCommentDepth: commentDepth,
+        targetWindow,
+      });
+    }
+
+    const stories =
+      plan.query.mode === "listing"
+        ? await this.client.listStories(
+            plan.query.query as HackerNewsListing,
+            plan.maxItems,
+          )
+        : await this.client.searchStories(
+            plan.query.query,
+            plan.maxItems,
+            searchOptions,
+          );
+    const cursorTime = decodeTimeCursor(plan.cursor);
+    const sourceKey =
+      plan.query.mode === "listing" ? plan.query.query : "search";
+    const searchQuery =
+      plan.query.mode === "search" ? plan.query.query : undefined;
+    const normalized = await normalizeHackerNewsStoriesWithOptionalComments({
+      client: this.client,
+      stories,
+      sourceKey,
+      searchQuery,
+      includeComments,
+      maxCommentedStories,
+      maxCommentsPerPost,
+      commentDepth,
+      targetWindow,
+    });
+    const items = normalized.items.filter(
+      (item) =>
+        cursorTime === undefined || item.publishedAt.getTime() > cursorTime,
+    );
+    const filteredItems = filterItemsByMaxAge(
+      items,
+      recencyFilterHours,
+      this.clock.now(),
+    );
+    const returnedRootExternalIds = new Set(
+      filteredItems.map((item) => item.externalId),
+    );
+
+    return {
+      items: filteredItems,
+      conversationUnits: normalized.conversationUnits.filter((unit) =>
+        returnedRootExternalIds.has(unit.rootExternalId),
+      ),
+      nextCursor: encodeTimeCursor(filteredItems, plan.cursor),
+      warnings: [
+        ...hackerNewsWarnings(stories),
+        ...normalized.warnings,
+        ...hackerNewsRecencyWarnings(items, filteredItems, recencyFilterHours),
+        ...(targetWindow !== undefined && stories.length > plan.maxItems
+          ? ["Hacker News historical search incomplete: maxItems exceeded"] : []),
+      ],
+    };
+  }
+
+  classifyError(error: unknown): ProviderFailure {
+    const rawMessage =
+      error instanceof Error
+        ? error.message
+        : "Unknown Hacker News provider error";
+    const message = redactSensitiveText(rawMessage);
+    if (
+      rawMessage.includes("429") ||
+      rawMessage.toLowerCase().includes("rate limit")
+    ) {
+      return {
+        kind: "rate_limited",
+        retryable: true,
+        message,
+      };
+    }
+
+    return {
+      kind: "unavailable",
+      retryable: true,
+      message,
+    };
+  }
+}

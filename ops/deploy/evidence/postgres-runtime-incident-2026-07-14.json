@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "read-only-production-audit",
+  "observedAt": "2026-07-15T01:21:07Z",
+  "database": {
+    "managedProviderMaxConnections": 25,
+    "observedConnections": 16,
+    "observedActiveConnections": 1
+  },
+  "api": {
+    "observedRestartCount": 7,
+    "tooManyConnectionsSqlState": "53300",
+    "tooManyConnectionsObservedAtUtc": [
+      "2026-07-14T15:52Z",
+      "2026-07-14T20:35Z",
+      "2026-07-15T00:41Z"
+    ]
+  },
+  "workers": {
+    "ingestionRestartedAfterRabbitMqTimeout": true,
+    "deliveryRestartedAfterRabbitMqTimeout": true,
+    "ingestionScanDrainFailureCountAtInitialAudit": 38,
+    "ingestionScanDrainApproximateCadenceMinutes": 30,
+    "latestIngestionScanDrainFailureAtUtc": "2026-07-15T01:20:33Z",
+    "latestIngestionScanDrainRetryAtUtc": "2026-07-15T01:21:07Z",
+    "latestIngestionScanDrainRetryNumber": 2,
+    "latestIngestionScanDrainErrorClassification": "unknown"
+  },
+  "acceptanceInvariants": {
+    "persistentConnectionBudget": 8,
+    "maximumApplicationEnvelope": 16,
+    "repositoryConnectionCeiling": 17,
+    "replacementOverlapConnections": 0,
+    "databaseAwareReadinessRequired": true,
+    "restartAndProxySoakRequired": true
+  },
+  "sensitiveValuesIncluded": false
+}

@@ -1,0 +1,16 @@
+[Unit]
+Description=Social Monitor weekly AI reader summary
+After=social-monitor-prod.service network-online.target
+Requires=social-monitor-prod.service
+StartLimitIntervalSec=3h
+StartLimitBurst=3
+
+[Service]
+Type=oneshot
+ExecStart=/var/data/social-monitor/control/postgres-runtime-current/reader-summary-one-shot.sh weekly
+TimeoutStartSec=23400
+Restart=on-failure
+RestartSec=30min
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6

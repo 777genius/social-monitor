@@ -1,0 +1,255 @@
+import { runTargetedProviderCollection } from "./targeted-provider-collection";
+
+type Result = {
+  readonly provider: string;
+  readonly disposition: "none" | "immediate" | "deferred";
+  readonly accepted?: number;
+};
+
+describe("runTargetedProviderCollection", () => {
+  it("retries only the provider that missed its SLO", async () => {
+    const calls: string[] = [];
+    const outcomes = await runTargetedProviderCollection({
+      targets: ["reddit", "rss", "x-twitter"],
+      retryBudget: 1,
+      async collect(provider, attemptNumber): Promise<Result> {
+        calls.push(`${provider}:${attemptNumber}`);
+        return {
+          provider,
+          disposition:
+            provider === "reddit" && attemptNumber === 1
+              ? "immediate"
+              : provider === "x-twitter"
+                ? "deferred"
+                : "none",
+        };
+      },
+      retryDisposition: (result) => result.disposition,
+    });
+
+    expect(calls).toEqual(["reddit:1", "rss:1", "x-twitter:1", "reddit:2"]);
+    expect(outcomes.map((outcome) => outcome.attempts.length)).toEqual([
+      2, 1, 1,
+    ]);
+  });
+
+  it("stops after the bounded retry budget", async () => {
+    let calls = 0;
+    await runTargetedProviderCollection({
+      targets: ["reddit"],
+      retryBudget: 2,
+      async collect(provider): Promise<Result> {
+        calls += 1;
+        return { provider, disposition: "immediate" };
+      },
+      retryDisposition: (result) => result.disposition,
+    });
+
+    expect(calls).toBe(3);
+  });
+
+  it("stops a successful provider before repeating an identical retry plan", async () => {
+    let calls = 0;
+    const outcomes = await runTargetedProviderCollection({
+      targets: ["x-twitter"],
+      retryBudget: 2,
+      async collect(provider): Promise<Result> {
+        calls += 1;
+        return { provider, disposition: "immediate", accepted: 17 };
+      },
+      retryDisposition: (result) => result.disposition,
+      retryPlanKey: () => "same-x-plan",
+      stopDuplicatePlanRetry: (result) => (result.accepted ?? 0) > 0,
+    });
+
+    expect(calls).toBe(1);
+    expect(outcomes[0]?.attempts).toHaveLength(1);
+    expect(outcomes[0]?.retryStopReason).toBe("duplicate_plan");
+  });
+
+  it("allows one identical-plan retry after a failed attempt", async () => {
+    let calls = 0;
+    const outcomes = await runTargetedProviderCollection({
+      targets: ["x-twitter"],
+      retryBudget: 2,
+      async collect(provider, attemptNumber): Promise<Result> {
+        calls += 1;
+        return {
+          provider,
+          disposition: "immediate",
+          accepted: attemptNumber === 1 ? 0 : 17,
+        };
+      },
+      retryDisposition: (result) => result.disposition,
+      retryPlanKey: () => "same-x-plan",
+      stopDuplicatePlanRetry: (result) => (result.accepted ?? 0) > 0,
+    });
+
+    expect(calls).toBe(2);
+    expect(outcomes[0]?.attempts).toHaveLength(2);
+    expect(outcomes[0]?.retryStopReason).toBe("duplicate_plan");
+  });
+
+  it("lets callers keep a useful result when a later retry is rate limited", async () => {
+    const outcomes = await runTargetedProviderCollection({
+      targets: ["x-twitter"],
+      retryBudget: 2,
+      async collect(provider, attemptNumber): Promise<Result> {
+        return attemptNumber === 1
+          ? { provider, disposition: "immediate", accepted: 17 }
+          : { provider, disposition: "deferred", accepted: 0 };
+      },
+      retryDisposition: (result) => result.disposition,
+      selectPreferredResult: (current, candidate) =>
+        (candidate.accepted ?? 0) > (current.accepted ?? 0)
+          ? candidate
+          : current,
+    });
+
+    expect(outcomes[0]?.attempts).toHaveLength(2);
+    expect(outcomes[0]?.result).toEqual({
+      provider: "x-twitter",
+      disposition: "immediate",
+      accepted: 17,
+    });
+  });
+
+  it("lets callers retain a better result after a failed immediate retry", async () => {
+    const outcomes = await runTargetedProviderCollection({
+      targets: ["x-twitter"],
+      retryBudget: 1,
+      async collect(provider, attemptNumber): Promise<Result> {
+        return attemptNumber === 1
+          ? { provider, disposition: "immediate", accepted: 17 }
+          : { provider, disposition: "immediate", accepted: 0 };
+      },
+      retryDisposition: (result) => result.disposition,
+      selectPreferredResult: (current, candidate) =>
+        (candidate.accepted ?? 0) > (current.accepted ?? 0)
+          ? candidate
+          : current,
+    });
+
+    expect(outcomes[0]?.attempts).toHaveLength(2);
+    expect(outcomes[0]?.result.accepted).toBe(17);
+  });
+
+  it("replaces a retryable result when the retry meets its SLO", async () => {
+    const outcomes = await runTargetedProviderCollection({
+      targets: ["reddit"],
+      retryBudget: 1,
+      async collect(provider, attemptNumber): Promise<Result> {
+        return {
+          provider,
+          disposition: attemptNumber === 1 ? "immediate" : "none",
+          accepted: attemptNumber === 1 ? 10 : 25,
+        };
+      },
+      retryDisposition: (result) => result.disposition,
+    });
+
+    expect(outcomes[0]?.result).toEqual({
+      provider: "reddit",
+      disposition: "none",
+      accepted: 25,
+    });
+  });
+
+  it("retries an incomplete successful X plan after bounded readiness delays", async () => {
+    const waits: number[] = [];
+    const acceptedByAttempt = [17, 18, 29];
+    const outcomes = await runTargetedProviderCollection({
+      targets: ["x-twitter"],
+      retryBudget: 2,
+      async collect(provider, attemptNumber): Promise<Result> {
+        const accepted = acceptedByAttempt[attemptNumber - 1] ?? 0;
+        return {
+          provider,
+          disposition: accepted >= 20 ? "none" : "immediate",
+          accepted,
+        };
+      },
+      retryDisposition: (result) => result.disposition,
+      retryPlanKey: () => "same-x-plan",
+      stopDuplicatePlanRetry: (result) => (result.accepted ?? 0) > 0,
+      selectPreferredResult: (current, candidate) =>
+        (candidate.accepted ?? 0) > (current.accepted ?? 0)
+          ? candidate
+          : current,
+      readinessRetry: {
+        delaysMs: [10, 20],
+        maxTotalAttempts: 3,
+        shouldRetry: (_, result) => (result.accepted ?? 0) < 20,
+        wait: async (delayMs) => {
+          waits.push(delayMs);
+        },
+      },
+    });
+
+    expect(waits).toEqual([10, 20]);
+    expect(outcomes[0]?.attempts).toHaveLength(3);
+    expect(outcomes[0]?.result.accepted).toBe(29);
+    expect(outcomes[0]?.retryStopReason).toBeUndefined();
+  });
+
+  it("stops readiness retries as soon as the provider passes", async () => {
+    const waits: number[] = [];
+    const outcomes = await runTargetedProviderCollection({
+      targets: ["x-twitter"],
+      retryBudget: 1,
+      async collect(provider, attemptNumber): Promise<Result> {
+        return {
+          provider,
+          disposition: attemptNumber === 1 ? "immediate" : "none",
+          accepted: attemptNumber === 1 ? 17 : 20,
+        };
+      },
+      retryDisposition: (result) => result.disposition,
+      retryPlanKey: () => "same-x-plan",
+      stopDuplicatePlanRetry: () => true,
+      readinessRetry: {
+        delaysMs: [10, 20],
+        maxTotalAttempts: 3,
+        shouldRetry: (_, result) => (result.accepted ?? 0) < 20,
+        wait: async (delayMs) => {
+          waits.push(delayMs);
+        },
+      },
+    });
+
+    expect(waits).toEqual([10]);
+    expect(outcomes[0]?.attempts).toHaveLength(2);
+    expect(outcomes[0]?.result.accepted).toBe(20);
+  });
+
+  it("uses the final readiness delay when immediate retries consumed the budget", async () => {
+    const waits: number[] = [];
+    const outcomes = await runTargetedProviderCollection({
+      targets: ["x-twitter"],
+      retryBudget: 2,
+      async collect(provider, attemptNumber): Promise<Result> {
+        const accepted = [0, 17, 29][attemptNumber - 1] ?? 0;
+        return {
+          provider,
+          disposition: accepted >= 20 ? "none" : "immediate",
+          accepted,
+        };
+      },
+      retryDisposition: (result) => result.disposition,
+      retryPlanKey: () => "same-x-plan",
+      stopDuplicatePlanRetry: (result) => (result.accepted ?? 0) > 0,
+      readinessRetry: {
+        delaysMs: [10, 20],
+        maxTotalAttempts: 3,
+        shouldRetry: (_, result) => (result.accepted ?? 0) < 20,
+        wait: async (delayMs) => {
+          waits.push(delayMs);
+        },
+      },
+    });
+
+    expect(waits).toEqual([20]);
+    expect(outcomes[0]?.attempts).toHaveLength(3);
+    expect(outcomes[0]?.result.accepted).toBe(29);
+  });
+});

@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "labelSealSha256": "40f260a47d8a7cacda53dbb26667d17fbe7424199cf097f690b960eee3fd2bcb",
+  "replaySha256": "4eda88084f0c7948ff0114691654d09f3289357e9cb87751f23abedf05653096",
+  "projection": "Public normalized fields and unchanged upstream facts. Source/binding/interest IDs replaced with disposable fixture identifiers. No observedAt/metrics/quality changes."
+}

@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "artifactFormat": "source-query-planner-canary-report-v1",
+  "evalRunId": "source-query-planner-canary-v1",
+  "generatedBy": "npm run check:source-query-planner-canary",
+  "gitShaPolicy": "release pipeline records the exact git sha next to this deterministic report",
+  "model": {
+    "liveNetwork": false,
+    "baseline": "single-topic-lane",
+    "experiment": "sourceQueryPlanner.enabled",
+    "comparison": "frozen-dataset-before-after"
+  },
+  "inputs": {
+    "datasetPath": "ops/evals/source-ranking-eval-dataset.v1.json",
+    "plannerEvalPath": "ops/evals/source-query-planner-eval-output.json",
+    "rankingEvalPath": "ops/evals/source-ranking-eval-output.json",
+    "summaryEvalPath": "ops/evals/summary-eval-output.json"
+  },
+  "canaryBindings": [
+    {
+      "canaryId": "canary-reddit-source-query-planner",
+      "workspaceId": "workspace-eval-canary-reddit",
+      "sourceBindingId": "source-binding-eval-canary-reddit",
+      "providerKey": "reddit",
+      "rolloutPolicy": "opt_in_config_only",
+      "enabledConfig": {
+        "sourceQueryPlanner": {
+          "enabled": true,
+          "maxLanesPerSource": 8,
+          "includeEnrichment": true
+        }
+      },
+      "caseIds": [
+        "reddit-ai-agents-mcp-reliability",
+        "mixed-agent-production-reliability",
+        "reddit-cursor-mcp-registry-outage",
+        "reddit-langchain-agent-memory-regression",
+        "reddit-llamaindex-workflow-tools",
+        "reddit-ollama-tool-use-release",
+        "reddit-vllm-agent-throughput",
+        "reddit-supabase-mcp-auth",
+        "reddit-nextjs-ai-sdk-streaming",
+        "reddit-docker-mcp-desktop-permissions",
+        "mixed-copilot-workspace-agent-rollout"
+      ],
+      "caseCount": 11,
+      "improvedCaseCount": 10,
+      "regressedCaseCount": 0,
+      "baseline": {
+        "averageLaneCount": 1.182,
+        "mustHaveRecallAt20": 0.561,
+        "relevantRecallAt20": 0.828,
+        "officialCommunityCoverageAt20": 0.955
+      },
+      "experiment": {
+        "averageLaneCount": 9.182,
+        "mustHaveRecallAt20": 1,
+        "relevantRecallAt20": 1,
+        "officialCommunityCoverageAt20": 1
+      },
+      "ranking": {
+        "averageDuplicateRateAt20": 0.015,
+        "averageOfficialCommunityCoverageAt20": 1,
+        "topEvidenceCount": 55,
+        "topEvidenceReasonCodeCoverage": 1
+      }
+    },
+    {
+      "canaryId": "canary-x-twitter-source-query-planner",
+      "workspaceId": "workspace-eval-canary-x-twitter",
+      "sourceBindingId": "source-binding-eval-canary-x-twitter",
+      "providerKey": "x-twitter",
+      "rolloutPolicy": "opt_in_config_only",
+      "enabledConfig": {
+        "sourceQueryPlanner": {
+          "enabled": true,
+          "maxLanesPerSource": 8,
+          "maxSearchQueries": 8
+        }
+      },
+      "caseIds": [
+        "x-openai-codex-cli-release",
+        "mixed-agent-production-reliability",
+        "x-anthropic-claude-code-permissions",
+        "x-openai-responses-api-tools",
+        "x-cursor-agent-terminal-mode",
+        "x-windsurf-enterprise-agent-update",
+        "x-devin-background-agent-queue",
+        "x-openrouter-tool-routing",
+        "x-prisma-mcp-database-tools",
+        "x-kubernetes-agent-ops",
+        "mixed-copilot-workspace-agent-rollout"
+      ],
+      "caseCount": 11,
+      "improvedCaseCount": 10,
+      "regressedCaseCount": 0,
+      "baseline": {
+        "averageLaneCount": 1.182,
+        "mustHaveRecallAt20": 0.561,
+        "relevantRecallAt20": 0.828,
+        "officialCommunityCoverageAt20": 0.591
+      },
+      "experiment": {
+        "averageLaneCount": 7.364,
+        "mustHaveRecallAt20": 1,
+        "relevantRecallAt20": 1,
+        "officialCommunityCoverageAt20": 1
+      },
+      "ranking": {
+        "averageDuplicateRateAt20": 0.015,
+        "averageOfficialCommunityCoverageAt20": 1,
+        "topEvidenceCount": 55,
+        "topEvidenceReasonCodeCoverage": 1
+      }
+    }
+  ],
+  "qualityGates": {
+    "plannerEvalPassed": true,
+    "rankingEvalPassed": true,
+    "summaryEvalPassed": true,
+    "canaryBindingCount": true,
+    "everyBindingHasCases": true,
+    "noRegressedCases": true,
+    "everyBindingImprovesMustHaveRecall": true,
+    "everyBindingImprovesRelevantRecall": true,
+    "atLeastOneImprovedCasePerBinding": true,
+    "duplicateRateWithinGate": true,
+    "topEvidenceHasReasonCodes": true,
+    "summaryGroundingComplete": true,
+    "noSummarySecretLeaks": true
+  },
+  "blockingPassed": true
+}

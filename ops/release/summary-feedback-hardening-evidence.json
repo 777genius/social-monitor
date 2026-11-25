@@ -1,0 +1,237 @@
+{
+  "schemaVersion": 1,
+  "evidenceId": "summary-feedback-hardening-evidence-v1",
+  "scope": "backend-only",
+  "frontendPolicy": "deferred_contract_only",
+  "evidenceMode": "fixture_contract_with_redacted_real_samples_required",
+  "externalBetaStatus": "hold_until_redacted_real_feedback_samples",
+  "sourceReport": "ops/release/beta-feedback-classification-report.json",
+  "redactedSampleEvidence": {
+    "status": "pending_real_samples",
+    "requiredForExternalBeta": true,
+    "owner": "product-owner",
+    "artifactPath": null,
+    "exitCondition": "Use npm run export:summary-feedback-samples followed by npm run capture:summary-feedback-samples to replace deterministic feedback report with redacted internal dogfood or beta samples before external beta go."
+  },
+  "redactedSampleContentSchema": {
+    "artifactFormat": "redacted-summary-feedback-samples-v1",
+    "exampleArtifact": "ops/release/fixtures/redacted-summary-feedback-samples-examples.json",
+    "minimumSamples": 2,
+    "requiredEvidenceMode": "redacted_beta_samples",
+    "requiredTopLevelFields": [
+      "schemaVersion",
+      "artifactFormat",
+      "scope",
+      "frontendPolicy",
+      "provenance",
+      "evidenceMode",
+      "generatedAt",
+      "source",
+      "redaction",
+      "samples",
+      "rollup"
+    ],
+    "requiredSampleFields": [
+      "feedbackId",
+      "category",
+      "classification",
+      "severity",
+      "triageOwner",
+      "eligibleForEvalFixture",
+      "releaseBlocking",
+      "summaryEvidence",
+      "sanitizedSignal",
+      "redactedComment",
+      "qualitySignals",
+      "hardeningAction"
+    ],
+    "requiredSourceFields": [
+      "kind",
+      "environmentId",
+      "sampleWindow",
+      "operator",
+      "sampleCount",
+      "collectionMethod",
+      "redactedBy",
+      "approvedBy",
+      "export"
+    ],
+    "requiredSourceExportFields": [
+      "sourceSystem",
+      "exportId",
+      "exportedAt",
+      "reviewQueue",
+      "redactionReviewId",
+      "approvalReference"
+    ],
+    "provenanceRequirements": {
+      "evidenceKind": "redacted_real_feedback_samples",
+      "fixtureOnly": false,
+      "requiredFields": [
+        "evidenceKind",
+        "collectionMethod",
+        "runner",
+        "fixtureOnly"
+      ],
+      "forbiddenRealFragments": [
+        "example",
+        "fixture",
+        "synthetic",
+        "mock",
+        "test"
+      ]
+    },
+    "allowedRealSourceKinds": [
+      "internal_dogfood",
+      "private_beta"
+    ],
+    "forbiddenRealSourceFragments": [
+      "example",
+      "fixture",
+      "synthetic",
+      "mock",
+      "test"
+    ],
+    "realSampleGuards": [
+      "real feedback samples must not reuse fixture sample ids",
+      "real feedback samples must not copy fixture sample signal text",
+      "real feedback artifacts must include source.export traceability metadata from the feedback queue export and redaction approval"
+    ],
+    "rollupRequirements": [
+      "sampleCount matches source.sampleCount and samples.length",
+      "categoryCounts matches sample categories",
+      "classificationCounts matches sample classifications",
+      "severityCounts matches sample severities",
+      "actionTypeCounts matches sample hardening actions",
+      "releaseBlockingSamples matches releaseBlocking sample count",
+      "evalFixtureEligibleSamples matches eligibleForEvalFixture sample count",
+      "blockerSampleIds matches blocker sample ids"
+    ],
+    "allowedCategories": [
+      "wrong_fact",
+      "missing_source",
+      "bad_citation",
+      "low_relevance",
+      "too_verbose",
+      "too_terse",
+      "source_request",
+      "ux_confusing",
+      "other"
+    ],
+    "allowedClassifications": [
+      "blocker",
+      "accepted_mvp_gap",
+      "evidence_based_opportunity",
+      "deferred_idea"
+    ],
+    "requiredRedactionFlags": {
+      "rawProviderPayloadsIncluded": false,
+      "piiIncluded": false,
+      "rawPromptTextIncluded": false,
+      "rawSourceTextIncluded": false,
+      "tokenValuesIncluded": false,
+      "secretUrlsIncluded": false,
+      "commentsAreSyntheticOrRedacted": true
+    },
+    "requiredSampleSignals": [
+      "claimsChecked",
+      "citationsChecked",
+      "costChecked",
+      "staleMarkerChecked"
+    ],
+    "blockingActionTypes": [
+      "eval_fixture",
+      "validator_change",
+      "runbook_action"
+    ],
+    "exitCondition": "SUMMARY_REAL_FEEDBACK_SAMPLES_PATH produced from npm run export:summary-feedback-samples followed by npm run capture:summary-feedback-samples must validate against redacted-summary-feedback-samples-v1 before external beta go."
+  },
+  "privacyGuardrails": {
+    "rawProviderPayloadsIncluded": false,
+    "piiIncluded": false,
+    "rawPromptTextIncluded": false,
+    "rawSourceTextIncluded": false,
+    "commentsAreSyntheticOrRedacted": true
+  },
+  "blockerActions": [
+    {
+      "feedbackId": "beta-feedback-wrong-fact-001",
+      "triageOwner": "summary-owner",
+      "actionType": "eval_fixture",
+      "status": "fixture_covered_pending_real_sample",
+      "releaseBlocking": true,
+      "command": "npm run check:summary-evals",
+      "artifact": "ops/evals/summary-eval-output.json",
+      "fixtureIds": ["feedback-wrong-fact-grounding"],
+      "exitCondition": "Convert the real redacted wrong-fact sample into a blocking eval fixture or close it with a validator/runbook action."
+    },
+    {
+      "feedbackId": "beta-feedback-bad-citation-001",
+      "triageOwner": "summary-owner",
+      "actionType": "validator_change",
+      "status": "fixture_covered_pending_real_sample",
+      "releaseBlocking": true,
+      "command": "npm run test",
+      "artifact": "libs/summary/features/shared/summary-citation-validator.spec.ts",
+      "fixtureIds": ["feedback-bad-citation-grounding"],
+      "exitCondition": "Convert the real redacted bad-citation sample into a validator regression or close it with a runbook action."
+    }
+  ],
+  "watchActions": [
+    {
+      "feedbackId": "beta-feedback-missing-source-001",
+      "triageOwner": "summary-owner",
+      "actionType": "runbook_action",
+      "status": "fixture_covered_pending_real_sample",
+      "releaseBlocking": true,
+      "command": "npm run check:summary-window",
+      "artifact": "scripts/check-summary-window-freshness-smoke.ts",
+      "fixtureIds": [],
+      "exitCondition": "Keep stale/source-window markers release-blocking and add a real redacted fixture if this repeats in beta samples."
+    }
+  ],
+  "releaseBlockingInvariants": [
+    {
+      "invariantId": "claims-and-citations-grounded",
+      "command": "npm run check:summary-quality-loop",
+      "artifact": "ops/evals/summary-quality-loop-output.json",
+      "requiredSignal": "production summary quality loop passes grounded claims, valid citations, secret redaction, prompt injection and stale marker checks"
+    },
+    {
+      "invariantId": "summary-evidence-citations-valid",
+      "command": "npm run check:summary-evidence-smoke",
+      "artifact": "scripts/check-summary-evidence-smoke.ts",
+      "requiredSignal": "summary artifacts keep key points and citation maps bound to selected evidence"
+    },
+    {
+      "invariantId": "summary-cost-budget-attributed",
+      "command": "npm run check:summary-cost",
+      "artifact": "ops/cost/summary-cost-attribution.json",
+      "requiredSignal": "summary eval fixtures have cost attribution and stay within release budget"
+    },
+    {
+      "invariantId": "summary-window-stale-markers",
+      "command": "npm run check:summary-window",
+      "artifact": "scripts/check-summary-window-freshness-smoke.ts",
+      "requiredSignal": "source window freshness marks stale summaries when newer feed evidence exists"
+    },
+    {
+      "invariantId": "summary-retry-safety",
+      "command": "npm run check:summary-retry",
+      "artifact": "scripts/check-summary-retry-smoke.ts",
+      "requiredSignal": "retryable summary failures stay bounded and do not duplicate completed artifacts"
+    },
+    {
+      "invariantId": "summary-feedback-eval-label-backlog",
+      "command": "npm run check:summary-feedback-eval-backlog",
+      "artifact": "ops/evals/summary-feedback-eval-backlog.v1.json",
+      "requiredSignal": "redacted feedback samples map to deterministic eval labels, priority, evidence requirements and target eval suites"
+    }
+  ],
+  "externalBetaExitCriteria": [
+    "Feedback report evidenceMode is redacted_beta_samples.",
+    "SUMMARY_REAL_FEEDBACK_SAMPLES_PATH produced from npm run export:summary-feedback-samples followed by npm run capture:summary-feedback-samples validates against redacted-summary-feedback-samples-v1.",
+    "Every blocker finding from real samples has an owner and one release-blocking eval fixture, validator change, eval backlog label or runbook action.",
+    "Claims, citations, summary cost and stale-window markers are covered by release-blocking gates."
+  ]
+}

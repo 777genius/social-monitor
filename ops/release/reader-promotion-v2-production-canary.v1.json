@@ -1,0 +1,36 @@
+{
+  "format": "reader-promotion-v2-production-canary-manifest.v1",
+  "singletonId": "reader-promotion-v2-production-canary-v1",
+  "purpose": "social_monitor.reader_summary.promotion_v2_canary.v1",
+  "model": "gpt-5.6-sol",
+  "reasoningEffort": "high",
+  "providerTimeoutMs": 120000,
+  "reconciliationDeadlineMs": 180000,
+  "schema": {
+    "name": "social_monitor_reader_summary_story_relations",
+    "version": "reader_summary.story_relation.v1"
+  },
+  "relationBatch": [
+    {
+      "leftFeedItemId": "cursor",
+      "rightFeedItemId": "spacex",
+      "leftLabel": "Synthetic HN report: SpaceX announces its acquisition of Cursor on the fixture date; Cursor will join SpaceX.",
+      "rightLabel": "Synthetic X report: Cursor will become part of SpaceX after the acquisition announced on the same fixture date.",
+      "sameStory": true
+    },
+    {
+      "leftFeedItemId": "anthropic-watermark-x",
+      "rightFeedItemId": "anthropic-watermark-reddit",
+      "leftLabel": "Synthetic X report: Anthropic announces a new text-watermarking feature for Claude outputs on the fixture date.",
+      "rightLabel": "Synthetic Reddit report: Discussion of Anthropic's same-day announcement introducing text watermarks in Claude outputs.",
+      "sameStory": true
+    },
+    {
+      "leftFeedItemId": "claude-code-watermark",
+      "rightFeedItemId": "claude-code-security",
+      "leftLabel": "Synthetic report: Anthropic announces text watermarking for Claude Code outputs; this story is about output provenance.",
+      "rightLabel": "Synthetic report: Anthropic releases a separate Claude Code security patch fixing command permission checks, unrelated to watermarking.",
+      "sameStory": false
+    }
+  ]
+}

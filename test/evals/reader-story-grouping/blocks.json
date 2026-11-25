@@ -1,0 +1,125 @@
+[
+  {
+    "id": "fable-release",
+    "postRefs": [
+      "09-01:34",
+      "09-01:141",
+      "09-01:26",
+      "09-01:83",
+      "09-01:337",
+      "09-01:446"
+    ],
+    "context": "purposive_topic_block_not_full_daily_population"
+  },
+  {
+    "id": "fable-facets",
+    "postRefs": [
+      "09-01:26",
+      "09-01:1",
+      "09-01:12",
+      "09-02:16",
+      "09-02:87",
+      "09-02:167",
+      "09-05:87",
+      "09-04:43"
+    ],
+    "context": "purposive_topic_block_not_full_daily_population"
+  },
+  {
+    "id": "swarm-security",
+    "postRefs": [
+      "08-30:9",
+      "08-31:275",
+      "08-31:72",
+      "09-01:134",
+      "09-02:346"
+    ],
+    "context": "purposive_topic_block_not_full_daily_population"
+  },
+  {
+    "id": "astra-neuralese",
+    "postRefs": [
+      "09-02:5",
+      "09-02:111",
+      "09-03:14",
+      "09-03:109"
+    ],
+    "context": "purposive_topic_block_not_full_daily_population"
+  },
+  {
+    "id": "pair-compute",
+    "postRefs": [
+      "09-03:138",
+      "09-03:284",
+      "09-03:109"
+    ],
+    "context": "purposive_topic_block_not_full_daily_population"
+  },
+  {
+    "id": "tooljet-slideops",
+    "postRefs": [
+      "09-03:63",
+      "09-02:550",
+      "08-31:289",
+      "08-31:553"
+    ],
+    "context": "purposive_topic_block_not_full_daily_population"
+  },
+  {
+    "id": "skin-tdqs",
+    "postRefs": [
+      "09-01:240",
+      "09-02:506",
+      "09-03:250",
+      "09-04:235"
+    ],
+    "context": "purposive_topic_block_not_full_daily_population"
+  },
+  {
+    "id": "quota-claims",
+    "postRefs": [
+      "09-02:418",
+      "09-02:543",
+      "08-31:139",
+      "08-31:14"
+    ],
+    "context": "purposive_topic_block_not_full_daily_population"
+  },
+  {
+    "id": "session-url",
+    "postRefs": [
+      "08-31:233",
+      "08-30:61",
+      "08-30:10"
+    ],
+    "context": "purposive_topic_block_not_full_daily_population"
+  },
+  {
+    "id": "doom",
+    "postRefs": [
+      "09-05:319",
+      "09-05:69"
+    ],
+    "context": "purposive_topic_block_not_full_daily_population"
+  },
+  {
+    "id": "gemini-homonym",
+    "postRefs": [
+      "08-30:0",
+      "08-30:1",
+      "08-30:2",
+      "08-31:0",
+      "09-02:1",
+      "09-02:8"
+    ],
+    "context": "purposive_topic_block_not_full_daily_population"
+  },
+  {
+    "id": "anybridge",
+    "postRefs": [
+      "09-05:217",
+      "09-05:268"
+    ],
+    "context": "purposive_topic_block_not_full_daily_population"
+  }
+]

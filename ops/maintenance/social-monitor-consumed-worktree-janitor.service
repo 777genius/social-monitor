@@ -1,0 +1,18 @@
+[Unit]
+Description=Social Monitor consumed worker worktree janitor (safe dry-run)
+After=local-fs.target
+ConditionPathIsDirectory=/var/data/social-monitor/integration
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/var/data/social-monitor/integration
+ExecStart=/usr/bin/bash /var/data/social-monitor/integration/ops/maintenance/consumed-worktree-janitor.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+NoNewPrivileges=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ReadOnlyPaths=/var/data/social-monitor

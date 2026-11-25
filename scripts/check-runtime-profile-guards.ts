@@ -1,0 +1,539 @@
+import {
+  resolveDeliveryRabbitMqAttemptQueueOptions,
+  resolveDeliveryRabbitMqAttemptQueueReaderOptions,
+  resolveDeliveryAttemptDispatchQueueMode,
+  resolveDeliveryAttemptDispatchTarget,
+  resolveDeliveryAttemptQueueReaderMode,
+  resolveDeliverySummaryReadyEventReaderMode,
+  resolveDeliverySummaryReadyEventDrainLoopOptions,
+  resolveDeliverySummaryReadyEventQueueOptions,
+} from '../apps/delivery-service/src/delivery-service-provider-tokens';
+import { resolveEventRelayLoopOptions } from '../apps/event-relay/src/event-relay-provider-tokens';
+import { resolveReaderValueRuntimeOptions } from '../apps/intelligence-worker/src/reader-value-runtime-options';
+import { resolveReaderValueScoringApiKey, resolveReaderValueScoringSelection } from
+  '../libs/relevance/interfaces/rest/reader-value-scoring-provider-tokens';
+import {
+  resolveIngestionRabbitMqScanQueueReaderOptions,
+  resolveIngestionScanQueueReaderMode,
+  resolveIngestionScanReporterMode,
+  resolveIngestionWorkerPersistenceMode,
+} from '../apps/ingestion-worker/src/ingestion-worker-provider-tokens';
+import {
+  resolveIntelligenceRabbitMqReaderSummaryQueueReaderOptions,
+  resolveIntelligenceRabbitMqSummaryQueueReaderOptions,
+  resolveIntelligenceSummaryQueueReaderMode,
+} from '../apps/intelligence-worker/src/intelligence-worker-provider-tokens';
+import {
+  resolveDeliveryEnabledChannels,
+  resolveDeliveryPersistenceMode,
+  resolveDeliveryWebhookProviderMode,
+} from '../libs/delivery/interfaces/rest/delivery-provider-tokens';
+import { resolveFeedPersistenceMode } from '../libs/feed/interfaces/rest/feed-provider-tokens';
+import {
+  resolveIdentityPersistenceMode,
+  resolveIdentityUserAccessTokenConfig,
+} from '../libs/identity/interfaces/rest/identity-provider-tokens';
+import { resolveIngestionSupportPersistenceMode } from '../libs/ingestion/interfaces/rest/ingestion-provider-tokens';
+import {
+  resolveMonitoringPersistenceMode,
+  resolveMonitoringScanQueueMode,
+} from '../libs/monitoring/interfaces/rest/monitoring-provider-tokens';
+import { resolveMetricsRuntimeConfig } from '../libs/platform/metrics/src/metrics-runtime-config';
+import {
+  resolveRelevanceContentQualityReviewerMode,
+  resolveRelevanceMemoryProjectionMode,
+  resolveRelevancePersistenceMode,
+} from '../libs/relevance/interfaces/rest/relevance-provider-tokens';
+import {
+  resolveSubscriptionsPersistenceMode,
+  resolveUserSummaryPreferenceMemoryProjectorMode,
+} from '../libs/subscriptions/interfaces/rest/subscriptions-provider-tokens';
+import {
+  resolveSummaryJobQueueMode,
+  resolveSummaryMemoryMode,
+  resolveSummaryModelProviderMode,
+  resolveSummaryRabbitMqJobQueueOptions,
+  resolveSummaryPersistenceMode,
+  resolveReaderSummaryModelProviderMode,
+  resolveReaderSummaryTopicLabelerMode,
+  resolveSummaryYoutubeVideoSummaryProviderMode,
+} from '../libs/summary/interfaces/rest/summary-provider-tokens';
+import { resolveReaderSummaryAgentRuntimeTransport } from '../libs/summary/interfaces/rest/summary-agent-runtime-provider-tokens';
+import { resolveUsagePersistenceMode } from '../libs/usage/interfaces/rest/usage-provider-tokens';
+
+const betaEnv = {
+  SOCIAL_MONITOR_RUNTIME_PROFILE: 'beta',
+};
+const databaseEnv = {
+  ...betaEnv,
+  DATABASE_URL: 'postgresql://social_monitor:password@localhost:5432/social_monitor',
+};
+const rabbitMqEnv = {
+  ...betaEnv,
+  RABBITMQ_URL: 'amqp://social_monitor:password@localhost:5672',
+  RABBITMQ_DEAD_LETTER_EXCHANGE: 'social-monitor.commands.dlx',
+  RABBITMQ_QUEUE_TYPE: 'quorum',
+  RABBITMQ_QUEUE_DELIVERY_LIMIT: '20',
+};
+
+const assert = (condition: boolean, message: string): void => {
+  if (!condition) {
+    throw new Error(message);
+  }
+};
+
+const assertThrows = (fn: () => unknown, message: string): void => {
+  try {
+    fn();
+  } catch {
+    return;
+  }
+
+  throw new Error(message);
+};
+
+assertThrows(
+  () => resolveFeedPersistenceMode(betaEnv),
+  'FEED_PERSISTENCE must reject in-memory mode in beta runtime',
+);
+assert(resolveFeedPersistenceMode({ ...databaseEnv, FEED_PERSISTENCE: 'prisma' }) === 'prisma', 'feed beta mode');
+
+assertThrows(
+  () => resolveRelevancePersistenceMode(betaEnv),
+  'RELEVANCE_PERSISTENCE must reject in-memory mode in beta runtime',
+);
+assert(
+  resolveRelevancePersistenceMode({ ...databaseEnv, RELEVANCE_PERSISTENCE: 'prisma' }) === 'prisma',
+  'relevance beta persistence',
+);
+assert(resolveRelevanceMemoryProjectionMode(betaEnv) === 'disabled', 'relevance memory projection defaults disabled');
+assertThrows(
+  () => resolveRelevanceMemoryProjectionMode({ ...betaEnv, RELEVANCE_MEMORY_PROJECTION_MODE: 'memo-stack' }),
+  'RELEVANCE_MEMORY_PROJECTION_MODE=memo-stack must require memo-stack URL and token',
+);
+assert(
+  resolveRelevanceMemoryProjectionMode({
+    ...betaEnv,
+    RELEVANCE_MEMORY_PROJECTION_MODE: 'memo-stack',
+    INFINITY_CONTEXT_URL: 'https://memory.example.test',
+    INFINITY_CONTEXT_TOKEN: 'test-token',
+  }) === 'memo-stack',
+  'relevance memory projection accepts explicit memo-stack mode',
+);
+
+assertThrows(
+  () => resolveMonitoringPersistenceMode(betaEnv),
+  'MONITORING_PERSISTENCE must reject in-memory mode in beta runtime',
+);
+
+assertThrows(
+  () =>
+    resolveMetricsRuntimeConfig(
+      { ...betaEnv, SOCIAL_MONITOR_METRICS_MODE: 'in-memory' },
+      'api-gateway',
+    ),
+  'SOCIAL_MONITOR_METRICS_MODE must reject in-memory mode in beta runtime',
+);
+assertThrows(
+  () => resolveMetricsRuntimeConfig(betaEnv, 'api-gateway'),
+  'beta metrics runtime must require an explicit OTLP endpoint',
+);
+assert(
+  resolveMetricsRuntimeConfig(
+    {
+      ...betaEnv,
+      OTEL_EXPORTER_OTLP_METRICS_ENDPOINT:
+        'http://otel-collector:4318/v1/metrics',
+    },
+    'api-gateway',
+  ).mode === 'otlp',
+  'beta metrics runtime must resolve OTLP mode',
+);
+assert(
+  resolveMonitoringPersistenceMode({ ...databaseEnv, MONITORING_PERSISTENCE: 'prisma' }) === 'prisma',
+  'monitoring beta persistence',
+);
+assertThrows(
+  () => resolveMonitoringScanQueueMode(betaEnv),
+  'MONITORING_SCAN_QUEUE must reject in-memory mode in beta runtime',
+);
+assert(
+  resolveMonitoringScanQueueMode({ ...rabbitMqEnv, MONITORING_SCAN_QUEUE: 'rabbitmq' }) === 'rabbitmq',
+  'monitoring beta scan queue',
+);
+
+assertThrows(
+  () => resolveIngestionSupportPersistenceMode(betaEnv),
+  'INGESTION_SUPPORT_PERSISTENCE must reject in-memory mode in beta runtime',
+);
+assert(
+  resolveIngestionSupportPersistenceMode({ ...databaseEnv, INGESTION_SUPPORT_PERSISTENCE: 'prisma' }) === 'prisma',
+  'ingestion support beta persistence',
+);
+assertThrows(
+  () => resolveIngestionWorkerPersistenceMode(betaEnv),
+  'INGESTION_WORKER_PERSISTENCE must reject in-memory mode in beta runtime',
+);
+assert(
+  resolveIngestionWorkerPersistenceMode({ ...databaseEnv, INGESTION_WORKER_PERSISTENCE: 'prisma' }) === 'prisma',
+  'ingestion worker beta persistence',
+);
+assertThrows(
+  () => resolveIngestionScanReporterMode(betaEnv),
+  'INGESTION_SCAN_REPORTER must reject noop mode in beta runtime',
+);
+assert(
+  resolveIngestionScanReporterMode({
+    ...betaEnv,
+    INGESTION_SCAN_REPORTER: 'monitoring',
+    MONITORING_PERSISTENCE: 'prisma',
+  }) === 'monitoring',
+  'ingestion beta scan reporter',
+);
+assertThrows(
+  () => resolveIngestionScanQueueReaderMode(betaEnv),
+  'INGESTION_SCAN_QUEUE_READER must reject in-memory mode in beta runtime',
+);
+assert(
+  resolveIngestionScanQueueReaderMode({ ...rabbitMqEnv, INGESTION_SCAN_QUEUE_READER: 'rabbitmq' }) === 'rabbitmq',
+  'ingestion beta scan queue reader',
+);
+assert(
+  resolveIngestionRabbitMqScanQueueReaderOptions(rabbitMqEnv).deadLetterExchange === 'social-monitor.commands.dlx',
+  'ingestion beta RabbitMQ reader must carry DLX',
+);
+
+assertThrows(
+  () => resolveSummaryPersistenceMode(betaEnv),
+  'SUMMARY_PERSISTENCE must reject in-memory mode in beta runtime',
+);
+assert(
+  resolveSummaryPersistenceMode({ ...databaseEnv, SUMMARY_PERSISTENCE: 'prisma' }) === 'prisma',
+  'summary beta persistence',
+);
+assertThrows(
+  () => resolveSummaryJobQueueMode(betaEnv),
+  'SUMMARY_JOB_QUEUE_MODE must reject in-memory mode in beta runtime',
+);
+assert(
+  resolveSummaryJobQueueMode({ ...rabbitMqEnv, SUMMARY_JOB_QUEUE_MODE: 'rabbitmq' }) === 'rabbitmq',
+  'summary beta job queue',
+);
+assertThrows(
+  () => resolveSummaryModelProviderMode(betaEnv),
+  'SUMMARY_MODEL_PROVIDER must reject deterministic mode in beta runtime',
+);
+assert(
+  resolveSummaryModelProviderMode({ ...betaEnv, SUMMARY_MODEL_PROVIDER: 'openai-responses' }) === 'openai-responses',
+  'summary beta model provider',
+);
+assert(
+  resolveReaderSummaryModelProviderMode(betaEnv) === 'agent-runtime',
+  'reader summary beta model provider defaults to agent-runtime',
+);
+assert(
+  resolveReaderSummaryTopicLabelerMode(betaEnv, 'agent-runtime') === 'agent-runtime',
+  'reader summary topic labeler defaults to agent-runtime',
+);
+assertThrows(
+  () => resolveReaderSummaryModelProviderMode({ ...betaEnv, READER_SUMMARY_MODEL_PROVIDER: 'deterministic' }),
+  'READER_SUMMARY_MODEL_PROVIDER must reject deterministic mode in beta runtime',
+);
+assertThrows(
+  () =>
+    resolveReaderSummaryTopicLabelerMode(
+      { ...betaEnv, READER_SUMMARY_TOPIC_LABELER: 'deterministic' },
+      'agent-runtime',
+    ),
+  'READER_SUMMARY_TOPIC_LABELER must reject deterministic mode in beta runtime',
+);
+assertThrows(
+  () =>
+    resolveReaderSummaryModelProviderMode({
+      ...betaEnv,
+      READER_SUMMARY_MODEL_PROVIDER: 'openai-responses',
+    }),
+  'READER_SUMMARY_MODEL_PROVIDER must reject openai-responses mode in beta runtime',
+);
+assert(
+  resolveReaderSummaryAgentRuntimeTransport(betaEnv) === 'agent-runtime',
+  'reader summary beta transport defaults to the agent-runtime gRPC service',
+);
+assert(
+  resolveReaderSummaryAgentRuntimeTransport({ ...betaEnv, AGENT_RUNTIME_TRANSPORT: 'gateway-llm' }) ===
+    'gateway-llm',
+  'reader summary beta transport accepts the durable account-gateway llm transport',
+);
+assertThrows(
+  () => resolveReaderSummaryAgentRuntimeTransport({ ...betaEnv, AGENT_RUNTIME_TRANSPORT: 'direct' }),
+  'AGENT_RUNTIME_TRANSPORT must reject unknown or process-local transports',
+);
+assert(
+  resolveSummaryRabbitMqJobQueueOptions(rabbitMqEnv).routes?.['summary.job.execute']?.queueType === 'quorum',
+  'summary beta RabbitMQ publisher must carry quorum queue type',
+);
+assert(
+  resolveSummaryRabbitMqJobQueueOptions(rabbitMqEnv).routes?.['reader_summary.job.execute']?.queue ===
+    resolveIntelligenceRabbitMqReaderSummaryQueueReaderOptions(rabbitMqEnv).queue,
+  'reader summary RabbitMQ publisher and intelligence worker reader must share the default queue',
+);
+assert(
+  resolveSummaryRabbitMqJobQueueOptions({
+    ...rabbitMqEnv,
+    RABBITMQ_READER_SUMMARY_QUEUE: 'jobs.reader-summary.custom',
+  }).routes?.['reader_summary.job.execute']?.queue ===
+    resolveIntelligenceRabbitMqReaderSummaryQueueReaderOptions({
+      ...rabbitMqEnv,
+      RABBITMQ_READER_SUMMARY_QUEUE: 'jobs.reader-summary.custom',
+    }).queue,
+  'reader summary RabbitMQ publisher and intelligence worker reader must share explicit reader queue',
+);
+assert(resolveSummaryMemoryMode(betaEnv) === 'disabled', 'summary memory must default to disabled');
+assertThrows(
+  () => resolveSummaryMemoryMode({ ...betaEnv, SUMMARY_MEMORY_MODE: 'memo-stack' }),
+  'SUMMARY_MEMORY_MODE=memo-stack must require memo-stack URL and token',
+);
+assert(
+  resolveSummaryMemoryMode({
+    ...betaEnv,
+    SUMMARY_MEMORY_MODE: 'memo-stack',
+    INFINITY_CONTEXT_URL: 'https://memory.example.test',
+    INFINITY_CONTEXT_TOKEN: 'test-token',
+  }) === 'memo-stack',
+  'summary memory must accept explicit memo-stack mode with URL and token',
+);
+assert(
+  resolveSummaryYoutubeVideoSummaryProviderMode(betaEnv) === 'disabled',
+  'summary YouTube provider may stay disabled in beta runtime',
+);
+assertThrows(
+  () => resolveSummaryYoutubeVideoSummaryProviderMode({
+    ...betaEnv,
+    SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER: 'deterministic',
+  }),
+  'SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER must reject deterministic mode in beta runtime',
+);
+assert(
+  resolveSummaryYoutubeVideoSummaryProviderMode({
+    ...betaEnv,
+    SUMMARY_YOUTUBE_VIDEO_SUMMARY_PROVIDER: 'google-gemini',
+  }) === 'google-gemini',
+  'summary YouTube provider accepts google-gemini in beta runtime',
+);
+assertThrows(
+  () => resolveSubscriptionsPersistenceMode(betaEnv),
+  'SUBSCRIPTIONS_PERSISTENCE must reject in-memory mode in beta runtime',
+);
+assert(
+  resolveSubscriptionsPersistenceMode({
+    ...databaseEnv,
+    SUBSCRIPTIONS_PERSISTENCE: 'prisma',
+  }) === 'prisma',
+  'subscriptions beta persistence',
+);
+assert(
+  resolveUserSummaryPreferenceMemoryProjectorMode(betaEnv) === 'disabled',
+  'user summary preference memory projector may stay disabled in beta runtime',
+);
+assert(
+  resolveUserSummaryPreferenceMemoryProjectorMode({
+    ...betaEnv,
+    SUMMARY_MEMORY_MODE: 'memo-stack',
+    INFINITY_CONTEXT_URL: 'https://memory.example.test',
+    INFINITY_CONTEXT_TOKEN: 'test-token',
+  }) === 'memo-stack',
+  'user summary preference memory projector accepts memo-stack mode',
+);
+assertThrows(
+  () =>
+    resolveUserSummaryPreferenceMemoryProjectorMode({
+      ...betaEnv,
+      SUMMARY_MEMORY_MODE: 'typo',
+    }),
+  'user summary preference memory projector must reject invalid SUMMARY_MEMORY_MODE',
+);
+assertThrows(
+  () => resolveIntelligenceSummaryQueueReaderMode(betaEnv),
+  'INTELLIGENCE_SUMMARY_QUEUE_READER must reject in-memory mode in beta runtime',
+);
+assert(
+  resolveIntelligenceSummaryQueueReaderMode({
+    ...rabbitMqEnv,
+    INTELLIGENCE_SUMMARY_QUEUE_READER: 'rabbitmq',
+  }) === 'rabbitmq',
+  'intelligence beta queue reader',
+);
+assert(
+  resolveIntelligenceRabbitMqSummaryQueueReaderOptions(rabbitMqEnv).deliveryLimit === 20,
+  'intelligence beta RabbitMQ reader must carry delivery limit',
+);
+
+assertThrows(
+  () => resolveIdentityPersistenceMode(betaEnv),
+  'IDENTITY_PERSISTENCE must reject in-memory mode in beta runtime',
+);
+assert(
+  resolveIdentityPersistenceMode({ ...databaseEnv, IDENTITY_PERSISTENCE: 'prisma' }) === 'prisma',
+  'identity beta persistence',
+);
+assertThrows(
+  () => resolveIdentityUserAccessTokenConfig(betaEnv),
+  'SOCIAL_MONITOR_USER_AUTH_MODE must reject disabled mode in beta runtime',
+);
+assert(
+  resolveIdentityUserAccessTokenConfig({
+    ...betaEnv,
+    SOCIAL_MONITOR_USER_AUTH_MODE: 'oidc-jwt',
+    SOCIAL_MONITOR_OIDC_ISSUER: 'https://auth.example.test',
+    SOCIAL_MONITOR_OIDC_AUDIENCE: 'social-monitor-api',
+    SOCIAL_MONITOR_OIDC_JWKS_JSON: '{"keys":[{"kty":"RSA","kid":"test","n":"x","e":"AQAB"}]}',
+  }).mode === 'oidc-jwt',
+  'identity beta user auth',
+);
+assertThrows(
+  () => resolveUsagePersistenceMode(betaEnv),
+  'USAGE_PERSISTENCE must reject in-memory mode in beta runtime',
+);
+assert(
+  resolveUsagePersistenceMode({ ...databaseEnv, USAGE_PERSISTENCE: 'prisma' }) === 'prisma',
+  'usage beta persistence',
+);
+
+assertThrows(
+  () => resolveDeliveryPersistenceMode(betaEnv),
+  'DELIVERY_PERSISTENCE must reject in-memory mode in beta runtime',
+);
+assert(
+  resolveDeliveryPersistenceMode({ ...databaseEnv, DELIVERY_PERSISTENCE: 'prisma' }) === 'prisma',
+  'delivery beta persistence',
+);
+assert(
+  resolveDeliveryEnabledChannels(betaEnv).join(',') === 'webhook',
+  'delivery beta enabled channels must default to webhook only',
+);
+assert(
+  resolveDeliveryEnabledChannels({ ...betaEnv, DELIVERY_ENABLED_CHANNELS: 'webhook' }).join(',') === 'webhook',
+  'delivery beta enabled channels must allow webhook',
+);
+assertThrows(
+  () => resolveDeliveryEnabledChannels({ ...betaEnv, DELIVERY_ENABLED_CHANNELS: 'email,webhook' }),
+  'DELIVERY_ENABLED_CHANNELS must reject fake email delivery in beta runtime',
+);
+assertThrows(
+  () => resolveDeliveryWebhookProviderMode(betaEnv),
+  'DELIVERY_WEBHOOK_PROVIDER must reject in-memory mode in beta runtime',
+);
+assert(
+  resolveDeliveryWebhookProviderMode({ ...betaEnv, DELIVERY_WEBHOOK_PROVIDER: 'http' }) === 'http',
+  'delivery beta webhook provider',
+);
+assertThrows(
+  () => resolveDeliveryAttemptDispatchTarget(betaEnv),
+  'DELIVERY_ATTEMPT_DISPATCH_TARGET must reject direct mode in beta runtime',
+);
+assert(
+  resolveDeliveryAttemptDispatchTarget({ ...betaEnv, DELIVERY_ATTEMPT_DISPATCH_TARGET: 'queue' }) === 'queue',
+  'delivery beta dispatch target',
+);
+assertThrows(
+  () => resolveDeliveryAttemptDispatchQueueMode(betaEnv),
+  'DELIVERY_ATTEMPT_DISPATCH_QUEUE must reject in-memory mode in beta runtime',
+);
+assert(
+  resolveDeliveryAttemptDispatchQueueMode({
+    ...rabbitMqEnv,
+    DELIVERY_ATTEMPT_DISPATCH_QUEUE: 'rabbitmq',
+  }) === 'rabbitmq',
+  'delivery beta dispatch queue',
+);
+assert(
+  resolveDeliveryRabbitMqAttemptQueueOptions(rabbitMqEnv).routes['delivery.attempt.send']?.deadLetterExchange ===
+    'social-monitor.commands.dlx',
+  'delivery beta RabbitMQ publisher must carry DLX',
+);
+assertThrows(
+  () => resolveDeliveryAttemptQueueReaderMode(betaEnv),
+  'DELIVERY_ATTEMPT_QUEUE_READER must reject in-memory mode in beta runtime',
+);
+assert(
+  resolveDeliveryAttemptQueueReaderMode({ ...rabbitMqEnv, DELIVERY_ATTEMPT_QUEUE_READER: 'rabbitmq' }) === 'rabbitmq',
+  'delivery beta queue reader',
+);
+assert(
+  resolveDeliveryRabbitMqAttemptQueueReaderOptions(rabbitMqEnv).queueType === 'quorum',
+  'delivery beta RabbitMQ reader must carry quorum queue type',
+);
+assertThrows(
+  () => resolveSummaryRabbitMqJobQueueOptions({
+    ...rabbitMqEnv,
+    RABBITMQ_DEAD_LETTER_EXCHANGE: '',
+  }),
+  'RabbitMQ beta queue options must reject missing DLX',
+);
+
+assert(
+  resolveEventRelayLoopOptions(betaEnv).enabled,
+  'EVENT_RELAY_LOOP must default to enabled in beta runtime',
+);
+assertThrows(
+  () => resolveEventRelayLoopOptions({ ...betaEnv, EVENT_RELAY_LOOP: 'disabled' }),
+  'EVENT_RELAY_LOOP must reject disabled mode in beta runtime',
+);
+
+assertThrows(() => resolveDeliverySummaryReadyEventReaderMode(betaEnv),
+  'beta ReaderSummary delivery must require the durable shared event reader');
+assertThrows(() => resolveDeliverySummaryReadyEventDrainLoopOptions({ ...betaEnv, DELIVERY_SUMMARY_READY_EVENT_DRAIN_LOOP: 'disabled' }),
+  'beta ReaderSummary delivery must not disable the shared drain loop');
+assert(resolveDeliverySummaryReadyEventReaderMode({ ...rabbitMqEnv, DELIVERY_SUMMARY_READY_EVENT_READER: 'rabbitmq' }) === 'rabbitmq',
+  'ReaderSummary delivery must use the existing RabbitMQ runtime selector');
+for (const routingKey of ['#', 'reader_summary.ready', 'summary.failed']) {
+  assertThrows(() => resolveDeliverySummaryReadyEventQueueOptions({ ...rabbitMqEnv, RABBITMQ_SUMMARY_READY_EVENT_ROUTING_KEY: routingKey }),
+    'shared summary queue routing must retain its exact legacy binding');
+}
+assert(resolveDeliverySummaryReadyEventQueueOptions(rabbitMqEnv).routingKey === 'summary.ready',
+  'shared queue must retain legacy summary.ready alongside the explicit reader binding');
+
+console.log('Runtime profile guards OK');
+
+assertThrows(() => resolveReaderValueRuntimeOptions({}),
+  'primary reader value default requires durable persistence');
+assert(resolveReaderValueRuntimeOptions({ RELEVANCE_PERSISTENCE: 'prisma',
+  SUMMARY_PERSISTENCE: 'prisma' }).mode === 'jev_primary_v3',
+  'reader value defaults to Jev primary publication');
+assert(resolveReaderValueRuntimeOptions({ READER_VALUE_MODE: 'legacy_v2' }).mode === 'legacy_v2',
+  'legacy reader value remains an explicit rollback mode');
+assertThrows(() => resolveReaderValueRuntimeOptions({ READER_VALUE_MODE: 'jev_shadow' }),
+  'reader value scoring requires durable bounded scope');
+assertThrows(() => resolveReaderValueRuntimeOptions({ READER_VALUE_MODE: 'jev_primary_v3', RELEVANCE_PERSISTENCE: 'prisma', READER_VALUE_SCORING_LOOP: 'enabled',
+  READER_VALUE_DISCOVERY_SCOPES: '[{"tenantId":"11111111-1111-4111-8111-111111111111","workspaceId":"22222222-2222-4222-8222-222222222222","interestId":"44444444-4444-4444-8444-444444444444"}]',
+  READER_VALUE_BACKFILL_FROM: '2026-09-01T00:00:00.000Z', INTELLIGENCE_READER_SUMMARY_JOB_LOOP: 'disabled',
+}), 'primary reader value mode cannot strand deferred work with a disabled poller');
+
+assert(resolveReaderValueScoringSelection({ OPENAI_API_KEY: 'fixture-only' }).provider === 'openrouter-systemone',
+  'reader value default must not infer its provider from available credentials');
+assertThrows(() => resolveReaderValueScoringSelection({ READER_VALUE_SCORING_PROVIDER: 'auto' }),
+  'reader value scoring must reject unknown selectors');
+for (const provider of ['openrouter-systemone', 'openai-decisions'] as const) {
+  const selected = resolveReaderValueScoringSelection({ READER_VALUE_SCORING_PROVIDER: provider });
+  assert(selected.provider === provider && selected.configuration.modelConfigVersion.length > 0,
+    'reader value preparation must select provider identity without a secret');
+  assert(resolveReaderValueScoringApiKey({}, provider, false) === '',
+    'disabled scoring must remain credential-free');
+  const key = provider === 'openai-decisions' ? 'OPENAI_API_KEY' : 'OPENROUTER_API_KEY';
+  const otherKey = provider === 'openai-decisions' ? 'OPENROUTER_API_KEY' : 'OPENAI_API_KEY';
+  assertThrows(() => resolveReaderValueScoringApiKey({ [otherKey]: 'fixture-only' }, provider, true),
+    'enabled scoring must require its selected credential even when another key exists');
+  assert(resolveReaderValueScoringApiKey({ [key]: 'fixture-only' }, provider, true) === 'fixture-only',
+    'enabled scoring must accept only its selected credential');
+}
+
+assert(resolveRelevanceContentQualityReviewerMode({
+  ...betaEnv, AGENT_RUNTIME_GRPC_ADDRESS: 'synthetic-runtime:50051',
+}) === 'agent-runtime', 'assessment auto must reuse the hosted pool without API credentials');
+assert(resolveRelevanceContentQualityReviewerMode({}, 'agent-runtime') === 'agent-runtime',
+  'canonical capture must select its supplied runtime');
+assert(resolveRelevanceContentQualityReviewerMode({ RELEVANCE_CONTENT_QUALITY_REVIEWER: 'disabled',
+  AGENT_RUNTIME_GRPC_ADDRESS: 'synthetic-runtime:50051',
+}) === 'disabled', 'explicit assessment disable must remain fail closed');
+assertThrows(() => resolveRelevanceContentQualityReviewerMode({ RELEVANCE_CONTENT_QUALITY_REVIEWER: 'invalid' }),
+  'unknown assessment modes must be rejected');

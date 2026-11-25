@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "contractId": "summary-memory-runtime-canary-v1",
+  "externalBetaStatus": "hold_until_runtime_canary_evidence",
+  "scope": "backend-summary-memory",
+  "runnerCommand": "npm run check:summary-memory-runtime-canary",
+  "runnerFile": "scripts/check-summary-memory-runtime-canary.ts",
+  "checkCommand": "npm run check:summary-memory-runtime-canary-evidence",
+  "checkFile": "scripts/check-summary-memory-runtime-canary-evidence.mjs",
+  "artifactEnv": "SUMMARY_MEMORY_RUNTIME_CANARY_EVIDENCE_PATH",
+  "requiredRuntimeEnv": [
+    "INFINITY_CONTEXT_URL",
+    "INFINITY_CONTEXT_TOKEN"
+  ],
+  "expectedArtifact": {
+    "artifactId": "summary-memory-runtime-canary-v1",
+    "schemaVersion": 1,
+    "requiredResultFields": [
+      "beforeStatus",
+      "afterStatus",
+      "afterFactsUsed",
+      "memoryEffectMatched",
+      "supportStatus"
+    ],
+    "requiredRedactionFlags": {
+      "tokenIncluded": false,
+      "rawAuthorizationHeaderIncluded": false,
+      "rawMemoryTextIncluded": false,
+      "rawSourceTextIncluded": false
+    }
+  },
+  "exitCondition": "A real memo-stack runtime canary writes feedback through the SDK-backed adapter, retrieves the same memory in a later context build, and emits a private redacted artifact.",
+  "blockingForExternalBeta": true
+}

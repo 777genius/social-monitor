@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "sourceRepository": "https://github.com/vioxen/subscription-runtime.git",
+  "sourceCommit": "5ff55dc2eb25036933cce717d4cf7b083725a47a",
+  "sourcePullRequest": "https://github.com/vioxen/subscription-runtime/pull/176",
+  "baseCommit": "42ea16961987f8a626a5219b030a5029f28bcdfd",
+  "reviewedParentSourceCommit": "22db9bbca1c2315e93211887a7738a6b40f21167",
+  "upstreamPublicationClaimed": false,
+  "upstreamPackageVersion": "0.1.0-main.40",
+  "packageVersion": "0.1.0-main.42-sm.3",
+  "packageVersionIsLocal": true,
+  "packagingProfile": "thin-bundle-agent-account-observability-v1",
+  "sha256": "68e664272bc4dc9e8ba51327b4cac456c7feff731abc02f7e36ba1b3105bd85b",
+  "launcherSha256": "50ea49b618cb3273421fe8f39b571194cb3250270477efb20298eea927e6c533",
+  "nonManifestFiles": 3731,
+  "nonManifestInventorySha256": "f9574d874e97a4c38d636656a1143a55295d07928ec6ddf23be2c85205b6ef6d",
+  "fixedSourceFiles": 1465,
+  "fixedSourceInventorySha256": "5ba756374e46e32235fe0f5f8fd570c336742ae1edd11d4d4625cb17c20515fb",
+  "parentArchive": {
+    "path": "vendor/vioxen-subscription-runtime-0.1.0-main.42-sm.2.tgz",
+    "sha256": "cb657dd811ee6ee0915215ee47f7f366375ce8aaff0c9faaa584716e3f8417c7"
+  },
+  "oneShotHomePatch": {
+    "path": "vendor/patches/vioxen-subscription-runtime-0.1.0-main.42-sm.3.patch",
+    "sha256": "a105708b242fe3785d19c52f7e44b009226e9f914c5bfca8cc2707a739b89839"
+  },
+  "build": {
+    "script": "scripts/rebuild-vioxen-subscription-runtime-one-shot-home.mjs",
+    "scriptSha256": "cf6197f885f37ea5a8d2376c14b8117e2f411d5a71d115714090b9ef7ae247f3",
+    "node": "v26.9.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.8",
+    "nodeTypes": "22.20.0",
+    "profile": "Reconstruct reviewed main.42 source plus sm.1, sm.2 and sm.3 patches; build with an explicit offline toolchain; overlay compiled outputs onto immutable sm.2; apply a local version-only manifest edit; write a sorted platform-independent USTAR stream with normalized metadata and deterministic stored-DEFLATE gzip."
+  },
+  "rebuildEvidence": {
+    "runs": 2,
+    "matchingSha256": "68e664272bc4dc9e8ba51327b4cac456c7feff731abc02f7e36ba1b3105bd85b"
+  },
+  "change": "Adds typed one-shot and continuation executor factories. One-shot executors reject continuation inputs and remove their materialized CODEX_HOME on executor disposal. The raw constructor retains legacy preserve-on-dispose behavior."
+}

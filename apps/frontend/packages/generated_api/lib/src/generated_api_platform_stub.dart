@@ -1,0 +1,1 @@
+const generatedApiIsWeb = false;

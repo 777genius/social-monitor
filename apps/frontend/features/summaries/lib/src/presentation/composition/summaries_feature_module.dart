@@ -1,0 +1,176 @@
+import 'package:modularity_flutter/modularity_flutter.dart';
+import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
+
+import '../../application/contracts/reader_source_launcher.dart';
+import '../../application/contracts/summary_review_catalog.dart';
+import '../../application/use_cases/decide_topic_recommendation_use_case.dart';
+import '../../application/use_cases/list_reader_posts_use_case.dart';
+import '../../application/use_cases/list_summaries_use_case.dart';
+import '../../application/use_cases/load_post_ratings_use_case.dart';
+import '../../application/use_cases/load_summary_detail_use_case.dart';
+import '../../application/use_cases/load_top_posts_sort_order_use_case.dart';
+import '../../application/use_cases/load_topic_recommendations_use_case.dart';
+import '../../application/use_cases/load_workspace_summary_history_use_case.dart';
+import '../../application/use_cases/load_workspace_summary_job_status_use_case.dart';
+import '../../application/use_cases/load_workspace_summary_use_case.dart';
+import '../../application/use_cases/open_reader_source_use_case.dart';
+import '../../application/use_cases/regenerate_summary_use_case.dart';
+import '../../application/use_cases/remember_top_posts_sort_order_use_case.dart';
+import '../../application/use_cases/request_workspace_summary_use_case.dart';
+import '../../application/use_cases/submit_post_rating_use_case.dart';
+import '../../application/use_cases/submit_reader_action_use_case.dart';
+import '../../application/use_cases/submit_summary_feedback_use_case.dart';
+import '../../infrastructure/api_clients/generated_reader_post_catalog.dart';
+import '../../infrastructure/api_clients/generated_summaries_api_client.dart';
+import '../../infrastructure/api_clients/in_memory_summaries_api_client.dart';
+import '../../infrastructure/api_clients/summaries_api_client.dart';
+import '../../infrastructure/data_sources/url_launcher_reader_source_launcher.dart';
+import '../../infrastructure/repositories/generated_summary_review_catalog.dart';
+import '../../infrastructure/storage/browser_top_posts_sort_preference_store.dart';
+import '../stores/reader_posts_browse_store.dart';
+import '../stores/summaries_review_store.dart';
+import '../stores/top_posts_sort_store.dart';
+import '../workflows/summaries_review_store_dependencies.dart';
+
+final class SummariesFeatureModule extends Module {
+  SummariesFeatureModule()
+    : generatedApiRuntime = null,
+      userId = 'user-demo',
+      scope = const WorkspaceScope(
+        tenantId: 'tenant-demo',
+        workspaceId: 'ws-demo',
+      );
+
+  SummariesFeatureModule.generatedApi({
+    required this.generatedApiRuntime,
+    required this.scope,
+    required this.userId,
+  });
+
+  final Object? generatedApiRuntime;
+  final WorkspaceScope scope;
+  final String userId;
+
+  Object get retentionKey => 'summaries-${scope.tenantId}-${scope.workspaceId}';
+
+  @override
+  void binds(Binder i) {
+    i.registerSingleton<WorkspaceScope>(scope);
+    i.registerLazySingleton<SummariesApiClient>(_createApiClient);
+    i.registerLazySingleton<ReaderSourceLauncher>(
+      () => const UrlLauncherReaderSourceLauncher(),
+    );
+    i.registerLazySingleton<SummaryReviewCatalog>(
+      () =>
+          GeneratedSummaryReviewCatalog(apiClient: i.get<SummariesApiClient>()),
+    );
+    i.registerLazySingleton(
+      () => SummariesReviewStore(
+        dependencies: SummariesReviewStoreDependencies(
+          listSummaries: ListSummariesUseCase(i.get<SummaryReviewCatalog>()),
+          loadWorkspaceSummary: LoadWorkspaceSummaryUseCase(
+            i.get<SummaryReviewCatalog>(),
+          ),
+          loadWorkspaceSummaryHistory: LoadWorkspaceSummaryHistoryUseCase(
+            i.get<SummaryReviewCatalog>(),
+          ),
+          requestWorkspaceSummary: RequestWorkspaceSummaryUseCase(
+            i.get<SummaryReviewCatalog>(),
+          ),
+          loadWorkspaceSummaryJobStatus: LoadWorkspaceSummaryJobStatusUseCase(
+            i.get<SummaryReviewCatalog>(),
+          ),
+          loadSummaryDetail: LoadSummaryDetailUseCase(
+            i.get<SummaryReviewCatalog>(),
+          ),
+          loadTopicRecommendations: LoadTopicRecommendationsUseCase(
+            i.get<SummaryReviewCatalog>(),
+          ),
+          decideTopicRecommendation: DecideTopicRecommendationUseCase(
+            i.get<SummaryReviewCatalog>(),
+          ),
+          loadPostRatings: LoadPostRatingsUseCase(
+            i.get<SummaryReviewCatalog>(),
+          ),
+          regenerateSummary: RegenerateSummaryUseCase(
+            i.get<SummaryReviewCatalog>(),
+          ),
+          submitFeedback: SubmitSummaryFeedbackUseCase(
+            i.get<SummaryReviewCatalog>(),
+          ),
+          submitPostRating: SubmitPostRatingUseCase(
+            i.get<SummaryReviewCatalog>(),
+          ),
+          submitReaderAction: SubmitReaderActionUseCase(
+            i.get<SummaryReviewCatalog>(),
+          ),
+          openReaderSource: OpenReaderSourceUseCase(
+            i.get<ReaderSourceLauncher>(),
+          ),
+        ),
+        scope: scope,
+        userId: userId,
+        allowUnpublishedDays: generatedApiRuntime != null,
+      ),
+    );
+  }
+
+  SummariesReviewStore createStore() {
+    final apiClient = _createApiClient();
+    final catalog = GeneratedSummaryReviewCatalog(apiClient: apiClient);
+    return SummariesReviewStore(
+      dependencies: SummariesReviewStoreDependencies(
+        listSummaries: ListSummariesUseCase(catalog),
+        loadWorkspaceSummary: LoadWorkspaceSummaryUseCase(catalog),
+        loadWorkspaceSummaryHistory: LoadWorkspaceSummaryHistoryUseCase(
+          catalog,
+        ),
+        requestWorkspaceSummary: RequestWorkspaceSummaryUseCase(catalog),
+        loadWorkspaceSummaryJobStatus: LoadWorkspaceSummaryJobStatusUseCase(
+          catalog,
+        ),
+        loadSummaryDetail: LoadSummaryDetailUseCase(catalog),
+        loadTopicRecommendations: LoadTopicRecommendationsUseCase(catalog),
+        decideTopicRecommendation: DecideTopicRecommendationUseCase(catalog),
+        loadPostRatings: LoadPostRatingsUseCase(catalog),
+        regenerateSummary: RegenerateSummaryUseCase(catalog),
+        submitFeedback: SubmitSummaryFeedbackUseCase(catalog),
+        submitPostRating: SubmitPostRatingUseCase(catalog),
+        submitReaderAction: SubmitReaderActionUseCase(catalog),
+        openReaderSource: OpenReaderSourceUseCase(
+          const UrlLauncherReaderSourceLauncher(),
+        ),
+      ),
+      scope: scope,
+      userId: userId,
+      allowUnpublishedDays: generatedApiRuntime != null,
+    );
+  }
+
+  ReaderPostsBrowseStore? createReaderPostsBrowseStore() {
+    final runtime = generatedApiRuntime;
+    if (runtime == null) return null;
+    return ReaderPostsBrowseStore(
+      scope: scope,
+      list: ListReaderPostsUseCase(
+        GeneratedReaderPostCatalog(runtime: runtime),
+      ),
+    );
+  }
+
+  TopPostsSortStore createTopPostsSortStore() {
+    const preferences = BrowserTopPostsSortPreferenceStore();
+    return TopPostsSortStore(
+      loadSortOrder: const LoadTopPostsSortOrderUseCase(preferences),
+      rememberSortOrder: const RememberTopPostsSortOrderUseCase(preferences),
+    );
+  }
+
+  SummariesApiClient _createApiClient() {
+    final runtime = generatedApiRuntime;
+    if (runtime != null) {
+      return GeneratedSummariesApiClient.fromRuntime(runtime: runtime);
+    }
+    return InMemorySummariesApiClient(items: const []);
+  }
+}

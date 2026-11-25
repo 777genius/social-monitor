@@ -1,0 +1,1769 @@
+{
+  "schemaVersion": 1,
+  "artifactFormat": "summary-scan-quality-report-v1",
+  "evalRunId": "summary-scan-quality-report-v1",
+  "generatedBy": "npm run check:summary-scan-quality-report",
+  "gitShaPolicy": "release pipeline records the exact git sha next to this deterministic report",
+  "model": {
+    "liveNetwork": false,
+    "reportBuilder": "deterministic-source-eval-to-summary-quality-report"
+  },
+  "inputs": {
+    "datasetPath": "ops/evals/source-ranking-eval-dataset.v1.json",
+    "rankingEvalPath": "ops/evals/source-ranking-eval-output.json",
+    "plannerEvalPath": "ops/evals/source-query-planner-eval-output.json",
+    "summaryEvalPath": "ops/evals/summary-eval-output.json"
+  },
+  "sourceCoverage": [
+    "reddit",
+    "x-twitter"
+  ],
+  "rollup": {
+    "scanCount": 20,
+    "highConfidenceCount": 20,
+    "mediumConfidenceCount": 0,
+    "lowConfidenceCount": 0,
+    "averageDuplicateRateAt20": 0.012,
+    "averageSummaryUsefulnessScore": 0.998
+  },
+  "qualityGates": {
+    "rankingEvalPassed": true,
+    "plannerEvalPassed": true,
+    "summaryEvalPassed": true,
+    "scanReportCountAtLeast20": true,
+    "everyScanHasEvidence": true,
+    "everyScanHasCitationReadyEvidence": true,
+    "everyTopEvidenceHasReasonCodes": true,
+    "everyScanHasConfidence": true,
+    "requiredSourceCoverage": true,
+    "summaryGroundingComplete": true,
+    "noSummarySecretLeaks": true,
+    "noRawSecretFragments": true
+  },
+  "blockingPassed": true,
+  "scanReports": [
+    {
+      "scanId": "eval-scan:reddit-ai-agents-mcp-reliability",
+      "caseId": "reddit-ai-agents-mcp-reliability",
+      "topic": "AI agents MCP Claude Code reliability",
+      "sourceKeys": [
+        "reddit"
+      ],
+      "plannerDecision": "improved",
+      "evidence": {
+        "candidateCount": 13,
+        "mustHaveCount": 3,
+        "duplicateLabelCount": 1,
+        "providerCounts": {
+          "reddit": 13
+        },
+        "topEvidence": [
+          {
+            "evidenceId": "r-mcp-reliability-notes",
+            "score": 1585.468,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "r-mcp-tool-permissions",
+            "score": 1418.74,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "r-mcp-reliability-duplicate",
+            "score": 1251.875,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "r-agent-auth-retry-bug",
+            "score": 1251.695,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "r-production-agent-logs",
+            "score": 1086.025,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "citationReadiness": {
+        "citationReadyEvidenceIds": [
+          "r-mcp-reliability-notes",
+          "r-mcp-tool-permissions",
+          "r-mcp-reliability-duplicate",
+          "r-agent-auth-retry-bug",
+          "r-production-agent-logs"
+        ],
+        "topEvidenceHasReasonCodes": true,
+        "expectedCitationPolicy": "summary claims should cite these top evidence ids or explicitly state uncertainty"
+      },
+      "quality": {
+        "precisionAt10": 1,
+        "ndcgAt20": 0.958,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0.077,
+        "officialCommunityCoverageAt20": 1,
+        "sourceDiversityAt20": 1,
+        "summaryGroundingRatio": 1,
+        "confidence": {
+          "score": 0.985,
+          "level": "high",
+          "rationale": "Must-have recall, source coverage, grounding and top evidence reason codes are strong."
+        }
+      },
+      "canaryComparison": {
+        "baselineMustHaveRecallAt20": 0.667,
+        "experimentMustHaveRecallAt20": 1
+      }
+    },
+    {
+      "scanId": "eval-scan:x-openai-codex-cli-release",
+      "caseId": "x-openai-codex-cli-release",
+      "topic": "OpenAI Codex CLI release MCP",
+      "sourceKeys": [
+        "x-twitter"
+      ],
+      "plannerDecision": "improved",
+      "evidence": {
+        "candidateCount": 13,
+        "mustHaveCount": 3,
+        "duplicateLabelCount": 1,
+        "providerCounts": {
+          "x-twitter": 13
+        },
+        "topEvidence": [
+          {
+            "evidenceId": "x-openai-codex-mcp",
+            "score": 1353.174,
+            "reasonCodes": [
+              "query_token_match",
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "x-dev-setup-thread",
+            "score": 1002.661,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "x-codex-community-faq",
+            "score": 1002.09,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "x-openai-terse-tool-mode",
+            "score": 852.839,
+            "reasonCodes": [
+              "query_token_match",
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "x-codex-install-errors",
+            "score": 835.285,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          }
+        ]
+      },
+      "citationReadiness": {
+        "citationReadyEvidenceIds": [
+          "x-openai-codex-mcp",
+          "x-dev-setup-thread",
+          "x-codex-community-faq",
+          "x-openai-terse-tool-mode",
+          "x-codex-install-errors"
+        ],
+        "topEvidenceHasReasonCodes": true,
+        "expectedCitationPolicy": "summary claims should cite these top evidence ids or explicitly state uncertainty"
+      },
+      "quality": {
+        "precisionAt10": 1,
+        "ndcgAt20": 0.959,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0.077,
+        "officialCommunityCoverageAt20": 1,
+        "sourceDiversityAt20": 1,
+        "summaryGroundingRatio": 1,
+        "confidence": {
+          "score": 0.985,
+          "level": "high",
+          "rationale": "Must-have recall, source coverage, grounding and top evidence reason codes are strong."
+        }
+      },
+      "canaryComparison": {
+        "baselineMustHaveRecallAt20": 0.667,
+        "experimentMustHaveRecallAt20": 1
+      }
+    },
+    {
+      "scanId": "eval-scan:mixed-agent-production-reliability",
+      "caseId": "mixed-agent-production-reliability",
+      "topic": "AI coding agent production reliability",
+      "sourceKeys": [
+        "x-twitter",
+        "reddit"
+      ],
+      "plannerDecision": "same",
+      "evidence": {
+        "candidateCount": 12,
+        "mustHaveCount": 2,
+        "duplicateLabelCount": 1,
+        "providerCounts": {
+          "reddit": 6,
+          "x-twitter": 6
+        },
+        "topEvidence": [
+          {
+            "evidenceId": "m-openai-production-guidance",
+            "score": 1169.986,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "m-reddit-production-failures",
+            "score": 1169.724,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "m-reddit-production-failures-duplicate",
+            "score": 1001.968,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "m-agent-observability",
+            "score": 835.847,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "m-agent-runbook",
+            "score": 835.766,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "citationReadiness": {
+        "citationReadyEvidenceIds": [
+          "m-openai-production-guidance",
+          "m-reddit-production-failures",
+          "m-reddit-production-failures-duplicate",
+          "m-agent-observability",
+          "m-agent-runbook"
+        ],
+        "topEvidenceHasReasonCodes": true,
+        "expectedCitationPolicy": "summary claims should cite these top evidence ids or explicitly state uncertainty"
+      },
+      "quality": {
+        "precisionAt10": 1,
+        "ndcgAt20": 0.982,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0.083,
+        "officialCommunityCoverageAt20": 1,
+        "sourceDiversityAt20": 1,
+        "summaryGroundingRatio": 1,
+        "confidence": {
+          "score": 0.983,
+          "level": "high",
+          "rationale": "Must-have recall, source coverage, grounding and top evidence reason codes are strong."
+        }
+      },
+      "canaryComparison": {
+        "baselineMustHaveRecallAt20": 1,
+        "experimentMustHaveRecallAt20": 1
+      }
+    },
+    {
+      "scanId": "eval-scan:reddit-cursor-mcp-registry-outage",
+      "caseId": "reddit-cursor-mcp-registry-outage",
+      "topic": "Cursor MCP registry outage",
+      "sourceKeys": [
+        "reddit"
+      ],
+      "plannerDecision": "improved",
+      "evidence": {
+        "candidateCount": 6,
+        "mustHaveCount": 2,
+        "duplicateLabelCount": 0,
+        "providerCounts": {
+          "reddit": 6
+        },
+        "topEvidence": [
+          {
+            "evidenceId": "reddit-cursor-mcp-registry-outage-general",
+            "score": 918.884,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "reddit-cursor-mcp-registry-outage-keyword",
+            "score": 918.727,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "reddit-cursor-mcp-registry-outage-community",
+            "score": 585.481,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "reddit-cursor-mcp-registry-outage-checklist",
+            "score": 585.325,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "reddit-cursor-mcp-registry-outage-unrelated",
+            "score": 3.011,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "citationReadiness": {
+        "citationReadyEvidenceIds": [
+          "reddit-cursor-mcp-registry-outage-general",
+          "reddit-cursor-mcp-registry-outage-keyword",
+          "reddit-cursor-mcp-registry-outage-community",
+          "reddit-cursor-mcp-registry-outage-checklist",
+          "reddit-cursor-mcp-registry-outage-unrelated"
+        ],
+        "topEvidenceHasReasonCodes": true,
+        "expectedCitationPolicy": "summary claims should cite these top evidence ids or explicitly state uncertainty"
+      },
+      "quality": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.975,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "officialCommunityCoverageAt20": 1,
+        "sourceDiversityAt20": 1,
+        "summaryGroundingRatio": 1,
+        "confidence": {
+          "score": 1,
+          "level": "high",
+          "rationale": "Must-have recall, source coverage, grounding and top evidence reason codes are strong."
+        }
+      },
+      "canaryComparison": {
+        "baselineMustHaveRecallAt20": 0.5,
+        "experimentMustHaveRecallAt20": 1
+      }
+    },
+    {
+      "scanId": "eval-scan:reddit-langchain-agent-memory-regression",
+      "caseId": "reddit-langchain-agent-memory-regression",
+      "topic": "LangChain agent memory regression",
+      "sourceKeys": [
+        "reddit"
+      ],
+      "plannerDecision": "improved",
+      "evidence": {
+        "candidateCount": 6,
+        "mustHaveCount": 2,
+        "duplicateLabelCount": 0,
+        "providerCounts": {
+          "reddit": 6
+        },
+        "topEvidence": [
+          {
+            "evidenceId": "reddit-langchain-agent-memory-regression-general",
+            "score": 1085.551,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "reddit-langchain-agent-memory-regression-keyword",
+            "score": 1085.394,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "reddit-langchain-agent-memory-regression-community",
+            "score": 918.814,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "reddit-langchain-agent-memory-regression-checklist",
+            "score": 918.658,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "reddit-langchain-agent-memory-regression-unrelated",
+            "score": 3.011,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "citationReadiness": {
+        "citationReadyEvidenceIds": [
+          "reddit-langchain-agent-memory-regression-general",
+          "reddit-langchain-agent-memory-regression-keyword",
+          "reddit-langchain-agent-memory-regression-community",
+          "reddit-langchain-agent-memory-regression-checklist",
+          "reddit-langchain-agent-memory-regression-unrelated"
+        ],
+        "topEvidenceHasReasonCodes": true,
+        "expectedCitationPolicy": "summary claims should cite these top evidence ids or explicitly state uncertainty"
+      },
+      "quality": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.975,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "officialCommunityCoverageAt20": 1,
+        "sourceDiversityAt20": 1,
+        "summaryGroundingRatio": 1,
+        "confidence": {
+          "score": 1,
+          "level": "high",
+          "rationale": "Must-have recall, source coverage, grounding and top evidence reason codes are strong."
+        }
+      },
+      "canaryComparison": {
+        "baselineMustHaveRecallAt20": 0.5,
+        "experimentMustHaveRecallAt20": 1
+      }
+    },
+    {
+      "scanId": "eval-scan:reddit-llamaindex-workflow-tools",
+      "caseId": "reddit-llamaindex-workflow-tools",
+      "topic": "LlamaIndex workflow tool calling",
+      "sourceKeys": [
+        "reddit"
+      ],
+      "plannerDecision": "improved",
+      "evidence": {
+        "candidateCount": 6,
+        "mustHaveCount": 2,
+        "duplicateLabelCount": 0,
+        "providerCounts": {
+          "reddit": 6
+        },
+        "topEvidence": [
+          {
+            "evidenceId": "reddit-llamaindex-workflow-tools-general",
+            "score": 1002.217,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "reddit-llamaindex-workflow-tools-community",
+            "score": 1002.148,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "reddit-llamaindex-workflow-tools-keyword",
+            "score": 1002.061,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "reddit-llamaindex-workflow-tools-checklist",
+            "score": 1001.991,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "reddit-llamaindex-workflow-tools-unrelated",
+            "score": 3.011,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "citationReadiness": {
+        "citationReadyEvidenceIds": [
+          "reddit-llamaindex-workflow-tools-general",
+          "reddit-llamaindex-workflow-tools-community",
+          "reddit-llamaindex-workflow-tools-keyword",
+          "reddit-llamaindex-workflow-tools-checklist",
+          "reddit-llamaindex-workflow-tools-unrelated"
+        ],
+        "topEvidenceHasReasonCodes": true,
+        "expectedCitationPolicy": "summary claims should cite these top evidence ids or explicitly state uncertainty"
+      },
+      "quality": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.975,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "officialCommunityCoverageAt20": 1,
+        "sourceDiversityAt20": 1,
+        "summaryGroundingRatio": 1,
+        "confidence": {
+          "score": 1,
+          "level": "high",
+          "rationale": "Must-have recall, source coverage, grounding and top evidence reason codes are strong."
+        }
+      },
+      "canaryComparison": {
+        "baselineMustHaveRecallAt20": 0.5,
+        "experimentMustHaveRecallAt20": 1
+      }
+    },
+    {
+      "scanId": "eval-scan:reddit-ollama-tool-use-release",
+      "caseId": "reddit-ollama-tool-use-release",
+      "topic": "Ollama tool use release",
+      "sourceKeys": [
+        "reddit"
+      ],
+      "plannerDecision": "improved",
+      "evidence": {
+        "candidateCount": 6,
+        "mustHaveCount": 2,
+        "duplicateLabelCount": 0,
+        "providerCounts": {
+          "reddit": 6
+        },
+        "topEvidence": [
+          {
+            "evidenceId": "reddit-ollama-tool-use-release-general",
+            "score": 918.884,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "reddit-ollama-tool-use-release-keyword",
+            "score": 752.061,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "reddit-ollama-tool-use-release-community",
+            "score": 585.481,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "reddit-ollama-tool-use-release-checklist",
+            "score": 585.325,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "reddit-ollama-tool-use-release-unrelated",
+            "score": 3.011,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "citationReadiness": {
+        "citationReadyEvidenceIds": [
+          "reddit-ollama-tool-use-release-general",
+          "reddit-ollama-tool-use-release-keyword",
+          "reddit-ollama-tool-use-release-community",
+          "reddit-ollama-tool-use-release-checklist",
+          "reddit-ollama-tool-use-release-unrelated"
+        ],
+        "topEvidenceHasReasonCodes": true,
+        "expectedCitationPolicy": "summary claims should cite these top evidence ids or explicitly state uncertainty"
+      },
+      "quality": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.975,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "officialCommunityCoverageAt20": 1,
+        "sourceDiversityAt20": 1,
+        "summaryGroundingRatio": 1,
+        "confidence": {
+          "score": 1,
+          "level": "high",
+          "rationale": "Must-have recall, source coverage, grounding and top evidence reason codes are strong."
+        }
+      },
+      "canaryComparison": {
+        "baselineMustHaveRecallAt20": 0.5,
+        "experimentMustHaveRecallAt20": 1
+      }
+    },
+    {
+      "scanId": "eval-scan:reddit-vllm-agent-throughput",
+      "caseId": "reddit-vllm-agent-throughput",
+      "topic": "vLLM agent throughput regression",
+      "sourceKeys": [
+        "reddit"
+      ],
+      "plannerDecision": "improved",
+      "evidence": {
+        "candidateCount": 6,
+        "mustHaveCount": 2,
+        "duplicateLabelCount": 0,
+        "providerCounts": {
+          "reddit": 6
+        },
+        "topEvidence": [
+          {
+            "evidenceId": "reddit-vllm-agent-throughput-general",
+            "score": 1002.217,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "reddit-vllm-agent-throughput-community",
+            "score": 835.481,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "reddit-vllm-agent-throughput-keyword",
+            "score": 835.394,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "reddit-vllm-agent-throughput-checklist",
+            "score": 835.325,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "reddit-vllm-agent-throughput-unrelated",
+            "score": 3.011,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "citationReadiness": {
+        "citationReadyEvidenceIds": [
+          "reddit-vllm-agent-throughput-general",
+          "reddit-vllm-agent-throughput-community",
+          "reddit-vllm-agent-throughput-keyword",
+          "reddit-vllm-agent-throughput-checklist",
+          "reddit-vllm-agent-throughput-unrelated"
+        ],
+        "topEvidenceHasReasonCodes": true,
+        "expectedCitationPolicy": "summary claims should cite these top evidence ids or explicitly state uncertainty"
+      },
+      "quality": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.975,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "officialCommunityCoverageAt20": 1,
+        "sourceDiversityAt20": 1,
+        "summaryGroundingRatio": 1,
+        "confidence": {
+          "score": 1,
+          "level": "high",
+          "rationale": "Must-have recall, source coverage, grounding and top evidence reason codes are strong."
+        }
+      },
+      "canaryComparison": {
+        "baselineMustHaveRecallAt20": 0.5,
+        "experimentMustHaveRecallAt20": 1
+      }
+    },
+    {
+      "scanId": "eval-scan:reddit-supabase-mcp-auth",
+      "caseId": "reddit-supabase-mcp-auth",
+      "topic": "Supabase MCP auth scopes",
+      "sourceKeys": [
+        "reddit"
+      ],
+      "plannerDecision": "improved",
+      "evidence": {
+        "candidateCount": 6,
+        "mustHaveCount": 2,
+        "duplicateLabelCount": 0,
+        "providerCounts": {
+          "reddit": 6
+        },
+        "topEvidence": [
+          {
+            "evidenceId": "reddit-supabase-mcp-auth-general",
+            "score": 918.884,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "reddit-supabase-mcp-auth-keyword",
+            "score": 918.727,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "reddit-supabase-mcp-auth-community",
+            "score": 585.481,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "reddit-supabase-mcp-auth-checklist",
+            "score": 585.325,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "reddit-supabase-mcp-auth-unrelated",
+            "score": 3.011,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "citationReadiness": {
+        "citationReadyEvidenceIds": [
+          "reddit-supabase-mcp-auth-general",
+          "reddit-supabase-mcp-auth-keyword",
+          "reddit-supabase-mcp-auth-community",
+          "reddit-supabase-mcp-auth-checklist",
+          "reddit-supabase-mcp-auth-unrelated"
+        ],
+        "topEvidenceHasReasonCodes": true,
+        "expectedCitationPolicy": "summary claims should cite these top evidence ids or explicitly state uncertainty"
+      },
+      "quality": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.975,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "officialCommunityCoverageAt20": 1,
+        "sourceDiversityAt20": 1,
+        "summaryGroundingRatio": 1,
+        "confidence": {
+          "score": 1,
+          "level": "high",
+          "rationale": "Must-have recall, source coverage, grounding and top evidence reason codes are strong."
+        }
+      },
+      "canaryComparison": {
+        "baselineMustHaveRecallAt20": 0.5,
+        "experimentMustHaveRecallAt20": 1
+      }
+    },
+    {
+      "scanId": "eval-scan:reddit-nextjs-ai-sdk-streaming",
+      "caseId": "reddit-nextjs-ai-sdk-streaming",
+      "topic": "Next.js AI SDK streaming agents",
+      "sourceKeys": [
+        "reddit"
+      ],
+      "plannerDecision": "improved",
+      "evidence": {
+        "candidateCount": 6,
+        "mustHaveCount": 2,
+        "duplicateLabelCount": 0,
+        "providerCounts": {
+          "reddit": 6
+        },
+        "topEvidence": [
+          {
+            "evidenceId": "reddit-nextjs-ai-sdk-streaming-general",
+            "score": 918.884,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "reddit-nextjs-ai-sdk-streaming-keyword",
+            "score": 918.727,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "reddit-nextjs-ai-sdk-streaming-community",
+            "score": 585.481,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "reddit-nextjs-ai-sdk-streaming-checklist",
+            "score": 585.325,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "reddit-nextjs-ai-sdk-streaming-unrelated",
+            "score": 3.011,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "citationReadiness": {
+        "citationReadyEvidenceIds": [
+          "reddit-nextjs-ai-sdk-streaming-general",
+          "reddit-nextjs-ai-sdk-streaming-keyword",
+          "reddit-nextjs-ai-sdk-streaming-community",
+          "reddit-nextjs-ai-sdk-streaming-checklist",
+          "reddit-nextjs-ai-sdk-streaming-unrelated"
+        ],
+        "topEvidenceHasReasonCodes": true,
+        "expectedCitationPolicy": "summary claims should cite these top evidence ids or explicitly state uncertainty"
+      },
+      "quality": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.975,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "officialCommunityCoverageAt20": 1,
+        "sourceDiversityAt20": 1,
+        "summaryGroundingRatio": 1,
+        "confidence": {
+          "score": 1,
+          "level": "high",
+          "rationale": "Must-have recall, source coverage, grounding and top evidence reason codes are strong."
+        }
+      },
+      "canaryComparison": {
+        "baselineMustHaveRecallAt20": 0.5,
+        "experimentMustHaveRecallAt20": 1
+      }
+    },
+    {
+      "scanId": "eval-scan:reddit-docker-mcp-desktop-permissions",
+      "caseId": "reddit-docker-mcp-desktop-permissions",
+      "topic": "Docker MCP Desktop permissions",
+      "sourceKeys": [
+        "reddit"
+      ],
+      "plannerDecision": "improved",
+      "evidence": {
+        "candidateCount": 6,
+        "mustHaveCount": 2,
+        "duplicateLabelCount": 0,
+        "providerCounts": {
+          "reddit": 6
+        },
+        "topEvidence": [
+          {
+            "evidenceId": "reddit-docker-mcp-desktop-permissions-general",
+            "score": 918.884,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "reddit-docker-mcp-desktop-permissions-keyword",
+            "score": 918.727,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "reddit-docker-mcp-desktop-permissions-community",
+            "score": 585.481,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "reddit-docker-mcp-desktop-permissions-checklist",
+            "score": 585.325,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "reddit-docker-mcp-desktop-permissions-unrelated",
+            "score": 3.011,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "citationReadiness": {
+        "citationReadyEvidenceIds": [
+          "reddit-docker-mcp-desktop-permissions-general",
+          "reddit-docker-mcp-desktop-permissions-keyword",
+          "reddit-docker-mcp-desktop-permissions-community",
+          "reddit-docker-mcp-desktop-permissions-checklist",
+          "reddit-docker-mcp-desktop-permissions-unrelated"
+        ],
+        "topEvidenceHasReasonCodes": true,
+        "expectedCitationPolicy": "summary claims should cite these top evidence ids or explicitly state uncertainty"
+      },
+      "quality": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.975,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "officialCommunityCoverageAt20": 1,
+        "sourceDiversityAt20": 1,
+        "summaryGroundingRatio": 1,
+        "confidence": {
+          "score": 1,
+          "level": "high",
+          "rationale": "Must-have recall, source coverage, grounding and top evidence reason codes are strong."
+        }
+      },
+      "canaryComparison": {
+        "baselineMustHaveRecallAt20": 0.5,
+        "experimentMustHaveRecallAt20": 1
+      }
+    },
+    {
+      "scanId": "eval-scan:x-anthropic-claude-code-permissions",
+      "caseId": "x-anthropic-claude-code-permissions",
+      "topic": "Claude Code tool permissions update",
+      "sourceKeys": [
+        "x-twitter"
+      ],
+      "plannerDecision": "improved",
+      "evidence": {
+        "candidateCount": 6,
+        "mustHaveCount": 2,
+        "duplicateLabelCount": 0,
+        "providerCounts": {
+          "x-twitter": 6
+        },
+        "topEvidence": [
+          {
+            "evidenceId": "x-anthropic-claude-code-permissions-general",
+            "score": 1168.873,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "x-anthropic-claude-code-permissions-mention",
+            "score": 1168.509,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "x-anthropic-claude-code-permissions-operator",
+            "score": 1001.993,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "x-anthropic-claude-code-permissions-keyword",
+            "score": 835.214,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "x-anthropic-claude-code-permissions-official-terse",
+            "score": 519.14,
+            "reasonCodes": [
+              "query_token_match",
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "citationReadiness": {
+        "citationReadyEvidenceIds": [
+          "x-anthropic-claude-code-permissions-general",
+          "x-anthropic-claude-code-permissions-mention",
+          "x-anthropic-claude-code-permissions-operator",
+          "x-anthropic-claude-code-permissions-keyword",
+          "x-anthropic-claude-code-permissions-official-terse"
+        ],
+        "topEvidenceHasReasonCodes": true,
+        "expectedCitationPolicy": "summary claims should cite these top evidence ids or explicitly state uncertainty"
+      },
+      "quality": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.956,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "officialCommunityCoverageAt20": 1,
+        "sourceDiversityAt20": 1,
+        "summaryGroundingRatio": 1,
+        "confidence": {
+          "score": 1,
+          "level": "high",
+          "rationale": "Must-have recall, source coverage, grounding and top evidence reason codes are strong."
+        }
+      },
+      "canaryComparison": {
+        "baselineMustHaveRecallAt20": 0.5,
+        "experimentMustHaveRecallAt20": 1
+      }
+    },
+    {
+      "scanId": "eval-scan:x-openai-responses-api-tools",
+      "caseId": "x-openai-responses-api-tools",
+      "topic": "OpenAI Responses API tool calling",
+      "sourceKeys": [
+        "x-twitter"
+      ],
+      "plannerDecision": "improved",
+      "evidence": {
+        "candidateCount": 6,
+        "mustHaveCount": 2,
+        "duplicateLabelCount": 0,
+        "providerCounts": {
+          "x-twitter": 6
+        },
+        "topEvidence": [
+          {
+            "evidenceId": "x-openai-responses-api-tools-general",
+            "score": 1252.207,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "x-openai-responses-api-tools-mention",
+            "score": 1251.842,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "x-openai-responses-api-tools-operator",
+            "score": 918.66,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "x-openai-responses-api-tools-keyword",
+            "score": 918.547,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "x-openai-responses-api-tools-official-terse",
+            "score": 352.473,
+            "reasonCodes": [
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "citationReadiness": {
+        "citationReadyEvidenceIds": [
+          "x-openai-responses-api-tools-general",
+          "x-openai-responses-api-tools-mention",
+          "x-openai-responses-api-tools-operator",
+          "x-openai-responses-api-tools-keyword",
+          "x-openai-responses-api-tools-official-terse"
+        ],
+        "topEvidenceHasReasonCodes": true,
+        "expectedCitationPolicy": "summary claims should cite these top evidence ids or explicitly state uncertainty"
+      },
+      "quality": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.956,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "officialCommunityCoverageAt20": 1,
+        "sourceDiversityAt20": 1,
+        "summaryGroundingRatio": 1,
+        "confidence": {
+          "score": 1,
+          "level": "high",
+          "rationale": "Must-have recall, source coverage, grounding and top evidence reason codes are strong."
+        }
+      },
+      "canaryComparison": {
+        "baselineMustHaveRecallAt20": 0.5,
+        "experimentMustHaveRecallAt20": 1
+      }
+    },
+    {
+      "scanId": "eval-scan:x-cursor-agent-terminal-mode",
+      "caseId": "x-cursor-agent-terminal-mode",
+      "topic": "Cursor agent terminal mode rollout",
+      "sourceKeys": [
+        "x-twitter"
+      ],
+      "plannerDecision": "improved",
+      "evidence": {
+        "candidateCount": 6,
+        "mustHaveCount": 2,
+        "duplicateLabelCount": 0,
+        "providerCounts": {
+          "x-twitter": 6
+        },
+        "topEvidence": [
+          {
+            "evidenceId": "x-cursor-agent-terminal-mode-general",
+            "score": 1002.207,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "x-cursor-agent-terminal-mode-mention",
+            "score": 1001.842,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "x-cursor-agent-terminal-mode-operator",
+            "score": 835.327,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "x-cursor-agent-terminal-mode-keyword",
+            "score": 835.214,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "x-cursor-agent-terminal-mode-official-terse",
+            "score": 519.14,
+            "reasonCodes": [
+              "query_token_match",
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "citationReadiness": {
+        "citationReadyEvidenceIds": [
+          "x-cursor-agent-terminal-mode-general",
+          "x-cursor-agent-terminal-mode-mention",
+          "x-cursor-agent-terminal-mode-operator",
+          "x-cursor-agent-terminal-mode-keyword",
+          "x-cursor-agent-terminal-mode-official-terse"
+        ],
+        "topEvidenceHasReasonCodes": true,
+        "expectedCitationPolicy": "summary claims should cite these top evidence ids or explicitly state uncertainty"
+      },
+      "quality": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.956,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "officialCommunityCoverageAt20": 1,
+        "sourceDiversityAt20": 1,
+        "summaryGroundingRatio": 1,
+        "confidence": {
+          "score": 1,
+          "level": "high",
+          "rationale": "Must-have recall, source coverage, grounding and top evidence reason codes are strong."
+        }
+      },
+      "canaryComparison": {
+        "baselineMustHaveRecallAt20": 0.5,
+        "experimentMustHaveRecallAt20": 1
+      }
+    },
+    {
+      "scanId": "eval-scan:x-windsurf-enterprise-agent-update",
+      "caseId": "x-windsurf-enterprise-agent-update",
+      "topic": "Windsurf enterprise agent update",
+      "sourceKeys": [
+        "x-twitter"
+      ],
+      "plannerDecision": "improved",
+      "evidence": {
+        "candidateCount": 6,
+        "mustHaveCount": 2,
+        "duplicateLabelCount": 0,
+        "providerCounts": {
+          "x-twitter": 6
+        },
+        "topEvidence": [
+          {
+            "evidenceId": "x-windsurf-enterprise-agent-update-general",
+            "score": 1002.207,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "x-windsurf-enterprise-agent-update-mention",
+            "score": 1001.842,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "x-windsurf-enterprise-agent-update-keyword",
+            "score": 835.214,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "x-windsurf-enterprise-agent-update-operator",
+            "score": 668.66,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "x-windsurf-enterprise-agent-update-official-terse",
+            "score": 352.473,
+            "reasonCodes": [
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "citationReadiness": {
+        "citationReadyEvidenceIds": [
+          "x-windsurf-enterprise-agent-update-general",
+          "x-windsurf-enterprise-agent-update-mention",
+          "x-windsurf-enterprise-agent-update-keyword",
+          "x-windsurf-enterprise-agent-update-operator",
+          "x-windsurf-enterprise-agent-update-official-terse"
+        ],
+        "topEvidenceHasReasonCodes": true,
+        "expectedCitationPolicy": "summary claims should cite these top evidence ids or explicitly state uncertainty"
+      },
+      "quality": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.956,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "officialCommunityCoverageAt20": 1,
+        "sourceDiversityAt20": 1,
+        "summaryGroundingRatio": 1,
+        "confidence": {
+          "score": 1,
+          "level": "high",
+          "rationale": "Must-have recall, source coverage, grounding and top evidence reason codes are strong."
+        }
+      },
+      "canaryComparison": {
+        "baselineMustHaveRecallAt20": 0.5,
+        "experimentMustHaveRecallAt20": 1
+      }
+    },
+    {
+      "scanId": "eval-scan:x-devin-background-agent-queue",
+      "caseId": "x-devin-background-agent-queue",
+      "topic": "Devin background agent queue",
+      "sourceKeys": [
+        "x-twitter"
+      ],
+      "plannerDecision": "improved",
+      "evidence": {
+        "candidateCount": 6,
+        "mustHaveCount": 2,
+        "duplicateLabelCount": 0,
+        "providerCounts": {
+          "x-twitter": 6
+        },
+        "topEvidence": [
+          {
+            "evidenceId": "x-devin-background-agent-queue-mention",
+            "score": 1001.842,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "x-devin-background-agent-queue-general",
+            "score": 835.54,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "x-devin-background-agent-queue-keyword",
+            "score": 835.214,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "x-devin-background-agent-queue-operator",
+            "score": 668.66,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "x-devin-background-agent-queue-official-terse",
+            "score": 352.473,
+            "reasonCodes": [
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "citationReadiness": {
+        "citationReadyEvidenceIds": [
+          "x-devin-background-agent-queue-mention",
+          "x-devin-background-agent-queue-general",
+          "x-devin-background-agent-queue-keyword",
+          "x-devin-background-agent-queue-operator",
+          "x-devin-background-agent-queue-official-terse"
+        ],
+        "topEvidenceHasReasonCodes": true,
+        "expectedCitationPolicy": "summary claims should cite these top evidence ids or explicitly state uncertainty"
+      },
+      "quality": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.977,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "officialCommunityCoverageAt20": 1,
+        "sourceDiversityAt20": 1,
+        "summaryGroundingRatio": 1,
+        "confidence": {
+          "score": 1,
+          "level": "high",
+          "rationale": "Must-have recall, source coverage, grounding and top evidence reason codes are strong."
+        }
+      },
+      "canaryComparison": {
+        "baselineMustHaveRecallAt20": 0.5,
+        "experimentMustHaveRecallAt20": 1
+      }
+    },
+    {
+      "scanId": "eval-scan:x-openrouter-tool-routing",
+      "caseId": "x-openrouter-tool-routing",
+      "topic": "OpenRouter tool routing reliability",
+      "sourceKeys": [
+        "x-twitter"
+      ],
+      "plannerDecision": "improved",
+      "evidence": {
+        "candidateCount": 6,
+        "mustHaveCount": 2,
+        "duplicateLabelCount": 0,
+        "providerCounts": {
+          "x-twitter": 6
+        },
+        "topEvidence": [
+          {
+            "evidenceId": "x-openrouter-tool-routing-general",
+            "score": 1335.54,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "x-openrouter-tool-routing-mention",
+            "score": 1335.175,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "x-openrouter-tool-routing-keyword",
+            "score": 1168.547,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "x-openrouter-tool-routing-operator",
+            "score": 1001.993,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "x-openrouter-tool-routing-official-terse",
+            "score": 352.473,
+            "reasonCodes": [
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "citationReadiness": {
+        "citationReadyEvidenceIds": [
+          "x-openrouter-tool-routing-general",
+          "x-openrouter-tool-routing-mention",
+          "x-openrouter-tool-routing-keyword",
+          "x-openrouter-tool-routing-operator",
+          "x-openrouter-tool-routing-official-terse"
+        ],
+        "topEvidenceHasReasonCodes": true,
+        "expectedCitationPolicy": "summary claims should cite these top evidence ids or explicitly state uncertainty"
+      },
+      "quality": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.956,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "officialCommunityCoverageAt20": 1,
+        "sourceDiversityAt20": 1,
+        "summaryGroundingRatio": 1,
+        "confidence": {
+          "score": 1,
+          "level": "high",
+          "rationale": "Must-have recall, source coverage, grounding and top evidence reason codes are strong."
+        }
+      },
+      "canaryComparison": {
+        "baselineMustHaveRecallAt20": 0.5,
+        "experimentMustHaveRecallAt20": 1
+      }
+    },
+    {
+      "scanId": "eval-scan:x-prisma-mcp-database-tools",
+      "caseId": "x-prisma-mcp-database-tools",
+      "topic": "Prisma MCP database tools",
+      "sourceKeys": [
+        "x-twitter"
+      ],
+      "plannerDecision": "improved",
+      "evidence": {
+        "candidateCount": 6,
+        "mustHaveCount": 2,
+        "duplicateLabelCount": 0,
+        "providerCounts": {
+          "x-twitter": 6
+        },
+        "topEvidence": [
+          {
+            "evidenceId": "x-prisma-mcp-database-tools-general",
+            "score": 918.873,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "x-prisma-mcp-database-tools-keyword",
+            "score": 918.547,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "x-prisma-mcp-database-tools-mention",
+            "score": 918.509,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "x-prisma-mcp-database-tools-operator",
+            "score": 751.993,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "x-prisma-mcp-database-tools-official-terse",
+            "score": 352.473,
+            "reasonCodes": [
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "citationReadiness": {
+        "citationReadyEvidenceIds": [
+          "x-prisma-mcp-database-tools-general",
+          "x-prisma-mcp-database-tools-keyword",
+          "x-prisma-mcp-database-tools-mention",
+          "x-prisma-mcp-database-tools-operator",
+          "x-prisma-mcp-database-tools-official-terse"
+        ],
+        "topEvidenceHasReasonCodes": true,
+        "expectedCitationPolicy": "summary claims should cite these top evidence ids or explicitly state uncertainty"
+      },
+      "quality": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.948,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "officialCommunityCoverageAt20": 1,
+        "sourceDiversityAt20": 1,
+        "summaryGroundingRatio": 1,
+        "confidence": {
+          "score": 1,
+          "level": "high",
+          "rationale": "Must-have recall, source coverage, grounding and top evidence reason codes are strong."
+        }
+      },
+      "canaryComparison": {
+        "baselineMustHaveRecallAt20": 0.5,
+        "experimentMustHaveRecallAt20": 1
+      }
+    },
+    {
+      "scanId": "eval-scan:x-kubernetes-agent-ops",
+      "caseId": "x-kubernetes-agent-ops",
+      "topic": "Kubernetes AI agent operations",
+      "sourceKeys": [
+        "x-twitter"
+      ],
+      "plannerDecision": "improved",
+      "evidence": {
+        "candidateCount": 6,
+        "mustHaveCount": 2,
+        "duplicateLabelCount": 0,
+        "providerCounts": {
+          "x-twitter": 6
+        },
+        "topEvidence": [
+          {
+            "evidenceId": "x-kubernetes-agent-ops-general",
+            "score": 1085.54,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "x-kubernetes-agent-ops-mention",
+            "score": 1085.175,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "x-kubernetes-agent-ops-keyword",
+            "score": 918.547,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "x-kubernetes-agent-ops-operator",
+            "score": 501.993,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "x-kubernetes-agent-ops-official-terse",
+            "score": 352.473,
+            "reasonCodes": [
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "citationReadiness": {
+        "citationReadyEvidenceIds": [
+          "x-kubernetes-agent-ops-general",
+          "x-kubernetes-agent-ops-mention",
+          "x-kubernetes-agent-ops-keyword",
+          "x-kubernetes-agent-ops-operator",
+          "x-kubernetes-agent-ops-official-terse"
+        ],
+        "topEvidenceHasReasonCodes": true,
+        "expectedCitationPolicy": "summary claims should cite these top evidence ids or explicitly state uncertainty"
+      },
+      "quality": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.956,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "officialCommunityCoverageAt20": 1,
+        "sourceDiversityAt20": 1,
+        "summaryGroundingRatio": 1,
+        "confidence": {
+          "score": 1,
+          "level": "high",
+          "rationale": "Must-have recall, source coverage, grounding and top evidence reason codes are strong."
+        }
+      },
+      "canaryComparison": {
+        "baselineMustHaveRecallAt20": 0.5,
+        "experimentMustHaveRecallAt20": 1
+      }
+    },
+    {
+      "scanId": "eval-scan:mixed-copilot-workspace-agent-rollout",
+      "caseId": "mixed-copilot-workspace-agent-rollout",
+      "topic": "GitHub Copilot workspace agent rollout MCP",
+      "sourceKeys": [
+        "reddit",
+        "x-twitter"
+      ],
+      "plannerDecision": "improved",
+      "evidence": {
+        "candidateCount": 6,
+        "mustHaveCount": 2,
+        "duplicateLabelCount": 0,
+        "providerCounts": {
+          "reddit": 3,
+          "x-twitter": 3
+        },
+        "topEvidence": [
+          {
+            "evidenceId": "mixed-copilot-workspace-agent-rollout-checklist",
+            "score": 1085.442,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "mixed-copilot-workspace-agent-rollout-operator",
+            "score": 1001.796,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "mixed-copilot-workspace-agent-rollout-mention",
+            "score": 918.556,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "evidenceId": "mixed-copilot-workspace-agent-rollout-reddit-terse",
+            "score": 752.215,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "evidenceId": "mixed-copilot-workspace-agent-rollout-official",
+            "score": 685.945,
+            "reasonCodes": [
+              "query_token_match",
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "citationReadiness": {
+        "citationReadyEvidenceIds": [
+          "mixed-copilot-workspace-agent-rollout-checklist",
+          "mixed-copilot-workspace-agent-rollout-operator",
+          "mixed-copilot-workspace-agent-rollout-mention",
+          "mixed-copilot-workspace-agent-rollout-reddit-terse",
+          "mixed-copilot-workspace-agent-rollout-official"
+        ],
+        "topEvidenceHasReasonCodes": true,
+        "expectedCitationPolicy": "summary claims should cite these top evidence ids or explicitly state uncertainty"
+      },
+      "quality": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.944,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "officialCommunityCoverageAt20": 1,
+        "sourceDiversityAt20": 1,
+        "summaryGroundingRatio": 1,
+        "confidence": {
+          "score": 1,
+          "level": "high",
+          "rationale": "Must-have recall, source coverage, grounding and top evidence reason codes are strong."
+        }
+      },
+      "canaryComparison": {
+        "baselineMustHaveRecallAt20": 0.5,
+        "experimentMustHaveRecallAt20": 1
+      }
+    }
+  ]
+}

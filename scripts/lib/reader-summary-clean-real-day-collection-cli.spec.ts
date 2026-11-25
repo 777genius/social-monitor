@@ -1,0 +1,235 @@
+import { readReaderSummaryCleanRealDayCollectionCli } from "./reader-summary-clean-real-day-collection-cli";
+import {
+  readerSummaryDailyMaintenanceScope,
+  readerSummaryProductionHistoryScope,
+} from "./reader-summary-daily-maintenance-scope";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+describe("clean real-day collection CLI", () => {
+  it("keeps the normal timer unbounded with its existing artifact path", () => {
+    const cli = withArgs([], () => readCli());
+
+    expect(cli.maintenanceScope).toBeUndefined();
+    expect(cli.outputPath).toBe(
+      "ops/evals/reader-summary-clean-real-day-collection.v1.json",
+    );
+    expect(cli.targetDiscoveryScopePredicate).toBe("");
+    expect(cli.targetDiscoveryScopeValues).toEqual([]);
+    expect(cli.exactDateArtifact).toBe(false);
+  });
+
+  it("binds scheduled collection output to the production scope and requested date", () => {
+    const cli = withArgs(
+      [
+        "--update",
+        "--date",
+        "2026-08-25",
+        "--exact-date-artifact-directory",
+        "/durable/rolling-summary/collections",
+        "--production-scheduled-scope",
+      ],
+      () => readCli(),
+    );
+
+    expect(cli.outputPath).toBe(
+      "/durable/rolling-summary/collections/reader-summary-clean-real-day-collection.2026-08-25.v1.json",
+    );
+    expect(cli.exactDateArtifact).toBe(true);
+    expect(cli.maintenanceScope).toEqual(readerSummaryProductionHistoryScope);
+    expect(cli.targetDiscoveryScopeValues).toEqual([
+      readerSummaryProductionHistoryScope.tenantId,
+      readerSummaryProductionHistoryScope.workspaceId,
+    ]);
+  });
+
+  it("rejects an unscoped production scheduled flag", () => {
+    expect(() =>
+      withArgs(["--update", "--production-scheduled-scope"], () => readCli()),
+    ).toThrow("requires update and an exact date artifact directory");
+  });
+
+  it("requires the canonical scope and exact per-day artifact for bounded maintenance", () => {
+    const cli = withArgs(
+      [
+        "--update",
+        "--date",
+        "2026-07-31",
+        "--provider-catch-up",
+        "--allow-historical-provider-collection",
+        "--allow-unproven-existing-window",
+        "--artifact-directory",
+        "/durable/reader-summary-collection",
+      ],
+      () => readCli(),
+    );
+
+    expect(cli.maintenanceScope).toEqual(readerSummaryDailyMaintenanceScope);
+    expect(cli.outputPath).toBe(
+      "/durable/reader-summary-collection/reader-summary-clean-real-day-collection.2026-07-31.v1.json",
+    );
+    expect(cli.targetDiscoveryScopePredicate).toContain(
+      "sb.tenant_id = $2::uuid",
+    );
+    expect(cli.targetDiscoveryScopeValues).toEqual([
+      readerSummaryDailyMaintenanceScope.tenantId,
+      readerSummaryDailyMaintenanceScope.workspaceId,
+    ]);
+  });
+
+  it("rejects Aug4 before a bounded collection can start", () => {
+    expect(() =>
+      withArgs(
+        [
+          "--update",
+          "--date",
+          "2026-08-04",
+          "--provider-catch-up",
+          "--allow-historical-provider-collection",
+          "--allow-unproven-existing-window",
+          "--artifact-directory",
+          "/durable/reader-summary-collection",
+        ],
+        () => readCli(),
+      ),
+    ).toThrow("outside the daily maintenance upper bound");
+  });
+
+  it("binds production history to 6101/6102 through the exact Sep12 artifact", () => {
+    const cli = withArgs(
+      [
+        "--update",
+        "--date",
+        "2026-09-12",
+        "--provider-catch-up",
+        "--allow-historical-provider-collection",
+        "--allow-unproven-existing-window",
+        "--production-history-scope",
+        "--artifact-directory",
+        "/durable/production-history",
+      ],
+      () => readCli(),
+    );
+
+    expect(cli.maintenanceScope).toEqual(readerSummaryProductionHistoryScope);
+    expect(cli.outputPath).toBe(
+      "/durable/production-history/reader-summary-clean-real-day-collection.2026-09-12.v1.json",
+    );
+    expect(cli.targetDiscoveryScopeValues).toEqual([
+      readerSummaryProductionHistoryScope.tenantId,
+      readerSummaryProductionHistoryScope.workspaceId,
+    ]);
+  });
+
+  it("rejects production history outside Jul23-Sep12", () => {
+    expect(() =>
+      withArgs(
+        [
+          "--update",
+          "--date",
+          "2026-09-13",
+          "--provider-catch-up",
+          "--allow-historical-provider-collection",
+          "--allow-unproven-existing-window",
+          "--production-history-scope",
+          "--artifact-directory",
+          "/durable/production-history",
+        ],
+        () => readCli(),
+      ),
+    ).toThrow("outside the daily maintenance upper bound");
+  });
+
+  it("accepts a retry only with the exact dated artifact and no first-attempt flag", () => {
+    const directory = mkdtempSync(join(tmpdir(), "history-cli-"));
+    try {
+      writeFileSync(
+        join(
+          directory,
+          "reader-summary-clean-real-day-collection.2026-08-07.v1.json",
+        ),
+        `${JSON.stringify(productionHistoryArtifact("2026-08-07"))}\n`,
+      );
+      const cli = withArgs(
+        [
+          "--update",
+          "--date",
+          "2026-08-07",
+          "--provider-catch-up",
+          "--allow-historical-provider-collection",
+          "--production-history-retry",
+          "--artifact-directory",
+          directory,
+        ],
+        () => readCli(),
+      );
+      expect(cli.maintenanceScope).toEqual(readerSummaryProductionHistoryScope);
+      expect(cli.allowUnprovenExistingRowsForExactFullCollection).toBe(false);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});
+
+const productionHistoryArtifact = (collectionDate: string) => ({
+  schemaVersion: 1,
+  artifactFormat: "reader-summary-clean-real-day-collection-v1",
+  generatedBy: "npm run run:reader-summary-clean-real-day-collection",
+  run: { collectionDate },
+  inputs: {
+    database: "local-postgres",
+    targetPublishedWindow: {
+      startInclusive: `${collectionDate}T00:00:00.000Z`,
+      endExclusive: "2026-08-08T00:00:00.000Z",
+    },
+    scope: {
+      tenantId: "00000000-0000-7000-8000-000000006101",
+      workspaceId: "00000000-0000-7000-8000-000000006102",
+    },
+  },
+});
+
+const readCli = () =>
+  readReaderSummaryCleanRealDayCollectionCli({
+    collectionPolicyEvaluatedAt: new Date("2026-08-04T01:00:00.000Z"),
+    targetPublishedWindowObservedAt: new Date("2026-08-04T01:00:01.000Z"),
+  });
+
+const withArgs = <T>(args: readonly string[], run: () => T): T => {
+  const original = process.argv;
+  process.argv = ["node", "collection-script", ...args];
+  try {
+    return run();
+  } finally {
+    process.argv = original;
+  }
+};
+
+describe("bounded late X recovery", () => {
+  const args = ["--update", "--date", "2026-11-07", "--x-late-window",
+    "--production-scheduled-scope", "--exact-date-artifact-directory", "/tmp/partial-x",
+    "--allow-historical-provider-collection", "--providers", "x-twitter"];
+
+  it("uses only the bounded late interval", () => {
+    const cli = withArgs(args, () => readCli());
+    expect(cli.targetPublishedWindow).toEqual({ startInclusive: "2026-11-07T22:00:00.000Z", endExclusive: "2026-11-08T00:00:00.000Z" });
+    expect(cli.xLateWindow).toBe(true);
+  });
+
+  it.each(["2026-11-04", "2026-11-08", "2026-11-10", "2026-11-11", "2026-11-12", "2026-11-13"])("uses the confirmed three-hour interval on %s", (day) => {
+    const cli = withArgs(args.map((value) => value === "2026-11-07" ? day : value), () => readCli());
+    const end = new Date(`${day}T00:00:00.000Z`);
+    end.setUTCDate(end.getUTCDate() + 1);
+    expect(cli.targetPublishedWindow).toEqual({ startInclusive: `${day}T21:00:00.000Z`, endExclusive: end.toISOString() });
+  });
+
+  it.each([
+    args.filter((value) => value !== "--production-scheduled-scope"),
+    args.map((value) => value === "x-twitter" ? "reddit,x-twitter" : value),
+    args.map((value) => value === "2026-11-07" ? "2026-11-06" : value),
+    [...args, "--provider-catch-up"],
+  ])("rejects unscoped, multi-provider, wrong-date, and catch-up calls", (...input) => {
+    expect(() => withArgs(input, () => readCli())).toThrow();
+  });
+});

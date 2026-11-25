@@ -1,0 +1,992 @@
+import { dropPublicationFixtureFirstPublicationRole, type PublicationFixtureFirstPublicationRoleOwnership } from "./reader-summary-publication-fixture-firstpub-role";
+export { provisionPublicationFixtureFirstPublicationRole, type PublicationFixtureFirstPublicationRoleOwnership } from "./reader-summary-publication-fixture-firstpub-role";
+import { readPublicationBootstrapSql } from "./lib/reader-summary-publication-bootstrap-sql";
+import { Pool, type PoolClient } from "pg";
+import { assertPostgres18CreatorAndPsqlRegression } from "./reader-summary-publication-postgres18-regression";
+const protectedOwner = "social_monitor_reader_summary_publication_owner";
+const publicSchemaOwner = "social_monitor_public_schema_owner";
+const publicationCapability = "social_monitor_reader_summary_publication_runtime";
+const tenantSystemCapability = "social_monitor_tenant_system_runtime";
+const dailyActivationDefiner = "social_monitor_reader_summary_daily_publication_definer";
+export const publicationFixtureDailyTerminalRole = "social_monitor_reader_summary_daily_terminal";
+// The pre-migration bootstrap, not fixture setup, creates this PG18-protected role.
+const protectedFixtureRoles = [publicSchemaOwner, protectedOwner, publicationCapability, tenantSystemCapability] as const;
+export const publicationProtectedRolePresence = async (serverAdmin: Pool): Promise<{ readonly capability: boolean; readonly owner: boolean; readonly schemaOwner: boolean; readonly tenantSystemCapability: boolean; readonly dailyActivationDefiner: boolean }> => {
+  const protectedRoles = await serverAdmin.query<{ readonly rolname: string }>(`SELECT rolname FROM pg_roles WHERE rolname = ANY($1::text[])`, [[...protectedFixtureRoles, dailyActivationDefiner]]);
+  const hasRole = (role: string): boolean => protectedRoles.rows.some((row) => row.rolname === role);
+  return {
+    capability: hasRole(publicationCapability), owner: hasRole(protectedOwner),
+    schemaOwner: hasRole(publicSchemaOwner), tenantSystemCapability: hasRole(tenantSystemCapability), dailyActivationDefiner: hasRole(dailyActivationDefiner),
+  };
+};
+export const provisionPublicationFixtureProtectedRoles = async (params: {
+  readonly serverAdmin: Pool; readonly migrationAdmin: Pool; readonly migrationAdminRole: string;
+}): Promise<void> => {
+  for (const role of protectedFixtureRoles) {
+    await params.serverAdmin.query(`DO $fixture$ BEGIN IF NOT EXISTS
+      (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = ${quoteLiteral(role)}) THEN
+      CREATE ROLE ${quoteIdentifier(role)} NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
+        NOINHERIT NOREPLICATION NOBYPASSRLS; END IF; END $fixture$`);
+    await params.serverAdmin.query(`GRANT ${quoteIdentifier(role)} TO ${quoteIdentifier(params.migrationAdminRole)}
+      WITH ADMIN TRUE, INHERIT FALSE, SET FALSE GRANTED BY CURRENT_USER`);
+  }
+  for (const role of [publicSchemaOwner, protectedOwner]) {
+    await params.migrationAdmin.query(`GRANT ${quoteIdentifier(role)} TO ${quoteIdentifier(params.migrationAdminRole)}
+      WITH ADMIN FALSE, INHERIT FALSE, SET TRUE GRANTED BY CURRENT_USER`);
+  }
+};
+export const provisionPublicationFixtureDailyTerminalRole = async (params: Readonly<{ dailyTerminalPassword: string; migrationAdminRole: string; serverAdmin: Pool }>): Promise<boolean> => {
+  const client = await params.serverAdmin.connect(); try {
+    await client.query("BEGIN");
+    const existing = await client.query<{ readonly safe: boolean }>(
+      `SELECT rolcanlogin AND NOT rolinherit AND NOT rolsuper
+          AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolreplication
+          AND NOT rolbypassrls
+          AND rolconfig IS NOT DISTINCT FROM ARRAY[
+            'search_path=pg_catalog, public']::TEXT[] AS safe
+         FROM pg_catalog.pg_roles WHERE rolname = $1`,
+      [publicationFixtureDailyTerminalRole]);
+    const created = existing.rowCount === 0;
+    if (created) {
+      await client.query(`CREATE ROLE ${quoteIdentifier(publicationFixtureDailyTerminalRole)}
+           LOGIN PASSWORD ${quoteLiteral(params.dailyTerminalPassword)}
+           NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT
+           NOREPLICATION NOBYPASSRLS;
+         ALTER ROLE ${quoteIdentifier(publicationFixtureDailyTerminalRole)}
+           SET search_path TO pg_catalog, public`);
+    } else assert(existing.rows[0]?.safe === true,
+      "pre-existing daily terminal fixture role is unsafe");
+    await client.query(`GRANT ${quoteIdentifier(publicationFixtureDailyTerminalRole)}
+         TO ${quoteIdentifier(params.migrationAdminRole)}
+         WITH ADMIN TRUE, INHERIT FALSE, SET FALSE GRANTED BY CURRENT_USER`);
+    const audit = await client.query<{ readonly safe: boolean }>(
+      `SELECT NOT EXISTS (
+          SELECT 1 FROM pg_catalog.pg_auth_members membership
+          WHERE membership.member = terminal.oid
+        ) AND count(membership.*) = 1
+          AND bool_and(member.rolname = $2 AND grantor.rolsuper
+            AND membership.admin_option AND NOT membership.inherit_option
+            AND NOT membership.set_option) AS safe
+         FROM pg_catalog.pg_roles terminal
+         LEFT JOIN pg_catalog.pg_auth_members membership
+           ON membership.roleid = terminal.oid
+         LEFT JOIN pg_catalog.pg_roles member ON member.oid = membership.member
+         LEFT JOIN pg_catalog.pg_roles grantor ON grantor.oid = membership.grantor
+        WHERE terminal.rolname = $1 GROUP BY terminal.oid`,
+      [publicationFixtureDailyTerminalRole, params.migrationAdminRole]);
+    assert(audit.rows[0]?.safe === true, "daily terminal fixture admin membership is unsafe");
+    await client.query("COMMIT");
+    return created;
+  } catch (error: unknown) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+};
+export const makePublicationFixtureRuntimeDatabaseOwner = async (params: {
+  readonly databaseName: string; readonly migrationAdminDatabaseUrl: string; readonly migrationAdminRole: string;
+  readonly runtimeRole: string; readonly systemRuntimeRole: string; readonly targetDatabaseUrl: string;
+}): Promise<void> => {
+  const admin = new Pool({ connectionString: params.targetDatabaseUrl, max: 1 });
+  const rogueRole = `sm_public_schema_rogue_${params.runtimeRole.slice(-20)}`;
+  let rogueRoleCreated = false;
+  try {
+    await admin.query(
+      `ALTER DATABASE ${quoteIdentifier(params.databaseName)}
+         OWNER TO ${quoteIdentifier(params.runtimeRole)};
+       GRANT USAGE, CREATE ON SCHEMA public
+         TO ${quoteIdentifier(params.migrationAdminRole)}
+         WITH GRANT OPTION`,
+    );
+    await admin.query(
+      `CREATE ROLE ${quoteIdentifier(rogueRole)}
+         NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT
+         NOREPLICATION NOBYPASSRLS;
+       GRANT CREATE ON SCHEMA public TO ${quoteIdentifier(rogueRole)}`,
+    );
+    rogueRoleCreated = true;
+    try {
+      await assertRejectsContaining(
+        () =>
+          runReaderSummaryPublicationBootstrapSql(
+            "pre",
+            params.migrationAdminDatabaseUrl,
+            params.runtimeRole,
+            params.systemRuntimeRole,
+          ),
+        "public schema has an unreviewed CREATE grant",
+        "bootstrap must reject an unreviewed public schema creator",
+      );
+    } finally {
+      await admin.query(
+        `REVOKE CREATE ON SCHEMA public
+           FROM ${quoteIdentifier(rogueRole)} CASCADE;
+         DROP ROLE ${quoteIdentifier(rogueRole)}`,
+      );
+      rogueRoleCreated = false;
+    }
+  } finally {
+    if (rogueRoleCreated) {
+      await admin
+        .query(
+          `REASSIGN OWNED BY ${quoteIdentifier(rogueRole)} TO CURRENT_USER;
+         DROP OWNED BY ${quoteIdentifier(rogueRole)};
+         DROP ROLE ${quoteIdentifier(rogueRole)}`,
+        )
+        .catch(() => undefined);
+    }
+    await admin.end();
+  }
+};
+export const runReaderSummaryPublicationBootstrapSql = async (
+  phase: "pre" | "post",
+  databaseUrl: string,
+  applicationRole: string,
+  systemRuntimeRole: string = applicationRole,
+): Promise<void> => {
+  const path = `ops/deploy/reader-summary-publication-${phase}-migration.sql`;
+  const sql = readPublicationBootstrapSql(path)
+    .replaceAll(":'runtime_role'", quoteLiteral(applicationRole))
+    .replaceAll(':"runtime_role"', quoteIdentifier(applicationRole))
+    .replaceAll(":'system_runtime_role'", quoteLiteral(systemRuntimeRole))
+    .replaceAll(':"system_runtime_role"', quoteIdentifier(systemRuntimeRole));
+  const pool = new Pool({ connectionString: databaseUrl, max: 1 });
+  try {
+    await pool.query(sql);
+  } finally {
+    await pool.end();
+  }
+};
+export const grantPublicationFixtureRuntimePrivileges = async (
+  admin: Pool,
+  applicationRole: string,
+): Promise<void> => {
+  await admin.query(
+    `GRANT SELECT, INSERT, UPDATE ON TABLE reader_summary_jobs
+       TO ${quoteIdentifier(applicationRole)};
+     GRANT SELECT ON TABLE outbox_events
+       TO ${quoteIdentifier(applicationRole)}`,
+  );
+};
+export const grantLegacyMigrationOwnership = async (
+  databaseUrl: string,
+  applicationRole: string,
+): Promise<void> => {
+  const admin = new Pool({ connectionString: databaseUrl, max: 1 });
+  try {
+    await admin.query(
+      `GRANT USAGE, CREATE ON SCHEMA public
+         TO ${quoteIdentifier(applicationRole)}`,
+    );
+  } finally {
+    await admin.end();
+  }
+};
+export const createPublicationFixtureRuntimeRole = async (params: {
+  readonly databaseName: string;
+  readonly migrationAdminRole: string;
+  readonly runtimePassword: string;
+  readonly runtimeRole: string;
+  readonly serverAdminDatabaseUrl: string;
+}): Promise<void> => {
+  const serverAdmin = new Pool({
+    connectionString: params.serverAdminDatabaseUrl,
+    max: 1,
+  });
+  const provisionerRole = publicationFixtureProvisionerRole(params.runtimeRole);
+  const provisioner = new Pool({
+    connectionString: publicationRuntimeDatabaseUrl(
+      params.serverAdminDatabaseUrl,
+      provisionerRole,
+      params.runtimePassword,
+    ),
+    max: 1,
+  });
+  let provisionerCreated = false;
+  let runtimeCreated = false;
+  try {
+    await serverAdmin.query(
+      `CREATE ROLE ${quoteIdentifier(provisionerRole)} LOGIN PASSWORD ${quoteLiteral(params.runtimePassword)}
+       NOSUPERUSER NOCREATEDB CREATEROLE INHERIT NOREPLICATION NOBYPASSRLS`,
+    );
+    provisionerCreated = true;
+    // PostgreSQL 18 records a protected creator edge for a CREATEROLE issuer.
+    // Pin its optional membership bits before CREATE ROLE so the edge is the
+    // sole ADMIN-only, non-inheritable, non-settable bootstrap membership.
+    await provisioner.query("SET createrole_self_grant = ''");
+    await provisioner.query(
+      `CREATE ROLE ${quoteIdentifier(params.runtimeRole)} LOGIN PASSWORD ${quoteLiteral(params.runtimePassword)}
+       NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT NOREPLICATION NOBYPASSRLS`,
+    );
+    runtimeCreated = true;
+    await assertPostgres18CreatorAndPsqlRegression({
+      provisionerRole,
+      runtimeRole: params.runtimeRole,
+      serverAdmin,
+      serverAdminDatabaseUrl: params.serverAdminDatabaseUrl,
+    });
+    await serverAdmin.query(
+      `GRANT CONNECT, CREATE ON DATABASE ${quoteIdentifier(params.databaseName)}
+         TO ${quoteIdentifier(params.runtimeRole)}`,
+    );
+    for (const membershipOption of [
+      "ADMIN TRUE",
+      "INHERIT FALSE",
+      "SET TRUE",
+    ]) {
+      await provisioner.query(
+        `GRANT ${quoteIdentifier(params.runtimeRole)}
+          TO ${quoteIdentifier(params.migrationAdminRole)}
+          WITH ${membershipOption}`,
+      );
+    }
+  } catch (error) {
+    if (runtimeCreated) {
+      await serverAdmin
+        .query(`DROP ROLE ${quoteIdentifier(params.runtimeRole)}`)
+        .catch(() => undefined);
+    }
+    if (provisionerCreated) {
+      await serverAdmin
+        .query(`DROP ROLE ${quoteIdentifier(provisionerRole)}`)
+        .catch(() => undefined);
+    }
+    throw error;
+  } finally {
+    await provisioner.end();
+    await serverAdmin.end();
+  }
+};
+export const assertPreMigrationArtifactRuntimeContinuity = async (
+  runtimeDatabaseUrl: string,
+): Promise<void> => {
+  const runtime = new Pool({ connectionString: runtimeDatabaseUrl, max: 1 });
+  const client = await runtime.connect();
+  try {
+    const privileges = await client.query<{
+      readonly capability_insert: boolean;
+      readonly capability_delete: boolean;
+      readonly capability_references: boolean;
+      readonly capability_select: boolean;
+      readonly capability_trigger: boolean;
+      readonly capability_truncate: boolean;
+      readonly capability_update: boolean;
+      readonly runtime_delete: boolean;
+      readonly runtime_insert: boolean;
+      readonly runtime_references: boolean;
+      readonly runtime_select: boolean;
+      readonly runtime_trigger: boolean;
+      readonly runtime_truncate: boolean;
+      readonly runtime_update: boolean;
+    }>(
+      `SELECT
+         has_table_privilege(
+           'social_monitor_reader_summary_publication_runtime',
+           'reader_summary_artifacts', 'SELECT'
+         ) AS capability_select,
+         has_table_privilege(
+           'social_monitor_reader_summary_publication_runtime',
+           'reader_summary_artifacts', 'INSERT'
+         ) AS capability_insert,
+         has_table_privilege(
+           'social_monitor_reader_summary_publication_runtime',
+           'reader_summary_artifacts', 'UPDATE'
+         ) AS capability_update,
+         has_table_privilege(
+           'social_monitor_reader_summary_publication_runtime',
+           'reader_summary_artifacts', 'DELETE'
+         ) AS capability_delete,
+         has_table_privilege(
+           'social_monitor_reader_summary_publication_runtime',
+           'reader_summary_artifacts', 'TRUNCATE'
+         ) AS capability_truncate,
+         has_table_privilege(
+           'social_monitor_reader_summary_publication_runtime',
+           'reader_summary_artifacts', 'REFERENCES'
+         ) AS capability_references,
+         has_table_privilege(
+           'social_monitor_reader_summary_publication_runtime',
+           'reader_summary_artifacts', 'TRIGGER'
+         ) AS capability_trigger,
+         has_table_privilege(current_user, 'reader_summary_artifacts', 'SELECT')
+           AS runtime_select,
+         has_table_privilege(current_user, 'reader_summary_artifacts', 'INSERT')
+           AS runtime_insert,
+         has_table_privilege(current_user, 'reader_summary_artifacts', 'UPDATE')
+           AS runtime_update,
+         has_table_privilege(current_user, 'reader_summary_artifacts', 'DELETE')
+           AS runtime_delete,
+         has_table_privilege(current_user, 'reader_summary_artifacts', 'TRUNCATE')
+           AS runtime_truncate,
+         has_table_privilege(current_user, 'reader_summary_artifacts', 'REFERENCES')
+           AS runtime_references,
+         has_table_privilege(current_user, 'reader_summary_artifacts', 'TRIGGER')
+           AS runtime_trigger`,
+    );
+    assertDeepEqual(
+      privileges.rows[0],
+      {
+        capability_select: true,
+        capability_insert: true,
+        capability_update: true,
+        capability_delete: false,
+        capability_truncate: false,
+        capability_references: false,
+        capability_trigger: false,
+        runtime_select: true,
+        runtime_insert: true,
+        runtime_update: true,
+        runtime_delete: false,
+        runtime_truncate: false,
+        runtime_references: false,
+        runtime_trigger: false,
+      },
+      "pre phase alone must preserve only the live runtime artifact path",
+    );
+    await client.query("BEGIN");
+    await client.query("SELECT count(*) FROM reader_summary_artifacts");
+    await client.query(
+      `INSERT INTO reader_summary_artifacts (
+         id, tenant_id, workspace_id, scope_type, scope_key, cadence,
+         period_started_at, period_ended_at, period_timezone, period_key,
+         status, model_version, prompt_version, headline, artifact_payload,
+         citations, quality_signals, created_at, updated_at
+       ) VALUES (
+         '00000000-0000-7000-8000-000000000099',
+         '00000000-0000-7000-8000-000000000091',
+         '00000000-0000-7000-8000-000000000092',
+         'workspace', 'workspace', 'daily',
+         '2026-07-23T00:00:00.000Z', '2026-07-24T00:00:00.000Z',
+         'UTC', 'daily:2026-07-23T00:00:00.000Z:2026-07-24T00:00:00.000Z:UTC',
+         'RUNNING', 'pre-migration-continuity', 'pre-migration-continuity',
+         'Hidden candidate', '{}'::jsonb, '[]'::jsonb, '{}'::jsonb,
+         '2026-07-23T10:00:00.000Z', '2026-07-23T10:00:00.000Z'
+       )`,
+    );
+    const updated = await client.query<{ readonly headline: string }>(
+      `UPDATE reader_summary_artifacts
+          SET headline = 'Updated hidden candidate',
+              updated_at = '2026-07-23T10:01:00.000Z'
+        WHERE id = '00000000-0000-7000-8000-000000000099'
+      RETURNING headline`,
+    );
+    assertDeepEqual(
+      updated.rows,
+      [{ headline: "Updated hidden candidate" }],
+      "pre phase runtime must still insert and update hidden candidates",
+    );
+  } finally {
+    await client.query("ROLLBACK").catch(() => undefined);
+    client.release();
+    await runtime.end();
+  }
+};
+export const assertPublicationRoleMemberships = async (
+  databaseUrl: string,
+  migrationAdminRole: string,
+  runtimeRole: string,
+): Promise<void> => {
+  const admin = new Pool({ connectionString: databaseUrl, max: 1 });
+  try {
+    const memberships = await admin.query<{
+      readonly admin_option: boolean;
+      readonly grantor_bootstrap_backed: boolean;
+      readonly grantor_createrole: boolean;
+      readonly grantor_role: string;
+      readonly grantor_superuser: boolean;
+      readonly granted_role: string;
+      readonly inherit_option: boolean;
+      readonly member_role: string;
+      readonly set_option: boolean;
+    }>(
+      `SELECT granted.rolname AS granted_role,
+              member.rolname AS member_role,
+              membership.admin_option,
+              membership.inherit_option,
+              membership.set_option,
+              grantor.rolname AS grantor_role,
+              grantor.rolsuper AS grantor_superuser,
+              grantor.rolcreaterole AS grantor_createrole,
+              EXISTS (
+                SELECT 1
+                  FROM pg_auth_members provisioner_membership
+                  JOIN pg_roles root_grantor
+                    ON root_grantor.oid = provisioner_membership.grantor
+                 WHERE provisioner_membership.roleid = membership.roleid
+                   AND provisioner_membership.member = membership.grantor
+                   AND provisioner_membership.admin_option
+                   AND root_grantor.rolsuper
+              ) AS grantor_bootstrap_backed
+         FROM pg_auth_members membership
+         JOIN pg_roles granted ON granted.oid = membership.roleid
+         JOIN pg_roles member ON member.oid = membership.member
+         JOIN pg_roles grantor ON grantor.oid = membership.grantor
+        WHERE (member.rolname = ANY($1::text[])
+          AND granted.rolname = ANY($2::text[]))
+          OR granted.rolname = 'social_monitor_reader_summary_daily_publication_definer'
+          OR member.rolname = 'social_monitor_reader_summary_daily_publication_definer'
+        ORDER BY granted.rolname, member.rolname, membership.grantor`,
+      [
+        [migrationAdminRole, runtimeRole],
+        [
+          runtimeRole,
+          publicSchemaOwner,
+          "social_monitor_reader_summary_publication_owner",
+          "social_monitor_reader_summary_publication_runtime",
+        ],
+      ],
+    );
+    assertDeepEqual(
+      memberships.rows
+        .map((membership) => ({
+          granted_role: membership.granted_role,
+          member_role: membership.member_role,
+          admin_option: membership.admin_option,
+          inherit_option: membership.inherit_option,
+          set_option: membership.set_option,
+        }))
+        .sort((left, right) =>
+          `${left.granted_role}\0${left.member_role}\0${Number(
+            !left.admin_option,
+          )}\0${Number(!left.inherit_option)}\0${Number(
+            !left.set_option,
+          )}`.localeCompare(
+            `${right.granted_role}\0${right.member_role}\0${Number(
+              !right.admin_option,
+            )}\0${Number(!right.inherit_option)}\0${Number(!right.set_option)}`,
+          ),
+        ),
+      [
+        { granted_role: publicSchemaOwner, member_role: migrationAdminRole, admin_option: true, inherit_option: false, set_option: false },
+        { granted_role: publicSchemaOwner, member_role: migrationAdminRole, admin_option: false, inherit_option: false, set_option: true },
+        { granted_role: "social_monitor_reader_summary_publication_owner", member_role: migrationAdminRole, admin_option: true, inherit_option: false, set_option: false },
+        { granted_role: "social_monitor_reader_summary_publication_owner", member_role: migrationAdminRole, admin_option: false, inherit_option: false, set_option: true },
+        { granted_role: dailyActivationDefiner, member_role: migrationAdminRole, admin_option: true, inherit_option: false, set_option: false },
+        {
+          granted_role: "social_monitor_reader_summary_publication_runtime",
+          member_role: migrationAdminRole,
+          admin_option: true,
+          inherit_option: false,
+          set_option: false,
+        },
+        {
+          granted_role: "social_monitor_reader_summary_publication_runtime",
+          member_role: runtimeRole,
+          admin_option: false,
+          inherit_option: true,
+          set_option: false,
+        },
+        {
+          granted_role: runtimeRole,
+          member_role: migrationAdminRole,
+          admin_option: true,
+          inherit_option: false,
+          set_option: true,
+        },
+      ].sort((left, right) =>
+        `${left.granted_role}\0${left.member_role}\0${Number(
+          !left.admin_option,
+        )}\0${Number(!left.inherit_option)}\0${Number(
+          !left.set_option,
+        )}`.localeCompare(
+          `${right.granted_role}\0${right.member_role}\0${Number(
+            !right.admin_option,
+          )}\0${Number(!right.inherit_option)}\0${Number(!right.set_option)}`,
+        ),
+      ),
+      "publication role memberships must match the exact PostgreSQL 18 boundary",
+    );
+    const schemaOwnerBootstrapGrant = memberships.rows.find(
+      (row) =>
+        row.granted_role === publicSchemaOwner &&
+        row.member_role === migrationAdminRole &&
+        row.grantor_superuser &&
+        row.admin_option &&
+        !row.inherit_option &&
+        !row.set_option,
+    );
+    const schemaOwnerSelfGrant = memberships.rows.find(
+      (row) =>
+        row.granted_role === publicSchemaOwner &&
+        row.member_role === migrationAdminRole &&
+        row.grantor_role === migrationAdminRole &&
+        !row.admin_option &&
+        !row.inherit_option &&
+        row.set_option,
+    );
+    const ownerBootstrapGrant = memberships.rows.find(
+      (row) =>
+        row.granted_role ===
+          "social_monitor_reader_summary_publication_owner" &&
+        row.member_role === migrationAdminRole &&
+        row.grantor_superuser &&
+        row.admin_option &&
+        !row.inherit_option &&
+        !row.set_option,
+    );
+    const ownerSelfGrant = memberships.rows.find(
+      (row) =>
+        row.granted_role ===
+          "social_monitor_reader_summary_publication_owner" &&
+        row.member_role === migrationAdminRole &&
+        row.grantor_role === migrationAdminRole &&
+        !row.admin_option &&
+        !row.inherit_option &&
+        row.set_option,
+    );
+    const definerBootstrapGrant = memberships.rows.find(
+      (row) => row.granted_role === dailyActivationDefiner &&
+        row.member_role === migrationAdminRole && row.grantor_superuser &&
+        row.admin_option && !row.inherit_option && !row.set_option,
+    );
+    const capabilityAdminGrant = memberships.rows.find(
+      (row) =>
+        row.granted_role ===
+          "social_monitor_reader_summary_publication_runtime" &&
+        row.member_role === migrationAdminRole,
+    );
+    const capabilityRuntimeGrant = memberships.rows.find(
+      (row) =>
+        row.granted_role ===
+          "social_monitor_reader_summary_publication_runtime" &&
+        row.member_role === runtimeRole,
+    );
+    const runtimeAdminGrant = memberships.rows.find(
+      (row) =>
+        row.granted_role === runtimeRole &&
+        row.member_role === migrationAdminRole,
+    );
+    assert(
+      schemaOwnerBootstrapGrant !== undefined,
+      "public schema owner bootstrap grant is missing",
+    );
+    assert(
+      schemaOwnerSelfGrant !== undefined,
+      "public schema owner self grant is missing",
+    );
+    assert(
+      ownerBootstrapGrant !== undefined,
+      "publication owner bootstrap grant is missing",
+    );
+    assert(
+      ownerSelfGrant !== undefined,
+      "publication owner self grant is missing",
+    );
+    assert(
+      capabilityAdminGrant !== undefined,
+      "publication capability admin grant is missing",
+    );
+    assert(
+      capabilityRuntimeGrant !== undefined,
+      "publication capability runtime grant is missing",
+    );
+    assert(runtimeAdminGrant !== undefined, "runtime admin grant is missing");
+    assert(
+      schemaOwnerBootstrapGrant.grantor_superuser,
+      "public schema owner admin grant must use a bootstrap superuser",
+    );
+    assert(
+      schemaOwnerSelfGrant.grantor_role === migrationAdminRole,
+      "public schema owner set grant must be issued by the migration admin",
+    );
+    assert(
+      ownerBootstrapGrant.grantor_superuser,
+      "publication owner admin grant must use a bootstrap superuser",
+    );
+    assert(
+      ownerSelfGrant.grantor_role === migrationAdminRole,
+      "publication owner set grant must be issued by the migration admin",
+    );
+    assert(definerBootstrapGrant !== undefined,
+      "daily activation definer must retain only its PG18 bootstrap grant");
+    assert(
+      capabilityAdminGrant.grantor_superuser,
+      "publication capability admin grant must use a bootstrap superuser",
+    );
+    assert(
+      capabilityRuntimeGrant.grantor_role === migrationAdminRole,
+      "runtime capability grant must be issued by the migration admin",
+    );
+    assert(
+      runtimeAdminGrant.grantor_role !== migrationAdminRole &&
+        !runtimeAdminGrant.grantor_superuser &&
+        runtimeAdminGrant.grantor_createrole &&
+        runtimeAdminGrant.grantor_bootstrap_backed,
+      "runtime admin grant must use a bootstrap-backed provisioner",
+    );
+  } finally {
+    await admin.end();
+  }
+};
+export const dropPublicationFixtureDatabaseAndRoles = async (params: {
+  readonly serverAdmin: Pool; readonly databaseName: string;
+  readonly migrationAdminRole: string; readonly runtimeRole: string;
+  readonly ownerRolePreexisting: boolean; readonly capabilityRolePreexisting: boolean;
+  readonly schemaOwnerRolePreexisting: boolean; readonly tenantSystemCapabilityRolePreexisting: boolean; readonly dailyActivationDefinerRolePreexisting: boolean;
+  readonly fixtureDatabaseCreated: boolean; readonly fixtureMigrationAdminRoleCreated: boolean;
+  readonly fixtureRuntimeRoleCreated: boolean; readonly fixtureDailyTerminalRoleCreated?: boolean;
+  readonly fixtureFirstPublicationRoleOwnership?: PublicationFixtureFirstPublicationRoleOwnership;
+  readonly systemRuntimeRole?: string; readonly systemRuntimeRoleCreated?: boolean;
+}): Promise<void> => {
+  if (params.fixtureDatabaseCreated) {
+    await params.serverAdmin.query(`DROP DATABASE ${quoteIdentifier(params.databaseName)} WITH (FORCE)`);
+  }
+  if (params.fixtureFirstPublicationRoleOwnership !== undefined) {
+    assert(params.fixtureDatabaseCreated, "first publication fixture database cleanup is uncertain");
+    await dropPublicationFixtureFirstPublicationRole(params.serverAdmin, params.fixtureFirstPublicationRoleOwnership);
+  }
+  if (params.systemRuntimeRoleCreated === true && params.systemRuntimeRole !== undefined) {
+    await params.serverAdmin.query(`DROP ROLE ${quoteIdentifier(params.systemRuntimeRole)}`);
+  }
+  if (params.fixtureRuntimeRoleCreated) {
+    await params.serverAdmin.query(`DROP ROLE ${quoteIdentifier(params.runtimeRole)}`);
+    await params.serverAdmin.query(`DROP ROLE ${quoteIdentifier(
+      publicationFixtureProvisionerRole(params.runtimeRole))}`);
+  }
+  if (params.fixtureDailyTerminalRoleCreated === true) {
+    await params.serverAdmin.query(`DROP ROLE IF EXISTS ${quoteIdentifier(publicationFixtureDailyTerminalRole)}`);
+  } else if (params.fixtureMigrationAdminRoleCreated) {
+    await params.serverAdmin.query(`DO $fixture$ BEGIN IF to_regrole(
+      ${quoteLiteral(publicationFixtureDailyTerminalRole)}) IS NOT NULL THEN
+      REVOKE ${quoteIdentifier(publicationFixtureDailyTerminalRole)}
+        FROM ${quoteIdentifier(params.migrationAdminRole)}; END IF; END $fixture$`);
+  }
+  if (!params.capabilityRolePreexisting) {
+    await params.serverAdmin.query(`DROP ROLE IF EXISTS social_monitor_reader_summary_publication_runtime`);
+  }
+  if (!params.tenantSystemCapabilityRolePreexisting) {
+    await params.serverAdmin.query(`DROP ROLE IF EXISTS ${tenantSystemCapability}`);
+  }
+  if (!params.dailyActivationDefinerRolePreexisting) await params.serverAdmin.query(`DROP ROLE IF EXISTS ${dailyActivationDefiner}`);
+  if (!params.ownerRolePreexisting) {
+    await params.serverAdmin.query(`DROP ROLE IF EXISTS social_monitor_reader_summary_publication_owner`);
+  }
+  if (!params.schemaOwnerRolePreexisting) {
+    await params.serverAdmin.query(`DROP ROLE IF EXISTS ${publicSchemaOwner}`);
+  }
+  if (params.fixtureMigrationAdminRoleCreated) {
+    await params.serverAdmin.query(`DROP ROLE ${quoteIdentifier(params.migrationAdminRole)}`);
+  }
+};
+const publicationFixtureProvisionerRole = (runtimeRole: string): string => `sm_publication_provisioner_${runtimeRole.slice(-20)}`;
+export function publicationDatabaseUrl(
+  value: string,
+  targetDatabase: string,
+): string {
+  const parsed = postgresUrl(value);
+  parsed.pathname = `/${targetDatabase}`;
+  parsed.searchParams.delete("schema");
+  return parsed.toString();
+}
+export function publicationRuntimeDatabaseUrl(
+  value: string,
+  username: string,
+  password: string,
+): string {
+  const parsed = postgresUrl(value);
+  parsed.username = username;
+  parsed.password = password;
+  return parsed.toString();
+}
+export const quotePostgresIdentifier = (value: string): string =>
+  `"${value.replaceAll('"', '""')}"`;
+export const quotePostgresLiteral = (value: string): string =>
+  `'${value.replaceAll("'", "''")}'`;
+export const assertReaderSummaryPublicationPrivilegeBoundary = async (params: {
+  readonly auditor: PoolClient;
+  readonly runtime: PoolClient;
+  readonly migrationAdminRole: string;
+  readonly runtimeRole: string;
+  readonly artifactIds: readonly [string, string];
+  readonly proofSha256: string;
+}): Promise<void> => {
+  const roles = await params.auditor.query<{
+    readonly owner_login: boolean;
+    readonly owner_superuser: boolean;
+    readonly schema_owner_login: boolean;
+    readonly schema_owner_superuser: boolean;
+    readonly schema_owner_createrole: boolean;
+    readonly migration_admin_superuser: boolean;
+    readonly migration_admin_createrole: boolean;
+    readonly runtime_superuser: boolean;
+    readonly runtime_createrole: boolean;
+    readonly runtime_bypassrls: boolean;
+  }>(
+    `SELECT
+       (SELECT rolcanlogin FROM pg_roles WHERE rolname = $2) AS owner_login,
+       (SELECT rolsuper FROM pg_roles WHERE rolname = $2) AS owner_superuser,
+       (SELECT rolcanlogin FROM pg_roles WHERE rolname = $4)
+         AS schema_owner_login,
+       (SELECT rolsuper FROM pg_roles WHERE rolname = $4)
+         AS schema_owner_superuser,
+       (SELECT rolcreaterole FROM pg_roles WHERE rolname = $4)
+         AS schema_owner_createrole,
+       (SELECT rolsuper FROM pg_roles WHERE rolname = $3)
+         AS migration_admin_superuser,
+       (SELECT rolcreaterole FROM pg_roles WHERE rolname = $3)
+         AS migration_admin_createrole,
+       (SELECT rolsuper FROM pg_roles WHERE rolname = $1)
+         AS runtime_superuser,
+       (SELECT rolcreaterole FROM pg_roles WHERE rolname = $1)
+         AS runtime_createrole,
+       (SELECT rolbypassrls FROM pg_roles WHERE rolname = $1)
+         AS runtime_bypassrls`,
+    [
+      params.runtimeRole,
+      protectedOwner,
+      params.migrationAdminRole,
+      publicSchemaOwner,
+    ],
+  );
+  assertDeepEqual(
+    roles.rows[0],
+    {
+      owner_login: false,
+      owner_superuser: false,
+      schema_owner_login: false,
+      schema_owner_superuser: false,
+      schema_owner_createrole: false,
+      migration_admin_superuser: false,
+      migration_admin_createrole: true,
+      runtime_superuser: false,
+      runtime_createrole: false,
+      runtime_bypassrls: false,
+    },
+    "publication owner and runtime roles must retain least privilege",
+  );
+  const objects = await params.auditor.query<{
+    readonly artifact_owner: string;
+    readonly publication_owner: string;
+    readonly slot_owner: string;
+    readonly function_owner: string;
+    readonly public_schema_owner: string;
+    readonly security_definer: boolean;
+    readonly function_config: readonly string[];
+  }>(
+    `SELECT
+       pg_get_userbyid((SELECT relowner FROM pg_class
+         WHERE oid = 'reader_summary_artifacts'::regclass))
+         AS artifact_owner,
+       pg_get_userbyid((SELECT relowner FROM pg_class
+         WHERE oid = 'reader_summary_publications'::regclass))
+         AS publication_owner,
+       pg_get_userbyid((SELECT relowner FROM pg_class
+         WHERE oid = 'reader_summary_publication_slots'::regclass))
+         AS slot_owner,
+       pg_get_userbyid(proowner) AS function_owner,
+       pg_get_userbyid((SELECT nspowner FROM pg_namespace
+         WHERE nspname = 'public')) AS public_schema_owner,
+       prosecdef AS security_definer,
+       proconfig AS function_config
+     FROM pg_proc
+     WHERE oid = 'publish_reader_summary(jsonb)'::regprocedure`,
+  );
+  assertDeepEqual(
+    objects.rows[0],
+    {
+      artifact_owner: protectedOwner,
+      publication_owner: protectedOwner,
+      slot_owner: protectedOwner,
+      function_owner: protectedOwner,
+      public_schema_owner: publicSchemaOwner,
+      security_definer: true,
+      function_config: ["search_path=pg_catalog, public, pg_temp"],
+    },
+    "protected tables and SECURITY DEFINER function must have the safe owner and path",
+  );
+  const identity = await params.runtime.query<{
+    readonly current_user: string;
+    readonly can_assume_owner: boolean;
+    readonly can_assume_schema_owner: boolean;
+    readonly can_create_public: boolean;
+    readonly can_publish: boolean;
+    readonly can_insert_ledger: boolean;
+    readonly can_reference_artifacts: boolean;
+    readonly can_trigger_artifacts: boolean;
+    readonly can_update_slot: boolean;
+    readonly can_truncate_artifacts: boolean;
+  }>(
+    `SELECT current_user,
+       pg_has_role(current_user, $1, 'MEMBER') AS can_assume_owner,
+       pg_has_role(current_user, $2, 'MEMBER')
+         AS can_assume_schema_owner,
+       has_schema_privilege(current_user, 'public', 'CREATE')
+         AS can_create_public,
+       has_function_privilege(current_user,
+         'publish_reader_summary(jsonb)', 'EXECUTE') AS can_publish,
+       has_table_privilege(current_user,
+         'reader_summary_publications', 'INSERT') AS can_insert_ledger,
+       has_table_privilege(current_user,
+         'reader_summary_publication_slots', 'UPDATE') AS can_update_slot,
+       has_table_privilege(current_user,
+         'reader_summary_artifacts', 'REFERENCES') AS can_reference_artifacts,
+       has_table_privilege(current_user,
+         'reader_summary_artifacts', 'TRIGGER') AS can_trigger_artifacts,
+       has_table_privilege(current_user,
+         'reader_summary_artifacts', 'TRUNCATE') AS can_truncate_artifacts`,
+    [protectedOwner, publicSchemaOwner],
+  );
+  assertDeepEqual(
+    identity.rows[0],
+    {
+      current_user: params.runtimeRole,
+      can_assume_owner: false,
+      can_assume_schema_owner: false,
+      can_create_public: false,
+      can_publish: true,
+      can_insert_ledger: false,
+      can_update_slot: false,
+      can_reference_artifacts: false,
+      can_trigger_artifacts: false,
+      can_truncate_artifacts: false,
+    },
+    "runtime must receive only SELECT/candidate writes and publisher EXECUTE",
+  );
+  await params.runtime.query(
+    `SELECT set_config(
+       'social_monitor.reader_summary_publication_proof_sha256', $1, false
+     )`,
+    [params.proofSha256],
+  );
+  for (const directMutation of directPublicationMutations(
+    params.runtime,
+    params.artifactIds[1],
+  )) {
+    await assertRejectsContaining(
+      directMutation,
+      "permission denied",
+      "runtime direct publication mutation must be denied by PostgreSQL ACLs",
+    );
+  }
+  for (const artifactId of params.artifactIds) {
+    await assertRejectsContaining(
+      () =>
+        params.runtime.query(
+          `UPDATE reader_summary_artifacts
+              SET status = 'SUPERSEDED'
+            WHERE id = $1`,
+          [artifactId],
+        ),
+      "published reader summary artifact is immutable",
+      "runtime must not directly supersede a COMPLETED or NO_SIGNAL publication",
+    );
+  }
+  await assertRejectsContaining(
+    () => params.runtime.query(`SET ROLE ${protectedOwner}`),
+    "permission denied",
+    "runtime must not assume the protected owner role",
+  );
+  await assertRejectsContaining(
+    () => params.runtime.query(`SET ROLE ${publicSchemaOwner}`),
+    "permission denied",
+    "runtime must not assume the public schema owner role",
+  );
+  await assertRejectsContaining(
+    () =>
+      params.runtime.query(
+        "ALTER TABLE reader_summary_artifacts DISABLE TRIGGER reader_summary_artifacts_published_immutable",
+      ),
+    "must be owner",
+    "runtime must not disable the publication immutability trigger",
+  );
+  const durable = await params.runtime.query<{
+    readonly current_publication_id: string;
+    readonly status: string;
+  }>(
+    `SELECT slot.current_publication_id, artifact.status::text AS status
+       FROM reader_summary_publication_slots slot
+       JOIN reader_summary_artifacts artifact
+         ON artifact.id = slot.current_publication_id
+      WHERE slot.current_publication_id = ANY($1::uuid[])
+      ORDER BY artifact.status::text`,
+    [params.artifactIds],
+  );
+  assertDeepEqual(
+    durable.rows,
+    [
+      { current_publication_id: params.artifactIds[1], status: "COMPLETED" },
+      { current_publication_id: params.artifactIds[0], status: "NO_SIGNAL" },
+    ],
+    "forged GUC and direct mutations must not hide the active publication",
+  );
+};
+const directPublicationMutations = (
+  runtime: PoolClient,
+  artifactId: string,
+): readonly (() => Promise<unknown>)[] => [
+  () =>
+    runtime.query(
+      `UPDATE reader_summary_publication_slots
+          SET current_publication_id = NULL
+        WHERE current_publication_id = $1`,
+      [artifactId],
+    ),
+  () =>
+    runtime.query(
+      `UPDATE reader_summary_publication_slots
+          SET current_publication_id = current_publication_id
+        WHERE current_publication_id = $1`,
+      [artifactId],
+    ),
+  () =>
+    runtime.query(
+      `DELETE FROM reader_summary_publication_slots
+        WHERE current_publication_id = $1`,
+      [artifactId],
+    ),
+  () =>
+    runtime.query(
+      `UPDATE reader_summary_publications SET published_at = published_at
+        WHERE id = $1`,
+      [artifactId],
+    ),
+  () => runtime.query(`TRUNCATE TABLE reader_summary_publications`),
+  () => runtime.query(`TRUNCATE TABLE reader_summary_publication_slots`),
+];
+const postgresUrl = (value: string): URL => {
+  const parsed = new URL(value);
+  if (parsed.protocol !== "postgresql:" && parsed.protocol !== "postgres:") {
+    throw new Error(
+      "READER_SUMMARY_PUBLICATION_TEST_ADMIN_DATABASE_URL must be PostgreSQL",
+    );
+  }
+  return parsed;
+};
+const quoteIdentifier = quotePostgresIdentifier;
+const quoteLiteral = quotePostgresLiteral;
+const assertRejectsContaining = async (
+  operation: () => Promise<unknown>,
+  expectedMessage: string,
+  assertionMessage: string,
+): Promise<void> => {
+  try {
+    await operation();
+  } catch (error: unknown) {
+    assert(
+      error instanceof Error && error.message.includes(expectedMessage),
+      assertionMessage,
+    );
+    return;
+  }
+  throw new Error(assertionMessage);
+};
+const assertDeepEqual = (
+  actual: unknown,
+  expected: unknown,
+  message: string,
+): void => {
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(
+      `${message}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
+    );
+  }
+};
+const assert: (condition: boolean, message: string) => asserts condition = (
+  condition,
+  message,
+) => {
+  if (!condition) {
+    throw new Error(message);
+  }
+};

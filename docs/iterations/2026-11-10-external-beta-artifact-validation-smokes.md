@@ -1,0 +1,7 @@
+## External-beta artifact-validation smokes — scoped Clean Architecture extraction (2026-11-10)
+
+Goal: relocate exactly **106 unique original nonblank lines** across ten contiguous, cohesive helper functions into one injected factory. This is relocation, not net deletion. Keep original bodies with only two-space nesting; the checker still owns fixtures, violations and policy. Strict checker source cap **1474 → 1376**. No production code, SSH, auth, deployments, #620 or #665 changes.
+
+Three independent preimplementation critique lenses: (1) SRP / dependency ownership: inject the already-owned contract, child process capability, fixed timeout, release image digest function and redacted-error callback, no new singleton or process owner; (2) behavior and security: preserve job IDs, invocation-time PATH allowlist, exact --validate-artifacts / --require-env flags, optional contract-smoke flag, bounded 300-second execution and exit/error sanitizer; (3) regression / scope: deterministic injected child-process tests for every job/environment, failure paths, one factory binding and original source cap. Preserve original security/staging tests; do not replace or skip gates.
+
+Required: Draft 3-job CI and API image, independent code review, Ready exact-head native 20-job E2E, expected-head guarded squash merge, and postmerge main 20/20. Credit original 106 lines only after all gates genuinely pass.

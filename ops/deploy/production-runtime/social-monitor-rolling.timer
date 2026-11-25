@@ -1,0 +1,12 @@
+[Unit]
+Description=Refresh Social Monitor collection, metrics and summary every four hours
+
+[Timer]
+OnCalendar=*-*-* 04,08,12,16,20:15:00 UTC
+AccuracySec=1min
+RandomizedDelaySec=0
+Persistent=true
+Unit=social-monitor-rolling.service
+
+[Install]
+WantedBy=timers.target

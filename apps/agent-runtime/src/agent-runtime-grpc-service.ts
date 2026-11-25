@@ -1,0 +1,305 @@
+import {
+  status,
+  type sendUnaryData,
+  type ServerUnaryCall,
+} from "@grpc/grpc-js";
+import { createHash, timingSafeEqual } from "node:crypto";
+import {
+  AgentRuntimeHealthStatus,
+  AgentRuntimeProvider,
+  AgentRuntimeSelectedOutputKind,
+  type AgentRuntimeHealthRequest,
+  type AgentRuntimeHealthResponse,
+  type AgentRuntimeServiceServer,
+  type AgentRuntimeTaskRequest,
+  type AgentRuntimeTaskResponse,
+  AgentRuntimeTaskStatus,
+} from "@social-monitor/contracts/generated/grpc/agent_runtime/v1/agent_runtime";
+
+import type {
+  AgentRuntimeExecutionRequest,
+  AgentRuntimeExecutionResult,
+  AgentRuntimeExecutorPort,
+} from "./agent-runtime-executor.port";
+import { admitStrictCwd, admitsStrictScope, type StrictGrpcAdmission } from "./strict-grpc-admission";
+
+export type AgentRuntimeGrpcServiceOptions = {
+  readonly serviceToken?: string;
+  readonly strictAdmission?: StrictGrpcAdmission;
+};
+
+const schemaVersion = 1;
+
+export const createAgentRuntimeGrpcService = (
+  executor: AgentRuntimeExecutorPort,
+  options: AgentRuntimeGrpcServiceOptions,
+): AgentRuntimeServiceServer => ({
+  runAgentTask(
+    call: ServerUnaryCall<AgentRuntimeTaskRequest, AgentRuntimeTaskResponse>,
+    callback: sendUnaryData<AgentRuntimeTaskResponse>,
+  ): void {
+    if (!isAuthorized(call, options)) {
+      callback(serviceError(status.UNAUTHENTICATED, "Unauthorized"), null);
+      return;
+    }
+    if (options.strictAdmission !== undefined &&
+        !admitsStrictScope(call.request.tenantId, call.request.workspaceId, options.strictAdmission)) {
+      callback(serviceError(status.UNAUTHENTICATED, "Unauthorized"), null);
+      return;
+    }
+
+    let request: AgentRuntimeExecutionRequest;
+    try {
+      request = toExecutionRequest(call.request);
+      if (options.strictAdmission !== undefined) {
+        request = { ...request, cwd: admitStrictCwd(call.request.cwd, options.strictAdmission) };
+      }
+    } catch (error) {
+      callback(
+        serviceError(
+          status.INVALID_ARGUMENT,
+          options.strictAdmission !== undefined
+            ? "Invalid agent task request or untrusted cwd"
+            : error instanceof Error ? error.message : "Invalid agent task request",
+        ),
+        null,
+      );
+      return;
+    }
+
+    if (call.cancelled) {
+      callback(serviceError(status.CANCELLED, "Task cancelled before execution"), null);
+      return;
+    }
+    void executor.execute(request).then(
+      (result) => {
+        if (!call.cancelled) callback(null, toGrpcTaskResponse(result));
+      },
+      (error) => {
+        if (call.cancelled) return;
+        callback(
+          serviceError(
+            status.UNAVAILABLE,
+            error instanceof Error
+              ? safeErrorMessage(error.message)
+              : "Agent runtime task failed",
+          ),
+          null,
+        );
+      },
+    );
+  },
+
+  checkHealth(
+    call: ServerUnaryCall<
+      AgentRuntimeHealthRequest,
+      AgentRuntimeHealthResponse
+    >,
+    callback: sendUnaryData<AgentRuntimeHealthResponse>,
+  ): void {
+    if (!isAuthorized(call, options)) {
+      callback(serviceError(status.UNAUTHENTICATED, "Unauthorized"), null);
+      return;
+    }
+
+    void executor.checkHealth().then(
+      (health) =>
+        callback(null, {
+          status: health.healthy
+            ? AgentRuntimeHealthStatus.AGENT_RUNTIME_HEALTH_STATUS_SERVING
+            : AgentRuntimeHealthStatus.AGENT_RUNTIME_HEALTH_STATUS_DEGRADED,
+          runtimeEngine: health.runtimeEngine,
+          runtimeVersion: health.runtimeVersion,
+          launcherSha256: health.launcherSha256 ?? "",
+          warnings: health.warnings.map((warning) => ({
+            code: warning.code,
+            message: warning.message,
+          })),
+        }),
+      () =>
+        callback(null, {
+          status:
+            AgentRuntimeHealthStatus.AGENT_RUNTIME_HEALTH_STATUS_NOT_SERVING,
+          runtimeEngine: "subscription-runtime-cli",
+          runtimeVersion: "unknown",
+          launcherSha256: "",
+          warnings: [
+            {
+              code: "agent_runtime.health_failed",
+              message: "Agent runtime health check failed",
+            },
+          ],
+        }),
+    );
+  },
+});
+
+const toExecutionRequest = (
+  request: AgentRuntimeTaskRequest,
+): AgentRuntimeExecutionRequest => {
+  if (request.schemaVersion !== schemaVersion) {
+    throw new Error("Unsupported agent runtime schema version");
+  }
+  if (request.requestId.trim().length === 0) {
+    throw new Error("Agent runtime request_id must be non-empty");
+  }
+  if (request.tenantId.trim().length === 0) {
+    throw new Error("Agent runtime tenant_id must be non-empty");
+  }
+  if (request.workspaceId.trim().length === 0) {
+    throw new Error("Agent runtime workspace_id must be non-empty");
+  }
+  if (request.correlationId.trim().length === 0) {
+    throw new Error("Agent runtime correlation_id must be non-empty");
+  }
+  if (request.prompt.trim().length === 0) {
+    throw new Error("Agent runtime prompt must be non-empty");
+  }
+  if (request.timeoutMs < 1) {
+    throw new Error("Agent runtime timeout_ms must be positive");
+  }
+
+  return {
+    requestId: request.requestId,
+    tenantId: request.tenantId,
+    workspaceId: request.workspaceId,
+    correlationId: request.correlationId,
+    provider: fromGrpcProvider(request.provider),
+    providerInstanceId: optionalString(request.providerInstanceId),
+    purpose: nonEmptyOrFallback(request.purpose, "social_monitor.agent_task"),
+    systemPrompt: request.systemPrompt,
+    prompt: request.prompt,
+    outputSchemaJson: request.outputSchemaJson,
+    controlsJson: nonEmptyOrFallback(request.controlsJson, "{}"),
+    timeoutMs: request.timeoutMs,
+    cwd: optionalString(request.cwd),
+    metadata: request.metadata,
+  };
+};
+
+const toGrpcTaskResponse = (
+  result: AgentRuntimeExecutionResult,
+): AgentRuntimeTaskResponse => ({
+  schemaVersion,
+  status: toGrpcTaskStatus(result.status),
+  outputText: result.outputText ?? "",
+  structuredOutputJson:
+    result.structuredOutput === undefined
+      ? ""
+      : JSON.stringify(result.structuredOutput),
+  warnings: result.warnings.map((warning) => ({
+    code: warning.code,
+    message: warning.message,
+  })),
+  usage:
+    result.usage === undefined
+      ? undefined
+      : {
+          inputTokens: result.usage.inputTokens,
+          outputTokens: result.usage.outputTokens,
+          totalTokens: result.usage.totalTokens,
+          estimatedCostUsd: result.usage.estimatedCostUsd,
+        },
+  failure:
+    result.failure === undefined
+      ? undefined
+      : {
+          code: result.failure.code,
+          safeMessage: result.failure.safeMessage,
+          retryable: result.failure.retryable,
+          reconnectRequired: result.failure.reconnectRequired,
+          causeCategory: result.failure.causeCategory,
+          details: result.failure.details,
+        },
+  executionAttestation:
+    result.executionAttestation === undefined
+      ? undefined
+      : {
+          schemaVersion: result.executionAttestation.schemaVersion,
+          requestId: result.executionAttestation.requestId,
+          purpose: result.executionAttestation.purpose,
+          canonicalRequestSha256:
+            result.executionAttestation.canonicalRequestSha256,
+          provider:
+            result.executionAttestation.provider === "codex"
+              ? AgentRuntimeProvider.AGENT_RUNTIME_PROVIDER_CODEX
+              : AgentRuntimeProvider.AGENT_RUNTIME_PROVIDER_CLAUDE,
+          model: result.executionAttestation.model,
+          reasoningEffort: result.executionAttestation.reasoningEffort,
+          runtimeEngine: result.executionAttestation.runtimeEngine,
+          runtimePackageVersion:
+            result.executionAttestation.runtimePackageVersion,
+          launcherSha256: result.executionAttestation.launcherSha256,
+          selectedOutputKind:
+            result.executionAttestation.selectedOutputKind ===
+            "structured_output"
+              ? AgentRuntimeSelectedOutputKind.AGENT_RUNTIME_SELECTED_OUTPUT_KIND_STRUCTURED_OUTPUT
+              : AgentRuntimeSelectedOutputKind.AGENT_RUNTIME_SELECTED_OUTPUT_KIND_OUTPUT_TEXT,
+          selectedOutputSha256:
+            result.executionAttestation.selectedOutputSha256,
+        },
+  durationMs: result.durationMs,
+});
+
+const fromGrpcProvider = (
+  provider: AgentRuntimeProvider,
+): AgentRuntimeExecutionRequest["provider"] => {
+  switch (provider) {
+    case AgentRuntimeProvider.AGENT_RUNTIME_PROVIDER_CODEX:
+      return "codex";
+    case AgentRuntimeProvider.AGENT_RUNTIME_PROVIDER_CLAUDE:
+      return "claude";
+    case AgentRuntimeProvider.AGENT_RUNTIME_PROVIDER_UNSPECIFIED:
+    case AgentRuntimeProvider.UNRECOGNIZED:
+      throw new Error("Agent runtime provider must be codex or claude");
+  }
+};
+
+const toGrpcTaskStatus = (
+  value: AgentRuntimeExecutionResult["status"],
+): AgentRuntimeTaskStatus => {
+  switch (value) {
+    case "completed":
+      return AgentRuntimeTaskStatus.AGENT_RUNTIME_TASK_STATUS_COMPLETED;
+    case "waiting_for_input":
+      return AgentRuntimeTaskStatus.AGENT_RUNTIME_TASK_STATUS_WAITING_FOR_INPUT;
+    case "failed":
+      return AgentRuntimeTaskStatus.AGENT_RUNTIME_TASK_STATUS_FAILED;
+  }
+};
+
+const isAuthorized = (
+  call: ServerUnaryCall<unknown, unknown>,
+  options: AgentRuntimeGrpcServiceOptions,
+): boolean => {
+  const serviceToken = options.serviceToken;
+  if (serviceToken === undefined) return options.strictAdmission === undefined;
+  const authorization = call.metadata.get("authorization");
+  const candidate = authorization[0];
+  if (authorization.length !== 1 || typeof candidate !== "string") return false;
+  const expected = createHash("sha256").update(`Bearer ${serviceToken}`).digest();
+  const received = createHash("sha256").update(candidate).digest();
+  return timingSafeEqual(expected, received);
+};
+
+const serviceError = (
+  code: status,
+  message: string,
+): Error & { code: status } => Object.assign(new Error(message), { code });
+
+const optionalString = (value: string): string | undefined => {
+  const trimmed = value.trim();
+
+  return trimmed.length === 0 ? undefined : trimmed;
+};
+
+const nonEmptyOrFallback = (value: string, fallback: string): string => {
+  const trimmed = value.trim();
+
+  return trimmed.length === 0 ? fallback : trimmed;
+};
+
+const safeErrorMessage = (message: string): string =>
+  message.trim().length === 0
+    ? "Agent runtime task failed"
+    : message.slice(0, 200);

@@ -1,0 +1,376 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:social_monitor_design_system/social_monitor_design_system.dart';
+import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
+import 'package:social_monitor_summaries/src/application/contracts/reader_source_launcher.dart';
+import 'package:social_monitor_summaries/src/application/contracts/summary_review_catalog.dart';
+import 'package:social_monitor_summaries/src/application/queries/load_workspace_summary_query.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/load_published_summary_use_case.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_summary_history_use_case.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/load_workspace_summary_use_case.dart';
+import 'package:social_monitor_summaries/src/application/use_cases/open_reader_source_use_case.dart';
+import 'package:social_monitor_summaries/src/domain/aggregates/reader_summary.dart';
+import 'package:social_monitor_summaries/src/domain/value_objects/reader_captured_source.dart';
+import 'package:social_monitor_summaries/src/domain/value_objects/reader_posts_page.dart';
+import 'package:social_monitor_summaries/src/domain/value_objects/top_posts_sort_order.dart';
+import 'package:social_monitor_summaries/src/infrastructure/mappers/summary_mapper.dart';
+import 'package:social_monitor_summaries/src/presentation/components/reader_summary_brief_surface.dart';
+import 'package:social_monitor_summaries/src/presentation/components/reader_summary_unpublished_posts_sliver.dart';
+import 'package:social_monitor_summaries/src/presentation/components/reader_summary_view.dart';
+import 'package:social_monitor_summaries/src/presentation/pages/published_summary_page.dart';
+import 'package:social_monitor_summaries/src/presentation/stores/published_summary_store.dart';
+
+import '../../support/deferred_summary_review_catalog.dart';
+import '../../support/reader_posts_browse_test_catalog.dart';
+import '../../support/summaries_test_fixtures.dart';
+import '../../support/top_posts_test_fixtures.dart';
+
+void main() {
+  testWidgets('guest reuses summary view without review mutations', (
+    tester,
+  ) async {
+    final summary = const SummaryMapper().readerSummaryToDomain(
+      githubTrendingReaderSummaryApiDto(),
+    );
+    final catalog = DeferredSummaryReviewCatalog(
+      const [],
+      workspaceSummarySnapshot: WorkspaceSummarySnapshot(current: summary),
+    );
+    final store = PublishedSummaryStore(
+      scope: summaryWorkspaceScope,
+      loadLatest: LoadWorkspaceSummaryUseCase(catalog),
+      loadHistory: LoadWorkspaceSummaryHistoryUseCase(catalog),
+      loadPublished: LoadPublishedSummaryUseCase(catalog),
+      openReaderSource: const OpenReaderSourceUseCase(_SourceLauncher()),
+    );
+    addTearDown(store.dispose);
+    final theme = AppTheme.light();
+    await tester.pumpWidget(
+      AppHeadlessScope(
+        theme: theme,
+        appBuilder: (overlayBuilder) => MaterialApp(
+          theme: theme,
+          builder: overlayBuilder,
+          home: Scaffold(body: PublishedSummaryPage(store: store)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AppWebFindInPage), findsOneWidget);
+    if (kIsWeb) {
+      await _sendFindShortcut(tester);
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+    }
+    expect(
+      find.byKey(const ValueKey('published-reader-summary-view')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('workspace-summary-header-band')),
+      findsOneWidget,
+    );
+    expect(find.byType(ReaderSummaryView), findsOneWidget);
+    expect(
+      find.textContaining('Collected through 2026-06-26 18:58 UTC'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('next update in'), findsNothing);
+    expect(find.byKey(const ValueKey('open-weekly-summary')), findsNothing);
+    expect(find.text('Week'), findsOneWidget);
+
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -1200));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ReaderSummaryTopPostsSliver), findsNothing);
+    expect(find.text('Topic recommendations'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('workspace-summary-toolbar-generate')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('reader-summary-top-post-rating-1')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('summary and top posts share browser-like copy behavior', (
+    tester,
+  ) async {
+    String? clipboardText;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+          if (call.method == 'Clipboard.setData') {
+            clipboardText =
+                (call.arguments as Map<Object?, Object?>)['text'] as String?;
+          }
+          return null;
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+
+    final summary = const SummaryMapper().readerSummaryToDomain(
+      readerSummaryApiDto(),
+    );
+    final catalog = DeferredSummaryReviewCatalog(
+      const [],
+      workspaceSummarySnapshot: WorkspaceSummarySnapshot(current: summary),
+    );
+    final store = PublishedSummaryStore(
+      scope: summaryWorkspaceScope,
+      loadLatest: LoadWorkspaceSummaryUseCase(catalog),
+      loadHistory: LoadWorkspaceSummaryHistoryUseCase(catalog),
+      loadPublished: LoadPublishedSummaryUseCase(catalog),
+      openReaderSource: const OpenReaderSourceUseCase(_SourceLauncher()),
+      summaryId: summary.id,
+    );
+    addTearDown(store.dispose);
+
+    final theme = AppTheme.light();
+    await tester.pumpWidget(
+      AppHeadlessScope(
+        theme: theme,
+        appBuilder: (overlayBuilder) => MaterialApp(
+          theme: theme,
+          builder: overlayBuilder,
+          home: SelectionArea(
+            child: Scaffold(body: PublishedSummaryPage(store: store)),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SelectionArea), findsOneWidget);
+    await _selectAndCopy(tester, find.text('AI workspace summary').first, 3);
+    expect(clipboardText, 'workspace');
+
+    final topPost = find.descendant(
+      of: find.byType(ReaderSummaryTopPostsSliver),
+      matching: find.text('AI coding tools'),
+    );
+    final scrollView = find.byKey(
+      const PageStorageKey<String>('published-summary-scroll-view'),
+    );
+    for (
+      var attempt = 0;
+      attempt < 12 && topPost.evaluate().isEmpty;
+      attempt++
+    ) {
+      await tester.drag(scrollView, const Offset(0, -500));
+      await tester.pumpAndSettle();
+    }
+    expect(topPost, findsOneWidget);
+    await tester.ensureVisible(topPost);
+    await _selectAndCopy(tester, topPost, 4);
+    expect(clipboardText, 'coding');
+  });
+  testWidgets('failed publication still offers source posts and retry', (
+    tester,
+  ) async {
+    final catalog = _FailingPublicSummaryCatalog();
+    final browseCatalog = ControlledReaderPostCatalog();
+    final browseStore = browseCatalog.createStore();
+    addTearDown(browseStore.dispose);
+    final store = PublishedSummaryStore(
+      scope: summaryWorkspaceScope,
+      loadLatest: LoadWorkspaceSummaryUseCase(catalog),
+      loadHistory: LoadWorkspaceSummaryHistoryUseCase(catalog),
+      loadPublished: LoadPublishedSummaryUseCase(catalog),
+      openReaderSource: const OpenReaderSourceUseCase(_SourceLauncher()),
+      allowUnpublishedDays: true,
+    );
+    addTearDown(store.dispose);
+    final theme = AppTheme.light();
+    await tester.pumpWidget(
+      AppHeadlessScope(
+        theme: theme,
+        appBuilder: (overlayBuilder) => MaterialApp(
+          theme: theme,
+          builder: overlayBuilder,
+          home: Scaffold(
+            body: PublishedSummaryPage(
+              store: store,
+              readerPostsBrowseStore: browseStore,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(store.state, isA<FailureViewState<ReaderSummary>>());
+    expect(find.text('Summary unavailable'), findsOneWidget);
+    expect(find.textContaining('Latest publication unavailable'), findsOneWidget);
+    expect(find.text('Retry'), findsOneWidget);
+    expect(find.byType(ReaderSummaryUnpublishedPostsSliver), findsOneWidget);
+    expect(browseCatalog.queries, hasLength(1));
+    browseCatalog.responses.single.complete(
+      Result.success(const ReaderPostsPage(
+        items: [],
+        total: 0,
+        providerKeys: [],
+      )),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('unpublished public day shows original posts instead of article', (
+    tester,
+  ) async {
+    final catalog = DeferredSummaryReviewCatalog(const []);
+    final browseCatalog = ControlledReaderPostCatalog();
+    final browseStore = browseCatalog.createStore();
+    addTearDown(browseStore.dispose);
+    final store = PublishedSummaryStore(
+      scope: summaryWorkspaceScope,
+      loadLatest: LoadWorkspaceSummaryUseCase(catalog),
+      loadHistory: LoadWorkspaceSummaryHistoryUseCase(catalog),
+      loadPublished: LoadPublishedSummaryUseCase(catalog),
+      openReaderSource: const OpenReaderSourceUseCase(_SourceLauncher()),
+      allowUnpublishedDays: true,
+    );
+    addTearDown(store.dispose);
+    final theme = AppTheme.light();
+    await tester.pumpWidget(
+      AppHeadlessScope(
+        theme: theme,
+        appBuilder: (overlayBuilder) => MaterialApp(
+          theme: theme,
+          builder: overlayBuilder,
+          home: Scaffold(
+            body: PublishedSummaryPage(
+              store: store,
+              readerPostsBrowseStore: browseStore,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(browseCatalog.queries, hasLength(1));
+    expect(
+      browseCatalog.queries.single.order,
+      TopPostsSortOrder.engagement,
+    );
+    browseCatalog.responses.single.complete(
+      Result.success(
+        ReaderPostsPage(
+          items: [
+            topPostFixture(
+              title: 'Generated title must not appear',
+              summary: 'Generated description must not appear',
+              storyClusterId: 'source:public-unpublished',
+              providerKey: 'x-twitter',
+              capturedSource: const ReaderCapturedSource(
+                title: 'Generated title must not appear',
+                body: 'Original source post on an unpublished day',
+                captureAvailability: ReaderCaptureAvailability.available,
+                reviewAvailability: ReaderSourceReviewAvailability.bodyPresent,
+              ),
+            ),
+          ],
+          total: 1,
+          providerKeys: const ['x-twitter'],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('No AI summary for this day'), findsOneWidget);
+    expect(find.text('Top posts by likes'), findsOneWidget);
+    expect(
+      find.text('Original source post on an unpublished day'),
+      findsOneWidget,
+    );
+    expect(find.text('Generated title must not appear'), findsNothing);
+    expect(find.text('Generated description must not appear'), findsNothing);
+    expect(find.byType(ReaderSummaryView), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+}
+
+Future<void> _selectAndCopy(
+  WidgetTester tester,
+  Finder text,
+  int offset,
+) async {
+  final target = text.first;
+  final paragraph = tester.renderObject<RenderParagraph>(
+    find.descendant(of: target, matching: find.byType(RichText)).first,
+  );
+  final gesture = await tester.startGesture(
+    _textOffsetToPosition(paragraph, offset),
+  );
+  addTearDown(gesture.removePointer);
+  await tester.pump(const Duration(milliseconds: 500));
+  await gesture.up();
+  await tester.pump();
+  expect(paragraph.selections, isNotEmpty);
+  expect(paragraph.selections.single.isCollapsed, isFalse);
+
+  final platform = Theme.of(tester.element(target)).platform;
+  final modifier = platform == TargetPlatform.macOS
+      ? LogicalKeyboardKey.metaLeft
+      : LogicalKeyboardKey.controlLeft;
+  await tester.sendKeyDownEvent(modifier);
+  await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
+  await tester.sendKeyUpEvent(modifier);
+  await tester.pump();
+}
+
+Offset _textOffsetToPosition(RenderParagraph paragraph, int offset) {
+  const caret = Rect.fromLTWH(0, 0, 2, 20);
+  final localOffset =
+      paragraph.getOffsetForCaret(TextPosition(offset: offset), caret) +
+      Offset(0, paragraph.preferredLineHeight);
+  return paragraph.localToGlobal(localOffset) + const Offset(0, -2);
+}
+
+Future<void> _sendFindShortcut(WidgetTester tester) async {
+  final modifier =
+      defaultTargetPlatform == TargetPlatform.macOS ||
+          defaultTargetPlatform == TargetPlatform.iOS
+      ? LogicalKeyboardKey.metaLeft
+      : LogicalKeyboardKey.controlLeft;
+  await tester.sendKeyDownEvent(modifier);
+  await tester.sendKeyEvent(LogicalKeyboardKey.keyF);
+  await tester.sendKeyUpEvent(modifier);
+}
+
+final class _FailingPublicSummaryCatalog extends Fake
+    implements SummaryReviewCatalog {
+  @override
+  Future<Result<WorkspaceSummarySnapshot>> loadWorkspaceSummary(
+    LoadWorkspaceSummaryQuery query,
+  ) async => const Result.failure(
+    UnexpectedFailure(message: 'Latest publication unavailable'),
+  );
+
+  @override
+  Future<Result<WorkspaceSummarySnapshot>> loadWorkspaceSummaryHistory(
+    LoadWorkspaceSummaryQuery query,
+  ) async => const Result.failure(
+    UnexpectedFailure(message: 'Publication history unavailable'),
+  );
+}
+
+final class _SourceLauncher implements ReaderSourceLauncher {
+  const _SourceLauncher();
+
+  @override
+  Future<Result<Unit>> open(Uri uri) async => const Result.success(Unit.value);
+}

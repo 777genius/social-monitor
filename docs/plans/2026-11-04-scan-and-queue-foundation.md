@@ -1,0 +1,563 @@
+# Scan admission and queue delivery foundation
+
+## Goal and baseline
+
+Refactor the existing scan-to-worker path so new providers and worker flows cannot
+silently create a second admission policy, bypass transactional dispatch, or lose
+queue ownership. Keep the modular monolith, existing bounded contexts and public
+behavior. This is a substantial change across production code, composition,
+fixtures and workflow tests; 15–25k changed lines are acceptable when justified by
+that work, not a completion quota.
+
+Research baseline: `e5442293fc6d5de6fc2eaae93a6dfade534bdf26` on `main`.
+Research and independent critics: GPT-6 Astra with ultra reasoning.
+
+The October 30/31 reliability work and PRs #614–#616 are already merged. Their
+original fault tables are historical evidence, not new findings. Preserve atomic
+interest/source-binding writes, command-outbox leases, channel-generation fencing,
+delivery execution ownership, URL safeguards and existing runtime selectors.
+
+Open feature work stays separate: #613/#617 own daily editorial generation,
+#597 owns X collector acquisition, #391 owns Nomad and #129 owns find-in-page.
+Complete changed-file inventories show no overlap with the worker queue readers,
+monitoring policy or platform queue files in this plan. Summary **transport** is
+included because it repeats the same demonstrated queue fault; summary content,
+ranking, publication authority, DTOs and frontend are outside this work.
+
+## Verified findings
+
+| Priority | Current finding | Evidence and consequence |
+| --- | --- | --- |
+| P1 | Optional scan dispatch leaves an unsafe exported use-case path | With `RequestScanUseCase` constructed without `ScanDispatchPort`, a queue failure leaves a requested job and event. Retry with the same idempotency key reports success without another enqueue. Production Nest composition already supplies the safe adapter; this is an application/composition invariant gap, not a claimed deployed incident. |
+| P1 | In-memory command readers do not implement rejection semantics | Scan, delivery and summary readers destructively drain the publisher, then implement both settlement methods as no-ops. `nack({requeue:true})` produces zero redeliveries, so local workflow tests cannot prove production recovery. |
+| P1 | RabbitMQ partial acquisition can strand accepted deliveries | A valid first `get` followed by a failing second `get` rejects the whole drain with zero releases of the first message. The same pattern exists in command and summary-ready event readers. |
+| P1 | Worker settlement failure can abandon the rest of a batch | A first handler/nack failure exits a delivery loop before later acquired messages are processed or released. Handler failures and broker acknowledgment failures share a catch branch, allowing transport uncertainty to become a terminal business rejection. |
+| P2 | Admission policy is duplicated across command and read paths | Manual request, scheduled scans and source-binding health independently combine cadence, freshness, rate limiting and provider failure history. Failure classification is reached through a presentation view. New provider rules can drift between these paths. |
+| P2 | Persistence readiness discovery depends on its own declarations | An imported provider omitted from `adapterSourceFiles` is invisible. Even a declared provider's `Noop*Adapter` is invisible to the separate module-only noop scan. Both false negatives reproduce with valid isolated fixtures. |
+
+Baseline focused monitoring suites: 59 tests pass in request, scheduling, health
+and direct-dispatch suites. Baseline architecture gate: 28 negative/positive
+fixture tests pass. Existing green checks therefore do not cover these failures.
+
+## Scope and non-goals
+
+In scope: monitoring admission/domain policy, mandatory existing scan dispatch,
+all affected constructors and deterministic integration harnesses; platform queue
+delivery ownership; three command reader wrappers serving four queues; the
+summary-ready event reader; five worker drain loops; composition readiness
+discovery; existing oversized tests touched by these changes.
+
+No new deployment, database migration, service, workflow engine, DI framework,
+generic repository/unit-of-work framework, dependency upgrade, feature flag,
+provider behavior, public endpoint, API shape or generated client. No real-user
+projects, live provider calls, production data changes or real notifications.
+EVENT outbox leasing and execution-lease fencing of non-article source writes
+remain separate designs; neither is silently folded into this refactor.
+
+## A. Monitoring admission and required dispatch
+
+### Ownership
+
+- Domain owns provider cadence, scan failure classification, freshness/backoff
+  facts and admission decisions over immutable snapshots and an explicit `now`.
+- Application use cases own repository reads, manual idempotency/quota,
+  scheduler iteration and dispatch orchestration.
+- Presenters map domain decisions into each existing response vocabulary. A
+  domain decision never imports a REST DTO or presentation result.
+- The existing `ScanDispatchPort` is required. Use cases may query queue
+  capacity, but cannot directly enqueue, append events or save creation state.
+- Existing direct/Prisma dispatch adapters remain the implementation boundary.
+  Direct dispatch still requires rollback-capable local stores; Prisma commits
+  job, event and command outbox in one Serializable write transaction.
+- This is not atomic admission or transactional/refundable quota: active-job and
+  idempotency reads and the manual quota reservation keep their existing order
+  outside the dispatch transaction. Concurrent admission exclusion is not claimed.
+
+### Implementation
+
+1. Move existing provider cadence and failure classification into named domain
+   policies, retaining data and fallback behavior. Update in-scope consumers;
+   retain only narrow re-exports if excluded consumers need source compatibility.
+2. Introduce a small scan-admission policy with distinct manual and scheduled
+   entrypoints when their inputs differ. Share the actual business calculations,
+   not a configurable pipeline of boolean switches or subclass hierarchy.
+3. Separate manual decision presentation and scheduler/health projection from
+   the common policy. Keep scope and repository queries explicit at call sites.
+4. Require dispatch in request/scheduler constructors and remove sequential
+   fallback paths and unused write dependencies. Use a named dispatch-plan
+   builder only for job/command/event construction that truly has one owner.
+5. Update Nest providers, all constructor fixtures and eight affected smoke
+   flows. The cross-process fixture must compose Prisma dispatch and command
+   relay; a RabbitMQ publisher must never be disguised as rollback-capable.
+   Its fake transaction must stage/rollback writes rather than merely invoke the
+   callback. Failure after a job/event write must leave no partial command intent.
+6. Split changed oversized request/scheduler specs by workflow, retaining every
+   existing assertion and moving shared fixture composition into support files.
+   Remove their line-cap debt exemptions once below the limit.
+
+### Behavior to preserve
+
+- Manual cached/existing-key replay happens before binding/policy checks.
+- Manual requests have quota and ignore `nextRunAt`; scheduled scans have a due
+  window and duplicate-window check and do not spend manual quota.
+- Precedence remains active scan, scheduled duplicate window, fresh successful
+  result, rate-limit backoff, provider-failure backoff, then eligible.
+- Freshness deadline equality remains fresh; backoff equality is eligible.
+  Incomplete successful collection must not suppress a new scan.
+- Manual/scheduled admission reads five recent jobs; health backoff retains its
+  full 50-job input and separately computes its 24-hour metrics window. A shared
+  policy consumes caller-provided history without imposing a universal limit or
+  time filter. Preserve metadata-first classification and legacy reason fallback.
+- Preserve the 900-second transient cap, 30-second reset buffer, two-failure
+  threshold and maximum multiplier four.
+- Scheduler next-run adjustment and health's reported freshness deadline are
+  different contracts. Preserve their existing combined-state precedence.
+- Keep scoped reads, command/event IDs, retry budget, correlation/causation IDs,
+  manual-only requested event, and typed failure/status vocabulary unchanged.
+
+## B. Queue delivery ownership and worker settlement
+
+### Ownership
+
+- Platform queue exposes a narrow delivery contract (diagnostics, ack, nack),
+  command delivery/read contracts and a batch owner for unsettled deliveries.
+- Concrete in-memory/RabbitMQ implementations stay on explicit adapter paths.
+  Root barrels export contracts/primitives, not concrete adapters.
+- App wrappers retain existing Nest tokens, constructors and worker-specific
+  configuration. Business handler/retry decisions remain in their worker loops.
+- The summary-ready event decoder and topic bindings remain event-specific;
+  share only acquisition/settlement lifecycle with command readers.
+
+### Implementation
+
+1. Add one shared command-envelope decoder and RabbitMQ command reader. Preserve
+   accepted field rules, wrong-command rejection, queue arguments, delivery
+   limits, dead-letter declarations and diagnostics.
+2. Add a small RabbitMQ batch acquisition primitive. Own each message immediately
+   after `get`, before decoding. If a later read or rejection settlement fails,
+   attempt recovery of every unsettled acquired message, including a current
+   poison message whose rejection failed. Preserve the primary failure and
+   expose cleanup failures; never stop cleanup after the first rejection.
+3. Add in-memory reservation/settlement without changing the publisher's legacy
+   destructive `drain` API for unrelated consumers. A successful ack removes a
+   reservation, nack(true) requeues it, nack(false) removes it, and a settled
+   delivery cannot be settled again. Reservation identity belongs to each
+   delivery occurrence, not its possibly duplicated command ID. Preserve
+   `all()`, legacy `drain()` and occurrence-based checkpoint rollback semantics.
+   Redelivery diagnostics reflect requeue.
+4. Migrate scan, delivery-attempt and summary command wrappers to the shared
+   implementations. Keep the two distinct summary queue tokens.
+5. Reuse acquisition cleanup for summary-ready events while preserving object
+   root validation, the two allowed event types, exact routing-key equality,
+   topic exchange, both queue bindings and the disabled-reader behavior.
+6. Migrate five loops to explicit batch ownership and final cleanup. Separate
+   handler disposition from broker settlement failures. Mark a delivery settled
+   only after successful acknowledgment/rejection; release every remaining
+   delivery on abort/shutdown and report uncertain settlement.
+   Enter a settling state synchronously to reject concurrent/double settlement;
+   failed settlement leaves recoverable ownership, not a falsely completed item.
+7. Failed cleanup must retain reachable ownership. RabbitMQ recovery closes only
+   the message's captured native origin channel, or confirms it already closed;
+   it never looks up or closes a replacement channel. When release and origin
+   recovery both fail, retain the unsettled handles and retry recovery before
+   acquiring more messages. A later drain cannot silently accumulate abandoned
+   batches. Fake channels without origin recovery retain and retry settlement.
+
+### Behavior to preserve and failure cases
+
+- Existing `AmqplibRabbitMqChannel` remains the sole owner of origin-channel
+  identity, stale-generation rejection and duplicate settlement checks.
+- Poison/wrong-command messages are rejected once without requeue on successful
+  settlement and count against the bounded read limit. Failed rejection has
+  explicit recovery; already rejected poison is never requeued by cleanup.
+  Valid siblings remain recoverable.
+- Validate positive integer drain limits consistently before broker calls.
+- Worker backpressure and shutdown requeue; ordinary handler failures retain
+  each worker's existing disposition. Broker errors are not handler failures.
+- Scan retry heartbeat, claim ownership and durable retry settlement remain
+  local to the ingestion loop. Cleanup must not release a newly claimed owner.
+- Startup stays fail-fast. Interval failures remain contained and later ticks
+  can proceed. Existing metrics dimensions and counters retain their meaning.
+- Delivery remains at least once. No in-memory or database refactor claims
+  exactly-once provider effects after an uncertain remote acknowledgment.
+
+## C. Executable composition inventory
+
+1. Reproduce missing provider/noop declarations in isolated fixture trees.
+2. Discover runtime imports/re-exports from existing module roots independently
+   of the readiness contract. Traverse only the relevant local composition
+   scope, including `adapters/composition` and provider wiring beneath adapter
+   directories. Stop at other module roots, concrete implementations and business
+   layers, not at a directory name; avoid following every repository dependency.
+3. Use TypeScript syntax parsing for runtime references and configured path
+   aliases. Type-only imports, comments and fixtures must not create false
+   adapter declarations; unresolved relevant local composition imports fail
+   with a specific diagnostic.
+4. Use the same discovered source closure for stateful and noop checks. Keep
+   explicit context/owner/risk/replacement declarations and reject missing or
+   stale inventory; do not add blanket exceptions to make the gate pass.
+5. Keep the existing npm gate name and CI invocation. New executable source is
+   TypeScript; no new handwritten `.mjs`/`.mts` implementation files.
+
+The inventory identifies known business-state roles by class name; it does not
+infer whether every implementation needs durable storage. Recognized roles include
+repositories, queues, ledgers, read models, shared state, publication state and
+projection stores. Metric observations, configured provider registries and
+delegates without separate state are excluded. The existing module-root globs
+remain `libs/*/interfaces/rest/*.module.ts` and `apps/*/src/*.module.ts`.
+The delivery-provider factory helper and its simulated delivery provider remain
+outside this bounded inventory. Their existing risk is declared separately in the
+delivery contract, which requires HTTP webhook delivery and webhook-only beta
+channels. This gate does not claim complete discovery of arbitrary wiring or
+every class with mutable process-local data.
+
+## Verification and evidence
+
+Use the smallest set that proves the changed contracts, reusing existing broad
+coverage. Add focused regression tests only for the demonstrated high-risk
+failures and new shared lifecycle/policy boundary, not tests of every wrapper.
+
+| Surface | Required evidence |
+| --- | --- |
+| Admission | Existing manual/scheduled/health suites; policy parity at precedence and deadline boundaries; failed dispatch followed by same-key retry; scope/idempotency/quota assertions. |
+| Local delivery | Contract scenarios for ack, reject, requeue/redelivery, duplicate settlement, concurrent readers and shutdown/unprocessed batch release. |
+| RabbitMQ | Partial acquisition and rejection failure; origin-channel/closed-channel regressions; cleanup attempts all siblings; poison/routing mismatch; unchanged route topology/diagnostics. |
+| Workers | Existing five loop suites; ack failure cannot become terminal handler rejection; first settlement failure releases later deliveries; existing retry heartbeat and shutdown cases. |
+| Composition | Negative and positive readiness fixture tests; runtime selectors; actual modules boot; OpenAPI isolated harness remains valid. |
+| Integrated path | Deterministic API-to-ingestion/scheduled/manual scan E2E; cross-process scheduler/command relay; delivery drain; summary/reader-summary drain; summary-ready projection integration. |
+| Repository | Build/typecheck, architecture, code quality, source-line cap, changed-file lint, persistence-readiness, runtime guards and `git diff --check`; full backend E2E and required remote checks on final head. |
+
+Real database/broker claims require their actual isolated integration evidence.
+Fixture checks demonstrate contracts and orchestration, not live provider or
+production readiness. Do not weaken quality, security, CI or review gates to
+complete the task. Record any environment limitation precisely.
+
+## Delivery and review sequence
+
+1. Commit and publish this researched plan; open a draft PR.
+2. Independent critics review scope, compatibility, failure ownership and test
+   sufficiency before implementation. Record corrections below.
+3. Implement cohesive slices with disjoint file ownership. Publish each finished
+   commit immediately through the connected GitHub account.
+4. Run focused gates during implementation, then integrated checks. Review the
+   combined diff in multiple independent rounds; fix substantive findings and
+   re-review changed risks until no unresolved findings remain.
+5. Verify required checks and review the exact final commit; mark the PR ready
+   only when implementation and evidence are complete. Report links, concrete
+   structural improvements, tests and any material limits.
+
+## Decisions, progress and review corrections
+
+Plan critique round 1: independent architecture and reliability critics required
+ownership before decode, per-occurrence local reservation identity, synchronous
+settling guards, faithful rollback in durable-path fixtures and explicit limits
+of dispatch atomicity. These corrections are included above before coding.
+
+A third independent critic required reachable ownership after cleanup failure,
+composition discovery beneath adapter directories, and preservation of health's
+50-job backoff input separately from its 24-hour metrics. These corrections are
+included above; origin recovery remains a small transport capability.
+
+### Implemented slices
+
+- `abc619e`: independently discover runtime persistence composition, then compare
+  the resulting adapter inventory with explicit ownership/risk declarations.
+  The old declaration-driven JavaScript scanner is removed.
+- `9871fab`: domain admission policies, required scan dispatch, one dispatch-plan
+  construction boundary, migrated composition/fixtures and split workflow tests.
+  The two changed test files no longer need line-cap exemptions.
+- `2b27194`: shared command readers, occurrence-based local reservations,
+  RabbitMQ acquisition/recovery ownership and final cleanup in all five loops.
+  Native recovery stays bound to the message's captured channel.
+
+### Implementation review rounds
+
+Round 1 used independent reviewers across ownership boundaries. Two reviewers
+compared monitoring behavior with the pinned baseline and checked constructor
+composition, the full health history, quota ordering, rollback and retry. Two
+reviewers independently checked queue acquisition, poisoning, uncertain
+settlement, replacement-channel races, retry heartbeat and all five worker loops.
+They found no remaining material issue in slices A/B.
+
+The composition critic reproduced two additional fail-open forms: anonymous
+default provider factories and namespace re-exports through a barrel. Both new
+fixtures failed before the correction. The scanner now registers anonymous
+default declarations and recognizes namespace re-exports as runtime wiring.
+Round 2 independently reviewed those exact corrections and reran all 15 fixtures;
+the two escapes are closed without changing the readiness inventory.
+
+A subsequent bounded audit of the external security review confirmed five
+preexisting name-classifier omissions inside the already discovered composition:
+the scan execution-attempt read model, interest-creation shared state, reader-summary
+publication, and the two summary-ready projection stores. Five parameterized
+fixtures failed before extending the known roles with `ReadModel`, `State`,
+`Publication` and `ProjectionStore`; the existing fixtures and a transient/delegate
+exclusion case passed. The actual gate then reported exactly those five missing
+declarations and the delivery application provider source. Explicit declarations
+were added under the existing monitoring, summary and delivery owners. Shared
+interest-creation state is backing storage for already inventoried repositories,
+outbox and idempotency records, not an additional independent store. No root or
+helper traversal was broadened, and no deployed data-loss claim follows from these
+local-mode registrations. The repository gate and all 21 fixtures now pass.
+Independent review verified the five state owners, exclusions and unchanged
+boundaries, reran all 21 fixtures, and found no material issue.
+
+### Verified checkpoint
+
+| Check | Result |
+| --- | --- |
+| All monitoring suites | 272 tests in 57 suites pass, including all monitoring integration specs; existing 59 baseline scenarios retained. |
+| All queue/worker suites | 140 tests in 26 suites pass across platform queue, the three worker apps and queue integration specs, including failure cleanup across all five loops. |
+| Readiness inventory | Actual repository check and 21 regression fixtures pass. |
+| Architecture | Boundaries and all 28 architecture fixtures pass. |
+| TypeScript and build | Whole-project no-emit typecheck and production build pass. |
+| Lint and quality | Whole-repository ESLint, code-quality guardrails and source line cap pass. |
+| Public contracts | Isolated OpenAPI snapshot check passes; no API shape change. |
+| Migrated smoke flows | All eight flows pass, including cross-process command relay and autonomous monitoring. |
+| New integrated regression | HTTP request -> real local queue reader -> worker backpressure -> redelivery -> persisted attempt/feed -> scoped HTTP read/replay passes. |
+| Full backend E2E | All 77 suites / 150 tests pass. |
+| Runtime profile guards | Existing selector and durable-profile checks pass. |
+| Additional transport smoke flows | Delivery drain, summary drain, summary-ready event drain, summary-ready projection and RabbitMQ publisher pass. |
+| Shutdown/persistence lifecycle contracts | Both updated structural contract suites pass all 85 tests; independently reviewed. |
+
+The new E2E regression was also run on an isolated checkout of the original
+`e544229` baseline. It fails at the first backpressure boundary: the queue contains
+zero messages instead of one. The refactored path preserves the message, reports
+redelivery on its next reservation, completes the scan and does not enqueue more
+work when the HTTP idempotency key is replayed.
+
+Fixture maintenance corrections were verified against that same baseline.
+The GitHub and summary-queue smoke scripts had non-UUID tenant/workspace literals;
+replacing only those values with deterministic UUIDs restores their existing
+tenant guards. The autonomous
+smoke's committed deterministic evidence had stale generated identities. Fresh
+baseline and refactored evidence are byte-for-byte identical; the documented
+update changes only nineteen identity strings. Its fixed timestamp, fixture-only
+provenance, counts, statuses, metrics and content are unchanged.
+
+The full unit corpus exposed stale assertions in two structural lifecycle suites
+requiring literal direct `delivery.nack` calls and the old handler-error variable.
+They now assert the shared batch construction/requeue, waiting for the active tick
+and final unsettled release. The existing Nest phase, backpressure, error
+classification, redaction and database shutdown requirements remain intact. An
+independent reviewer verified these corrections without requesting a runtime change.
+
+The monitoring module test also retained the obsolete `MONITORING_OUTBOX` injection
+expectation after that unused capability was removed. Only its unused import and
+expected array entry were deleted. The exact dependency array still requires
+`MONITORING_SCAN_DISPATCH`; provider counts, singleton checks, scheduler wiring and
+actual Nest module compilation remain verified. Independent review and the entire
+monitoring test corpus pass after this correction.
+
+The full static test-type check additionally required a complete typed RabbitMQ
+`x-death` fixture and a `Promise<void>` acknowledgement mock. Both corrections
+preserve the existing assertions and use no casts. After these and the final
+readiness-classifier changes, a fresh `tsc --noEmit --incremental false --project
+tsconfig.json` passes, including test sources. Production-only build checks are
+not used as evidence for test type correctness.
+
+### Baseline fixture debt observed before the E2E follow-up
+
+`check:reader-summary-workflow` fails identically on the refactored tree and
+`e544229`: its selected-evidence fixture cannot provide the backend editorial
+slate now required for promotion attestations. Its publication REST subcheck was
+run separately so the first failure could not hide it. In the default environment,
+both trees reject its in-memory composition under the durable `jev_primary_v3`
+profile. Explicit `NODE_ENV=test` reaches the same missing-editorial-slate guard.
+At that checkpoint these reader publication fixtures needed modernization and
+were not counted as passing evidence. The user-requested E2E follow-up below
+repairs their test setup without changing summary feature behavior. No promotion, profile or durable
+guard was relaxed. Worker transport is independently covered by the five-loop
+failure tests, the passing transport smokes and the full backend E2E corpus.
+
+The comprehensive local unit run used the unchanged CI selector but ended with
+`SIGKILL` before final counts or JSON output. It is incomplete and is not counted
+as a green full corpus. Its three refactor-related structural/DI failures were
+corrected and independently reverified above. Four unrelated environment-sensitive
+suites also fail on the untouched baseline: native PG18 rejects root UID, strict
+gRPC rejects a writable credential-path ancestor, SQLite CLI is unavailable, and
+the executor does not expose the lock script's `/proc/$$/fd` identity path. No
+environment or security guard was bypassed and no exclusion was added.
+
+Exact-head remote checks provide the remaining full-corpus proof. The local
+broker/database harnesses above are explicit deterministic fixtures; no live
+PostgreSQL/RabbitMQ or production readiness claim is inferred from them. Required
+backend/database CI jobs run after the PR leaves draft; draft-skipped jobs are not
+counted as verification. Final check status is recorded on the pull request.
+
+## E2E completion follow-up (2026-11-04)
+
+The user requested completion of E2E verification after the foundation checkpoint.
+The existing head `117f65e` has a successful 20-job CI run, including 77 backend
+E2E suites / 150 tests and the complete unit inventory. That evidence does not
+cover a live RabbitMQ transport or complete the two stale reader workflow smokes
+described above. This follow-up closes those specific gaps without reopening the
+editorial feature design or broadening the refactor.
+
+### Scope and ownership
+
+1. **HTTP scan recovery:** extend the existing real Nest/API/worker harness with
+   three consequential boundaries. Inject a failure only at the external source
+   or execution-reporting port; keep dispatch, handler, use case, retry claims,
+   acknowledgement and repositories real. Prefer the Nest-provided drain loop
+   with bounded lifecycle ticks over a second hand-written composition.
+2. **Live RabbitMQ transport:** add a separate explicit broker E2E command and a
+   disposable RabbitMQ service to the existing backend E2E CI job. Reuse the
+   repository's `rabbitmq:4.3-management` image. Ordinary deterministic E2E remains
+   runnable without a broker; the explicit broker command fails if its endpoint
+   is absent, rather than silently skipping verification. No new dependency.
+3. **Reader workflow fixtures:** modernize only the two existing smoke fixture
+   builders and their isolated test environment. Reuse the current accepted
+   headline and editorial-slate builders, synthetic observed source authority,
+   display scope and the real promotion/projection pipeline. Preserve production
+   publication guards and their v2/display-bound proof requirements.
+
+### Required scenarios and assertions
+
+| Boundary | Required evidence |
+| --- | --- |
+| Persisted result, failed outcome reporting | First tick stores the successful attempt/feed but keeps HTTP status enqueued and requeues the original command. Redelivery reports that saved result; the source is fetched once, feed cardinality stays unchanged, and HTTP becomes succeeded. |
+| Retry succeeds | First source failure creates exactly one attempt-2 retry and no feed. The next real worker tick claims that retry, succeeds, clears primary/retry queues and exposes the result through HTTP. |
+| Retry exhausts | With retry budget 2 (two total attempts), two failures leave one terminal dead letter, no pending command/retry, failed HTTP status and scoped dead-letter inspection. A further empty tick produces no duplicate failure. |
+| Broker occurrence ownership | Publish two deliveries with the same command ID, acknowledge one and requeue the other; only the unacknowledged occurrence returns with broker redelivery diagnostics. |
+| Broker channel replacement | Close the captured delivery channel through real recovery, reacquire the batch on its replacement, then settle/recover an old sibling. Old cleanup must not close the new channel or lose its deliveries. |
+| Broker protocol failure | An actual incompatible queue declaration closes a native channel. Uncertain old settlement must remain recoverable while replacement-channel work can complete. |
+| Poison and wrong-type broker messages | Both reach a bound dead-letter queue with broker rejection metadata; a valid sibling remains processable. |
+| Lost broker route | Verify the review concern that a reader's cached route declaration survives queue deletion/channel replacement. If the real regression reproduces, make the smallest route-recovery correction and retain executable regression evidence. |
+| Reader workflow and publication HTTP | Both existing smoke commands pass using current editorial authority and projection contracts; assert current one-based slots and display-bound proof rather than obsolete fixture assumptions. |
+
+### Boundaries and verification
+
+No live providers, credentials, real notifications, user projects, production
+deployment, schema/DTO change, dependency upgrade, feature flag or new workflow
+framework. Broker resources use unique test-only names and are cleaned up. The
+reader fixture explicitly selects an isolated deterministic test environment;
+it does not claim production Jev V3 readiness or weaken durable-profile checks.
+
+Implementation ownership is split among three GPT-6 Astra/ultra agents: HTTP
+recovery, broker lifecycle, and reader fixtures. Independent cross-review follows
+each slice, with another correction/review round for concrete findings. Run the
+focused new scenarios, the complete backend E2E corpus, both repaired workflow
+smokes, whole-project test-inclusive typecheck, lint and applicable architecture,
+quality, line-cap and runtime-profile guards. The live broker must run in CI when
+unavailable locally; static success alone is not a live-broker result. Publish
+each commit immediately. Record final exact-head results and any remaining
+limits in this plan and PR, without counting an in-progress check as passed.
+
+### Follow-up evidence and review corrections
+
+The three new scan scenarios and the preserved backpressure regression passed
+together. The complete local backend corpus then passed **78 suites / 153 tests**.
+The new fixture starts and closes the actual Nest worker for each bounded tick,
+sharing local repositories explicitly across those restarts. Its only injected
+failures are at source fetching and outcome reporting. An independent reviewer
+verified retry claims, saved-attempt replay and HTTP tenant/workspace isolation.
+
+Both repaired reader smoke subprocesses and their exact combined npm command
+pass. They use existing accepted-headline/editorial-slate fixture builders and
+the real projection/publication policy. Assertions cover current one-based slots,
+V2 policy, scoped display proof, captured-source digest and ordered citations.
+The isolated test environment preserves production durable-profile enforcement.
+
+Two independent reviewers checked the live broker harness. One identified that
+an immediate zero queue count could miss a delayed quorum requeue after closing
+the consumer. The corrected fixture observes both owned queues over a bounded
+250 ms quiet interval and fails immediately if any unacknowledged message returns.
+
+On commit `005514c`, real RabbitMQ CI run `41813124210`, job `126517431444`,
+passed the first four native transport cases and reproduced the fifth: after a
+test queue was deleted, two successive `basic.get` operations failed with broker
+404 `NOT_FOUND`. The cached `routeAsserted` flag prevented the second tick from
+recreating the queue. This is genuine broker evidence before the narrow recovery
+fix, not a mocked channel failure. Final green results belong to the corrected
+head and are recorded separately.
+
+The completed external review also identified four concrete issues in the
+already changed persistence gate. All four reproduced in isolated fixtures
+(four failures, the previous 21 cases still passing): contradictory runtime text,
+selected provider re-exports in mixed barrels, plain selected wiring factories,
+and object property labels mistaken for adapters. The correction compares exact
+runtime values, follows selected re-exports/factory references, and ignores labels
+while retaining runtime values/shorthand references. Actual inventory and all
+25 cases pass without a manifest or root-boundary change.
+
+Independent review found and corrected one issue in that correction: an adapter
+class and unrelated configuration function imported together could combine their
+facts and expose concrete implementation internals. Unnamed wiring admission now
+evaluates each imported selection independently. The exact reproduction and the
+full gate pass on re-review; concrete app adapters remain outside traversal.
+
+The remaining queue configuration finding is bounded to startup: summary and
+reader-summary command readers must not share an effective RabbitMQ queue name,
+because each legitimately rejects the other command type. The follow-up guard
+preserves trim/default/legacy alias behavior and in-memory mode, and is verified
+at the configuration boundary and through Nest startup before a broker connection.
+
+## Final merge review follow-up
+
+The user explicitly authorized completing PR #619 through merge. At review head
+`cfcb12b`, all 20 CI jobs passed, including backend E2E (78 suites / 154 tests),
+the five live RabbitMQ cases, both reader smoke commands, and unit completeness
+(six shards, 1,124 suites / 16,536 tests). All six inline review threads were
+resolved. Reading the full external review body and commissioning three fresh
+independent GPT-6 Astra/ultra critics identified the following bounded follow-up.
+
+### Planned corrections and ownership
+
+| Boundary | Confirmed defect and smallest correction | Required regression |
+| --- | --- | --- |
+| Summary-ready event reader (queue critic) | Its cached route survives a failed drain after queue deletion. Clear the cache when acquisition/recovery fails, preserving pending-delivery recovery order and the original error. | Warm the actual reader, delete its queue, observe the first 404, recreate on the next drain, then deliver and acknowledge both `summary.ready` and `reader_summary.ready` through the topic exchange. Run the native broker case in CI. |
+| Nested persistence composition (composition critic) | Every `.module.ts` import is skipped, including nested modules absent from the independent root inventory. Stop only at the actual discovered roots. | A nested module must expose its memory adapter; an independently inventoried module must remain a separate boundary. Compare the real repository inventory without changing root globs or manifest ownership. |
+| Default wiring factory selection (composition critic) | Selected default arrow factories and default exports of local factory identifiers lose factory classification. Recognize those existing declaration shapes while preserving selection and concrete-class boundaries. | Equivalent selected default factory forms must expose the adapter, without admitting unrelated class implementation details. |
+| Manual-ack queue fixture (queue critic) | The fixture ignores `noAck`, so it cannot catch accidental auto-ack acquisition. Reject auto-ack use in this manual-ack fixture. | Existing delivery acquisition and settlement regressions must still pass. |
+
+The older recovery fixture's manually constructed reader needs no duplicate
+constructor test: the newer HTTP execution-recovery scenarios already boot the
+real Nest worker, retain its reader, handler, use case and drain loop, and inject
+failures only at source/reporting boundaries. A separate critic verified that
+composition and the preserved retry, replay and scope assertions.
+
+### Scope and completion gates
+
+No publisher redesign, general topology generation tracking, silent binding-only
+loss detection, arbitrary helper-call interpretation, expanded root globs,
+manifest/schema/dependency/flag changes, or unrelated production changes. The
+event fix is recovery after an observed drain failure; it does not claim to
+detect a deleted exchange or binding when acquisition itself still succeeds.
+The nested-module candidate adds only existing identity module source closures
+to the real inventory; the critic found no new adapter or ownership violation.
+
+Run focused red/green regressions, persistence readiness, applicable lint,
+typecheck and architecture/quality gates. Have a critic who did not implement
+each change review it, correct concrete findings, and repeat that review until
+none remain. Publish each completed commit immediately through the GitHub
+connector. Confirm the final commit's live broker and backend E2E results and
+required CI checks, then merge with an expected-head lease and verify the merged
+PR and `main` commit. Normal repository automation may follow the merge; this
+task does not manually invoke deployment or maintenance workflows.
+
+### Follow-up implementation and independent review evidence
+
+The event-reader regression suite failed both new cases before the correction
+and passed afterward. Its second case retains an acquired delivery across
+failed cleanup and proves that route declaration and new acquisition wait for
+recovery. Four focused queue/worker suites pass, 35 tests in total. The new native
+case uses the existing disposable quorum fixture with only a direct/topic
+exchange option; both event types are published through the topic exchange and
+explicitly acknowledged before the existing post-close quiet check.
+
+All three new persistence regressions failed before the correction while the
+previous 25 passed. The actual readiness contract and all 28 cases now pass.
+The existing independent-root regression was strengthened to import another
+actual root with provider metadata. Comparing the real inventory confirms the
+two expected identity source-closure additions, with identical roots and no
+adapter-source, memory/noop adapter, manifest or violation changes.
+
+The monitoring critic independently reviewed both final slices, and the queue
+and composition critics each cross-reviewed the other's implementation. All
+three reviews ended with no actionable findings. Independent focused reruns
+passed 30 and seven tests respectively. Whole-project test-inclusive typecheck,
+architecture (28 fixtures), code-quality guards, source/test line cap and focused
+lint pass. Final whole-repository lint and CI evidence, including execution of
+the new live-broker case, are recorded against the published commit in the PR;
+the native case is not counted as executed by these local checks.

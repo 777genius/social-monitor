@@ -1,0 +1,206 @@
+syntax = "proto3";
+
+package social_monitor.social_research.v1;
+
+service SocialResearchService {
+  rpc SearchSocial(SearchSocialRequest) returns (SearchSocialResponse);
+  rpc ExplainSearchPlan(ExplainSearchPlanRequest) returns (ExplainSearchPlanResponse);
+  rpc FetchThread(FetchThreadRequest) returns (FetchThreadResponse);
+  rpc RankResults(RankResultsRequest) returns (RankResultsResponse);
+  rpc ListSocialSources(ListSocialSourcesRequest) returns (ListSocialSourcesResponse);
+  rpc ExplainSourceReadiness(ExplainSourceReadinessRequest) returns (ExplainSourceReadinessResponse);
+  rpc CheckHealth(SocialResearchHealthRequest) returns (SocialResearchHealthResponse);
+}
+
+enum SocialResearchDepth {
+  SOCIAL_RESEARCH_DEPTH_UNSPECIFIED = 0;
+  SOCIAL_RESEARCH_DEPTH_LIGHT = 1;
+  SOCIAL_RESEARCH_DEPTH_BALANCED = 2;
+  SOCIAL_RESEARCH_DEPTH_DEEP = 3;
+}
+
+enum SocialResearchGoal {
+  SOCIAL_RESEARCH_GOAL_UNSPECIFIED = 0;
+  SOCIAL_RESEARCH_GOAL_RESEARCH = 1;
+  SOCIAL_RESEARCH_GOAL_TREND = 2;
+  SOCIAL_RESEARCH_GOAL_SUPPORT = 3;
+  SOCIAL_RESEARCH_GOAL_COMPETITOR = 4;
+  SOCIAL_RESEARCH_GOAL_SECURITY = 5;
+}
+
+enum SocialResearchRequestPreset {
+  SOCIAL_RESEARCH_REQUEST_PRESET_UNSPECIFIED = 0;
+  SOCIAL_RESEARCH_REQUEST_PRESET_BROAD_RESEARCH = 1;
+  SOCIAL_RESEARCH_REQUEST_PRESET_TREND_SCAN = 2;
+  SOCIAL_RESEARCH_REQUEST_PRESET_SUPPORT_WATCH = 3;
+  SOCIAL_RESEARCH_REQUEST_PRESET_COMPETITOR_SCAN = 4;
+}
+
+enum SocialResearchCommunityListing {
+  SOCIAL_RESEARCH_COMMUNITY_LISTING_UNSPECIFIED = 0;
+  SOCIAL_RESEARCH_COMMUNITY_LISTING_TOP = 1;
+  SOCIAL_RESEARCH_COMMUNITY_LISTING_HOT = 2;
+  SOCIAL_RESEARCH_COMMUNITY_LISTING_NEW = 3;
+}
+
+enum SocialResearchHealthStatus {
+  SOCIAL_RESEARCH_HEALTH_STATUS_UNSPECIFIED = 0;
+  SOCIAL_RESEARCH_HEALTH_STATUS_SERVING = 1;
+  SOCIAL_RESEARCH_HEALTH_STATUS_DEGRADED = 2;
+  SOCIAL_RESEARCH_HEALTH_STATUS_NOT_SERVING = 3;
+}
+
+message SocialResearchExecutionScope {
+  string tenant_id = 1;
+  string workspace_id = 2;
+  string scan_job_id = 3;
+  string correlation_id = 4;
+  map<string, string> source_binding_id_by_source = 5;
+  map<string, string> cursor_by_lane_id = 6;
+}
+
+message SocialResearchWindowInput {
+  string since = 1;
+  string until = 2;
+  uint32 hours = 3;
+  uint32 days = 4;
+  string preset = 5;
+}
+
+message SocialResearchAccountRefInput {
+  string handle = 1;
+  string source_key = 2;
+  bool include_posts = 3;
+  bool include_mentions = 4;
+}
+
+message SocialResearchCommunityRefInput {
+  string name = 1;
+  string source_key = 2;
+  repeated SocialResearchCommunityListing listings = 3;
+}
+
+message SocialResearchIntentInput {
+  string topic = 1;
+  repeated string sources = 2;
+  string window_json = 3;
+  SocialResearchDepth depth = 4;
+  SocialResearchGoal goal = 5;
+  string entities_json = 6;
+  SocialResearchWindowInput window = 7;
+  SocialResearchRequestPreset preset = 8;
+  repeated SocialResearchAccountRefInput accounts = 9;
+  repeated string products = 10;
+  repeated string keywords = 11;
+  repeated SocialResearchCommunityRefInput communities = 12;
+  repeated string urls = 13;
+}
+
+message SocialResearchPlannerOptions {
+  repeated string default_sources = 1;
+  uint32 max_lanes = 2;
+  string source_limits_json = 3;
+  string query_strategy_recipe_json = 4;
+}
+
+message SearchSocialRequest {
+  uint32 schema_version = 1;
+  string request_id = 2;
+  SocialResearchIntentInput intent = 3;
+  SocialResearchPlannerOptions planner = 4;
+  SocialResearchExecutionScope execution = 5;
+}
+
+message SearchSocialResponse {
+  uint32 schema_version = 1;
+  string run_json = 2;
+  repeated SocialResearchWarning warnings = 3;
+}
+
+message ExplainSearchPlanRequest {
+  uint32 schema_version = 1;
+  string request_id = 2;
+  SocialResearchIntentInput intent = 3;
+  SocialResearchPlannerOptions planner = 4;
+}
+
+message ExplainSearchPlanResponse {
+  uint32 schema_version = 1;
+  string plan_json = 2;
+  string explanation = 3;
+  repeated SocialResearchWarning warnings = 4;
+}
+
+message FetchThreadRequest {
+  uint32 schema_version = 1;
+  string request_id = 2;
+  string canonical_url = 3;
+  string source_key = 4;
+  string external_id = 5;
+  uint32 max_depth = 6;
+  SocialResearchExecutionScope execution = 7;
+}
+
+message FetchThreadResponse {
+  uint32 schema_version = 1;
+  string thread_json = 2;
+  repeated SocialResearchWarning warnings = 3;
+}
+
+message RankResultsRequest {
+  uint32 schema_version = 1;
+  string request_id = 2;
+  string topic = 3;
+  SocialResearchGoal goal = 4;
+  string entities_json = 5;
+  string items_json = 6;
+  uint32 limit = 7;
+  string now = 8;
+  string ranking_recipe_json = 9;
+}
+
+message RankResultsResponse {
+  uint32 schema_version = 1;
+  string ranked_items_json = 2;
+}
+
+message ListSocialSourcesRequest {
+  uint32 schema_version = 1;
+  string request_id = 2;
+  string input_json = 3;
+  repeated string source_keys = 4;
+}
+
+message ListSocialSourcesResponse {
+  uint32 schema_version = 1;
+  string sources_json = 2;
+  repeated SocialResearchWarning warnings = 3;
+}
+
+message ExplainSourceReadinessRequest {
+  uint32 schema_version = 1;
+  string request_id = 2;
+  string source_key = 3;
+}
+
+message ExplainSourceReadinessResponse {
+  uint32 schema_version = 1;
+  string readiness_json = 2;
+  repeated SocialResearchWarning warnings = 3;
+}
+
+message SocialResearchHealthRequest {
+  string service = 1;
+}
+
+message SocialResearchHealthResponse {
+  SocialResearchHealthStatus status = 1;
+  string contract_id = 2;
+  uint32 schema_version = 3;
+  repeated SocialResearchWarning warnings = 4;
+}
+
+message SocialResearchWarning {
+  string code = 1;
+  string message = 2;
+}

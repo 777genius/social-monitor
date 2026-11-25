@@ -1,0 +1,324 @@
+{
+  "schemaVersion": 1,
+  "artifactFormat": "yesterday-reader-summary-artifact-quality-v1",
+  "collectionDate": "2026-07-09",
+  "generatedBy": "npm run check:yesterday-reader-summary-artifact-quality",
+  "model": {
+    "liveNetwork": false,
+    "reportBuilder": "persisted-reader-summary-artifact-quality-gate",
+    "rawPostTextPersistedInReport": false
+  },
+  "inputs": {
+    "database": "local-postgres",
+    "period": {
+      "startInclusive": "2026-07-09T00:00:00.000Z",
+      "endExclusive": "2026-07-10T00:00:00.000Z"
+    },
+    "scope": {
+      "tenantFingerprint": "88237c6b",
+      "workspaceFingerprint": "88237c6c",
+      "scopeType": "workspace"
+    }
+  },
+  "artifact": {
+    "artifactFingerprint": "6f182990",
+    "status": "COMPLETED",
+    "createdAt": "2026-07-11T16:50:51.447Z",
+    "periodStartedAt": "2026-07-09T00:00:00.000Z",
+    "periodEndedAt": "2026-07-10T00:00:00.000Z",
+    "latestVisiblePeriodStartedAt": "2026-07-10T00:00:00.000Z",
+    "latestVisiblePeriodEndedAt": "2026-07-11T00:00:00.000Z",
+    "headlineFingerprint": "0ecb6a9b",
+    "confidenceLevel": "high",
+    "confidenceScore": 0.82,
+    "qualityFlagCount": 0
+  },
+  "artifactHistory": {
+    "visibleBadGamingArtifactCount": 0,
+    "rejectedBadGamingArtifactCount": 3,
+    "failedBadGamingArtifactCount": 0,
+    "visiblePeriodArtifactCount": 1,
+    "supersededPeriodArtifactCount": 67
+  },
+  "collectionIntegrity": {
+    "status": "clean"
+  },
+  "coverage": {
+    "collectedFeedItemCount": 668,
+    "selectedFeedItemCount": 120,
+    "selectedPostsCount": 118,
+    "storyClusterCount": 115,
+    "topReadCount": 8,
+    "citationCount": 120,
+    "providerCount": 4,
+    "interestCount": 2,
+    "duplicateFeedItemCount": 5,
+    "crossSourceClusterCount": 4,
+    "providerBreakdown": [
+      {
+        "providerKey": "reddit",
+        "selectedFeedItemCount": 30,
+        "topReadCount": 1,
+        "citationCount": 30,
+        "lowRelevanceFeedItemCount": 0,
+        "mutedFeedItemCount": 0,
+        "userRatedFeedItemCount": 0,
+        "collectedFeedItemCount": 262
+      },
+      {
+        "providerKey": "rss",
+        "selectedFeedItemCount": 30,
+        "topReadCount": 0,
+        "citationCount": 30,
+        "lowRelevanceFeedItemCount": 0,
+        "mutedFeedItemCount": 0,
+        "userRatedFeedItemCount": 0,
+        "collectedFeedItemCount": 207
+      },
+      {
+        "providerKey": "hacker-news",
+        "selectedFeedItemCount": 30,
+        "topReadCount": 3,
+        "citationCount": 30,
+        "lowRelevanceFeedItemCount": 0,
+        "mutedFeedItemCount": 0,
+        "userRatedFeedItemCount": 0,
+        "collectedFeedItemCount": 136
+      },
+      {
+        "providerKey": "x-twitter",
+        "selectedFeedItemCount": 30,
+        "topReadCount": 4,
+        "citationCount": 30,
+        "lowRelevanceFeedItemCount": 0,
+        "mutedFeedItemCount": 0,
+        "userRatedFeedItemCount": 0,
+        "collectedFeedItemCount": 63
+      }
+    ]
+  },
+  "citations": {
+    "topReadsWithCanonicalUrl": 8,
+    "topReadsWithCitation": 8,
+    "unknownTopReadCitationIdCount": 0,
+    "citationsWithCanonicalUrl": 120,
+    "selectedPostsWithCanonicalUrl": 118,
+    "selectedPostDuplicateCanonicalUrlCount": 0,
+    "selectedPostsRepresentTopReadPreview": false,
+    "selectedPostsRepresentDedupedSelectedEvidence": true,
+    "selectedPostsMismatchDocumented": true
+  },
+  "summaryStructure": {
+    "bulletCount": 2,
+    "claimCount": 5,
+    "riskCount": 4,
+    "reliabilityRiskCount": 1,
+    "openQuestionCount": 1,
+    "nextActionCount": 6,
+    "lowConfidenceTopReadCount": 4,
+    "mediumOrHighConfidenceTopReadCount": 4
+  },
+  "technicalLeakage": {
+    "userFacingTechnicalLeakCount": 0,
+    "userFacingTechnicalLeakFingerprints": [],
+    "uiPayloadTechnicalTagCount": 0
+  },
+  "shadowRankingMetrics": {
+    "selectedProviderDiversity": 1,
+    "topReadProviderDiversity": 0.75,
+    "duplicateRate": 0.042,
+    "crossSourceClusterRate": 0.035,
+    "lowConfidenceTopReadRate": 0.5,
+    "primarySelectedRepresentation": {
+      "reddit": 30,
+      "x-twitter": 30
+    },
+    "primaryTopReadRepresentation": {
+      "reddit": 1,
+      "x-twitter": 4
+    },
+    "providerSkewRatio": 0.25,
+    "sourceWindowHours": 23.76,
+    "highEngagementLowConfidenceTopReadCount": 4
+  },
+  "sourceQuality": {
+    "topReadCitationFeedItemCount": 10,
+    "foundTopReadCitationFeedItemCount": 10,
+    "missingTopReadCitationFeedItemCount": 0,
+    "ineligibleTopReadCitationCount": 0,
+    "weakTopicMatchCitationCount": 0,
+    "downrankedCitationCount": 0,
+    "rows": [
+      {
+        "citationFingerprint": "00000c2e",
+        "feedItemFingerprint": "9e63460c",
+        "providerKey": "x-twitter",
+        "decision": "promote",
+        "eligibleForSummary": true,
+        "eligibleForTopRead": true,
+        "qualityScore": 0.88,
+        "interestRelevanceScore": 0.88,
+        "engagementIntegrityScore": 0.94,
+        "flags": []
+      },
+      {
+        "citationFingerprint": "00000c2f",
+        "feedItemFingerprint": "0480a89b",
+        "providerKey": "hacker-news",
+        "decision": "promote",
+        "eligibleForSummary": true,
+        "eligibleForTopRead": true,
+        "qualityScore": 0.95,
+        "interestRelevanceScore": 0.9,
+        "engagementIntegrityScore": 0.92,
+        "flags": []
+      },
+      {
+        "citationFingerprint": "00000c34",
+        "feedItemFingerprint": "20a99fa9",
+        "providerKey": "reddit",
+        "decision": "promote",
+        "eligibleForSummary": true,
+        "eligibleForTopRead": true,
+        "qualityScore": 0.95,
+        "interestRelevanceScore": 0.9,
+        "engagementIntegrityScore": 0.92,
+        "flags": []
+      },
+      {
+        "citationFingerprint": "00000c35",
+        "feedItemFingerprint": "e3a9f5ed",
+        "providerKey": "rss",
+        "decision": "promote",
+        "eligibleForSummary": true,
+        "eligibleForTopRead": true,
+        "qualityScore": 0.95,
+        "interestRelevanceScore": 0.9,
+        "engagementIntegrityScore": 0.92,
+        "flags": []
+      },
+      {
+        "citationFingerprint": "00000c30",
+        "feedItemFingerprint": "f1e41353",
+        "providerKey": "x-twitter",
+        "decision": "promote",
+        "eligibleForSummary": true,
+        "eligibleForTopRead": true,
+        "qualityScore": 0.88,
+        "interestRelevanceScore": 0.88,
+        "engagementIntegrityScore": 0.94,
+        "flags": []
+      },
+      {
+        "citationFingerprint": "00000c36",
+        "feedItemFingerprint": "a457658d",
+        "providerKey": "x-twitter",
+        "decision": "promote",
+        "eligibleForSummary": true,
+        "eligibleForTopRead": true,
+        "qualityScore": 1,
+        "interestRelevanceScore": 0.88,
+        "engagementIntegrityScore": 1,
+        "flags": [
+          "official_account",
+          "trusted_author"
+        ]
+      },
+      {
+        "citationFingerprint": "000179c2",
+        "feedItemFingerprint": "0dd99f5f",
+        "providerKey": "x-twitter",
+        "decision": "promote",
+        "eligibleForSummary": true,
+        "eligibleForTopRead": true,
+        "qualityScore": 1,
+        "interestRelevanceScore": 0.88,
+        "engagementIntegrityScore": 1,
+        "flags": [
+          "official_account",
+          "trusted_author"
+        ]
+      },
+      {
+        "citationFingerprint": "000179c3",
+        "feedItemFingerprint": "d0a130a1",
+        "providerKey": "hacker-news",
+        "decision": "promote",
+        "eligibleForSummary": true,
+        "eligibleForTopRead": true,
+        "qualityScore": 0.95,
+        "interestRelevanceScore": 0.9,
+        "engagementIntegrityScore": 0.92,
+        "flags": []
+      },
+      {
+        "citationFingerprint": "000179ca",
+        "feedItemFingerprint": "a5e367b8",
+        "providerKey": "hacker-news",
+        "decision": "promote",
+        "eligibleForSummary": true,
+        "eligibleForTopRead": true,
+        "qualityScore": 0.95,
+        "interestRelevanceScore": 0.9,
+        "engagementIntegrityScore": 0.92,
+        "flags": []
+      },
+      {
+        "citationFingerprint": "00017a06",
+        "feedItemFingerprint": "0aa82763",
+        "providerKey": "hacker-news",
+        "decision": "promote",
+        "eligibleForSummary": true,
+        "eligibleForTopRead": true,
+        "qualityScore": 0.95,
+        "interestRelevanceScore": 0.9,
+        "engagementIntegrityScore": 0.92,
+        "flags": []
+      }
+    ]
+  },
+  "qualityGates": {
+    "artifactPeriodMatchesRequestedDate": true,
+    "latestVisibleArtifactPeriodMatchesRequestedDate": true,
+    "artifactStatusIsVisible": true,
+    "coverageSelectedMatchesSourceWindow": true,
+    "coverageSelectedMatchesProviderBreakdown": true,
+    "selectedPostsMismatchIsExplained": true,
+    "topReadsHaveCanonicalUrls": true,
+    "topReadsHaveCitations": true,
+    "topReadCitationsResolve": true,
+    "citationsHaveCanonicalUrls": true,
+    "lowConfidenceSummaryHasOpenQuestions": true,
+    "lowConfidenceTopReadsAreExplained": true,
+    "risksHaveOpenQuestions": true,
+    "noUserFacingTechnicalLeakage": true,
+    "noUiPayloadTechnicalTags": true,
+    "topReadCitationFeedItemsFound": true,
+    "topReadsDoNotReferenceIneligibleSourceQuality": true,
+    "topReadsDoNotReferenceWeakTopicMatchEvidence": true,
+    "noVisibleHistoricalBadGamingArtifacts": true,
+    "badGamingArtifactsUseRejectedStatus": true,
+    "latestPeriodHasSingleVisibleArtifact": true,
+    "rejectedArtifactsDoNotHideCanonical": true,
+    "collectionIntegrityCleanForEval": true,
+    "noRawSecretFragments": true
+  },
+  "warningSignals": {
+    "singleInterestEvidence": false,
+    "lowConfidenceTopReadsPresent": true,
+    "technicalPayloadTagsPresent": false,
+    "redditMissingFromTopReads": false,
+    "xTwitterMissingFromTopReads": false,
+    "selectedProviderSkewAboveHalf": false
+  },
+  "infoSignals": {
+    "selectedPostsLessThanSelectedFeedItems": true,
+    "selectedPostsRepresentTopReadPreview": false,
+    "selectedPostsRepresentDedupedSelectedEvidence": true,
+    "crossSourceEvidencePresent": true,
+    "historicalLatestVisibleGateBypassed": true,
+    "dirtyCollectionAllowedForInspection": false,
+    "reliabilityCalibrationShadowMode": true
+  },
+  "blockingPassed": true
+}

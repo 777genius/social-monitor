@@ -1,0 +1,114 @@
+import { type INestApplication, ValidationPipe } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
+import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { ExecuteSummaryJobUseCase } from '@social-monitor/summary/features/execute-summary-job/execute-summary-job.use-case';
+import request from 'supertest';
+
+import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
+
+describe('Summary read model (e2e)', () => {
+  let app: INestApplication;
+
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+
+    app = moduleRef.createNestApplication();
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    );
+    await app.init();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('returns executed summaries through REST detail and list endpoints', async () => {
+    const tenant = tenantId(deterministicTestUuid('tenant-summary-read-e2e'));
+    const workspace = workspaceId(deterministicTestUuid('workspace-summary-read-e2e'));
+    const interestId = 'topic-summary-read-e2e';
+    const requested = await request(app.getHttpServer())
+      .post(`/interests/${interestId}/summary-requests`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'member')
+      .set('x-request-id', 'summary-read-request-1')
+      .set('idempotency-key', 'summary-read-request-1')
+      .expect(201);
+    const executed = await app.get(ExecuteSummaryJobUseCase).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      summaryJobId: requested.body.summaryJobId,
+    });
+
+    if (!executed.ok || executed.value.summaryId === undefined) {
+      throw new Error('Expected summary execution to produce a summary id');
+    }
+
+    const missingRole = await request(app.getHttpServer())
+      .get(`/summaries/${executed.value.summaryId}`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .expect(403);
+
+    expect(missingRole.body).toMatchObject({
+      code: 'authorization.denied',
+      detail: 'Workspace role is required',
+      details: {
+        action: 'summaries.read',
+      },
+    });
+
+    const detail = await request(app.getHttpServer())
+      .get(`/summaries/${executed.value.summaryId}`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(detail.body).toMatchObject({
+      schemaVersion: 'summary.artifact.v1',
+      summaryId: executed.value.summaryId,
+      tenantId: tenant,
+      workspaceId: workspace,
+      interestId,
+      qualityFlags: ['no_signal', 'limited_sources'],
+      confidence: {
+        level: 'none',
+        score: 0,
+        rationale: 'No evidence was selected for the summary window.',
+      },
+      citations: [],
+      noSignalReason: 'No eligible evidence items selected for this interest.',
+    });
+    expect(detail.body.sourceWindow.startedAt).toEqual(expect.any(String));
+    expect(detail.body.sourceWindow.endedAt).toEqual(expect.any(String));
+
+    const list = await request(app.getHttpServer())
+      .get(`/summaries?interestId=${interestId}`)
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(list.body.items).toHaveLength(1);
+    expect(list.body.items[0]).toMatchObject({
+      schemaVersion: 'summary.artifact.v1',
+      summaryId: executed.value.summaryId,
+      tenantId: tenant,
+      workspaceId: workspace,
+      interestId,
+      freshness: {
+        status: 'fresh',
+        checkedAt: expect.any(String),
+      },
+    });
+  });
+});

@@ -1,0 +1,243 @@
+import type { PrismaFeedItemRecord } from "./prisma-feed-records";
+
+export type PrismaFeedSignalBaselineSampleRecord = {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly interestId: string;
+  readonly feedItemId: string;
+  readonly providerKey: string;
+  readonly sourceKey: string;
+  readonly contentType: string;
+  readonly strength: number;
+  readonly publishedAt: Date;
+  readonly observedAt: Date;
+};
+
+export type PrismaFeedClient = {
+  readonly $executeRawUnsafe?: (query: string) => Promise<number>;
+  readonly $queryRawUnsafe?: <Result>(
+    query: string,
+    ...values: readonly unknown[]
+  ) => Promise<Result>;
+  readonly $transaction?: <Result>(
+    operation: (transaction: PrismaFeedClient) => Promise<Result>,
+    options: {
+      readonly isolationLevel: "RepeatableRead" | "Serializable";
+      readonly maxWait?: number;
+      readonly timeout?: number;
+    },
+  ) => Promise<Result>;
+  readonly feedItem: {
+    upsert(args: {
+      readonly where: {
+        readonly tenantId_interestId_dedupeKey: {
+          readonly tenantId: string;
+          readonly interestId: string;
+          readonly dedupeKey: string;
+        };
+      };
+      readonly update: {
+        readonly sourceItemId: string;
+        readonly sourceBindingId: string;
+        readonly providerKey: string;
+        readonly dedupeKey: string;
+        readonly canonicalUrl: string;
+        readonly title: string;
+        readonly bodyPreview: string;
+        readonly authorHandle?: string | null;
+        readonly providerMetadata?: Readonly<Record<string, unknown>> | null;
+      };
+      readonly create: {
+        readonly id: string;
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly interestId: string;
+        readonly sourceItemId: string;
+        readonly sourceBindingId: string;
+        readonly providerKey: string;
+        readonly dedupeKey: string;
+        readonly canonicalUrl: string;
+        readonly title: string;
+        readonly bodyPreview: string;
+        readonly authorHandle?: string | null;
+        readonly publishedAt: Date;
+        readonly observedAt: Date;
+        readonly providerMetadata?: Readonly<Record<string, unknown>> | null;
+        readonly status: "VISIBLE";
+      };
+    }): Promise<PrismaFeedItemRecord>;
+    update?(args: {
+      readonly where: { readonly id: string };
+      readonly data: {
+        readonly sourceItemId?: string;
+        readonly sourceBindingId?: string;
+        readonly providerKey?: string;
+        readonly dedupeKey?: string;
+        readonly canonicalUrl?: string;
+        readonly title?: string;
+        readonly bodyPreview?: string;
+        readonly authorHandle?: string | null;
+        readonly providerMetadata?: Readonly<Record<string, unknown>> | null;
+      };
+    }): Promise<PrismaFeedItemRecord>;
+    findMany(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly status: "VISIBLE";
+        readonly id?: {
+          readonly in: readonly string[];
+        };
+        readonly interestId?: string;
+        readonly sourceItemId?: string;
+        readonly observedAt?: {
+          readonly gte?: Date;
+          readonly gt?: Date;
+          readonly lte?: Date;
+          readonly lt?: Date;
+        };
+        readonly publishedAt?: {
+          readonly gte?: Date;
+          readonly lt?: Date;
+        };
+        readonly providerKey?: string;
+        readonly AND?: readonly {
+          readonly OR: readonly (
+            | { readonly publishedAt: { readonly lt: Date } }
+            | { readonly observedAt: { readonly lt: Date } }
+            | {
+                readonly publishedAt: Date;
+                readonly id: { readonly lte?: string; readonly lt?: string };
+              }
+            | {
+                readonly observedAt: Date;
+                readonly id: { readonly lte?: string; readonly lt?: string };
+              }
+          )[];
+        }[];
+      };
+      readonly orderBy?: readonly [(
+        { readonly publishedAt: "desc" } |
+        { readonly observedAt: "desc" }
+      ), { readonly id: "desc" }];
+      readonly skip?: number;
+      readonly cursor?: { readonly id: string };
+      readonly take: number;
+      readonly include?: {
+        readonly sourceItem: {
+          readonly select: {
+            readonly body: true;
+          };
+        };
+      };
+    }): Promise<readonly PrismaFeedItemRecord[]>;
+    count(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly status: "VISIBLE";
+        readonly interestId?: string;
+        readonly observedAt?: {
+          readonly gt?: Date;
+          readonly lt?: Date;
+        };
+        readonly providerKey?: string;
+      };
+    }): Promise<number>;
+    findFirst(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly id?: string;
+        readonly interestId?: string;
+        readonly sourceItemId?: string;
+        readonly status: "VISIBLE";
+        readonly observedAt?: {
+          readonly gte?: Date;
+          readonly gt?: Date;
+          readonly lte?: Date;
+          readonly lt?: Date;
+        };
+        readonly publishedAt?: {
+          readonly gte?: Date;
+          readonly lt?: Date;
+        };
+        readonly providerKey?: string;
+      };
+      readonly orderBy?: readonly [
+        { readonly observedAt: "desc" },
+        { readonly id: "desc" },
+      ];
+    }): Promise<PrismaFeedItemRecord | null>;
+  };
+  readonly feedSignalBaselineSample: {
+    upsert(args: {
+      readonly where: {
+        readonly tenantId_workspaceId_feedItemId: {
+          readonly tenantId: string;
+          readonly workspaceId: string;
+          readonly feedItemId: string;
+        };
+      };
+      readonly update: {
+        readonly interestId: string;
+        readonly providerKey: string;
+        readonly sourceKey: string;
+        readonly contentType: string;
+        readonly strength: number;
+        readonly publishedAt: Date;
+        readonly observedAt: Date;
+      };
+      readonly create: {
+        readonly id: string;
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly interestId: string;
+        readonly feedItemId: string;
+        readonly providerKey: string;
+        readonly sourceKey: string;
+        readonly contentType: string;
+        readonly strength: number;
+        readonly publishedAt: Date;
+        readonly observedAt: Date;
+      };
+    }): Promise<PrismaFeedSignalBaselineSampleRecord>;
+    findMany(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly interestId?: string;
+        readonly observedAt: { readonly gt: Date };
+        readonly OR?: readonly {
+          readonly providerKey: string;
+          readonly sourceKey: string;
+          readonly contentType: string;
+        }[];
+      };
+      readonly orderBy: readonly [
+        { readonly observedAt: "desc" },
+        { readonly feedItemId: "desc" },
+      ];
+      readonly take: number;
+    }): Promise<readonly PrismaFeedSignalBaselineSampleRecord[]>;
+    deleteMany(args: {
+      readonly where: {
+        readonly tenantId: string;
+        readonly workspaceId: string;
+        readonly feedItemId: string;
+      };
+    }): Promise<{ readonly count: number }>;
+  };
+  readonly sourceItemEngagementSnapshot?: {
+    findUnique(args: {
+      readonly where: {
+        readonly tenantId_workspaceId_sourceItemId: {
+          readonly tenantId: string;
+          readonly workspaceId: string;
+          readonly sourceItemId: string;
+        };
+      };
+    }): Promise<{ readonly lastObservedAt: Date } | null>;
+  };
+};

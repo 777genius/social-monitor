@@ -1,0 +1,86 @@
+import 'dart:async';
+
+import 'package:modularity_flutter/modularity_flutter.dart';
+import 'package:social_monitor_shared_kernel/social_monitor_shared_kernel.dart';
+
+import '../../application/use_cases/list_reader_posts_use_case.dart';
+import '../../application/use_cases/load_published_summary_use_case.dart';
+import '../../application/use_cases/load_top_posts_sort_order_use_case.dart';
+import '../../application/use_cases/load_workspace_summary_history_use_case.dart';
+import '../../application/use_cases/load_workspace_summary_use_case.dart';
+import '../../application/use_cases/open_reader_source_use_case.dart';
+import '../../application/use_cases/remember_top_posts_sort_order_use_case.dart';
+import '../../infrastructure/api_clients/generated_reader_post_catalog.dart';
+import '../../infrastructure/api_clients/generated_summaries_api_client.dart';
+import '../../infrastructure/data_sources/callback_reader_source_launcher.dart';
+import '../../infrastructure/data_sources/url_launcher_reader_source_launcher.dart';
+import '../../infrastructure/repositories/generated_summary_review_catalog.dart';
+import '../../infrastructure/storage/browser_top_posts_sort_preference_store.dart';
+import '../stores/published_summary_store.dart';
+import '../stores/reader_posts_browse_store.dart';
+import '../stores/top_posts_sort_store.dart';
+
+final class PublishedSummariesFeatureModule extends Module {
+  PublishedSummariesFeatureModule({
+    required this.generatedApiRuntime,
+    required this.scope,
+    this.summaryId,
+    this.initialBootstrap,
+    this.onSummarySelected,
+    this.onOpenReaderSource,
+  });
+
+  final Object generatedApiRuntime;
+  final WorkspaceScope scope;
+  final String? summaryId;
+  final Object? initialBootstrap;
+  final void Function(String summaryId)? onSummarySelected;
+  final FutureOr<void> Function(Uri uri)? onOpenReaderSource;
+
+  Object get retentionKey =>
+      'published-summary-${scope.tenantId}-${scope.workspaceId}-${summaryId ?? 'latest'}';
+
+  @override
+  void binds(Binder i) {}
+
+  PublishedSummaryStore createStore() {
+    final catalog = GeneratedSummaryReviewCatalog(
+      apiClient: GeneratedSummariesApiClient.fromRuntime(
+        runtime: generatedApiRuntime,
+        initialBootstrap: initialBootstrap,
+      ),
+    );
+    return PublishedSummaryStore(
+      scope: scope,
+      summaryId: summaryId,
+      allowUnpublishedDays: true,
+      onSummarySelected: onSummarySelected,
+      loadLatest: LoadWorkspaceSummaryUseCase(catalog),
+      loadHistory: LoadWorkspaceSummaryHistoryUseCase(catalog),
+      loadPublished: LoadPublishedSummaryUseCase(catalog),
+      openReaderSource: OpenReaderSourceUseCase(switch (onOpenReaderSource) {
+        final callback? => CallbackReaderSourceLauncher(callback),
+        null => const UrlLauncherReaderSourceLauncher(),
+      }),
+    );
+  }
+
+  /// Same remembered order as the workspace page: one reader, one browser.
+  ReaderPostsBrowseStore? createReaderPostsBrowseStore() {
+    final runtime = generatedApiRuntime;
+    return ReaderPostsBrowseStore(
+      scope: scope,
+      list: ListReaderPostsUseCase(
+        GeneratedReaderPostCatalog(runtime: runtime),
+      ),
+    );
+  }
+
+  TopPostsSortStore createTopPostsSortStore() {
+    const preferences = BrowserTopPostsSortPreferenceStore();
+    return TopPostsSortStore(
+      loadSortOrder: const LoadTopPostsSortOrderUseCase(preferences),
+      rememberSortOrder: const RememberTopPostsSortOrderUseCase(preferences),
+    );
+  }
+}

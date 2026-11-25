@@ -1,0 +1,558 @@
+import { chmodSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import {
+  FixedClock,
+  type IdGenerator,
+  ok,
+  tenantId,
+  workspaceId,
+} from "@social-monitor/shared-kernel";
+import { DeterministicReaderSummaryModelAdapter } from "@social-monitor/summary/adapters/model/deterministic-reader-summary-model.adapter";
+import { InMemorySummaryEventPublisher } from "@social-monitor/summary/adapters/messaging/in-memory-summary-event-publisher";
+import type { VerifiedReaderSummaryExecutionAttestation } from "@social-monitor/summary/adapters/model/reader-summary-execution-attestation";
+import { InMemoryReaderSummaryArtifactRepository } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-artifact.repository";
+import { InMemoryReaderSummaryJobRepository } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-job.repository";
+import { InMemoryReaderSummaryPolicyRepository } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-policy.repository";
+import { InMemoryReaderSummaryPublication } from "@social-monitor/summary/adapters/persistence/in-memory-reader-summary-publication";
+import type {
+  EnqueueReaderSummaryJobCommand,
+  ReaderSummaryJobQueuePort,
+  ReaderSummaryGitHubProjectionReaderPort,
+  ReaderSummaryModelInput,
+  ReaderSummaryModelPort,
+  ReaderSummaryPublicationCommand,
+  ReserveSummaryJobQuotaCommand,
+  ReserveSummaryJobQuotaResult,
+  SummaryQuotaPort,
+} from "@social-monitor/summary/ports";
+import { ExecuteReaderSummaryJobUseCase } from "@social-monitor/summary/features/execute-reader-summary-job/execute-reader-summary-job.use-case";
+import { ReaderSummaryExecutionLeasePolicy } from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-execution-lease.policy";
+import {
+  NOOP_READER_SUMMARY_PROMOTION_METRICS,
+  readerSummaryPromotionControl,
+} from "@social-monitor/summary/features/execute-reader-summary-job/reader-summary-promotion-control";
+import { RequestReaderSummaryUseCase } from "@social-monitor/summary/features/request-reader-summary/request-reader-summary.use-case";
+import type { BuildReaderSummaryTopicMapUseCase } from "@social-monitor/summary/features/build-reader-summary-topic-map/build-reader-summary-topic-map.use-case";
+import {
+  emptyReaderSummaryTopicMap,
+  ReaderSummaryPublicationPolicy,
+  type ReaderSummaryPublicationDecision,
+} from "@social-monitor/summary/domain";
+
+import {
+  assertReaderSummaryDbPublicationFailpointInactive,
+  createRecoverableReaderSummaryPublication,
+} from "./lib/reader-summary-db-publication-reconciliation";
+import {
+  readerSummaryProductionDayAttemptIdentity,
+  readerSummaryProductionDayIdempotencyKey,
+} from "./lib/reader-summary-production-day-attempt-identity";
+
+const now = new Date("2026-08-13T08:00:00.000Z");
+const periodStartedAt = new Date("2026-08-13T00:00:00.000Z");
+const periodEndedAt = new Date("2026-08-14T00:00:00.000Z");
+const tenant = tenantId("10000000-0000-4000-8000-000000000001");
+const workspace = workspaceId("20000000-0000-4000-8000-000000000002");
+const periodKey =
+  "daily:2026-08-13T00:00:00.000Z:2026-08-14T00:00:00.000Z:UTC";
+const servingAuthority = {
+  summaryGenerator: {
+    mode: "agent-runtime" as const,
+    provider: "codex",
+    physicalModel: "gpt-5.6-sol",
+    reasoningPolicy: "xhigh",
+  },
+  topicLabeler: {
+    mode: "agent-runtime" as const,
+    provider: "codex",
+    physicalModel: "agent-runtime-reader-summary-topic-labeler",
+    reasoningPolicy: "runtime-default",
+  },
+  topicRelationVerifier: {
+    mode: "agent-runtime" as const,
+    provider: "codex",
+    physicalModel: "agent-runtime-reader-summary-topic-relation-verifier",
+    reasoningPolicy: "runtime-default",
+  },
+  storyRelationVerifier: {
+    mode: "agent-runtime" as const,
+    provider: "codex",
+    physicalModel: "agent-runtime-reader-summary-story-relation-verifier",
+    reasoningPolicy: "runtime-default",
+  },
+  runtime: {
+    engine: "subscription-runtime-cli",
+    packageVersion: "1.2.3",
+    launcherSha256: "a".repeat(64),
+  },
+};
+
+describe("reader summary DB publication reconciliation", () => {
+  it("reclaims and replays empty evidence without a model call", async () => {
+    const jobs = new InMemoryReaderSummaryJobRepository();
+    const artifacts = new InMemoryReaderSummaryArtifactRepository();
+    const events = new InMemorySummaryEventPublisher();
+    const ids = new SequenceIdGenerator([
+      "30000000-0000-4000-8000-000000000013",
+      "40000000-0000-4000-8000-000000000014",
+      "50000000-0000-4000-8000-000000000015",
+    ]);
+    const clock = new FixedClock(now);
+    const model = countingModel(new DeterministicReaderSummaryModelAdapter());
+    const request = new RequestReaderSummaryUseCase(
+      jobs,
+      new CapturingQueue(),
+      new AllowingQuota(),
+      ids,
+      clock,
+    );
+    const publication = new InMemoryReaderSummaryPublication(
+      jobs,
+      artifacts,
+      events,
+    );
+    const freshExecutor = new ExecuteReaderSummaryJobUseCase(
+      jobs,
+      artifacts,
+      new InMemoryReaderSummaryPolicyRepository(),
+      { async select() { return evidenceSelection(); } },
+      model.port,
+      publication,
+      ids,
+      clock,
+      readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
+      undefined,
+      undefined,
+      successfulEmptyTopicMapBuilder(),
+      new AlwaysPublishPolicy(),
+      zeroEligibleGitHubProjectionReader(),
+    );
+    const attemptIdentity = readerSummaryProductionDayAttemptIdentity({
+      tenantId: tenant,
+      workspaceId: workspace,
+      periodKey,
+      servingAuthority,
+      sourceProvenance: { kind: "live-production" },
+    });
+    const requested = await request.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      scope: { type: "workspace" },
+      cadence: "daily",
+      period: { startedAt: periodStartedAt, endedAt: periodEndedAt, timezone: "UTC" },
+      idempotencyKey: readerSummaryProductionDayIdempotencyKey(attemptIdentity),
+      correlationId: "reader-summary-stale-running-recovery",
+    });
+    if (!requested.ok) throw requested.error;
+    await jobs.claimForExecution({
+      tenantId: tenant,
+      workspaceId: workspace,
+      readerSummaryJobId: requested.value.readerSummaryJobId,
+      requestedAt: new Date("2026-08-13T07:30:00.000Z"),
+      startedAt: new Date("2026-08-13T07:30:00.000Z"),
+      staleRunningStartedBefore: new Date("2026-08-13T07:29:00.000Z"),
+    });
+
+    const fresh = await freshExecutor.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      readerSummaryJobId: requested.value.readerSummaryJobId,
+    });
+    expect(fresh).toMatchObject({
+      ok: false,
+      error: { code: "operation.conflict" },
+    });
+    expect(model.calls()).toBe(0);
+    const recoveryExecutor = new ExecuteReaderSummaryJobUseCase(
+      jobs,
+      artifacts,
+      new InMemoryReaderSummaryPolicyRepository(),
+      { async select() { return evidenceSelection(); } },
+      model.port,
+      publication,
+      ids,
+      new FixedClock(new Date("2026-08-13T10:00:00.000Z")),
+      readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
+      undefined,
+      undefined,
+      successfulEmptyTopicMapBuilder(),
+      new AlwaysPublishPolicy(),
+      zeroEligibleGitHubProjectionReader(),
+      undefined,
+      undefined,
+      new ReaderSummaryExecutionLeasePolicy(2 * 60 * 60 * 1_000),
+    );
+    const recovered = await recoveryExecutor.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      readerSummaryJobId: requested.value.readerSummaryJobId,
+    });
+    const replay = await runProductionDayRequestExecution({
+      request,
+      execute: recoveryExecutor,
+      attemptIdentity,
+    });
+
+    expect(recovered).toMatchObject({ ok: true, value: { status: "no_signal" } });
+    expect(replay).toMatchObject({
+      requestCreated: false,
+      readerSummaryJobId: requested.value.readerSummaryJobId,
+    });
+    expect(model.calls()).toBe(0);
+  });
+
+  it("replays a persisted empty-evidence publication without a model call", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "summary-db-publication-"));
+    try {
+      const jobs = new InMemoryReaderSummaryJobRepository();
+      const artifacts = new InMemoryReaderSummaryArtifactRepository();
+      const events = new InMemorySummaryEventPublisher();
+      const ids = new SequenceIdGenerator([
+        "30000000-0000-4000-8000-000000000003",
+        "40000000-0000-4000-8000-000000000004",
+        "50000000-0000-4000-8000-000000000005",
+      ]);
+      const clock = new FixedClock(now);
+      const model = countingModel(new DeterministicReaderSummaryModelAdapter());
+      const attemptIdentity = readerSummaryProductionDayAttemptIdentity({
+        tenantId: tenant,
+        workspaceId: workspace,
+        periodKey,
+        servingAuthority,
+        sourceProvenance: { kind: "live-production" },
+      });
+      const attestations = [executionAttestation()];
+      const delegate = new InMemoryReaderSummaryPublication(jobs, artifacts, events);
+      const recoverable = createRecoverableReaderSummaryPublication({
+        delegate: { async publish(command) {
+          expect(JSON.parse(onlyRecoveryReceipt(directory).toString("utf8"))
+            .executionAttestations).toEqual(attestations);
+          return delegate.publish(command);
+        } },
+        recoveryDirectory: directory,
+        attemptIdentity,
+        attestations: () => attestations,
+      });
+      const request = new RequestReaderSummaryUseCase(
+        jobs,
+        new CapturingQueue(),
+        new AllowingQuota(),
+        ids,
+        clock,
+      );
+      const execute = new ExecuteReaderSummaryJobUseCase(
+        jobs,
+        artifacts,
+        new InMemoryReaderSummaryPolicyRepository(),
+        { async select() { return evidenceSelection(); } },
+        model.port,
+        recoverable.publication,
+        ids,
+        clock,
+        readerSummaryPromotionControl(NOOP_READER_SUMMARY_PROMOTION_METRICS),
+        undefined,
+        undefined,
+        successfulEmptyTopicMapBuilder(),
+        new AlwaysPublishPolicy(),
+        zeroEligibleGitHubProjectionReader(),
+      );
+
+      const first = await runProductionDayRequestExecution({
+        request,
+        execute,
+        attemptIdentity,
+        failpoint: "after-db-before-state",
+      });
+      expect(first.error).toMatch(/after DB publication before terminal state/u);
+      expect(model.calls()).toBe(0);
+
+      const firstJob = jobs.all()[0]?.toSnapshot();
+      const firstArtifact = artifacts.all()[0]?.toSnapshot();
+      expect(firstJob).toMatchObject({
+        id: "30000000-0000-4000-8000-000000000003",
+        status: "no_signal",
+        readerSummaryId: "40000000-0000-4000-8000-000000000004",
+      });
+      expect(firstArtifact?.readerSummaryId).toBe(
+        "40000000-0000-4000-8000-000000000004",
+      );
+      const recoveryBytesBefore = onlyRecoveryReceipt(directory);
+
+      const replay = await runProductionDayRequestExecution({
+        request,
+        execute,
+        attemptIdentity,
+      });
+      expect(replay).toMatchObject({
+        requestCreated: false,
+        readerSummaryJobId: firstJob?.id,
+        readerSummaryArtifactId: firstArtifact?.readerSummaryId,
+      });
+      expect(model.calls()).toBe(0);
+      expect(onlyRecoveryReceipt(directory).equals(recoveryBytesBefore)).toBe(true);
+      expect(
+        recoverable.recovery?.load({
+          tenantId: tenant,
+          workspaceId: workspace,
+          periodKey,
+          readerSummaryJobId: replay.readerSummaryJobId!,
+          readerSummaryArtifactId: replay.readerSummaryArtifactId!,
+        }),
+      ).toEqual(attestations);
+      const recoveryScope = {
+        tenantId: tenant, workspaceId: workspace, periodKey,
+        readerSummaryJobId: replay.readerSummaryJobId!,
+        readerSummaryArtifactId: replay.readerSummaryArtifactId!,
+      };
+      for (const foreignScope of [
+        { tenantId: "foreign-tenant" }, { workspaceId: "foreign-workspace" },
+        { periodKey: "foreign-period" }, { readerSummaryJobId: "foreign-job" },
+      ]) {
+        expect(() => recoverable.recovery?.load({ ...recoveryScope, ...foreignScope })).toThrow(
+          "does not match durable identity",
+        );
+      }
+      const receiptPath = join(directory, readdirSync(directory)[0]!);
+      const altered = JSON.parse(recoveryBytesBefore.toString("utf8"));
+      altered.executionAttestations[0].normalizedOutputSha256 = "f".repeat(64);
+      chmodSync(receiptPath, 0o600);
+      writeFileSync(receiptPath, JSON.stringify(altered));
+      expect(() => recoverable.recovery?.load(recoveryScope)).toThrow("does not match durable identity");
+      writeFileSync(receiptPath, recoveryBytesBefore);
+      chmodSync(receiptPath, 0o400);
+      for (const changedAuthority of [
+        { ...servingAuthority, summaryGenerator: {
+          ...servingAuthority.summaryGenerator,
+          physicalModel: "gpt-5.7",
+        } },
+        { ...servingAuthority, topicLabeler: {
+          ...servingAuthority.topicLabeler,
+          physicalModel: "changed-topic-labeler",
+        } },
+        { ...servingAuthority, topicRelationVerifier: {
+          ...servingAuthority.topicRelationVerifier,
+          physicalModel: "changed-topic-relation-verifier",
+        } },
+        { ...servingAuthority, runtime: {
+          ...servingAuthority.runtime,
+          packageVersion: "1.2.4",
+        } },
+        { ...servingAuthority, runtime: {
+          ...servingAuthority.runtime,
+          launcherSha256: "b".repeat(64),
+        } },
+      ]) {
+        const changedIdentity = readerSummaryProductionDayAttemptIdentity({
+          tenantId: tenant,
+          workspaceId: workspace,
+          periodKey,
+          servingAuthority: changedAuthority,
+          sourceProvenance: { kind: "live-production" },
+        });
+        const changedRecovery = createRecoverableReaderSummaryPublication({
+          delegate: new InMemoryReaderSummaryPublication(jobs, artifacts, events),
+          recoveryDirectory: directory,
+          attemptIdentity: changedIdentity,
+          attestations: () => attestations,
+        });
+        expect(readerSummaryProductionDayIdempotencyKey(changedIdentity)).not.toBe(
+          readerSummaryProductionDayIdempotencyKey(attemptIdentity),
+        );
+        expect(() => changedRecovery.recovery?.load({
+          tenantId: tenant,
+          workspaceId: workspace,
+          periodKey,
+          readerSummaryJobId: replay.readerSummaryJobId!,
+          readerSummaryArtifactId: replay.readerSummaryArtifactId!,
+        })).toThrow();
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});
+
+it("binds the editor model attestation to actual writer plan before any publication", async () => {
+  const expected = "1".repeat(64);
+  const command = { artifact: { toSnapshot: () => ({
+    dailyEditorialPlan: { editorOutputSha256: expected },
+    dailyGenerationInput: { sent: { editorialPlanSha256: expected } },
+  }) } } as unknown as ReaderSummaryPublicationCommand;
+  const editor = { ...executionAttestation(), taskRole: "daily_editor" as const,
+    normalizedOutputSha256: expected,
+    attestation: { ...executionAttestation().attestation,
+      purpose: "social_monitor.reader_summary.daily_editorial.plan.v1" } };
+  const delegate = { publish: jest.fn(async () => "published" as const) };
+  let records: readonly VerifiedReaderSummaryExecutionAttestation[] = [editor];
+  const { publication } = createRecoverableReaderSummaryPublication({
+    delegate, recoveryDirectory: undefined, attemptIdentity: "a".repeat(64),
+    attestations: () => records,
+  });
+  await expect(publication.publish(command)).resolves.toBe("published");
+  expect(delegate.publish).toHaveBeenCalledTimes(1);
+  delegate.publish.mockClear();
+  records = [{ ...editor, normalizedOutputSha256: "2".repeat(64) }];
+  await expect(publication.publish(command)).rejects.toThrow(
+    "Daily editorial publication does not match");
+  expect(delegate.publish).not.toHaveBeenCalled();
+  records = [];
+  await expect(publication.publish(command)).rejects.toThrow(
+    "Daily editorial publication does not match");
+  expect(delegate.publish).not.toHaveBeenCalled();
+});
+
+const runProductionDayRequestExecution = async (input: {
+  readonly request: RequestReaderSummaryUseCase;
+  readonly execute: ExecuteReaderSummaryJobUseCase;
+  readonly attemptIdentity: string;
+  readonly failpoint?: string;
+}): Promise<{
+  readonly requestCreated?: boolean;
+  readonly readerSummaryJobId?: string;
+  readonly readerSummaryArtifactId?: string;
+  readonly error?: string;
+}> => {
+  try {
+    const requested = await input.request.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      scope: { type: "workspace" },
+      cadence: "daily",
+      period: { startedAt: periodStartedAt, endedAt: periodEndedAt, timezone: "UTC" },
+      idempotencyKey: readerSummaryProductionDayIdempotencyKey(input.attemptIdentity),
+      correlationId: "reader-summary-db-publication-reconciliation",
+    });
+    if (!requested.ok) throw requested.error;
+    const executed = await input.execute.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      readerSummaryJobId: requested.value.readerSummaryJobId,
+      maxEvidenceItems: 20,
+    });
+    if (!executed.ok) throw executed.error;
+    assertReaderSummaryDbPublicationFailpointInactive(input.failpoint);
+    return {
+      requestCreated: requested.value.created,
+      readerSummaryJobId: executed.value.readerSummaryJobId,
+      readerSummaryArtifactId: executed.value.readerSummaryId,
+    };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+};
+
+const countingModel = (delegate: ReaderSummaryModelPort) => {
+  let calls = 0;
+  const port = new Proxy(delegate, {
+    get(target, property, receiver) {
+      if (property !== "generate") return Reflect.get(target, property, receiver);
+      return async (...args: Parameters<ReaderSummaryModelPort["generate"]>) => {
+        calls += 1;
+        return target.generate(...args);
+      };
+    },
+  });
+  return { port, calls: () => calls };
+};
+
+const successfulEmptyTopicMapBuilder = () =>
+  ({
+    async execute() {
+      return ok(emptyReaderSummaryTopicMap());
+    },
+  }) as unknown as BuildReaderSummaryTopicMapUseCase;
+
+class AlwaysPublishPolicy extends ReaderSummaryPublicationPolicy {
+  override evaluate(): ReaderSummaryPublicationDecision {
+    return {
+      status: "published",
+      qualityPassed: true,
+      canonicalScore: 1,
+      shadow: {
+        mode: "shadow",
+        policyVersion: "reader_summary_publication_shadow_v1",
+        riskScore: 0,
+        signals: [],
+      },
+      reasons: [],
+    };
+  }
+}
+
+const zeroEligibleGitHubProjectionReader =
+  (): ReaderSummaryGitHubProjectionReaderPort => ({
+    async read() {
+      return { eligibleBindingIds: [], items: [], pageCount: 1 };
+    },
+  });
+
+class SequenceIdGenerator implements IdGenerator {
+  constructor(private readonly values: readonly string[]) {}
+  private index = 0;
+  generate(): string {
+    const value = this.values[this.index];
+    if (value === undefined) throw new Error("Unexpected test id generation");
+    this.index += 1;
+    return value;
+  }
+}
+
+class CapturingQueue implements ReaderSummaryJobQueuePort {
+  readonly commands: EnqueueReaderSummaryJobCommand[] = [];
+  async canAccept(): Promise<boolean> { return true; }
+  async enqueue(command: EnqueueReaderSummaryJobCommand): Promise<void> {
+    this.commands.push(command);
+  }
+}
+
+class AllowingQuota implements SummaryQuotaPort {
+  async reserveSummaryJob(
+    _command: ReserveSummaryJobQuotaCommand,
+  ): Promise<ReturnType<typeof ok<ReserveSummaryJobQuotaResult>>> {
+    void _command;
+    return ok({ remaining: 1, resetAt: periodEndedAt.toISOString() });
+  }
+}
+
+const onlyRecoveryReceipt = (directory: string): Buffer => {
+  const files = readdirSync(directory).filter((name) => name.endsWith(".v1.json"));
+  expect(files).toHaveLength(1);
+  return readFileSync(join(directory, files[0]!));
+};
+
+const evidenceSelection = (): ReaderSummaryModelInput["evidence"] => {
+  return {
+    rankingPolicyVersion: "story_ranking_v1",
+    sourceWindow: {
+      windowId: "workspace:db-publication-reconciliation",
+      startedAt: periodStartedAt,
+      endedAt: periodEndedAt,
+      selectedFeedItemIds: [],
+      storyClusterIds: [],
+    },
+    clusters: [],
+    selectedEvidence: [],
+  };
+};
+
+const executionAttestation = (): VerifiedReaderSummaryExecutionAttestation => ({
+  taskRole: "summary" as const,
+  attempt: "primary",
+  normalizedOutputSha256: "c".repeat(64),
+  attestation: {
+    schemaVersion: 1 as const,
+    requestId: "fixture-request",
+    purpose: "social_monitor.reader_summary.generate",
+    canonicalRequestSha256: "d".repeat(64),
+    provider: "codex",
+    model: "gpt-5.6-sol",
+    reasoningEffort: "xhigh",
+    runtimeEngine: "subscription-runtime-cli",
+    runtimePackageVersion: "fixture-runtime",
+    launcherSha256: "e".repeat(64),
+    selectedOutputKind: "structured_output" as const,
+    selectedOutputSha256: "f".repeat(64),
+  },
+});

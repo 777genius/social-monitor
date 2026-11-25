@@ -1,0 +1,707 @@
+import { DirectScanDispatchAdapter } from '@social-monitor/monitoring/adapters/queue/direct-scan-dispatch.adapter';
+import { InMemoryInterestCreationState } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation-state';
+import { InMemoryInterestCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation.store';
+import { InMemorySourceBindingStatusChangeStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-source-binding-status-change.store';
+import { InMemorySourceBindingCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-source-binding-creation.store';
+import { CryptoIdGenerator } from '@social-monitor/shared-kernel';
+import {
+  DomainError,
+  type EventEnvelope,
+  FixedClock,
+  type IdGenerator,
+  ok,
+  type Result,
+  tenantId,
+  type TenantId,
+  workspaceId,
+  type WorkspaceId,
+} from '@social-monitor/shared-kernel';
+import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
+import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
+import { WorkerRuntime } from '@social-monitor/platform-worker';
+
+import { ProjectSummaryReadyEventUseCase } from '../libs/delivery/features/project-summary-ready-event/project-summary-ready-event.use-case';
+import type { SummaryReadyProjectionPayload } from '../libs/delivery/features/project-summary-ready-event/project-summary-ready-event.command';
+import { ListRealtimeEventsUseCase } from '../libs/delivery/features/list-realtime-events/list-realtime-events.use-case';
+import { InMemorySummaryReadyProjectionStore } from '../libs/delivery/adapters/persistence/in-memory-summary-ready-projection.store';
+import { InMemoryDeliveryProvider } from '../libs/delivery/adapters/notification/in-memory-delivery.provider';
+import { InMemoryDeliveryAttemptRepository } from '../libs/delivery/adapters/persistence/in-memory-delivery-attempt.repository';
+import { InMemoryDigestRepository } from '../libs/delivery/adapters/persistence/in-memory-digest.repository';
+import { InMemoryRealtimeEventRepository } from '../libs/delivery/adapters/persistence/in-memory-realtime-event.repository';
+import { InMemoryDigestSourceReader } from '../libs/delivery/adapters/source/in-memory-digest-source.reader';
+import { InMemoryNotificationPreferenceReader } from '../libs/delivery/adapters/preferences/in-memory-notification-preference.reader';
+import { AssembleDigestUseCase } from '../libs/delivery/features/assemble-digest/assemble-digest.use-case';
+import { GetDeliveryAttemptUseCase } from '../libs/delivery/features/get-delivery-attempt/get-delivery-attempt.use-case';
+import { GetDigestUseCase } from '../libs/delivery/features/get-digest/get-digest.use-case';
+import { QueueDeliveryAttemptUseCase } from '../libs/delivery/features/queue-delivery-attempt/queue-delivery-attempt.use-case';
+import { SendDeliveryAttemptUseCase } from '../libs/delivery/features/send-delivery-attempt/send-delivery-attempt.use-case';
+import { SendDeliveryAttemptCommandHandler } from '../libs/delivery/interfaces/queue/send-delivery-attempt-command.handler';
+import { InMemoryFeedItemReadRepository } from '../libs/feed/adapters/persistence/in-memory-feed-item-read.repository';
+import { ListFeedItemsUseCase } from '../libs/feed/features/list-feed-items/list-feed-items.use-case';
+import { InMemoryScanAttemptRepository } from '../libs/ingestion/adapters/persistence/in-memory-scan-attempt.repository';
+import { InMemoryScanCursorRepository } from '../libs/ingestion/adapters/persistence/in-memory-scan-cursor.repository';
+import { InMemorySourceItemRepository } from '../libs/ingestion/adapters/persistence/in-memory-source-item.repository';
+import { InMemoryScanFailureQueueAdapter } from '../libs/ingestion/adapters/queue/in-memory-scan-failure-queue.adapter';
+import { InMemoryScanLeaseAdapter } from '../libs/ingestion/adapters/lease/in-memory-scan-lease.adapter';
+import { FakeSourceProvider } from '../libs/ingestion/adapters/source/fake-source.provider';
+import { InMemorySourceProviderRegistry } from '../libs/ingestion/adapters/source/in-memory-source-provider.registry';
+import { RegistrySourceFetcherAdapter } from '../libs/ingestion/adapters/source/registry-source-fetcher.adapter';
+import { sourceReadinessProfiles } from '../libs/ingestion/adapters/source/source-readiness-profiles';
+import { ExecuteScanUseCase } from '../libs/ingestion/features/execute-scan/execute-scan.use-case';
+import type { ExecuteScanCommand } from '../libs/ingestion/features/execute-scan/execute-scan.command';
+import type {
+  ReportScanFailedCommand,
+  ReportScanSucceededCommand,
+  ScanExecutionReporterPort,
+  SourceQuery,
+} from '../libs/ingestion/ports';
+import { InMemoryFeedProjectionAdapter } from '../apps/ingestion-worker/src/adapters/feed/in-memory-feed-projection.adapter';
+import { BindSourceUseCase } from '../libs/monitoring/features/bind-source/bind-source.use-case';
+import { ChangeSourceBindingStatusUseCase } from '../libs/monitoring/features/change-source-binding-status/change-source-binding-status.use-case';
+import { CreateInterestUseCase } from '../libs/monitoring/features/create-interest/create-interest.use-case';
+import { GetScanStatusUseCase } from '../libs/monitoring/features/get-scan-status/get-scan-status.use-case';
+import { RecordScanExecutionUseCase } from '../libs/monitoring/features/record-scan-execution/record-scan-execution.use-case';
+import { RequestScanUseCase } from '../libs/monitoring/features/request-scan/request-scan.use-case';
+import { SetScanPolicyUseCase } from '../libs/monitoring/features/set-scan-policy/set-scan-policy.use-case';
+import { InMemoryIdempotencyAdapter } from '../libs/monitoring/adapters/idempotency/in-memory-idempotency.adapter';
+import { InMemoryOutboxAdapter } from '../libs/monitoring/adapters/messaging/in-memory-outbox.adapter';
+import { InMemoryScanJobRepository } from '../libs/monitoring/adapters/persistence/in-memory-scan-job.repository';
+import { InMemoryScanPolicyRepository } from '../libs/monitoring/adapters/persistence/in-memory-scan-policy.repository';
+import { InMemorySourceBindingRepository } from '../libs/monitoring/adapters/persistence/in-memory-source-binding.repository';
+import { InMemoryInterestRepository } from '../libs/monitoring/adapters/persistence/in-memory-interest.repository';
+import { InMemoryScanQueueAdapter } from '../libs/monitoring/adapters/queue/in-memory-scan-queue.adapter';
+import { FakeSourceCatalogAdapter } from '../libs/monitoring/adapters/source-catalog/fake-source-catalog.adapter';
+import type {
+  ReserveManualScanRequestQuotaResult,
+  ScanRequestQuotaPort,
+  SourceBindingConfig,
+  SourceBindingConfigProtectorPort,
+} from '../libs/monitoring/ports';
+import { FeedSummaryEvidenceSelector } from '../libs/summary/adapters/evidence/feed-summary-evidence.selector';
+import { FeedSummaryFreshnessProbe } from '../libs/summary/adapters/evidence/feed-summary-freshness.probe';
+import { InMemorySummaryEventPublisher } from '../libs/summary/adapters/messaging/in-memory-summary-event-publisher';
+import { InMemorySummaryJobQueueAdapter } from '../libs/summary/adapters/messaging/in-memory-summary-job-queue.adapter';
+import { DeterministicSummaryModelAdapter } from '../libs/summary/adapters/model/deterministic-summary-model.adapter';
+import { NoopUserSummaryPreferenceReader } from '../libs/summary/adapters/preferences/noop-user-summary-preference.reader';
+import { InMemorySummaryArtifactRepository } from '../libs/summary/adapters/persistence/in-memory-summary-artifact.repository';
+import { InMemorySummaryFeedbackRepository } from '../libs/summary/adapters/persistence/in-memory-summary-feedback.repository';
+import { InMemorySummaryJobRepository } from '../libs/summary/adapters/persistence/in-memory-summary-job.repository';
+import { InMemorySummaryPolicyRepository } from '../libs/summary/adapters/persistence/in-memory-summary-policy.repository';
+import { ExecuteSummaryJobUseCase } from '../libs/summary/features/execute-summary-job/execute-summary-job.use-case';
+import { GetSummaryUseCase } from '../libs/summary/features/get-summary/get-summary.use-case';
+import { RecordSummaryFeedbackUseCase } from '../libs/summary/features/record-summary-feedback/record-summary-feedback.use-case';
+import { RequestSummaryUseCase } from '../libs/summary/features/request-summary/request-summary.use-case';
+import type { ReserveSummaryJobQuotaResult, SummaryQuotaPort } from '../libs/summary/ports';
+import { DeliveryAttemptDispatchLoop } from '../apps/delivery-service/src/delivery-attempt-dispatch-loop';
+
+type QueuedScanPayload = Omit<ExecuteScanCommand, 'correlationId' | 'causationId'>;
+
+const fixedNow = new Date('2026-06-06T00:00:00.000Z');
+const tenant = tenantId('00000000-0000-7000-8000-000000000701');
+const workspace = workspaceId('00000000-0000-7000-8000-000000000702');
+const correlation = 'mvp-core-loop-correlation';
+
+async function main(): Promise<void> {
+  const ids = new SequenceIdGenerator('mvp-core');
+  const clock = new FixedClock(fixedNow);
+  const interestCreationState = new InMemoryInterestCreationState();
+  const topics = new InMemoryInterestRepository(interestCreationState);
+  const bindings = new InMemorySourceBindingRepository(interestCreationState);
+  const scanPolicies = new InMemoryScanPolicyRepository();
+  const scanJobs = new InMemoryScanJobRepository();
+  const outbox = new InMemoryOutboxAdapter(interestCreationState);
+  const idempotency = new InMemoryIdempotencyAdapter(interestCreationState);
+  const queuePublisher = new InMemoryQueuePublisher();
+  const scanQueue = new InMemoryScanQueueAdapter(queuePublisher, new InMemoryMetricsRecorder());
+  const feedItems = new InMemoryFeedItemReadRepository();
+  const summaryJobs = new InMemorySummaryJobRepository();
+  const summaryQueuePublisher = new InMemoryQueuePublisher();
+  const summaryQueue = new InMemorySummaryJobQueueAdapter(summaryQueuePublisher, new InMemoryMetricsRecorder());
+  const summaryArtifacts = new InMemorySummaryArtifactRepository();
+  const summaryPolicies = new InMemorySummaryPolicyRepository();
+  const summaryFeedback = new InMemorySummaryFeedbackRepository();
+  const summaryEvents = new InMemorySummaryEventPublisher();
+  const deliveryAttempts = new InMemoryDeliveryAttemptRepository();
+  const digestRepository = new InMemoryDigestRepository();
+  const digestSources = new InMemoryDigestSourceReader();
+  const realtimeEvents = new InMemoryRealtimeEventRepository();
+
+  const topic = unwrap(
+    await new CreateInterestUseCase(new InMemoryInterestCreationStore(interestCreationState), idempotency, ids, clock).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      name: 'AI Infrastructure',
+      query: 'monitoring',
+      idempotencyKey: 'interest:create:ai-infrastructure',
+      correlationId: correlation,
+    }),
+    'create topic',
+  );
+  assert(topic.created, 'topic should be created on first command');
+
+  const sourceBinding = unwrap(
+    await new BindSourceUseCase(
+      topics,
+      new InMemorySourceBindingCreationStore(interestCreationState),
+      new FakeSourceCatalogAdapter(),
+      idempotency,
+      new PassThroughConfigProtector(),
+      ids,
+      clock,
+    ).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      interestId: topic.interestId,
+      providerKey: 'fake-source',
+      config: {
+        mode: 'search',
+        query: 'monitoring',
+      },
+      idempotencyKey: 'source:bind:fake-source',
+      correlationId: correlation,
+    }),
+    'bind source',
+  );
+  assert(sourceBinding.created, 'source binding should be created on first command');
+
+  const scanPolicy = unwrap(
+    await new SetScanPolicyUseCase(bindings, scanPolicies, outbox, idempotency, ids, clock).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      sourceBindingId: sourceBinding.sourceBindingId,
+      intervalSeconds: 900,
+      freshnessSeconds: 3600,
+      retryBudget: 2,
+      idempotencyKey: 'scan-policy:set:fake-source',
+      correlationId: correlation,
+    }),
+    'set scan policy',
+  );
+  assert(scanPolicy.created, 'scan policy should be created on first command');
+
+  const changeSourceBindingStatus = new ChangeSourceBindingStatusUseCase(new InMemorySourceBindingStatusChangeStore(interestCreationState), ids, clock);
+  const requestScan = new RequestScanUseCase(
+      bindings,
+      scanPolicies,
+      scanJobs,
+      scanQueue,
+      new DirectScanDispatchAdapter(scanJobs, scanQueue, outbox),
+      idempotency,
+      new AllowingScanRequestQuota(),
+      ids,
+      clock
+
+  );
+  const pausedBinding = unwrap(
+    await changeSourceBindingStatus.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      interestId: topic.interestId,
+      sourceBindingId: sourceBinding.sourceBindingId,
+      status: 'paused',
+      idempotencyKey: 'source:status:pause',
+      correlationId: correlation,
+    }),
+    'pause source binding',
+  );
+  assert(pausedBinding.changed, 'source binding pause should change status');
+  assert(pausedBinding.status === 'paused', `expected paused source binding, got ${pausedBinding.status}`);
+
+  const pausedScanRequest = await requestScan.execute({
+    tenantId: tenant,
+    workspaceId: workspace,
+    sourceBindingId: sourceBinding.sourceBindingId,
+    idempotencyKey: 'scan:request:paused',
+    correlationId: correlation,
+  });
+  assert(!pausedScanRequest.ok, 'paused source binding must reject new manual scan request');
+  assert(
+    pausedScanRequest.error instanceof DomainError && pausedScanRequest.error.code === 'validation.failed',
+    'paused scan request should fail with validation.failed',
+  );
+  assert(queuePublisher.all().length === 0, 'paused source binding must not enqueue scan commands');
+
+  const resumedBinding = unwrap(
+    await changeSourceBindingStatus.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      interestId: topic.interestId,
+      sourceBindingId: sourceBinding.sourceBindingId,
+      status: 'enabled',
+      idempotencyKey: 'source:status:resume',
+      correlationId: correlation,
+    }),
+    'resume source binding',
+  );
+  assert(resumedBinding.changed, 'source binding resume should change status');
+  assert(resumedBinding.status === 'enabled', `expected enabled source binding, got ${resumedBinding.status}`);
+
+  const requestedScan = unwrap(
+    await requestScan.execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      sourceBindingId: sourceBinding.sourceBindingId,
+      idempotencyKey: 'scan:request:manual',
+      correlationId: correlation,
+    }),
+    'request scan after resume',
+  );
+  assert(requestedScan.created, 'scan request should create a job');
+  assert(requestedScan.status === 'enqueued', `expected enqueued scan job, got ${requestedScan.status}`);
+
+  const queuedScan = queuePublisher.all()[0];
+  assert(queuedScan !== undefined, 'scan request must enqueue ingestion command');
+  assert(queuedScan.commandType === 'ingestion.scan.execute', 'unexpected queued command type');
+  assert(typeof queuedScan.causationId === 'string', 'queued scan causationId is required');
+  assertQueuedScanPayload(queuedScan.payload);
+
+  const sourceRegistry = new InMemorySourceProviderRegistry([new FakeSourceProvider()], sourceReadinessProfiles);
+  const scanAttempts = new InMemoryScanAttemptRepository();
+  const executeScanResult = unwrap(
+    await new ExecuteScanUseCase(
+      new RegistrySourceFetcherAdapter(sourceRegistry),
+      new InMemorySourceItemRepository(),
+      new InMemoryFeedProjectionAdapter(feedItems),
+      scanAttempts,
+      new InMemoryScanCursorRepository(),
+      new MonitoringScanExecutionReporter(new RecordScanExecutionUseCase(scanJobs)),
+      new InMemoryScanFailureQueueAdapter(new InMemoryMetricsRecorder()),
+      new InMemoryScanLeaseAdapter(),
+      ids,
+      clock,
+    ).execute({
+      ...queuedScan.payload,
+      correlationId: queuedScan.correlationId,
+      causationId: queuedScan.causationId,
+      retryBudget: 2,
+    }),
+    'execute scan',
+  );
+  assert(executeScanResult.fetched === 2, `expected 2 fetched items, got ${executeScanResult.fetched}`);
+  assert(executeScanResult.inserted === 2, `expected 2 inserted items, got ${executeScanResult.inserted}`);
+  assert(executeScanResult.projected === 2, `expected 2 projected feed items, got ${executeScanResult.projected}`);
+
+  const scanStatus = unwrap(
+    await new GetScanStatusUseCase(scanJobs, {
+      findLatestByScanJob: async (query) => {
+        const attempt = await scanAttempts.findByScanJob(query);
+
+        return attempt?.toSnapshot() ?? null;
+      },
+    }).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      scanJobId: requestedScan.scanJobId,
+    }),
+    'get scan status',
+  );
+  assert(scanStatus.status === 'succeeded', `expected succeeded scan job, got ${scanStatus.status}`);
+  assert(
+    scanStatus.latestAttempt?.inserted === 2,
+    `expected latest scan attempt with 2 inserted items, got ${scanStatus.latestAttempt?.inserted ?? 'missing'}`,
+  );
+
+  const feedPage = unwrap(
+    await new ListFeedItemsUseCase(feedItems, feedItems, clock).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      interestId: topic.interestId,
+      limit: 10,
+    }),
+    'list feed items',
+  );
+  assert(feedPage.items.length === 2, `expected 2 feed items, got ${feedPage.items.length}`);
+  assert(
+    feedPage.items.every((item) => item.sourceBindingId === sourceBinding.sourceBindingId),
+    'feed items must keep source binding provenance',
+  );
+  assert(
+    feedPage.items.every((item) => item.canonicalUrl.startsWith('https://example.test/source/')),
+    'feed items must expose canonical source URLs',
+  );
+
+  const summaryJob = unwrap(
+    await new RequestSummaryUseCase(summaryJobs, summaryQueue, new AllowingSummaryQuota(), ids, clock).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      interestId: topic.interestId,
+      idempotencyKey: 'summary:request:topic',
+      correlationId: correlation,
+    }),
+    'request summary',
+  );
+  assert(summaryJob.created, 'summary request should create a job');
+  const queuedSummary = summaryQueuePublisher.all()[0];
+  assert(queuedSummary !== undefined, 'summary request must enqueue summary job execution command');
+  assert(queuedSummary.commandType === 'summary.job.execute', `unexpected summary command ${queuedSummary.commandType}`);
+
+  const summaryExecution = unwrap(
+    await new ExecuteSummaryJobUseCase(
+      summaryJobs,
+      summaryArtifacts,
+      summaryPolicies,
+      new NoopUserSummaryPreferenceReader(),
+      new FeedSummaryEvidenceSelector(feedItems, clock),
+      new DeterministicSummaryModelAdapter(),
+      summaryEvents,
+      ids,
+      clock,
+    ).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      summaryJobId: readStringPayload(queuedSummary.payload, 'summaryJobId'),
+      maxEvidenceItems: 20,
+    }),
+    'execute summary',
+  );
+  assert(summaryExecution.status === 'completed', `expected completed summary, got ${summaryExecution.status}`);
+  assert(summaryExecution.summaryId !== undefined, 'completed summary must return summaryId');
+
+  const summary = unwrap(
+    await new GetSummaryUseCase(summaryArtifacts, new FeedSummaryFreshnessProbe(feedItems, clock)).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      summaryId: summaryExecution.summaryId,
+    }),
+    'get summary',
+  );
+  assert(summary.citations.length === 2, `expected 2 summary citations, got ${summary.citations.length}`);
+  assert(summary.qualityFlags.includes('limited_sources'), 'deterministic MVP summary should flag limited_sources');
+  assert(summary.freshness.status === 'fresh', `expected fresh summary, got ${summary.freshness.status}`);
+
+  const digestWindowStartedAt = new Date(fixedNow.getTime() - 60 * 60 * 1000);
+  const digestWindowEndedAt = new Date(fixedNow.getTime() + 1000);
+  digestSources.addSummary({
+    tenantId: tenant,
+    workspaceId: workspace,
+    summaryId: summaryExecution.summaryId,
+    interestId: topic.interestId,
+    sourceWindowStartedAt: digestWindowStartedAt,
+    sourceWindowEndedAt: fixedNow,
+    signal: 'high',
+  });
+  for (const feedItem of feedPage.items) {
+    digestSources.addFeedItem({
+      tenantId: tenant,
+      workspaceId: workspace,
+      feedItemId: feedItem.id,
+      interestId: feedItem.interestId,
+      observedAt: new Date(feedItem.observedAt),
+      signal: 'normal',
+    });
+  }
+
+  const assembledDigest = unwrap(
+    await new AssembleDigestUseCase(
+      digestRepository,
+      digestSources,
+      new QueueDeliveryAttemptUseCase(deliveryAttempts, ids, clock),
+      ids,
+      clock,
+    ).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      recipientKey: 'beta-user-1',
+      channel: 'in_app',
+      interestIds: [topic.interestId],
+      windowStartedAt: digestWindowStartedAt,
+      windowEndedAt: digestWindowEndedAt,
+      includeNoSignal: false,
+      maxRetries: 3,
+    }),
+    'assemble digest',
+  );
+  assert(assembledDigest.created, 'digest should be assembled for the MVP core loop');
+  assert(assembledDigest.digest.status === 'assembled', `expected assembled digest, got ${assembledDigest.digest.status}`);
+  assert(
+    assembledDigest.digest.summaryIds.join(',') === summaryExecution.summaryId,
+    'digest must include the completed summary artifact',
+  );
+  assert(assembledDigest.digest.feedItemIds.length === 2, 'digest must include scanned feed item provenance');
+  assert(assembledDigest.deliveryAttemptId !== undefined, 'assembled digest must queue a delivery attempt');
+
+  const digestView = unwrap(
+    await new GetDigestUseCase(digestRepository).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      digestId: assembledDigest.digest.id,
+    }),
+    'get assembled digest',
+  );
+  assert(digestView.provenance.length === 3, 'digest read model must expose summary and feed provenance');
+
+  const deliveryAttemptView = unwrap(
+    await new GetDeliveryAttemptUseCase(deliveryAttempts).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      deliveryAttemptId: assembledDigest.deliveryAttemptId,
+    }),
+    'get digest delivery attempt',
+  );
+  assert(deliveryAttemptView.state === 'queued', `expected queued delivery attempt, got ${deliveryAttemptView.state}`);
+  assert(deliveryAttemptView.channel === 'in_app', 'digest delivery attempt channel should be in-app');
+  assert(deliveryAttemptView.resourceType === 'digest', 'digest delivery attempt must target digest resource type');
+  assert(deliveryAttemptView.resourceId === assembledDigest.digest.id, 'digest delivery attempt must target assembled digest');
+
+  const deliveryProvider = new InMemoryDeliveryProvider('in_app');
+  const deliveryMetrics = new InMemoryMetricsRecorder();
+  const deliveryRuntime = new WorkerRuntime({ serviceName: 'delivery-service' });
+  deliveryRuntime.onModuleInit();
+  const deliveryDispatchLoop = new DeliveryAttemptDispatchLoop(
+    new SendDeliveryAttemptCommandHandler(
+      new SendDeliveryAttemptUseCase(
+        deliveryAttempts.workflow,
+        [deliveryProvider],
+        new InMemoryNotificationPreferenceReader(),
+        new FixedClock(new Date('2026-06-06T00:05:00.000Z')),
+        new CryptoIdGenerator(),
+      ),
+      deliveryMetrics,
+      deliveryRuntime,
+    ),
+    deliveryAttempts,
+    {
+      enabled: true,
+      intervalMs: 60_000,
+      limit: 10,
+      runOnStart: true,
+      tenantId: tenant,
+      workspaceId: workspace,
+    },
+  );
+  await deliveryDispatchLoop.onModuleInit();
+  await deliveryDispatchLoop.onApplicationShutdown('mvp-core-loop-delivery-complete');
+  await deliveryRuntime.onApplicationShutdown('mvp-core-loop-delivery-complete');
+
+  const deliveredDigestAttempt = unwrap(
+    await new GetDeliveryAttemptUseCase(deliveryAttempts).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      deliveryAttemptId: assembledDigest.deliveryAttemptId,
+    }),
+    'get delivered digest delivery attempt',
+  );
+  assert(
+    deliveredDigestAttempt.state === 'delivered',
+    `expected delivered digest attempt, got ${deliveredDigestAttempt.state}`,
+  );
+  assert(deliveryProvider.getSentRequests().length === 1, 'delivery loop must send the digest attempt once');
+  assert(
+    deliveryProvider.getSentRequests()[0]?.content.body ===
+      `Delivery resource digest:${assembledDigest.digest.id} is ready.`,
+    'delivery loop must render deterministic digest delivery content',
+  );
+  assert(
+    deliveryMetrics.counterValue('delivery_attempt_dispatch_total', {
+      status: 'started',
+      worker: 'delivery-service',
+    }) === 1,
+    'MVP core loop must record delivery dispatch start metric',
+  );
+  assert(
+    deliveryMetrics.counterValue('delivery_attempt_dispatch_total', {
+      status: 'succeeded',
+      worker: 'delivery-service',
+    }) === 1,
+    'MVP core loop must record delivery dispatch success metric',
+  );
+  const remainingDeliveryAttempts = await deliveryAttempts.findQueued({
+    tenantId: tenant,
+    workspaceId: workspace,
+    limit: 10,
+  });
+  assert(remainingDeliveryAttempts.length === 0, 'MVP core loop must drain digest delivery attempts');
+
+  const firstCitation = summary.citations[0];
+  assert(firstCitation !== undefined, 'summary should expose at least one citation for feedback evidence');
+  const recordedFeedback = unwrap(
+    await new RecordSummaryFeedbackUseCase(summaryArtifacts, summaryFeedback, ids, clock).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      summaryId: summaryExecution.summaryId,
+      idempotencyKey: 'summary-feedback:bad-citation',
+      submittedBy: 'beta-user-1',
+      rating: 2,
+      category: 'bad_citation',
+      citationId: firstCitation.citationId,
+      comment: 'Citation needs review before beta expansion.',
+      correlationId: correlation,
+    }),
+    'record summary feedback',
+  );
+  assert(recordedFeedback.created, 'summary feedback should be created');
+  assert(recordedFeedback.triageOwner === 'summary-owner', 'bad_citation feedback should route to summary owner');
+  assert(recordedFeedback.evidence.feedItemId === firstCitation.feedItemId, 'feedback must preserve citation feed evidence');
+  assert(recordedFeedback.eligibleForEvalFixture, 'bad_citation feedback should be eligible for eval fixture review');
+
+  const summaryReadyEvent = summaryEvents.all()[0];
+  assertSummaryReadyEvent(summaryReadyEvent);
+  const realtimeProjection = unwrap(
+    await new ProjectSummaryReadyEventUseCase(
+      new InMemorySummaryReadyProjectionStore(realtimeEvents),
+      { publish: async () => undefined },
+    ).execute({
+      event: summaryReadyEvent,
+    }),
+    'project summary ready event',
+  );
+  assert(
+    realtimeProjection.channel === `interest:${topic.interestId}:summary-status`,
+    `unexpected realtime channel ${realtimeProjection.channel}`,
+  );
+
+  const realtimePage = unwrap(
+    await new ListRealtimeEventsUseCase(realtimeEvents).execute({
+      tenantId: tenant,
+      workspaceId: workspace,
+      channel: realtimeProjection.channel,
+      limit: 10,
+    }),
+    'list realtime events',
+  );
+  assert(!realtimePage.resyncRequired, 'fresh realtime page must not require resync');
+  assert(realtimePage.events.length === 1, `expected 1 realtime event, got ${realtimePage.events.length}`);
+  assert(realtimePage.events[0]?.resourceId === summaryExecution.summaryId, 'realtime event must target summary');
+  assert(realtimePage.events[0]?.sequence === realtimeProjection.sequence, 'realtime sequence mismatch');
+
+  console.log('MVP core loop and feedback smoke OK');
+}
+
+class SequenceIdGenerator implements IdGenerator {
+  private nextId = 1;
+
+  constructor(private readonly prefix: string) {}
+
+  generate(): string {
+    const id = `${this.prefix}-${this.nextId}`;
+    this.nextId += 1;
+    return id;
+  }
+}
+
+class PassThroughConfigProtector implements SourceBindingConfigProtectorPort {
+  async protect(config: SourceBindingConfig): Promise<SourceBindingConfig> {
+    return config;
+  }
+
+  async unprotect(config: SourceBindingConfig): Promise<SourceBindingConfig> {
+    return config;
+  }
+}
+
+class AllowingScanRequestQuota implements ScanRequestQuotaPort {
+  async reserveManualScanRequest(): Promise<Result<ReserveManualScanRequestQuotaResult, DomainError>> {
+    return ok({
+      remaining: 999,
+      resetAt: '2026-06-06T01:00:00.000Z',
+    });
+  }
+}
+
+class AllowingSummaryQuota implements SummaryQuotaPort {
+  async reserveSummaryJob(): Promise<Result<ReserveSummaryJobQuotaResult, DomainError>> {
+    return ok({
+      remaining: 999,
+      resetAt: '2026-06-06T01:00:00.000Z',
+    });
+  }
+}
+
+class MonitoringScanExecutionReporter implements ScanExecutionReporterPort {
+  constructor(private readonly recordScanExecution: RecordScanExecutionUseCase) {}
+
+  async reportSucceeded(command: ReportScanSucceededCommand): Promise<void> {
+    unwrap(
+      await this.recordScanExecution.execute({
+        ...command,
+        status: 'succeeded',
+      }),
+      'record successful scan execution',
+    );
+  }
+
+  async reportFailed(command: ReportScanFailedCommand): Promise<void> {
+    unwrap(
+      await this.recordScanExecution.execute({
+        ...command,
+        status: 'failed',
+        failureReason: command.failureReason,
+      }),
+      'record failed scan execution',
+    );
+  }
+}
+
+function unwrap<TValue, TError>(result: Result<TValue, TError>, label: string): TValue {
+  if (result.ok) {
+    return result.value;
+  }
+
+  throw result.error instanceof Error ? result.error : new Error(`${label} failed`);
+}
+
+function assert(condition: unknown, message: string): asserts condition {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+function assertQueuedScanPayload(payload: Readonly<Record<string, unknown>>): asserts payload is QueuedScanPayload {
+  assert(isTenantId(payload.tenantId), 'queued scan tenantId must be a string');
+  assert(isWorkspaceId(payload.workspaceId), 'queued scan workspaceId must be a string');
+  assert(typeof payload.scanJobId === 'string' && payload.scanJobId.length > 0, 'queued scanJobId is required');
+  assert(typeof payload.interestId === 'string' && payload.interestId.length > 0, 'queued interestId is required');
+  assert(
+    typeof payload.sourceBindingId === 'string' && payload.sourceBindingId.length > 0,
+    'queued sourceBindingId is required',
+  );
+  assert(typeof payload.scanPolicyId === 'string' && payload.scanPolicyId.length > 0, 'queued scanPolicyId is required');
+  assert(typeof payload.providerKey === 'string' && payload.providerKey === 'fake-source', 'providerKey mismatch');
+  assertSourceQuery(payload.sourceQuery);
+}
+
+function assertSourceQuery(value: unknown): asserts value is SourceQuery {
+  assert(value !== null && typeof value === 'object', 'sourceQuery must be an object');
+  const record = value as Readonly<Record<string, unknown>>;
+  assert(
+    record.mode === 'search' || record.mode === 'listing' || record.mode === 'thread' || record.mode === 'url',
+    'sourceQuery mode is invalid',
+  );
+  assert(typeof record.query === 'string' && record.query.length > 0, 'sourceQuery query is required');
+}
+
+function readStringPayload(payload: Readonly<Record<string, unknown>>, field: string): string {
+  const value = payload[field];
+
+  assert(typeof value === 'string' && value.length > 0, `${field} payload field is required`);
+
+  return value;
+}
+
+function assertSummaryReadyEvent(
+  event: EventEnvelope<Readonly<Record<string, unknown>>> | undefined,
+): asserts event is EventEnvelope<SummaryReadyProjectionPayload> {
+  assert(event !== undefined, 'summary execution must publish summary.ready event');
+  assert(event.eventType === 'summary.ready', `unexpected summary event type ${event.eventType}`);
+  const payload = event.payload;
+
+  assert(typeof payload.summaryJobId === 'string' && payload.summaryJobId.length > 0, 'summaryJobId is required');
+  assert(typeof payload.summaryId === 'string' && payload.summaryId.length > 0, 'summaryId is required');
+  assert(isTenantId(payload.tenantId), 'summary event tenantId must be a string');
+  assert(isWorkspaceId(payload.workspaceId), 'summary event workspaceId must be a string');
+  assert(typeof payload.interestId === 'string' && payload.interestId.length > 0, 'summary event interestId is required');
+  assert(payload.status === 'completed' || payload.status === 'no_signal', 'summary event status is invalid');
+}
+
+function isTenantId(value: unknown): value is TenantId {
+  return typeof value === 'string' && value.length > 0;
+}
+
+function isWorkspaceId(value: unknown): value is WorkspaceId {
+  return typeof value === 'string' && value.length > 0;
+}
+
+void main().catch((error) => {
+  console.error(error instanceof Error ? error.message : error);
+  process.exit(1);
+});

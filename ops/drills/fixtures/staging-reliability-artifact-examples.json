@@ -1,0 +1,660 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "staging-reliability-artifact-examples-v1",
+  "fixtureOnly": true,
+  "examples": [
+    {
+      "schemaVersion": 1,
+      "format": "staging-reliability-artifact-v1",
+      "artifactId": "rabbitmq-staging-drill-output",
+      "environmentId": "staging-example",
+      "imageDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+      "operator": "ops-owner-example",
+      "startedAt": "2026-06-18T00:00:00.000Z",
+      "completedAt": "2026-06-18T00:10:00.000Z",
+      "provenance": {
+        "evidenceKind": "fixture_example",
+        "collectionMethod": "Synthetic fixture example for RabbitMQ staging drill schema validation.",
+        "runner": "ops/drills/fixtures/staging-reliability-artifact-examples.json",
+        "fixtureOnly": true
+      },
+      "redaction": {
+        "secretsIncluded": false,
+        "rawProviderPayloadsIncluded": false,
+        "databaseUrlsIncluded": false,
+        "brokerUrlsIncluded": false
+      },
+      "signalResults": [
+        {
+          "signalId": "rabbitmq-publisher-confirms",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:01:00.000Z",
+          "evidence": {
+            "summary": "redacted publisher confirm ack observed",
+            "queueName": "scan.commands.staging",
+            "messageId": "msg-rabbitmq-confirm-example",
+            "confirmAckAt": "2026-06-18T00:01:05.000Z",
+            "publishMode": "confirm-channel",
+            "brokerUrlRedacted": true,
+            "imageDigestMatched": true
+          }
+        },
+        {
+          "signalId": "rabbitmq-persistent-publish",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:02:00.000Z",
+          "evidence": {
+            "summary": "redacted persistent message survived restart",
+            "queueName": "scan.commands.staging",
+            "messageId": "msg-rabbitmq-persistent-example",
+            "deliveryMode": "persistent",
+            "restartObserved": true,
+            "recoveredMessageId": "msg-rabbitmq-persistent-example"
+          }
+        },
+        {
+          "signalId": "rabbitmq-consumer-ack",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:03:00.000Z",
+          "evidence": {
+            "summary": "redacted ack removed command without duplicate side effects",
+            "messageId": "msg-rabbitmq-ack-example",
+            "ackAt": "2026-06-18T00:03:04.000Z",
+            "scanAttemptId": "scan-attempt-ack-example",
+            "queueDepthBeforeAck": 1,
+            "queueDepthAfterAck": 0,
+            "duplicateSideEffectsObserved": false
+          }
+        },
+        {
+          "signalId": "rabbitmq-consumer-nack-retry",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:04:00.000Z",
+          "evidence": {
+            "summary": "redacted nack retry kept correlation metadata",
+            "messageId": "msg-rabbitmq-nack-example",
+            "nackAt": "2026-06-18T00:04:03.000Z",
+            "redeliveryCount": 1,
+            "redeliveredFlag": true,
+            "deliveryCountObserved": 2,
+            "finalStatus": "acked-after-retry",
+            "correlationIdPreserved": true
+          }
+        },
+        {
+          "signalId": "rabbitmq-poison-message-dlx",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:05:00.000Z",
+          "evidence": {
+            "summary": "redacted poison command reached DLX",
+            "dlxExchange": "delivery.commands.dlx",
+            "deadLetterRoutingKey": "delivery.attempt.send.dead",
+            "deliveryAttemptId": "delivery-attempt-poison-example",
+            "dlqMessageId": "msg-rabbitmq-poison-example",
+            "sourceQueueDepthAfterDeadLetter": 0,
+            "deadLetteredAt": "2026-06-18T00:05:06.000Z"
+          }
+        },
+        {
+          "signalId": "rabbitmq-quorum-delivery-limit",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:06:00.000Z",
+          "evidence": {
+            "summary": "redacted quorum queue delivery limit observed",
+            "queueNames": [
+              "scan.commands.staging",
+              "summary.jobs.staging",
+              "delivery.attempts.staging"
+            ],
+            "queueType": "quorum",
+            "deliveryLimit": 20
+          }
+        },
+        {
+          "signalId": "rabbitmq-worker-restart-recovery",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:07:00.000Z",
+          "evidence": {
+            "summary": "redacted worker restart recovered unacked work",
+            "workerService": "ingestion-worker",
+            "restartWindow": "2026-06-18T00:06:30.000Z/2026-06-18T00:07:00.000Z",
+            "recoveredMessageId": "msg-rabbitmq-restart-example",
+            "idempotentResultId": "scan-attempt-restart-example",
+            "serviceRunningAfterRestart": true
+          }
+        },
+        {
+          "signalId": "rabbitmq-queue-lag-metrics",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:08:00.000Z",
+          "evidence": {
+            "summary": "redacted queue lag metric samples observed",
+            "metricNames": [
+              "scan_queue_lag",
+              "summary_queue_lag",
+              "delivery_queue_lag"
+            ],
+            "workerLabels": [
+              "ingestion-worker",
+              "intelligence-worker",
+              "delivery-service"
+            ],
+            "maxLagSamples": {
+              "scan": 3,
+              "summary": 2,
+              "delivery": 1
+            }
+          }
+        },
+        {
+          "signalId": "rabbitmq-event-relay-retry",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:09:00.000Z",
+          "evidence": {
+            "summary": "redacted event relay retry preserved outbox idempotency",
+            "outboxEventId": "outbox-event-relay-example",
+            "retryCount": 1,
+            "finalDeliveryResult": "published",
+            "idempotencyPreserved": true,
+            "duplicatePublishObserved": false
+          }
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "format": "staging-reliability-artifact-v1",
+      "artifactId": "postgres-restore-drill-output",
+      "environmentId": "staging-example",
+      "imageDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+      "operator": "ops-owner-example",
+      "startedAt": "2026-06-18T00:20:00.000Z",
+      "completedAt": "2026-06-18T00:40:00.000Z",
+      "provenance": {
+        "evidenceKind": "fixture_example",
+        "collectionMethod": "Synthetic fixture example for Postgres restore drill schema validation.",
+        "runner": "ops/drills/fixtures/staging-reliability-artifact-examples.json",
+        "fixtureOnly": true
+      },
+      "redaction": {
+        "secretsIncluded": false,
+        "rawProviderPayloadsIncluded": false,
+        "databaseUrlsIncluded": false,
+        "brokerUrlsIncluded": false
+      },
+      "signalResults": [
+        {
+          "signalId": "postgres-backup-created",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:21:00.000Z",
+          "evidence": {
+            "summary": "redacted backup id and mapped table count observed",
+            "backupId": "backup-staging-example",
+            "schemaVersion": "20260618002000",
+            "backupFormat": "pg_dump custom",
+            "includedTableCount": 83,
+            "sourceTableCount": 84,
+            "restoredTableCount": 84,
+            "operationalTablesIncluded": true,
+            "backupIncludesMatched": true,
+            "expectedBackupIncludeCount": 83,
+            "verifiedBackupIncludeCount": 83,
+            "missingBackupIncludeCount": 0,
+            "backupIncludesHash": "738dbec7832353deb856ed3a1fb0d81cfcfd05a29cec06e225b823150b92ed74",
+            "sourceTableNamesHash": "0400b7c4bfb7c371f2f70c216084d8c5f3e42b9e0ac95f9a4d385a1f1d9ea44c",
+            "restoredTableNamesHash": "0400b7c4bfb7c371f2f70c216084d8c5f3e42b9e0ac95f9a4d385a1f1d9ea44c",
+            "backupArtifactCleanedUp": true
+          }
+        },
+        {
+          "signalId": "postgres-restore-rpo-rto",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:24:00.000Z",
+          "evidence": {
+            "summary": "redacted restore timing stayed inside RPO/RTO",
+            "restoreStartedAt": "2026-06-18T00:22:00.000Z",
+            "restoreCompletedAt": "2026-06-18T00:24:00.000Z",
+            "rpoMinutes": 5,
+            "rtoMinutes": 2,
+            "workersPausedBeforeRestore": true
+          }
+        },
+        {
+          "signalId": "postgres-migration-version",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:27:00.000Z",
+          "evidence": {
+            "summary": "redacted migration identifiers matched release commit",
+            "releaseCommitSha": "0000000000000000000000000000000000000000",
+            "appliedMigrationIds": ["20260618002000_beta_release"],
+            "schemaChecksumMatched": true
+          }
+        },
+        {
+          "signalId": "postgres-validation-queries",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:30:00.000Z",
+          "evidence": {
+            "summary": "redacted validation query names and counts passed",
+            "queryNames": [
+              "restore_count_01",
+              "restore_count_02",
+              "restore_count_03",
+              "restore_count_04",
+              "restore_count_05",
+              "restore_count_06",
+              "restore_count_07",
+              "restore_count_08",
+              "restore_count_09",
+              "restore_count_10",
+              "restore_count_11",
+              "restore_count_12",
+              "restore_count_13",
+              "restore_count_14",
+              "restore_count_15",
+              "restore_count_16",
+              "restore_count_17",
+              "restore_count_18",
+              "restore_count_19",
+              "restore_count_20",
+              "restore_count_21",
+              "restore_count_22",
+              "restore_count_23",
+              "restore_count_24",
+              "restore_count_25",
+              "restore_count_26",
+              "restore_count_27",
+              "restore_count_28",
+              "restore_count_29",
+              "restore_count_30",
+              "restore_count_31",
+              "restore_count_32",
+              "restore_count_33",
+              "restore_count_34",
+              "restore_count_35",
+              "restore_count_36",
+              "restore_count_37",
+              "restore_count_38",
+              "restore_count_39",
+              "restore_count_40",
+              "restore_count_41",
+              "restore_count_42",
+              "restore_count_43",
+              "restore_count_44",
+              "restore_count_45",
+              "restore_count_46",
+              "restore_count_47",
+              "restore_count_48",
+              "restore_count_49",
+              "restore_count_50",
+              "restore_count_51",
+              "restore_count_52",
+              "restore_count_53",
+              "restore_count_54",
+              "restore_count_55",
+              "restore_count_56",
+              "restore_count_57",
+              "restore_count_58",
+              "restore_count_59",
+              "restore_count_60",
+              "restore_count_61",
+              "restore_count_62",
+              "restore_count_63",
+              "restore_count_64",
+              "restore_count_65"
+            ],
+            "checkedTableGroups": [
+              "contract-defined-table-counts",
+              "full-restored-schema"
+            ],
+            "executedQueryCount": 65,
+            "failedQueryCount": 0,
+            "restoreValidationContractHash": "81328cc46abee4a855de327c4dc3ced616f2e77d497673f81dd80de9473726b8",
+            "queryResultsHash": "1b7ecd8fe7a978295af8a20726d9a3d6334d6531eaae70c94a3c3c9d91051206"
+          }
+        },
+        {
+          "signalId": "postgres-outbox-inbox-idempotency",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:33:00.000Z",
+          "evidence": {
+            "summary": "redacted outbox inbox idempotency counts matched before and after restore",
+            "beforeCounts": {
+              "outbox": 12,
+              "inbox": 7,
+              "idempotency": 19
+            },
+            "afterCounts": {
+              "outbox": 12,
+              "inbox": 7,
+              "idempotency": 19
+            },
+            "countsMatched": true,
+            "beforeFingerprints": {
+              "outbox": "e3b0c44298fc1c149afbf4c8996fb924",
+              "inbox": "e3b0c44298fc1c149afbf4c8996fb924",
+              "idempotency": "e3b0c44298fc1c149afbf4c8996fb924",
+              "delivery": "e3b0c44298fc1c149afbf4c8996fb924"
+            },
+            "afterFingerprints": {
+              "outbox": "e3b0c44298fc1c149afbf4c8996fb924",
+              "inbox": "e3b0c44298fc1c149afbf4c8996fb924",
+              "idempotency": "e3b0c44298fc1c149afbf4c8996fb924",
+              "delivery": "e3b0c44298fc1c149afbf4c8996fb924"
+            },
+            "fingerprintsMatched": true
+          }
+        },
+        {
+          "signalId": "postgres-worker-pause-resume",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:36:00.000Z",
+          "evidence": {
+            "summary": "redacted worker pause and resume window observed",
+            "pauseCommandId": "pause-workers-example",
+            "resumeCommandId": "resume-workers-example",
+            "pausedServices": [
+              "ingestion-worker",
+              "intelligence-worker",
+              "delivery-service",
+              "event-relay"
+            ],
+            "resumedServices": [
+              "event-relay",
+              "ingestion-worker",
+              "intelligence-worker",
+              "delivery-service"
+            ],
+            "workAcceptedDuringValidation": false
+          }
+        },
+        {
+          "signalId": "postgres-no-duplicate-side-effects",
+          "status": "passed",
+          "observedAt": "2026-06-18T00:39:00.000Z",
+          "evidence": {
+            "summary": "redacted durable counts stayed stable after resume",
+            "idempotencyKeys": [
+              "scan:example",
+              "summary:example",
+              "delivery:example"
+            ],
+            "stableCountsAfterResume": {
+              "scanAttempts": 4,
+              "feedItems": 11,
+              "summaries": 3,
+              "deliveryAttempts": 2
+            },
+            "beforeResumeCounts": {
+              "scanAttempts": 4,
+              "feedItems": 11,
+              "summaries": 3,
+              "deliveryAttempts": 2
+            },
+            "afterResumeCounts": {
+              "scanAttempts": 4,
+              "feedItems": 11,
+              "summaries": 3,
+              "deliveryAttempts": 2
+            },
+            "deliveryIdempotencyKey": "delivery:example",
+            "duplicateProbeBeforeCount": 1,
+            "duplicateProbeAfterCount": 1,
+            "duplicateInsertSuppressed": true,
+            "replayWindow": "2026-06-18T00:24:00.000Z/2026-06-18T00:39:00.000Z",
+            "duplicateSideEffectsObserved": false
+          }
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "format": "staging-reliability-artifact-v1",
+      "artifactId": "durable-backend-e2e-output",
+      "environmentId": "staging-example",
+      "imageDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000003",
+      "operator": "backend-lead-example",
+      "startedAt": "2026-06-18T01:00:00.000Z",
+      "completedAt": "2026-06-18T01:12:00.000Z",
+      "provenance": {
+        "evidenceKind": "fixture_example",
+        "collectionMethod": "Synthetic fixture example for durable backend e2e schema validation.",
+        "runner": "ops/drills/fixtures/staging-reliability-artifact-examples.json",
+        "fixtureOnly": true
+      },
+      "redaction": {
+        "secretsIncluded": false,
+        "rawProviderPayloadsIncluded": false,
+        "databaseUrlsIncluded": false,
+        "brokerUrlsIncluded": false
+      },
+      "signalResults": [
+        {
+          "signalId": "backend-loop-topic-to-delivery-audit",
+          "status": "passed",
+          "observedAt": "2026-06-18T01:04:00.000Z",
+          "evidence": {
+            "summary": "redacted topic to source to scan to feed to summary to delivery to audit loop observed",
+            "interestId": "topic-e2e-example",
+            "sourceBindingId": "source-binding-e2e-example",
+            "scanId": "scan-e2e-example",
+            "providerFeedCounts": [
+              {
+                "providerKey": "github-issues",
+                "sourceBindingId": "source-binding-github-example",
+                "feedItemCount": 2,
+                "feedProviderKeys": ["github-issues"],
+                "scanId": "scan-github-example"
+              },
+              {
+                "providerKey": "github-trending-page",
+                "sourceBindingId": "source-binding-github-trending-page-example",
+                "feedItemCount": 2,
+                "feedProviderKeys": ["github-trending-page"],
+                "scanId": "scan-github-trending-page-example"
+              },
+              {
+                "providerKey": "hacker-news",
+                "sourceBindingId": "source-binding-hacker-news-example",
+                "feedItemCount": 2,
+                "feedProviderKeys": ["hacker-news"],
+                "scanId": "scan-hacker-news-example"
+              },
+              {
+                "providerKey": "reddit",
+                "sourceBindingId": "source-binding-reddit-example",
+                "feedItemCount": 2,
+                "feedProviderKeys": ["reddit"],
+                "scanId": "scan-reddit-example"
+              },
+              {
+                "providerKey": "rss",
+                "sourceBindingId": "source-binding-rss-example",
+                "feedItemCount": 2,
+                "feedProviderKeys": ["rss"],
+                "scanId": "scan-rss-example"
+              }
+            ],
+            "feedItemIds": [
+              "feed-item-e2e-example-1",
+              "feed-item-e2e-example-2"
+            ],
+            "summaryId": "summary-e2e-example",
+            "summaryCitationProviderKeys": [
+              "github-issues",
+              "github-trending-page",
+              "hacker-news",
+              "reddit",
+              "rss"
+            ],
+            "feedbackId": "feedback-e2e-example",
+            "digestId": "digest-e2e-example",
+            "webhookDeliveryAttemptId": "delivery-attempt-e2e-example",
+            "realtimeEventId": "realtime-event-e2e-example",
+            "auditEventIds": [
+              "audit-event-e2e-example-1",
+              "audit-event-e2e-example-2"
+            ]
+          }
+        },
+        {
+          "signalId": "backend-loop-tenant-isolation",
+          "status": "passed",
+          "observedAt": "2026-06-18T01:08:00.000Z",
+          "evidence": {
+            "summary": "redacted wrong tenant and workspace checks denied access",
+            "negativeChecks": [
+              {
+                "surface": "feed",
+                "expectedStatus": 403
+              },
+              {
+                "surface": "summary",
+                "expectedStatus": 403
+              },
+              {
+                "surface": "audit",
+                "expectedStatus": 403
+              }
+            ],
+            "wrongTenantStatus": 403,
+            "wrongWorkspaceStatus": 403,
+            "leakageObserved": false
+          }
+        },
+        {
+          "signalId": "backend-loop-scheduled-scan",
+          "status": "passed",
+          "observedAt": "2026-06-18T01:09:00.000Z",
+          "evidence": {
+            "summary": "redacted scan policy executed by scheduler without a manual scan request",
+            "scheduledScan": {
+              "providerKey": "rss",
+              "sourceBindingId": "source-binding-scheduled-example",
+              "scanPolicyId": "scan-policy-scheduled-example",
+              "scanJobId": "scan-job-scheduled-example",
+              "scheduledIdempotencyKey": "scheduled:scan-policy-scheduled-example:2026-06-18T01:07:00.000Z",
+              "status": "SUCCEEDED",
+              "completedAt": "2026-06-18T01:08:30.000Z",
+              "nextRunAtAfterSchedule": "2026-06-18T01:09:00.000Z",
+              "feedItemCount": 2,
+              "feedItemIds": [
+                "feed-item-scheduled-example-1",
+                "feed-item-scheduled-example-2"
+              ]
+            },
+            "manualScanIdempotencyKeyUsed": false
+          }
+        },
+        {
+          "signalId": "backend-loop-auto-summary-scheduler",
+          "status": "passed",
+          "observedAt": "2026-06-18T01:10:00.000Z",
+          "evidence": {
+            "summary": "redacted summary policy automatically requested a summary job after stable feed evidence",
+            "autoSummary": {
+              "summaryPolicyId": "summary-policy-auto-example",
+              "summaryJobId": "summary-job-auto-example",
+              "summaryId": "summary-auto-example",
+              "idempotencyKey": "auto-summary:topic-e2e-example:2026-06-18T01:08:00.000Z:2",
+              "status": "completed",
+              "requestedAt": "2026-06-18T01:09:00.000Z",
+              "completedAt": "2026-06-18T01:09:30.000Z",
+              "latestFeedItemObservedAt": "2026-06-18T01:08:00.000Z",
+              "newFeedItemCount": 2
+            },
+            "manualSummaryRequestUsed": false
+          }
+        },
+        {
+          "signalId": "backend-loop-summary-memory",
+          "status": "passed",
+          "observedAt": "2026-06-18T01:10:30.000Z",
+          "evidence": {
+            "summary": "redacted summary feedback was projected into memo-stack and retrieved by topic and provider memory scopes",
+            "summaryId": "summary-e2e-example",
+            "feedbackId": "feedback-e2e-example",
+            "feedbackProviderKey": "reddit",
+            "memory": {
+              "status": "available",
+              "memoryBaseUrlOrigin": "https://memory.staging.social-monitor.invalid",
+              "topicScopeExternalRef": "topic:topic-e2e-example:feedback",
+              "providerScopeExternalRef": "topic:topic-e2e-example:provider:reddit:quality",
+              "sourceRefTypes": ["social-monitor.summary-feedback"],
+              "sourceRefCount": 1,
+              "renderedTextChars": 128,
+              "factsUsed": 1,
+              "itemsUsed": 1,
+              "retrievalSourcesUsed": ["vector"],
+              "memoryEffectMatched": true
+            },
+            "rawMemoryTextIncluded": false
+          }
+        },
+        {
+          "signalId": "backend-loop-reader-brief",
+          "status": "passed",
+          "observedAt": "2026-06-18T01:10:45.000Z",
+          "evidence": {
+            "summary": "redacted reader reader summary was generated from durable feed evidence with top reads, citations and source mix",
+            "readerBrief": {
+              "readerSummaryJobId": "reader-summary-job-e2e-example",
+              "readerSummaryId": "reader-summary-e2e-example",
+              "headline": "GitHub Trending and source signals are ready",
+              "topReadCount": 5,
+              "topReadTitles": [
+                "GitHub Trending project example",
+                "GitHub issue example",
+                "Hacker News story example",
+                "Reddit post example",
+                "RSS article example"
+              ],
+              "sourceMixProviderKeys": [
+                "github-issues",
+                "github-trending-page",
+                "hacker-news",
+                "reddit",
+                "rss"
+              ],
+              "citationProviderKeys": [
+                "github-issues",
+                "github-trending-page",
+                "hacker-news",
+                "reddit",
+                "rss"
+              ],
+              "qualityStatus": "ready"
+            }
+          }
+        },
+        {
+          "signalId": "backend-loop-idempotency",
+          "status": "passed",
+          "observedAt": "2026-06-18T01:11:00.000Z",
+          "evidence": {
+            "summary": "redacted idempotency keys reused without duplicate side effects",
+            "idempotencyKeys": [
+              "topic:e2e-example",
+              "scan:e2e-example",
+              "summary:e2e-example",
+              "delivery:e2e-example"
+            ],
+            "responseIds": [
+              "topic-e2e-example",
+              "scan-e2e-example",
+              "summary-e2e-example",
+              "delivery-attempt-e2e-example"
+            ],
+            "stableDurableCounts": {
+              "topics": 1,
+              "scanAttempts": 1,
+              "summaries": 1,
+              "deliveryAttempts": 1
+            },
+            "duplicateSideEffectsObserved": false
+          }
+        }
+      ]
+    }
+  ]
+}

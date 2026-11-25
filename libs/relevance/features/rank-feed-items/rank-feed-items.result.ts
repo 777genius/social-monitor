@@ -1,0 +1,62 @@
+import type { RetainedPromotionCandidateAuthority } from "@social-monitor/feed/domain/value-objects/retained-promotion-authority";
+import type { JsonObject } from '@social-monitor/shared-kernel';
+import type { FeedPromotionMetricRegressionState } from
+  '@social-monitor/feed/domain';
+
+import type {
+  SourceContentQualityView,
+  SourceContentSafetyView,
+  UserRelevanceProfileView,
+} from '../shared/relevance-presenter';
+import type { RelevanceMemoryGuidanceStatus } from '../../ports';
+import type { PromotionReaderHeadline } from '../../domain/promotion-reader-headline';
+
+export type RelevanceMemoryGuidanceView = {
+  readonly status: RelevanceMemoryGuidanceStatus;
+  readonly applied: boolean;
+  readonly providerPreferenceCount: number;
+  readonly keywordPreferenceCount: number;
+  readonly mutedKeywordCount: number;
+  readonly blockedProviderCount: number;
+  readonly signals: readonly string[];
+};
+
+export type RankedFeedItemView = {
+  readonly feedItemId: string;
+  readonly sourceItemId: string;
+  readonly sourceBindingId: string;
+  readonly interestId: string;
+  readonly providerKey: string;
+  readonly canonicalUrl: string;
+  readonly title: string;
+  readonly bodyPreview?: string;
+  readonly sourceText?: string;
+  readonly readerHeadline?: PromotionReaderHeadline;
+  readonly providerMetadata?: JsonObject;
+  readonly authorHandle?: string;
+  readonly publishedAt: string;
+  readonly observedAt: string;
+  readonly exactPublishedAt?: string;
+  readonly exactObservedAt?: string;
+  readonly retainedEngagementAuthority?: RetainedPromotionCandidateAuthority;
+  readonly engagementAuthority?: {
+    readonly observedAt: string;
+    readonly regressionState: FeedPromotionMetricRegressionState;
+  };
+  readonly score: number;
+  readonly rank: number;
+  readonly clusterId: string;
+  readonly clusterSize: number;
+  readonly duplicateFeedItemIds: readonly string[];
+  readonly whyImportant: readonly string[];
+  readonly safety: SourceContentSafetyView;
+  readonly contentQuality: SourceContentQualityView;
+};
+
+export type RankFeedItemsResult = {
+  readonly generatedAt: string;
+  readonly profileApplied: boolean;
+  readonly profile?: UserRelevanceProfileView;
+  readonly memoryGuidance?: RelevanceMemoryGuidanceView;
+  readonly items: readonly RankedFeedItemView[];
+};

@@ -1,0 +1,116 @@
+--- a/usr/local/lib/social-monitor/historical-reddit-x/manifest.json
++++ b/usr/local/lib/social-monitor/historical-reddit-x/manifest.json
+@@ -22,7 +22,8 @@
+     "2026-10-29",
+     "2026-11-01",
+     "2026-11-02",
+-    "2026-11-03"
++    "2026-11-03",
++    "2026-11-06"
+   ],
+   "fiveProviderDayCoverage": "PARTIAL_TWO_OF_FIVE",
+   "image": "sha256:8046ca6fdfabbe3ae2f4b4ef84535626bab64918cbaad4fd1023acf9c7917b52",
+--- a/usr/local/lib/social-monitor/historical-reddit-x/mode.sh
++++ b/usr/local/lib/social-monitor/historical-reddit-x/mode.sh
+@@ -1,7 +1,7 @@
+ #!/usr/bin/env bash
+ # Scoped historical Reddit/X mode; sourced only by the existing locked router.
+ rx_manifest=/usr/local/lib/social-monitor/historical-reddit-x/manifest.json
+-rx_manifest_sha=ccace45713e9ded77dfd4495550f20e40bdf997ee7ff28a82eeba147ad18b4da
++rx_manifest_sha=69044c27698fc0bb3e4494f9edfa9c72dcadfc3a58c5113a25a42ebf0149271c
+ rx_init() {
+   [[ $# == 1 && $1 =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || return 1
+   [[ -f $rx_manifest && ! -L $rx_manifest &&
+--- a/usr/local/lib/social-monitor/historical-reddit-x/collection-reddit-x-entrypoint.sh
++++ b/usr/local/lib/social-monitor/historical-reddit-x/collection-reddit-x-entrypoint.sh
+@@ -5,7 +5,7 @@
+ test "$#" -eq 5 && test "$1" = --historical-reddit-x &&
+   test "$2" = --date && test "$4" = --artifact-name || exit 78
+ test "${COLLECTION_PROVIDER_SCOPE:-}" = reddit-x || exit 78
+-case "$3" in 2026-10-02|2026-10-03|2026-10-05|2026-10-06|2026-10-07|2026-10-08|2026-10-09|2026-10-21|2026-10-22|2026-10-26|2026-10-27|2026-10-28|2026-10-29|2026-11-01|2026-11-02|2026-11-03) ;; *) exit 78 ;; esac
++case "$3" in 2026-10-02|2026-10-03|2026-10-05|2026-10-06|2026-10-07|2026-10-08|2026-10-09|2026-10-21|2026-10-22|2026-10-26|2026-10-27|2026-10-28|2026-10-29|2026-11-01|2026-11-02|2026-11-03|2026-11-06) ;; *) exit 78 ;; esac
+ 
+ # The host wrapper must select the historical HN/RSS lane explicitly. The
+ # ordinary two-argument invocation retains its fixed three-provider contract.
+--- a/usr/local/lib/social-monitor/current-source-guard/current_profile_admission.py
++++ b/usr/local/lib/social-monitor/current-source-guard/current_profile_admission.py
+@@ -401,7 +401,7 @@
+         artifact = f"collection-{started:%Y%m%d}-{values['slot']}-{suffix}"
+     elif values['mode'] == 'historical-reddit-x':
+         need(set(values) == needed and day < observed.date()
+-             and values['date'] in ('2026-10-02', '2026-10-03', '2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-21', '2026-10-22', '2026-10-26', '2026-10-27', '2026-10-28', '2026-10-29', '2026-11-01', '2026-11-02', '2026-11-03'),
++             and values['date'] in ('2026-10-02', '2026-10-03', '2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-21', '2026-10-22', '2026-10-26', '2026-10-27', '2026-10-28', '2026-10-29', '2026-11-01', '2026-11-02', '2026-11-03', '2026-11-06'),
+              'finite historical Reddit/X date changed')
+         artifact = f'collection-reddit-x-{day:%Y%m%d}-{suffix}'
+     else:
+--- a/usr/local/sbin/social-monitor-posts-once
++++ b/usr/local/sbin/social-monitor-posts-once
+@@ -642,7 +642,7 @@
+   rx_module="$rx_root/mode.sh"
+   [[ -d $rx_root && ! -L $rx_root && $(stat -c '%u:%g:%a' "$rx_root") == 0:0:700 &&
+      -f $rx_module && ! -L $rx_module && $(stat -c '%u:%g:%a:%h' "$rx_module") == 0:0:644:1 &&
+-     $(sha256sum "$rx_module" | cut -d' ' -f1) == 122a25af215e81916ff88238521d5283be0093870d83123ac9ff002f97a412a9 ]] || exit 78
++     $(sha256sum "$rx_module" | cut -d' ' -f1) == 41e701924439e8f0ec8cabe91f6d04e89302ec5722fd3a72a3b9b845262292a1 ]] || exit 78
+   source "$rx_module"
+ fi
+ case "$mode" in
+@@ -706,7 +706,7 @@
+ if [[ $mode == historical-reddit-x ]]; then
+   rx_entry="/usr/local/lib/social-monitor/historical-reddit-x/collection-reddit-x-entrypoint.sh"
+   [[ -f $rx_entry && ! -L $rx_entry && $(stat -c '%u:%g:%a:%h' "$rx_entry") == 0:0:644:1 &&
+-     $(sha256sum "$rx_entry" | cut -d' ' -f1) == 8326d3fb1f6d8439640b3bd02c9772dec267a1c128850381265d44439e4a8e3a ]] || exit 78
++     $(sha256sum "$rx_entry" | cut -d' ' -f1) == 032dd10c98468ff18481d3adb1f7acc9f3db33c9ecb4ec8bdc7082eef13fac05 ]] || exit 78
+ fi
+ if [[ $mode == current-slot || $mode == historical-reddit-x ]]; then
+   provider_file=/etc/platform/projects/social-monitor/secrets/collection-provider.env
+--- a/usr/local/lib/social-monitor/current-source-guard/physical_operator_epoch.py
++++ b/usr/local/lib/social-monitor/current-source-guard/physical_operator_epoch.py
+@@ -79,10 +79,10 @@
+     LIB / 'retained-capture-entrypoint.sh': 'c359d586a3096de080093986d38beadce3c9ed23f536ee3e5a5ef4a9ac848d29',
+     LIB / 'retained-capture-plan/plan.json': 'b082354be5d2af5b5e4951c93b42d633f4eb306f2ad3e52f6cb04614cc040073',
+     Path('/usr/local/sbin/social-monitor-posts-retained-capture.sh'): '6ba711c7e0705f8e0c572c2cc8277e1dc638d9000265a24e27ca1ba27674fa28',
+-    Path('/usr/local/lib/social-monitor/historical-reddit-x/mode.sh'): '122a25af215e81916ff88238521d5283be0093870d83123ac9ff002f97a412a9',
+-    Path('/usr/local/lib/social-monitor/historical-reddit-x/manifest.json'): 'ccace45713e9ded77dfd4495550f20e40bdf997ee7ff28a82eeba147ad18b4da',
++    Path('/usr/local/lib/social-monitor/historical-reddit-x/mode.sh'): '41e701924439e8f0ec8cabe91f6d04e89302ec5722fd3a72a3b9b845262292a1',
++    Path('/usr/local/lib/social-monitor/historical-reddit-x/manifest.json'): '69044c27698fc0bb3e4494f9edfa9c72dcadfc3a58c5113a25a42ebf0149271c',
+     Path('/usr/local/lib/social-monitor/historical-reddit-x/compose.collection-reddit-x.disabled.yml'): 'd5d295bb1a1a7341fc0ed6eafdbaeaf90916ec1debe275bbd899509f16771f1b',
+-    Path('/usr/local/lib/social-monitor/historical-reddit-x/collection-reddit-x-entrypoint.sh'): '8326d3fb1f6d8439640b3bd02c9772dec267a1c128850381265d44439e4a8e3a',
++    Path('/usr/local/lib/social-monitor/historical-reddit-x/collection-reddit-x-entrypoint.sh'): '032dd10c98468ff18481d3adb1f7acc9f3db33c9ecb4ec8bdc7082eef13fac05',
+     Path('/var/lib/platform/social-monitor/github-archive-sep24-qualified-input-20261013-r1/2026-09-24/packet.json'): '839558da0e3585596bf8c4661f89809186d7f085d005f802d777a2ee38c96e9e',
+     Path('/var/lib/platform/social-monitor/github-archive-sep24-qualified-input-20261013-r1/2026-09-24/archive.json'): '548a545c9bd8e3f9cba27e379af97ada38a8030815d662511e667e8ed42c2466',
+     Path('/usr/local/sbin/social-monitor-posts-provider-policy.sh'): 'babab8c5defb46baf6dce4e9c4ea41dc6cfaa8fd0a8ce667cb0923d5118ec58d',
+@@ -106,7 +106,7 @@
+     LIB / 'installed_frontier_policy.py': '51580ab128fa1a13ecc1fc02a07fc46b315287eb6f855c6c4bdc33ac3d55b37e',
+     FENCE: '84d93196dc54561061ffdd97cca88aa78c66705965aff64b50aea7868acc37e4',
+     CONTAINED: '5dc1dcceaeafad0622c4ed72154eb80bbc9f70177c73a9d1698c9e33aeb63758',
+-    ROUTER: 'a356fe5565052c3420e54e7843855c5b8673cd6ad09c49409d71610e4de08ba8',
++    ROUTER: 'f2f0057e66e1619c068fbb2c39bebe9044e9e907691f94e0cb4e6b1558ef3fa3',
+     Path('/usr/local/sbin/social-monitor-posts-rss-import.sh'): '30e4502328581f1ef28cb46ec3a0cfd6e934dc33b13da4dfa33fec786abb166f',
+     Path('/usr/local/sbin/social-monitor-posts-hn-archive-import.sh'): '5414de0f50659002f3012532fe465720d13ab10c7f534a6f937aaabf5a1f0b07',
+     Path('/usr/local/lib/social-monitor/current-source-guard/hn-archive-feed-key-derive.cjs'): 'ef5068dddcb63e44b423fd8026d436993c275b981c90c79ef835abb7739d6bff',
+@@ -123,7 +123,7 @@
+     LIB / 'authority_epoch_projection.py': '14a86cc2c09dd6092184ee00690867bc5f0f54b22b4e43986bd742b8560a7d23',
+     LIB / 'render_authority_epoch.py': '33df05c57a25beac4b32994218ffea5a559ca4215b5c54ad9e7aa1733756efe7',
+     LIB / 'current_authority_mechanism.py': 'a6f84ae39cc84a457444a9252aabc2e7c1fc77d06b8c13f27056cdde6290501a',
+-    LIB / 'current_profile_admission.py': 'e62fb3482ac4a37db6cfbd77ec1cba4f2efe175072310546b667b91d16140929',
++    LIB / 'current_profile_admission.py': '1187a96202e95cfe2cca665fc6c4ae28c13388bb362a9de4acfc2b32a62637f2',
+     LIB / 'current_hn_archive_import_admission.py': '176b2492dc993886f6d1cd88bbba7e5ced5000af5b3efa22d21dd4785e0b13d1',
+     LIB / 'current_rss_archive_import_admission.py': 'e0bb007a4d60998f393c90c5d2bf989fe21f354aeeedfe40afb3414d18f0bc3e',
+     LIB / 'retirement_watchdog_close.py': 'bd6df63070b99cba0ef1fae77c22840ca6f3c6af6e580dfb21ee105ed8ce1693',
+--- a/usr/local/sbin/social-monitor-posts-current-authority-stage
++++ b/usr/local/sbin/social-monitor-posts-current-authority-stage
+@@ -60,12 +60,12 @@
+     'render_guard': 'bbff4c1516e1f9dcb3382bbb65fa0a442e1958b56da383cabf8715c9a8508fab',
+     'verify_guard': 'fcd48a94b2cd4bd74de295333cf26a65b0963d410b1fc5d8394d6c70ec5560ab',
+     'current_authority_mechanism': 'a6f84ae39cc84a457444a9252aabc2e7c1fc77d06b8c13f27056cdde6290501a',
+-    'physical_operator_epoch': '6badb82c442105fa49c65d25261013f7bccaa021a07c64f4813b5aa30a160532',
++    'physical_operator_epoch': '4be63bcd62b7d0a88ad27657b71ced7c8562fdc5cb6b59b8362dcae39547b990',
+     'generation_authority_handoff': '790dd0ba71d2617158a4f6d7af24b19ad7656137b869b051781fbb16c0324357',
+     'retained_capture_contract': '1a06b2272c560686cb9aa4a72b89022b693c93f1474931ab7e832e0a60003770',
+     'retained_capture_files': 'acf494f9e9eeea8e8ab4dd2a543d7301adb71803c63c63215a67c26a6f2422c0',
+     'current_retained_capture_admission': 'e46c3e430c28af0433048563d9dd09fe6b75e8da2ba8080d534af82d57a97879',
+-    'current_profile_admission': 'e62fb3482ac4a37db6cfbd77ec1cba4f2efe175072310546b667b91d16140929',
++    'current_profile_admission': '1187a96202e95cfe2cca665fc6c4ae28c13388bb362a9de4acfc2b32a62637f2',
+     'current_hn_archive_import_admission': '176b2492dc993886f6d1cd88bbba7e5ced5000af5b3efa22d21dd4785e0b13d1',
+     'current_rss_archive_import_admission': 'e0bb007a4d60998f393c90c5d2bf989fe21f354aeeedfe40afb3414d18f0bc3e',
+     'retirement_watchdog_close': 'bd6df63070b99cba0ef1fae77c22840ca6f3c6af6e580dfb21ee105ed8ce1693',

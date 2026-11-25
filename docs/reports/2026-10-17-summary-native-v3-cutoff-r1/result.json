@@ -1,0 +1,35 @@
+{
+ "files": [
+  "scripts/capture-durable-reader-summary-from-postgres.ts",
+  "scripts/lib/reader-summary-native-v3-cutoff.test.mjs"
+ ],
+ "sha256": {
+  "scripts/capture-durable-reader-summary-from-postgres.ts": "7d35e1b75cfc69b0f5f6899d151d35f45f587db696dc5eaba90b6f4482505610",
+  "scripts/lib/reader-summary-native-v3-cutoff.test.mjs": "c4a44295d03734a3f0da2f51060c52cd68323e8fcc5f944da92db0a562f809e9"
+ },
+ "before": {
+  "command": "node --test scripts/lib/reader-summary-native-v3-cutoff.test.mjs",
+  "exitCode": 1,
+  "evidencePath": "docs/reports/2026-10-17-summary-native-v3-cutoff-r1/job-test-logs.txt"
+ },
+ "after": {
+  "command": "node --experimental-strip-types --test scripts/lib/reader-summary-native-v3-cutoff.test.mjs",
+  "exitCode": 0,
+  "evidencePath": "docs/reports/2026-10-17-summary-native-v3-cutoff-r1/local-verify-after-test.txt"
+ },
+ "checks": [
+  {
+   "command": "npx tsc -p tsconfig.build.json --noEmit",
+   "exitCode": 0,
+   "evidencePath": "docs/reports/2026-10-17-summary-native-v3-cutoff-r1/local-verify-tsc.txt"
+  },
+  {
+   "command": "npx eslint scripts/lib/reader-summary-native-v3-cutoff.test.mjs",
+   "exitCode": 0,
+   "evidencePath": "docs/reports/2026-10-17-summary-native-v3-cutoff-r1/local-verify-eslint.txt"
+  }
+ ],
+ "pendingGates": [
+  "Full static-quality gate (npx eslint ., node scripts/check-*.mjs) and full test suites run only in the GitHub Actions pull request checks; their raw logs are not bundled in this patch."
+ ]
+}

@@ -1,0 +1,227 @@
+import { Type } from 'class-transformer';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsBoolean,
+  IsDefined,
+  IsISO8601,
+  IsIn,
+  IsInt,
+  IsObject,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+  ValidateNested,
+} from 'class-validator';
+
+import type { CreateUserSubscriptionResult } from '../../features/create-user-subscription/create-user-subscription.result';
+import type { ActivateInterestSourceResult } from '../../features/activate-interest-source/activate-interest-source.result';
+import type { EffectiveUserSummaryPreferenceSource } from '../../features/get-effective-user-summary-preference/get-effective-user-summary-preference.result';
+import type { ListUserSubscriptionsResult } from '../../features/list-user-subscriptions/list-user-subscriptions.result';
+
+export class UserSubscriptionScheduleRequestDto {
+  @ApiProperty({ minLength: 1 })
+  @IsString()
+  @MinLength(1)
+  recipientKey!: string;
+
+  @ApiProperty({ enum: ['in_app', 'email', 'webhook'] })
+  @IsString()
+  @IsIn(['in_app', 'email', 'webhook'])
+  channel!: 'in_app' | 'email' | 'webhook';
+
+  @ApiProperty({ minimum: 60 })
+  @IsInt()
+  @Min(60)
+  intervalSeconds!: number;
+
+  @ApiProperty()
+  @IsBoolean()
+  includeNoSignal!: boolean;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  @IsOptional()
+  @IsString()
+  @IsISO8601()
+  nextRunAt?: string;
+}
+
+export class UserSummaryPreferenceRequestDto {
+  @ApiPropertyOptional({ enum: ['auto', 'en', 'ru'] })
+  @IsOptional()
+  @IsIn(['auto', 'en', 'ru'])
+  language?: 'auto' | 'en' | 'ru';
+
+  @ApiPropertyOptional({ enum: ['executive_brief', 'bullet_digest', 'risk_brief'] })
+  @IsOptional()
+  @IsIn(['executive_brief', 'bullet_digest', 'risk_brief'])
+  format?: 'executive_brief' | 'bullet_digest' | 'risk_brief';
+
+  @ApiPropertyOptional({ enum: ['neutral', 'concise', 'analytical'] })
+  @IsOptional()
+  @IsIn(['neutral', 'concise', 'analytical'])
+  tone?: 'neutral' | 'concise' | 'analytical';
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 10 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(10)
+  maxKeyPoints?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  includeRisks?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  includeSourceHighlights?: boolean;
+
+  @ApiPropertyOptional({ maxLength: 1200 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1200)
+  customInstructions?: string;
+}
+
+export class CreateUserSubscriptionRequestDto {
+  @ApiProperty({ minLength: 1 })
+  @IsString()
+  @MinLength(1)
+  userId!: string;
+
+  @ApiProperty({
+    description: 'Canonical provider key or supported legacy alias.',
+    examples: ['reddit', 'github-issues', 'github-trending-page', 'x-twitter'],
+    minLength: 2,
+  })
+  @IsString()
+  @MinLength(2)
+  providerKey!: string;
+
+  @ApiProperty({
+    description: 'Provider-specific target kind, for example subreddit, search_query, account or url.',
+    minLength: 2,
+  })
+  @IsString()
+  @MinLength(2)
+  targetKind!: string;
+
+  @ApiProperty({ minLength: 1 })
+  @IsString()
+  @MinLength(1)
+  targetValue!: string;
+
+  @ApiPropertyOptional({ type: 'object', additionalProperties: true })
+  @IsOptional()
+  @IsObject()
+  targetConfig: Readonly<Record<string, unknown>> = {};
+
+  @ApiProperty({ type: () => UserSubscriptionScheduleRequestDto })
+  @IsDefined()
+  @ValidateNested()
+  @Type(() => UserSubscriptionScheduleRequestDto)
+  schedule!: UserSubscriptionScheduleRequestDto;
+
+  @ApiPropertyOptional({ type: () => UserSummaryPreferenceRequestDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => UserSummaryPreferenceRequestDto)
+  summaryPreference?: UserSummaryPreferenceRequestDto;
+}
+
+export class ActivateInterestSourceScanPolicyRequestDto {
+  @ApiPropertyOptional({ minimum: 60 })
+  @IsOptional()
+  @IsInt()
+  @Min(60)
+  intervalSeconds?: number;
+
+  @ApiPropertyOptional({ minimum: 60 })
+  @IsOptional()
+  @IsInt()
+  @Min(60)
+  freshnessSeconds?: number;
+
+  @ApiPropertyOptional({ minimum: 0, maximum: 10 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(10)
+  retryBudget?: number;
+}
+
+export class ActivateInterestSourceRequestDto extends CreateUserSubscriptionRequestDto {
+  @ApiPropertyOptional({ type: () => ActivateInterestSourceScanPolicyRequestDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ActivateInterestSourceScanPolicyRequestDto)
+  scanPolicy?: ActivateInterestSourceScanPolicyRequestDto;
+}
+
+export class UpsertUserSummaryPreferenceRequestDto extends UserSummaryPreferenceRequestDto {
+  @ApiProperty({ minLength: 1 })
+  @IsString()
+  @MinLength(1)
+  userId!: string;
+}
+
+export class UpsertInterestUserSummaryPreferenceRequestDto extends UserSummaryPreferenceRequestDto {
+  @ApiProperty({ minLength: 1 })
+  @IsString()
+  @MinLength(1)
+  userId!: string;
+}
+
+export class UserSummaryPreferenceViewDto extends UserSummaryPreferenceRequestDto {
+  @ApiProperty({ minLength: 1 })
+  id!: string;
+
+  @ApiProperty({ minLength: 1 })
+  tenantId!: string;
+
+  @ApiProperty({ minLength: 1 })
+  workspaceId!: string;
+
+  @ApiProperty({ minLength: 1 })
+  userId!: string;
+
+  @ApiPropertyOptional({ minLength: 1 })
+  subscriptionId?: string;
+
+  @ApiPropertyOptional({ minLength: 1 })
+  interestId?: string;
+
+  @ApiProperty({ minLength: 1 })
+  rulesVersion!: string;
+
+  @ApiProperty({ format: 'date-time' })
+  createdAt!: string;
+
+  @ApiProperty({ format: 'date-time' })
+  updatedAt!: string;
+}
+
+export class GetEffectiveUserSummaryPreferenceResponseDto {
+  @ApiPropertyOptional({ type: () => UserSummaryPreferenceViewDto })
+  summaryPreference?: UserSummaryPreferenceViewDto;
+
+  @ApiProperty({ enum: ['subscription', 'interest', 'none'] })
+  source!: EffectiveUserSummaryPreferenceSource;
+}
+
+export class UpsertUserSummaryPreferenceResponseDto {
+  @ApiProperty({ type: () => UserSummaryPreferenceViewDto })
+  summaryPreference!: UserSummaryPreferenceViewDto;
+
+  @ApiProperty()
+  created!: boolean;
+}
+
+export type CreateUserSubscriptionResponseDto = CreateUserSubscriptionResult;
+export type ActivateInterestSourceResponseDto = ActivateInterestSourceResult;
+export type ListUserSubscriptionsResponseDto = ListUserSubscriptionsResult;

@@ -1,0 +1,942 @@
+import {
+  chmodSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { tenantId, workspaceId } from '@social-monitor/shared-kernel';
+
+import type { SummaryModelInput } from '../../ports';
+import { buildInstructions, buildPromptPayload } from './openai-responses-summary-prompt';
+import { openAiSummaryJsonSchema } from './openai-responses-summary-schema';
+import { runOpenAiResponsesSummaryGeneration } from './openai-responses-summary-generation';
+import { completeOpenAiSummaryAttempt as completeOpenAiSummaryAttemptFromInterpreter } from './openai-responses-summary-attempt-completion';
+import { resolveOpenAiSummaryRuntimeSettings } from './openai-responses-summary-runtime-settings';
+import { buildOpenAiSummaryRequest } from './openai-responses-summary-request-contract';
+import {
+  completeOpenAiSummaryAttempt,
+  validateOpenAiSummaryResponse,
+} from './openai-responses-summary-response-policy';
+import { validateSummaryCitationsAgainstEvidence } from '../../features/shared/summary-citation-validator';
+import {
+  OpenAiResponsesSummaryModelAdapter,
+  resolveOpenAiResponsesSummaryModelOptions,
+} from './openai-responses-summary-model.adapter';
+
+describe('OpenAiResponsesSummaryModelAdapter', () => {
+  it('isolates the exact no-retention Responses request contract from provider dispatch', () => {
+    const input = buildInput();
+    const request = buildOpenAiSummaryRequest(input, 'selected-model', 321);
+    expect(request).toEqual({
+      model: 'selected-model',
+      store: false,
+      max_output_tokens: 321,
+      instructions: buildInstructions(input),
+      input: buildPromptPayload(input),
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'social_monitor_summary_artifact',
+          strict: true,
+          schema: openAiSummaryJsonSchema,
+        },
+      },
+    });
+  });
+
+  it('retains completion export identity and rejects invalid JSON before observing usage', () => {
+    const responseJson = Object.freeze({ output_text: "[]" });
+    const estimateUsage = jest.fn(() => ({
+      inputTokens: 10, outputTokens: 10, estimatedCostUsd: 0,
+    }));
+    expect(completeOpenAiSummaryAttempt).toBe(completeOpenAiSummaryAttemptFromInterpreter);
+    expect(() => completeOpenAiSummaryAttemptFromInterpreter({
+      responseJson,
+      input: buildInput(),
+      selectedRoute: {
+        provider: 'openai-responses',
+        model: 'selected-model',
+        promptVersion: 'summary.prompt.openai.responses.v1',
+        schemaVersion: 'summary.artifact.v1',
+      },
+      estimateUsage,
+      evalDatasetVersion: 'summary.eval.mvp.v1',
+    })).toThrow();
+    expect(estimateUsage).not.toHaveBeenCalled();
+    expect(responseJson.output_text).toBe("[]");
+  });
+
+  it('fails closed without estimating usage when the provider omits summary output', () => {
+    const estimateUsage = jest.fn(() => ({
+      inputTokens: 10,
+      outputTokens: 10,
+      estimatedCostUsd: 0,
+    }));
+    const input = buildInput();
+    expect(() => completeOpenAiSummaryAttempt({
+      responseJson: { status: 'completed', output: [] },
+      input,
+      selectedRoute: {
+        provider: 'openai-responses',
+        model: 'selected-model',
+        promptVersion: 'summary.prompt.openai.responses.v1',
+        schemaVersion: 'summary.artifact.v1',
+      },
+      estimateUsage,
+      evalDatasetVersion: 'summary.eval.mvp.v1',
+    })).toThrow('OpenAI response did not contain summary output text');
+    expect(estimateUsage).not.toHaveBeenCalled();
+  });
+
+  it.each(['incomplete', 'failed', 'in_progress'])(
+    'rejects an HTTP-successful %s response even if its output is valid JSON',
+    (status) => {
+      const estimateUsage = jest.fn(() => ({
+        inputTokens: 10, outputTokens: 10, estimatedCostUsd: 0,
+      }));
+      expect(() => completeOpenAiSummaryAttempt({
+        responseJson: { status, output_text: JSON.stringify(validProviderDraft()) },
+        input: buildInput(),
+        selectedRoute: {
+          provider: 'openai-responses', model: 'selected-model',
+          promptVersion: 'summary.prompt.openai.responses.v1',
+          schemaVersion: 'summary.artifact.v1',
+        },
+        estimateUsage, evalDatasetVersion: 'summary.eval.mvp.v1',
+      })).toThrow('OpenAI summary response did not complete');
+      expect(estimateUsage).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects reported provider errors before accepting valid-looking JSON output', () => {
+    const estimateUsage = jest.fn(() => ({
+      inputTokens: 10, outputTokens: 10, estimatedCostUsd: 0,
+    }));
+    expect(() => completeOpenAiSummaryAttempt({
+      responseJson: {
+        status: 'completed', error: { code: 'synthetic_error' },
+        output_text: JSON.stringify(validProviderDraft()),
+      },
+      input: buildInput(),
+      selectedRoute: {
+        provider: 'openai-responses', model: 'selected-model',
+        promptVersion: 'summary.prompt.openai.responses.v1',
+        schemaVersion: 'summary.artifact.v1',
+      },
+      estimateUsage, evalDatasetVersion: 'summary.eval.mvp.v1',
+    })).toThrow('OpenAI summary response reported an error');
+    expect(estimateUsage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["nested refusal", { output: [{ type: "message", content: [{ type: "refusal", refusal: "synthetic" }] }] },
+      "OpenAI summary response was refused"],
+    ["nested error", { output: [{ type: "error", error: { code: "synthetic" } }] },
+      "OpenAI summary response reported an error"],
+    ["nested incomplete", { output: [{ type: "message", status: "in_progress" }] },
+      "OpenAI summary response did not complete"],
+    ["truncated", { incomplete_details: { reason: "max_output_tokens" } },
+      "OpenAI summary response did not complete"],
+  ])('rejects %s even with syntactically valid aggregate output', (_name, envelope, message) => {
+    const estimateUsage = jest.fn(() => ({
+      inputTokens: 10, outputTokens: 10, estimatedCostUsd: 0,
+    }));
+    expect(() => completeOpenAiSummaryAttempt({
+      responseJson: { status: 'completed', output_text: JSON.stringify(validProviderDraft()), ...envelope },
+      input: buildInput(),
+      selectedRoute: {
+        provider: 'openai-responses', model: 'selected-model',
+        promptVersion: 'summary.prompt.openai.responses.v1',
+        schemaVersion: 'summary.artifact.v1',
+      },
+      estimateUsage, evalDatasetVersion: 'summary.eval.mvp.v1',
+    })).toThrow(message);
+    expect(estimateUsage).not.toHaveBeenCalled();
+  });
+
+  it('rejects post-normalization provider and schema route mismatches', async () => {
+    const adapter = new OpenAiResponsesSummaryModelAdapter({
+      apiKey: fakeOpenAiApiKey,
+      fetchFn: async () => jsonResponse(200, { output_text: JSON.stringify(validProviderDraft()) }),
+    });
+    const input = buildInput();
+    const route = adapter.route(input, {
+      preferredProvider: 'openai-responses',
+      maxInputTokens: 12_000,
+      maxOutputTokens: 4_000,
+      maxEstimatedCostUsd: 1,
+    }, {
+      remainingTokens: 20_000,
+      remainingCostUsd: 1,
+    });
+    const attempt = await adapter.summarize(input, route);
+    expect(validateOpenAiSummaryResponse({
+      ...attempt,
+      route: { ...attempt.route, provider: 'unexpected-provider' as typeof attempt.route.provider },
+    })).toEqual({
+      ok: false,
+      failure: {
+        kind: 'invalid_schema',
+        retryable: false,
+        message: 'Unexpected summary provider route',
+      },
+    });
+    expect(validateOpenAiSummaryResponse({
+      ...attempt,
+      route: { ...attempt.route, schemaVersion: 'unsupported-schema' as typeof attempt.route.schemaVersion },
+    })).toMatchObject({
+      ok: false,
+      failure: { kind: 'invalid_schema', message: 'Unsupported summary schema version' },
+    });
+  });
+
+  it('creates a Responses API request with structured summary output contract', async () => {
+    const capturedCalls: CapturedFetchCall[] = [];
+    const adapter = new OpenAiResponsesSummaryModelAdapter({
+      apiKey: fakeOpenAiApiKey,
+      model: 'test-summary-model',
+      fetchFn: async (url, init) => {
+        capturedCalls.push({ url: String(url), init });
+
+        return jsonResponse(200, {
+          output_text: JSON.stringify(validProviderDraft()),
+          usage: {
+            input_tokens: 321,
+            output_tokens: 123,
+          },
+        });
+      },
+    });
+
+    const input = buildInput();
+    const route = adapter.route(input, {
+      preferredProvider: 'openai-responses',
+      maxInputTokens: 12_000,
+      maxOutputTokens: 1_500,
+      maxEstimatedCostUsd: 1,
+    }, {
+      remainingTokens: 20_000,
+      remainingCostUsd: 1,
+    });
+    const attempt = await adapter.summarize(input, route);
+    const request = JSON.parse(String(capturedCalls[0]?.init?.body)) as Record<string, unknown>;
+    const text = request.text as { readonly format: Record<string, unknown> };
+
+    expect(capturedCalls).toHaveLength(1);
+    expect(capturedCalls[0]?.url).toBe('https://api.openai.com/v1/responses');
+    expect(capturedCalls[0]?.init?.headers).toMatchObject({
+      authorization: `Bearer ${fakeOpenAiApiKey}`,
+      'content-type': 'application/json',
+    });
+    expect(request).toMatchObject({
+      model: 'test-summary-model',
+      store: false,
+      max_output_tokens: 4_000,
+    });
+    expect(text.format).toMatchObject({
+      type: 'json_schema',
+      name: 'social_monitor_summary_artifact',
+      strict: true,
+    });
+    expect(attempt.draft.headline).toBe('Backend signals are converging');
+    expect(attempt.draft.keyPoints[0]?.citationIds).toEqual(['c1']);
+    expect(attempt.draft.citationMap[0]?.feedItemId).toBe('feed-1');
+    expect(attempt.draft.citationMap[0]?.providerKey).toBe('reddit');
+    expect(attempt.draft.usage).toMatchObject({
+      inputTokens: 321,
+      outputTokens: 123,
+    });
+    expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
+  });
+
+  it('canonicalizes provider citation source fields from selected evidence', async () => {
+    const adapter = new OpenAiResponsesSummaryModelAdapter({
+      apiKey: fakeOpenAiApiKey,
+      model: 'test-summary-model',
+      fetchFn: async () => jsonResponse(200, {
+        output_text: JSON.stringify({
+          ...validProviderDraft(),
+          citationMap: [
+            {
+              citationId: 'c1',
+              feedItemId: 'wrong-feed',
+              sourceItemId: 'wrong-source',
+              providerKey: 'wrong-provider',
+              field: 'bodyPreview',
+            },
+            {
+              citationId: 'c2',
+              feedItemId: 'feed-2',
+              sourceItemId: 'source-2',
+              providerKey: 'github',
+              field: 'bodyPreview',
+            },
+          ],
+        }),
+      }),
+    });
+    const input = buildInput();
+    const route = adapter.route(input, {
+      preferredProvider: 'openai-responses',
+      maxInputTokens: 12_000,
+      maxOutputTokens: 4_000,
+      maxEstimatedCostUsd: 1,
+    }, {
+      remainingTokens: 20_000,
+      remainingCostUsd: 1,
+    });
+
+    const attempt = await adapter.summarize(input, route);
+
+    expect(attempt.draft.citationMap[0]).toMatchObject({
+      citationId: 'c1',
+      feedItemId: 'feed-1',
+      sourceItemId: 'source-1',
+      providerKey: 'reddit',
+      canonicalUrl: 'https://example.test/reddit/backend-signals',
+      field: 'bodyPreview',
+    });
+    expect(() =>
+      validateSummaryCitationsAgainstEvidence(attempt.draft, input.evidence),
+    ).not.toThrow();
+  });
+
+  it('repairs unknown model citation ids before validating summary risks', async () => {
+    const adapter = new OpenAiResponsesSummaryModelAdapter({
+      apiKey: fakeOpenAiApiKey,
+      model: 'test-summary-model',
+      fetchFn: async () => jsonResponse(200, {
+        output_text: JSON.stringify({
+          ...validProviderDraft(),
+          keyPoints: [
+            {
+              claim: 'Valid evidence still supports the summary.',
+              citationIds: ['c1', 'c11'],
+            },
+          ],
+          risksAndUnknowns: [
+            {
+              description:
+                'The model tried to cite an unknown risk citation.',
+              citationIds: ['c11'],
+              reason: 'source_limit',
+            },
+          ],
+          citationMap: [
+            ...validProviderDraft().citationMap,
+            {
+              citationId: 'c11',
+              feedItemId: 'invented-feed',
+              sourceItemId: 'invented-source',
+              providerKey: 'invented-provider',
+              field: 'title',
+            },
+          ],
+        }),
+      }),
+    });
+    const input = buildInput();
+    const route = adapter.route(input, {
+      preferredProvider: 'openai-responses',
+      maxInputTokens: 12_000,
+      maxOutputTokens: 4_000,
+      maxEstimatedCostUsd: 1,
+    }, {
+      remainingTokens: 20_000,
+      remainingCostUsd: 1,
+    });
+
+    const attempt = await adapter.summarize(input, route);
+
+    expect(attempt.draft.citationMap.map((citation) => citation.citationId)).toEqual(['c1', 'c2']);
+    expect(attempt.draft.keyPoints[0]?.citationIds).toEqual(['c1']);
+    expect(attempt.draft.risksAndUnknowns[0]?.citationIds).toBeUndefined();
+    expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
+    expect(() =>
+      validateSummaryCitationsAgainstEvidence(attempt.draft, input.evidence),
+    ).not.toThrow();
+  });
+
+  it('normalizes nullable OpenAI no-signal reasons into domain-safe reasons', async () => {
+    const adapter = new OpenAiResponsesSummaryModelAdapter({
+      apiKey: fakeOpenAiApiKey,
+      model: 'test-summary-model',
+      fetchFn: async () => jsonResponse(200, {
+        output_text: JSON.stringify({
+          ...validProviderDraft(),
+          keyPoints: [],
+          risksAndUnknowns: [],
+          sourceHighlights: [],
+          citationMap: [],
+          qualityFlags: ['no_signal', 'limited_sources'],
+          confidence: {
+            level: 'none',
+            score: 0,
+            rationale: 'No eligible evidence passed the model threshold.',
+          },
+          noSignalReason: null,
+        }),
+      }),
+    });
+    const input = buildInput();
+    const route = adapter.route(input, {
+      preferredProvider: 'openai-responses',
+      maxInputTokens: 12_000,
+      maxOutputTokens: 4_000,
+      maxEstimatedCostUsd: 1,
+    }, {
+      remainingTokens: 20_000,
+      remainingCostUsd: 1,
+    });
+
+    const attempt = await adapter.summarize(input, route);
+
+    expect(attempt.draft.qualityFlags).toContain('no_signal');
+    expect(attempt.draft.noSignalReason).toBe(
+      'No eligible evidence items selected for this interest.',
+    );
+    expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
+  });
+
+  it('repairs non-array quality flags from agent-style JSON output', async () => {
+    const adapter = new OpenAiResponsesSummaryModelAdapter({
+      apiKey: fakeOpenAiApiKey,
+      model: 'test-summary-model',
+      fetchFn: async () => jsonResponse(200, {
+        output_text: JSON.stringify({
+          ...validProviderDraft(),
+          qualityFlags: {
+            limited_sources: true,
+            unknown_flag: true,
+          },
+        }),
+      }),
+    });
+    const input = buildInput();
+    const route = adapter.route(input, {
+      preferredProvider: 'openai-responses',
+      maxInputTokens: 12_000,
+      maxOutputTokens: 4_000,
+      maxEstimatedCostUsd: 1,
+    }, {
+      remainingTokens: 20_000,
+      remainingCostUsd: 1,
+    });
+
+    const attempt = await adapter.summarize(input, route);
+
+    expect(attempt.draft.qualityFlags).toEqual(['limited_sources']);
+    expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
+  });
+
+  it('falls back to evidence citations when model citation map shape drifts', async () => {
+    const adapter = new OpenAiResponsesSummaryModelAdapter({
+      apiKey: fakeOpenAiApiKey,
+      model: 'test-summary-model',
+      fetchFn: async () => jsonResponse(200, {
+        output_text: JSON.stringify({
+          ...validProviderDraft(),
+          citationMap: { c1: 'feed-1' },
+          sourceHighlights: null,
+        }),
+      }),
+    });
+    const baseInput = buildInput();
+    const input = buildInput({
+      evidenceItems: baseInput.evidence.items.map((item, index) =>
+        index === 1 ? { ...item, bodyPreview: undefined } : item,
+      ),
+    });
+    const route = adapter.route(input, {
+      preferredProvider: 'openai-responses',
+      maxInputTokens: 12_000,
+      maxOutputTokens: 4_000,
+      maxEstimatedCostUsd: 1,
+    }, {
+      remainingTokens: 20_000,
+      remainingCostUsd: 1,
+    });
+
+    const attempt = await adapter.summarize(input, route);
+
+    expect(attempt.draft.citationMap.map((citation) => citation.citationId)).toEqual(['c1', 'c2']);
+    expect(attempt.draft.citationMap[1]?.field).toBe('title');
+    expect(attempt.draft.keyPoints[0]?.citationIds).toEqual(['c1']);
+    expect(attempt.draft.sourceHighlights).toEqual([]);
+    expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
+  });
+
+  it('normalizes compact agent-style summary JSON', async () => {
+    const adapter = new OpenAiResponsesSummaryModelAdapter({
+      apiKey: fakeOpenAiApiKey,
+      model: 'test-summary-model',
+      fetchFn: async () => jsonResponse(200, {
+        output_text: JSON.stringify({
+          summary:
+            '- Backend reliability is the strongest signal.\\n- Provider discussion is still fragmented.',
+          keyPoints: [
+            'Backend reliability is the strongest signal.',
+            {
+              point: 'Backend queues and summaries show durable progress.',
+            },
+          ],
+          risks: [
+            'Provider quotas can still affect freshness.',
+            {
+              risk: 'Live source availability can still drift.',
+              citations: ['c2'],
+            },
+          ],
+          sourceHighlights: [
+            {
+              source: 'Reddit backend thread',
+              whyItMatters: 'It is the clearest social signal.',
+            },
+          ],
+        }),
+      }),
+    });
+    const input = buildInput();
+    const route = adapter.route(input, {
+      preferredProvider: 'openai-responses',
+      maxInputTokens: 12_000,
+      maxOutputTokens: 4_000,
+      maxEstimatedCostUsd: 1,
+    }, {
+      remainingTokens: 20_000,
+      remainingCostUsd: 1,
+    });
+
+    const attempt = await adapter.summarize(input, route);
+
+    expect(attempt.draft.headline).toBe(
+      'Backend reliability is the strongest signal.',
+    );
+    expect(attempt.draft.executiveSummary).toContain(
+      'Provider discussion is still fragmented.',
+    );
+    expect(attempt.draft.keyPoints[0]).toMatchObject({
+      claim: 'Backend reliability is the strongest signal.',
+      citationIds: ['c1'],
+    });
+    expect(attempt.draft.keyPoints[1]).toMatchObject({
+      claim: 'Backend queues and summaries show durable progress.',
+      citationIds: ['c2'],
+    });
+    expect(attempt.draft.risksAndUnknowns[0]).toMatchObject({
+      description: 'Provider quotas can still affect freshness.',
+      citationIds: undefined,
+    });
+    expect(attempt.draft.risksAndUnknowns[1]).toMatchObject({
+      description: 'Live source availability can still drift.',
+      citationIds: ['c2'],
+    });
+    expect(attempt.draft.sourceHighlights[0]).toContain(
+      'Reddit backend thread',
+    );
+    expect(attempt.draft.confidence.level).toBe('medium');
+    expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
+  });
+
+  it('does not call OpenAI when selected evidence is empty', async () => {
+    const fetchFn = jest.fn();
+    const adapter = new OpenAiResponsesSummaryModelAdapter({
+      apiKey: fakeOpenAiApiKey,
+      fetchFn,
+    });
+    const input = buildInput({ evidenceItems: [] });
+    const route = adapter.route(input, {
+      preferredProvider: 'openai-responses',
+      maxInputTokens: 12_000,
+      maxOutputTokens: 1_500,
+      maxEstimatedCostUsd: 1,
+    }, {
+      remainingTokens: 20_000,
+      remainingCostUsd: 1,
+    });
+
+    const attempt = await adapter.summarize(input, route);
+
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(attempt.draft.qualityFlags).toContain('no_signal');
+    expect(attempt.draft.noSignalReason).toBe('No eligible evidence items selected for this interest.');
+    expect(adapter.validateRawProviderResponse(attempt)).toEqual({ ok: true });
+  });
+
+  it('passes structured memory context into the Responses prompt payload', async () => {
+    const capturedCalls: CapturedFetchCall[] = [];
+    const adapter = new OpenAiResponsesSummaryModelAdapter({
+      apiKey: fakeOpenAiApiKey,
+      model: 'test-summary-model',
+      fetchFn: async (url, init) => {
+        capturedCalls.push({ url: String(url), init });
+
+        return jsonResponse(200, {
+          output_text: JSON.stringify(validProviderDraft()),
+          usage: {
+            input_tokens: 321,
+            output_tokens: 123,
+          },
+        });
+      },
+    });
+    const input = buildInput({
+      memoryContext: {
+        status: 'available',
+        renderedText: 'Memory: prefer security fixes and concise phrasing.',
+        sourceRefs: [
+          {
+            source_type: 'social-monitor.summary-feedback',
+            source_id: 'feedback-1',
+          },
+        ],
+        retrieval: {
+          vectorStatus: 'ok',
+          graphStatus: 'ok',
+          itemsUsed: 1,
+          factsUsed: 1,
+        },
+        staleMarkers: {
+          staleFactsConsidered: 1,
+          staleFactsUsed: 0,
+        },
+        support: {
+          status: 'supported',
+          itemsReturned: 1,
+          warnings: ['memory-preference-only'],
+        },
+        diagnostics: {
+          vector_status: 'ok',
+          graph_status: 'ok',
+        },
+        retrievedAt: new Date('2026-06-21T09:59:00.000Z'),
+      },
+    });
+    const route = adapter.route(input, {
+      preferredProvider: 'openai-responses',
+      maxInputTokens: 12_000,
+      maxOutputTokens: 1_500,
+      maxEstimatedCostUsd: 1,
+    }, {
+      remainingTokens: 20_000,
+      remainingCostUsd: 1,
+    });
+
+    await adapter.summarize(input, route);
+
+    const request = JSON.parse(String(capturedCalls[0]?.init?.body)) as { readonly input: string };
+    const promptPayload = JSON.parse(request.input) as {
+      readonly memoryContext?: Record<string, unknown>;
+    };
+    expect(promptPayload.memoryContext).toMatchObject({
+      status: 'available',
+      renderedText: 'Memory: prefer security fixes and concise phrasing.',
+      sourceRefs: [
+        {
+          source_type: 'social-monitor.summary-feedback',
+          source_id: 'feedback-1',
+        },
+      ],
+      retrieval: {
+        vectorStatus: 'ok',
+        graphStatus: 'ok',
+        itemsUsed: 1,
+        factsUsed: 1,
+      },
+      staleMarkers: {
+        staleFactsConsidered: 1,
+        staleFactsUsed: 0,
+      },
+      support: {
+        status: 'supported',
+        itemsReturned: 1,
+        warnings: ['memory-preference-only'],
+      },
+      diagnostics: {
+        vector_status: 'ok',
+        graph_status: 'ok',
+      },
+      retrievedAt: '2026-06-21T09:59:00.000Z',
+    });
+  });
+
+  it('classifies provider rate limits as retryable failures', async () => {
+    const adapter = new OpenAiResponsesSummaryModelAdapter({
+      apiKey: fakeOpenAiApiKey,
+      fetchFn: async () => jsonResponse(429, { error: { message: 'Rate limit reached' } }),
+    });
+    const input = buildInput();
+    const route = adapter.route(input, {
+      preferredProvider: 'openai-responses',
+      maxInputTokens: 12_000,
+      maxOutputTokens: 1_500,
+      maxEstimatedCostUsd: 1,
+    }, {
+      remainingTokens: 20_000,
+      remainingCostUsd: 1,
+    });
+
+    await expect(adapter.summarize(input, route)).rejects.toThrow('Rate limit reached');
+
+    try {
+      await adapter.summarize(input, route);
+    } catch (error) {
+      expect(adapter.classifyError(error)).toEqual({
+        kind: 'provider_rate_limited',
+        retryable: true,
+        message: 'Rate limit reached',
+      });
+    }
+  });
+
+  it('rejects provider drafts when every key point loses citation support', async () => {
+    const adapter = new OpenAiResponsesSummaryModelAdapter({
+      apiKey: fakeOpenAiApiKey,
+      fetchFn: async () => jsonResponse(200, {
+        output_text: JSON.stringify({
+          ...validProviderDraft(),
+          keyPoints: [
+            {
+              claim: 'This cites missing evidence',
+              citationIds: ['missing-citation'],
+            },
+          ],
+        }),
+      }),
+    });
+    const input = buildInput();
+    const route = adapter.route(input, {
+      preferredProvider: 'openai-responses',
+      maxInputTokens: 12_000,
+      maxOutputTokens: 1_500,
+      maxEstimatedCostUsd: 1,
+    }, {
+      remainingTokens: 20_000,
+      remainingCostUsd: 1,
+    });
+
+    await expect(adapter.summarize(input, route)).rejects.toThrow('No-signal summary must include no_signal quality flag');
+  });
+
+  it('keeps direct task execution and adapter dispatch identical for frozen evidence', async () => {
+    const requests: string[] = [];
+    const options = {
+      apiKey: fakeOpenAiApiKey,
+      fetchFn: async (_url: string | URL, init?: RequestInit) => {
+        requests.push(String(init?.body));
+        return jsonResponse(200, {
+          output_text: JSON.stringify(validProviderDraft()),
+          usage: { input_tokens: 321, output_tokens: 123 },
+        });
+      },
+    };
+    const adapter = new OpenAiResponsesSummaryModelAdapter(options);
+    const input = buildInput();
+    const route = adapter.route(input, {
+      preferredProvider: 'openai-responses',
+      maxInputTokens: 12_000,
+      maxOutputTokens: 4_000,
+      maxEstimatedCostUsd: 1,
+    }, {
+      remainingTokens: 20_000,
+      remainingCostUsd: 1,
+    });
+
+    const directly = await runOpenAiResponsesSummaryGeneration({
+      input,
+      selectedRoute: route,
+      settings: resolveOpenAiSummaryRuntimeSettings(options),
+      estimateUsage: () => adapter.estimate(input, route),
+    });
+    const viaPort = await adapter.summarize(input, route);
+
+    expect(viaPort).toEqual(directly);
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toEqual(requests[0]);
+    expect(viaPort.draft.citationMap[0]?.feedItemId).toBe('feed-1');
+  });
+
+  it('rejects a missing provider key before dispatch, but keeps no-signal offline', async () => {
+    const fetchFn = jest.fn(async () => jsonResponse(200, { output: [] }));
+    const adapter = new OpenAiResponsesSummaryModelAdapter({ fetchFn });
+    const policy = {
+      preferredProvider: 'openai-responses' as const,
+      maxInputTokens: 12_000,
+      maxOutputTokens: 4_000,
+      maxEstimatedCostUsd: 1,
+    };
+    const budget = { remainingTokens: 20_000, remainingCostUsd: 1 };
+    const input = buildInput();
+    const route = adapter.route(input, policy, budget);
+
+    await expect(runOpenAiResponsesSummaryGeneration({
+      input,
+      selectedRoute: route,
+      settings: resolveOpenAiSummaryRuntimeSettings({ fetchFn }),
+      estimateUsage: () => adapter.estimate(input, route),
+    })).rejects.toThrow('SUMMARY_MODEL_PROVIDER=openai-responses requires OPENAI_API_KEY');
+    expect(fetchFn).not.toHaveBeenCalled();
+
+    const noSignalInput = buildInput({ evidenceItems: [] });
+    const noSignalRoute = adapter.route(noSignalInput, policy, budget);
+    const attempt = await adapter.summarize(noSignalInput, noSignalRoute);
+    expect(attempt.draft.qualityFlags).toContain('no_signal');
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it('requires an OpenAI API key when openai-responses mode is selected', () => {
+    expect(() =>
+      resolveOpenAiResponsesSummaryModelOptions({}, {
+        requireApiKey: true,
+      }),
+    ).toThrow('SUMMARY_MODEL_PROVIDER=openai-responses requires OPENAI_API_KEY or OPENAI_API_KEY_FILE');
+    expect(resolveOpenAiResponsesSummaryModelOptions({}, {
+      requireApiKey: false,
+    })).toMatchObject({
+      apiKey: '',
+    });
+  });
+
+  it('reads an OpenAI API key from a private key file for live-safe smoke runs', () => {
+    const tempDirectory = mkdtempSync(join(tmpdir(), 'summary-openai-key-'));
+    try {
+      const keyFile = join(tempDirectory, 'openai.key');
+      writeFileSync(keyFile, `${fakeOpenAiApiKey}\n`, { mode: 0o600 });
+
+      expect(resolveOpenAiResponsesSummaryModelOptions({
+        OPENAI_API_KEY_FILE: keyFile,
+      }, {
+        requireApiKey: true,
+      })).toMatchObject({
+        apiKey: fakeOpenAiApiKey,
+      });
+
+      chmodSync(keyFile, 0o644);
+      expect(() =>
+        resolveOpenAiResponsesSummaryModelOptions({
+          OPENAI_API_KEY_FILE: keyFile,
+        }, {
+          requireApiKey: true,
+        }),
+      ).toThrow('OPENAI_API_KEY_FILE must use private 0600-style permissions');
+    } finally {
+      rmSync(tempDirectory, { recursive: true, force: true });
+    }
+  });
+});
+
+type CapturedFetchCall = {
+  readonly url: string;
+  readonly init?: RequestInit;
+};
+
+const fakeOpenAiApiKey = ['test', 'openai', 'key'].join('-');
+
+const buildInput = (params: {
+  readonly evidenceItems?: SummaryModelInput['evidence']['items'];
+  readonly memoryContext?: SummaryModelInput['memoryContext'];
+} = {}): SummaryModelInput => {
+  const now = new Date('2026-06-21T10:00:00.000Z');
+  const evidenceItems = params.evidenceItems ?? [
+    {
+      feedItemId: 'feed-1',
+      sourceItemId: 'source-1',
+      sourceBindingId: 'binding-reddit',
+      providerKey: 'reddit',
+      title: 'Backend signals are converging',
+      bodyPreview: 'Queues, scans and summaries passed through the durable runtime.',
+      canonicalUrl: 'https://example.test/reddit/backend-signals',
+      observedAt: now,
+    },
+    {
+      feedItemId: 'feed-2',
+      sourceItemId: 'source-2',
+      sourceBindingId: 'binding-github',
+      providerKey: 'github',
+      title: 'GitHub issues show API hardening work',
+      bodyPreview: 'Source bindings and queue drains are the active engineering focus.',
+      canonicalUrl: 'https://example.test/github/api-hardening',
+      observedAt: now,
+    },
+  ];
+
+  return {
+    tenantId: tenantId('tenant-openai-summary-adapter'),
+    workspaceId: workspaceId('workspace-openai-summary-adapter'),
+    interestId: 'interest-backend-mvp',
+    evidence: {
+      sourceWindow: {
+        windowId: 'summary-window-1',
+        startedAt: new Date('2026-06-21T09:00:00.000Z'),
+        endedAt: now,
+        selectedFeedItemIds: evidenceItems.map((item) => item.feedItemId),
+      },
+      items: evidenceItems,
+    },
+    memoryContext: params.memoryContext,
+    policy: {
+      language: 'en',
+      format: 'executive_brief',
+      tone: 'concise',
+      maxKeyPoints: 3,
+      includeRisks: true,
+      includeSourceHighlights: true,
+      customInstructions: 'Highlight what matters for backend MVP readiness.',
+      rulesVersion: 'summary.rules.policy.v1',
+    },
+    requestedAt: now,
+  };
+};
+
+const validProviderDraft = () => ({
+  headline: 'Backend signals are converging',
+  executiveSummary: 'The backend monitoring loop has enough evidence to summarize durable provider activity.',
+  keyPoints: [
+    {
+      claim: 'Durable backend scan and summary signals are present.',
+      citationIds: ['c1'],
+    },
+  ],
+  risksAndUnknowns: [
+    {
+      description: 'Live provider quotas can still limit scan frequency.',
+      citationIds: ['c2'],
+      reason: 'source_limit',
+    },
+  ],
+  sourceHighlights: ['Backend durable runtime evidence', 'Provider smoke coverage'],
+  citationMap: [
+    {
+      citationId: 'c1',
+      feedItemId: 'feed-1',
+      sourceItemId: 'source-1',
+      providerKey: 'reddit',
+      field: 'title',
+    },
+    {
+      citationId: 'c2',
+      feedItemId: 'feed-2',
+      sourceItemId: 'source-2',
+      providerKey: 'github',
+      field: 'bodyPreview',
+    },
+  ],
+  qualityFlags: ['limited_sources'],
+  confidence: {
+    level: 'medium',
+    score: 0.62,
+    rationale: 'Evidence covers two independent source bindings.',
+  },
+  noSignalReason: null,
+});
+
+const jsonResponse = (status: number, body: unknown): Response =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      'content-type': 'application/json',
+    },
+  });

@@ -1,0 +1,23 @@
+.git
+coverage
+dist
+node_modules
+npm-debug.log
+.social-monitor/
+**/._*
+
+# Python local environments and generated caches
+**/.venv/
+**/venv/
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.tox/
+**/.nox/
+**/*.py[cod]
+**/*.egg-info/
+
+.env
+.env.*
+!.env.example

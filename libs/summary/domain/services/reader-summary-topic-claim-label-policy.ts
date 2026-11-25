@@ -1,0 +1,402 @@
+import type { StoryPrimaryClaimFacet } from "./story-topic-tokenizer";
+import {
+  canonicalizeReaderSummaryTopicAcronyms,
+  formatReaderSummaryTopicToken,
+} from "./reader-summary-topic-map-text";
+import { alignAllegationSemanticToEvidence } from "./reader-summary-topic-lawsuit-alignment";
+
+export { alignAllegationSemanticToEvidence } from "./reader-summary-topic-lawsuit-alignment";
+
+export const readerSummaryTopicClaimTypes = [
+  "allegation",
+  "availability",
+  "benchmark",
+  "comparison",
+  "costs",
+  "education",
+  "efficiency",
+  "limits",
+  "release",
+  "review",
+  "security",
+  "other",
+] as const;
+
+export type ReaderSummaryTopicClaimType =
+  (typeof readerSummaryTopicClaimTypes)[number];
+
+export type ReaderSummaryTopicSemanticLabel = {
+  readonly subject: string;
+  readonly parentSubject?: string;
+  readonly claimType: ReaderSummaryTopicClaimType;
+  readonly qualifier?: string;
+  readonly confidenceScore: number;
+};
+
+export const READER_SUMMARY_TOPIC_SEMANTIC_CONFIDENCE_MIN = 0.55;
+
+const evidenceAlignedClaimTypes = new Set<ReaderSummaryTopicClaimType>([
+  "availability",
+  "benchmark",
+  "comparison",
+  "education",
+  "efficiency",
+  "limits",
+  "release",
+  "review",
+  "security",
+]);
+
+export const alignReaderSummaryTopicSemanticLabelToEvidence = (params: {
+  readonly semantic: ReaderSummaryTopicSemanticLabel;
+  readonly primaryFacet: StoryPrimaryClaimFacet | undefined;
+  readonly evidenceTexts: readonly string[];
+}): ReaderSummaryTopicSemanticLabel => {
+  const subject = removeRelationalRoleSuffix(
+    normalizeSemanticPart(params.semantic.subject),
+    params.evidenceTexts,
+  );
+  const evidenceAlignedSemantic =
+    params.semantic.claimType === "allegation"
+      ? alignAllegationSemanticToEvidence(
+          params.semantic,
+          subject,
+          params.evidenceTexts,
+        )
+      : { ...params.semantic, subject };
+
+  return {
+    ...evidenceAlignedSemantic,
+    claimType: alignClaimTypeToEvidence(
+      params.semantic.claimType,
+      params.primaryFacet,
+    ),
+  };
+};
+
+const alignClaimTypeToEvidence = (
+  claimType: ReaderSummaryTopicClaimType,
+  primaryFacet: StoryPrimaryClaimFacet | undefined,
+): ReaderSummaryTopicClaimType => {
+  if (
+    primaryFacet !== undefined &&
+    (claimType === "other" || evidenceAlignedClaimTypes.has(claimType))
+  ) {
+    return primaryFacet;
+  }
+
+  return evidenceAlignedClaimTypes.has(claimType) ? "other" : claimType;
+};
+
+export const sanitizeReaderSummaryTopicSemanticLabel = (
+  semantic: ReaderSummaryTopicSemanticLabel | undefined,
+): ReaderSummaryTopicSemanticLabel | undefined => {
+  if (semantic === undefined) {
+    return undefined;
+  }
+  const subject = normalizeSemanticPart(semantic.subject);
+  if (subject.length === 0) {
+    return undefined;
+  }
+  const parentSubject = normalizeSemanticPart(semantic.parentSubject);
+  const qualifier = normalizeSemanticPart(semantic.qualifier);
+  const confidenceScore = Number.isFinite(semantic.confidenceScore)
+    ? Math.min(1, Math.max(0, semantic.confidenceScore))
+    : 0;
+
+  return {
+    subject,
+    ...(parentSubject.length > 0 ? { parentSubject } : {}),
+    claimType: semantic.claimType,
+    ...(qualifier.length > 0 ? { qualifier } : {}),
+    confidenceScore,
+  };
+};
+
+type ClaimLabelRule = {
+  readonly marker: RegExp;
+  readonly suffix: string;
+  readonly canonicalizeQualifierMarker?: boolean;
+};
+
+const claimLabelRules: Readonly<
+  Record<Exclude<ReaderSummaryTopicClaimType, "other">, ClaimLabelRule>
+> = {
+  allegation: {
+    marker:
+      /\b(?:allegation|allegations|alleged|accusation|accusations|lawsuit|lawsuits|(?:antitrust|civil|copyright|legal|patent|trade[\s-]secret)\s+(?:case|cases|suit|suits)|court\s+(?:case|cases))\b/iu,
+    suffix: "Allegation",
+  },
+  availability: {
+    marker: /\b(?:availability|available|access)\b/iu,
+    suffix: "Availability",
+  },
+  benchmark: {
+    marker: /\b(?:benchmark|evaluation|eval|exam|index|score)\b/iu,
+    suffix: "Benchmark",
+    canonicalizeQualifierMarker: true,
+  },
+  comparison: {
+    marker: /\b(?:compare|compared|comparison|versus|vs)\b/iu,
+    suffix: "Comparison",
+    canonicalizeQualifierMarker: true,
+  },
+  costs: {
+    marker: /\b(?:bill|bills|budget|cost|costs|pricing|spend|spending)\b/iu,
+    suffix: "Costs",
+  },
+  education: {
+    marker: /\b(?:course|guide|masterclass|tutorial|workshop)\b/iu,
+    suffix: "Guide",
+  },
+  efficiency: {
+    marker: /\b(?:efficiency|efficient|economics|cost|pricing)\b/iu,
+    suffix: "Efficiency",
+  },
+  limits: {
+    marker: /\b(?:limit|limits|quota|quotas|credits)\b/iu,
+    suffix: "Limits",
+  },
+  release: {
+    marker: /\b(?:launch|release|rollout)\b/iu,
+    suffix: "Rollout",
+  },
+  review: {
+    marker: /\b(?:hands[\s-]?on|impression|review|reviewed|reviews)\b/iu,
+    suffix: "Review",
+  },
+  security: {
+    marker:
+      /\b(?:attack|malware|privacy|scam|security|spying|threat|vulnerability)\b/iu,
+    suffix: "Security",
+  },
+};
+
+export const renderReaderSummaryTopicSemanticLabel = (
+  semantic: ReaderSummaryTopicSemanticLabel,
+): string => {
+  const subject = canonicalizeReaderSummaryTopicAcronyms(
+    sanitizeClaimSubject(
+      semantic.claimType,
+      normalizeSemanticPart(semantic.subject),
+    ),
+  );
+  const qualifier = formatSemanticDisplayPart(
+    sanitizeClaimQualifier(
+      semantic.claimType,
+      normalizeSemanticPart(semantic.qualifier),
+    ),
+  );
+  if (subject.length === 0) {
+    return qualifier;
+  }
+  if (semantic.claimType === "other") {
+    const qualified = appendDistinctPart(
+      subject,
+      durableOtherQualifier(qualifier),
+    );
+
+    return topicLabelWordCount(qualified) <= 4
+      ? qualified
+      : boundedTopicLabel(subject);
+  }
+  const rule = claimLabelRules[semantic.claimType];
+  if (rule.marker.test(subject)) {
+    return subject;
+  }
+  if (qualifier.length > 0 && rule.marker.test(qualifier)) {
+    if (rule.canonicalizeQualifierMarker === true) {
+      return appendCanonicalClaimSuffix(
+        subject,
+        normalizeSemanticPart(qualifier.replace(rule.marker, " ")),
+        rule.suffix,
+      );
+    }
+    return appendDistinctPart(subject, qualifier);
+  }
+  return appendCanonicalClaimSuffix(subject, qualifier, rule.suffix);
+};
+
+export const ensureTopicLabelExpressesClaimFacet = (
+  label: string,
+  facet: StoryPrimaryClaimFacet | undefined,
+): string => {
+  if (facet === undefined) {
+    return label;
+  }
+  const sanitizedLabel = sanitizeLabelForClaimFacet(label, facet);
+  const rule = claimLabelRules[facet];
+  const alreadyExpressesClaim = Object.values(claimLabelRules).some(
+    (candidate) => candidate.marker.test(sanitizedLabel),
+  );
+
+  return boundedTopicLabel(
+    alreadyExpressesClaim ? sanitizedLabel : `${sanitizedLabel} ${rule.suffix}`,
+    true,
+  );
+};
+
+export const topicLabelExpressesClaimType = (
+  label: string,
+  claimType: ReaderSummaryTopicClaimType,
+): boolean =>
+  claimType === "other" || claimLabelRules[claimType].marker.test(label);
+
+const normalizeSemanticPart = (value: string | undefined): string =>
+  value?.replace(/\s+/gu, " ").trim() ?? "";
+
+const formatSemanticDisplayPart = (value: string): string =>
+  value
+    .split(/\s+/u)
+    .filter(Boolean)
+    .map(formatReaderSummaryTopicToken)
+    .join(" ");
+
+const removeRelationalRoleSuffix = (
+  subject: string,
+  evidenceTexts: readonly string[],
+): string => {
+  const match = subject.match(/^(.*\S)\s+(basis|core|foundation)$/iu);
+  if (match === null) {
+    return subject;
+  }
+  const baseSubject = match[1]?.trim() ?? "";
+  const role = match[2] ?? "";
+  if (baseSubject.length === 0 || role.length === 0) {
+    return subject;
+  }
+  const relationalRole = new RegExp(
+    `\\b${escapeRegExp(baseSubject)}\\s+is\\s+(?:the\\s+)?${escapeRegExp(role)}\\s+of\\b`,
+    "iu",
+  );
+
+  return evidenceTexts.some((text) => relationalRole.test(text))
+    ? baseSubject
+    : subject;
+};
+
+const escapeRegExp = (value: string): string =>
+  value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+
+const appendDistinctPart = (subject: string, qualifier: string): string => {
+  if (qualifier.length === 0) {
+    return subject;
+  }
+  const normalizedSubject = subject.toLocaleLowerCase("en-US");
+  const normalizedQualifier = qualifier.toLocaleLowerCase("en-US");
+
+  return normalizedSubject.includes(normalizedQualifier)
+    ? subject
+    : `${subject} ${qualifier}`;
+};
+
+const appendCanonicalClaimSuffix = (
+  subject: string,
+  qualifier: string,
+  suffix: string,
+): string => {
+  const qualified = appendDistinctPart(subject, qualifier);
+  const withQualifier = `${qualified} ${suffix}`;
+
+  return topicLabelWordCount(withQualifier) <= 4
+    ? withQualifier
+    : `${subject} ${suffix}`;
+};
+
+const durableOtherQualifier = (qualifier: string): string => {
+  if (
+    /[0-9+#./-]/u.test(qualifier) ||
+    /\b[A-Z]{2,8}\b/u.test(qualifier) ||
+    /\b[A-Z][A-Za-z0-9]*[A-Z][A-Za-z0-9]*\b/u.test(qualifier) ||
+    /(?:s|tion|sion|ment|ness|ity|ism|ist|er|or)$/iu.test(qualifier) ||
+    /^(?:[A-Z][\p{Letter}\p{Number}+#./-]+)(?:\s+[A-Z][\p{Letter}\p{Number}+#./-]+)+$/u.test(
+      qualifier,
+    )
+  ) {
+    return qualifier;
+  }
+
+  return "";
+};
+
+const sanitizeClaimQualifier = (
+  claimType: ReaderSummaryTopicClaimType,
+  qualifier: string,
+): string => {
+  if (claimType === "benchmark" && /^(?:best|latest|top)$/iu.test(qualifier)) {
+    return "";
+  }
+  if (
+    (claimType === "comparison" || claimType === "release") &&
+    descriptiveParticipleQualifier.test(qualifier) &&
+    durableOtherQualifier(qualifier).length === 0
+  ) {
+    return "";
+  }
+  if (
+    claimType === "limits" &&
+    /\b(?:daily|hour|hours|monthly|week|weekly)\b/iu.test(qualifier)
+  ) {
+    return "";
+  }
+
+  return qualifier;
+};
+
+const sanitizeClaimSubject = (
+  claimType: ReaderSummaryTopicClaimType,
+  subject: string,
+): string => {
+  const withoutVersionedAiFiller = normalizeSemanticPart(
+    subject.replace(
+      /^(.*\b(?:claude|gemini|gpt|grok)[\s-]*\d+(?:\.\d+)*(?:\s+[a-z0-9.-]+)?)\s+ai$/iu,
+      "$1",
+    ),
+  );
+  if (claimType !== "limits") {
+    return withoutVersionedAiFiller;
+  }
+  const withoutTemporalCadence = normalizeSemanticPart(
+    withoutVersionedAiFiller.replace(
+      /\b(?:\d+[\s-]?)?(?:daily|hour|hours|monthly|week|weekly)\b/giu,
+      " ",
+    ),
+  );
+
+  return withoutTemporalCadence.length > 0
+    ? withoutTemporalCadence
+    : withoutVersionedAiFiller;
+};
+
+const descriptiveParticipleQualifier = /^\p{Letter}{3,}(?:ed|ing)$/iu;
+
+const sanitizeLabelForClaimFacet = (
+  label: string,
+  facet: StoryPrimaryClaimFacet,
+): string => {
+  if (facet !== "limits") {
+    return label;
+  }
+
+  return normalizeSemanticPart(
+    label.replace(
+      /\b(?:\d+[\s-]?)?(?:daily|hour|hours|monthly|week|weekly)\b/giu,
+      " ",
+    ),
+  );
+};
+
+const topicLabelWordCount = (value: string): number =>
+  value.split(/\s+/u).filter(Boolean).length;
+
+const boundedTopicLabel = (value: string, preserveLastWord = false): string => {
+  const words = value.split(/\s+/u).filter(Boolean);
+  if (words.length <= 4) {
+    return words.join(" ");
+  }
+  if (!preserveLastWord) {
+    return words.slice(0, 4).join(" ");
+  }
+
+  return [...words.slice(0, 3), words.at(-1)!].join(" ");
+};

@@ -1,0 +1,375 @@
+import { tenantId, workspaceId, type Clock, type IdGenerator, type JsonObject } from "@social-monitor/shared-kernel";
+import { performance } from "node:perf_hooks";
+
+import { classifyReaderValueSourceKind } from
+  "../../domain/reader-value/reader-value-source-kind";
+import { compareReaderValueTimestamps, readerValueTimestampMicros } from
+  "../../domain/reader-value/canonical-reader-value-timestamp";
+import { readerValueSha256 } from
+  "../../domain/reader-value/reader-value-config";
+import type { ReaderValueAssessmentStore, ReaderValuePreparedInput } from
+  "../contracts/reader-value-assessment-store";
+import { ReaderValueInventoryByteCeilingExceeded,
+  ReaderValueInventorySnapshotUnavailable,
+  ReaderValueInventoryTimeCeilingExceeded,
+  type ReaderValueInputBuilder, type ReaderValuePreparationInventory } from
+  "../contracts/reader-value-inventory";
+import type {
+  PrepareReaderValueSummaryCommand,
+  PrepareReaderValueSummaryResult,
+  ReaderValueSummaryPreparationConfig,
+  ReaderValueSummaryPreparation,
+  ReaderValueSummaryPreparationManifest,
+} from "../contracts/reader-value-summary-preparation";
+import type { ConfiguredInterestReaderPort } from "../../ports";
+
+const physicalRowCeiling = 100_000;
+const candidateCeiling = 20_000;
+const sourceByteCeiling = 32 * 1024 * 1024;
+const preparationTimeCeilingMs = 110_000;
+const assessmentPersistenceConcurrency = 4;
+
+type PreparedCandidate = {
+  readonly input: ReaderValuePreparedInput;
+  readonly candidate: null | {
+    readonly candidateId: string; readonly sourceBindingId: string;
+    readonly providerKey: string; readonly observedAt: string;
+    readonly publishedAt: string; readonly sourceKind: string;
+    readonly canonicalIdentity: string; readonly storyId?: string;
+    readonly providerMetadata?: JsonObject;
+    readonly engagementObservedAt: string | null;
+  };
+};
+type PersistedCandidate = ReaderValueSummaryPreparationManifest["candidates"][number];
+type PersistedCandidateResult =
+  | { readonly ok: true; readonly candidate: PersistedCandidate | null }
+  | { readonly ok: false; readonly code:
+      "assessment_snapshot_unavailable" | "assessment_time_over_budget" };
+
+type InventoryScan =
+  | { readonly ok: false; readonly code: "assessment_snapshot_unavailable" |
+      "assessment_inventory_over_budget" | "assessment_time_over_budget" |
+      "config_unavailable" }
+  | { readonly ok: true; readonly config: ReaderValueSummaryPreparationConfig;
+      readonly prepared: readonly PreparedCandidate[]; readonly sourceBytes: number };
+
+export class PrepareReaderValueSummaryUseCase
+implements ReaderValueSummaryPreparation {
+  constructor(
+    private readonly inventory: ReaderValuePreparationInventory,
+    private readonly builder: ReaderValueInputBuilder,
+    private readonly store: Pick<ReaderValueAssessmentStore, "ensure" | "pin">,
+    private readonly ids: IdGenerator,
+    private readonly interests: ConfiguredInterestReaderPort,
+    private readonly clock?: Clock,
+  ) {}
+
+  async configuration(command: PrepareReaderValueSummaryCommand): Promise<
+  | { readonly ok: true; readonly config: ReaderValueSummaryPreparationConfig }
+  | { readonly ok: false; readonly code: "config_unavailable" }> {
+    if (!validWindow(command) || command.interestId.trim().length === 0) {
+      return { ok: false, code: "config_unavailable" };
+    }
+    const interest = await this.interests.readCurrent({
+      tenantId: tenantId(command.tenantId), workspaceId: workspaceId(command.workspaceId),
+      interestId: command.interestId,
+    });
+    if (interest.kind !== "available") return { ok: false, code: "config_unavailable" };
+    return { ok: true, config: {
+      schemaVersion: "reader_summary_preparation_config.v1",
+      interestId: command.interestId,
+      interestSha256: readerValueSha256(interest.interest.query),
+      rubricVersion: this.builder.configuration.rubricVersion,
+      rubricSha256: this.builder.configuration.rubricSha256,
+      inputBuilderVersion: this.builder.configuration.inputBuilderVersion,
+      modelConfigVersion: this.builder.configuration.modelConfigVersion,
+    } };
+  }
+
+  async prepare(command: PrepareReaderValueSummaryCommand,
+    expectedConfig: ReaderValueSummaryPreparationConfig):
+  Promise<PrepareReaderValueSummaryResult> {
+    const current = await this.configuration(command);
+    if (!current.ok || !sameConfig(current.config, expectedConfig)) {
+      return { ok: false, code: "config_unavailable" };
+    }
+    const budget = command.candidateBudget ?? candidateCeiling;
+    if (!Number.isSafeInteger(budget) || budget < 0 || budget > candidateCeiling) {
+      return overBudget();
+    }
+    const byteBudget = command.sourceByteBudget ?? sourceByteCeiling;
+    if (!Number.isSafeInteger(byteBudget) || byteBudget < 0 ||
+        byteBudget > sourceByteCeiling) return overBudget();
+    if (this.timeBudgetExpired(command)) return timeOverBudget();
+    const startedAt = performance.now();
+    const scope = { tenantId: command.tenantId, workspaceId: command.workspaceId };
+    const inventoryEnd = exclusiveInventoryEnd(command);
+    let scan: InventoryScan;
+    try {
+      scan = await this.inventory.readSnapshot({ ...scope, interestId: command.interestId },
+        async (snapshot) => {
+          let cursor: { readonly publishedAt: string; readonly feedItemId: string } | undefined;
+          let scanned = 0;
+          let sourceBytes = 0;
+          let candidateCount = 0;
+          let config = expectedConfig;
+          const prepared: PreparedCandidate[] = [];
+          do {
+            if (this.timeBudgetExpired(command, startedAt)) return timeOverBudget();
+            const page = await snapshot.page(command.periodStartedAt, cursor, 25,
+              byteBudget - sourceBytes, inventoryEnd);
+            if (this.timeBudgetExpired(command, startedAt)) return timeOverBudget();
+            if (page.length === 0) break;
+            // The inventory has already enforced [periodStartedAt, inventoryEnd), so
+            // every materialized row belongs to this frozen window. Charge the page
+            // before any later cutoff/source-kind skip can discard it.
+            sourceBytes += page.reduce((sum, item) => sum +
+              Buffer.byteLength(item.source.title, "utf8") +
+              Buffer.byteLength(item.source.body, "utf8"), 0);
+            if (!Number.isSafeInteger(sourceBytes) || sourceBytes > byteBudget) {
+              return overBudget();
+            }
+            scanned += page.length;
+            if (scanned > physicalRowCeiling) return overBudget();
+            for (const item of page) {
+              cursor = item.cursor;
+              if (item.source.interestId !== command.interestId) continue;
+              if (compareTimestamp(item.cursor.publishedAt, command.cutoffAt) > 0) continue;
+              // A SourceItem may predate the cutoff while its FeedItem projection does not.
+              // The frozen inventory admits observations exactly on, but never after, cutoff.
+              if (compareTimestamp(item.observedAt, command.cutoffAt) > 0) continue;
+              const sourceKind = classifyReaderValueSourceKind(item.source.providerKey, item.metadata);
+              if (!sourceKind.supported || sourceKind.appendixOnly) continue;
+              // A supported empty source is a durable diagnostic, not a missing
+              // historical snapshot. Classify it before availability checks while
+              // preserving the historical-snapshot guard for all non-empty inputs.
+              const emptyPrepared = item.source.title.trim().length === 0 &&
+                item.source.body.trim().length === 0
+                ? this.builder.prepare(item.source, item.sourceRevisionKey)
+                : undefined;
+              if (emptyPrepared !== undefined) {
+                if (!emptyPrepared.ok) continue;
+                if (emptyPrepared.value.terminalFailure === "empty_input") {
+                  prepared.push({ input: emptyPrepared.value, candidate: null });
+                  continue;
+                }
+                if (emptyPrepared.value.terminalFailure === "configuration_invalid") {
+                  return { ok: false, code: "config_unavailable" };
+                }
+              }
+              // A legacy source without capture provenance keeps unknown
+              // availability forever; drop it like candidate qualification
+              // instead of failing the whole window.
+              if (item.source.availableAt === null) continue;
+              if (compareTimestamp(item.source.availableAt, command.cutoffAt) > 0 ||
+                  compareTimestamp(item.sourceUpdatedAt, command.cutoffAt) > 0) {
+                return { ok: false, code: "assessment_snapshot_unavailable" };
+              }
+              if (candidateCount >= budget) return overBudget();
+              const input = emptyPrepared ??
+                this.builder.prepare(item.source, item.sourceRevisionKey);
+              if (!input.ok) continue;
+              if (input.value.terminalFailure === "configuration_invalid") {
+                return { ok: false, code: "config_unavailable" };
+              }
+              const nextConfig = {
+                schemaVersion: "reader_summary_preparation_config.v1" as const,
+                interestId: input.value.interestId,
+                interestSha256: input.value.interestSha256,
+                rubricVersion: input.value.rubricVersion,
+                rubricSha256: input.value.rubricSha256,
+                inputBuilderVersion: input.value.inputBuilderVersion,
+                modelConfigVersion: input.value.modelConfigVersion,
+              };
+              if (!sameConfig(config, nextConfig)) {
+                return { ok: false, code: "config_unavailable" };
+              }
+              config = nextConfig;
+              if (input.value.terminalFailure === "empty_input") {
+                prepared.push({ input: input.value, candidate: null });
+                continue;
+              }
+              const storyId = typeof item.metadata.storyClusterId === "string"
+                ? item.metadata.storyClusterId : undefined;
+              prepared.push({ input: input.value, candidate: {
+                candidateId: item.cursor.feedItemId,
+                sourceBindingId: item.sourceBindingId,
+                providerKey: item.source.providerKey,
+                observedAt: item.observedAt,
+                publishedAt: item.cursor.publishedAt,
+                sourceKind: sourceKind.kind,
+                canonicalIdentity: item.source.canonicalUrl,
+                providerMetadata: item.metadata,
+                engagementObservedAt: item.engagementObservedAt ?? null,
+                ...(storyId === undefined ? {} : { storyId }),
+              } });
+              candidateCount += 1;
+            }
+            if (page.length < 25) break;
+          } while (cursor !== undefined);
+          return { ok: true, config, prepared, sourceBytes };
+        }, { includeExpiredSources: command.requireRetentionCompleteness === true });
+    } catch (error) {
+      if (error instanceof ReaderValueInventoryByteCeilingExceeded) return overBudget();
+      if (error instanceof ReaderValueInventoryTimeCeilingExceeded) return timeOverBudget();
+      if (error instanceof ReaderValueInventorySnapshotUnavailable) {
+        return { ok: false, code: "assessment_snapshot_unavailable" };
+      }
+      throw error;
+    }
+    if (!scan.ok) return scan;
+
+    const candidates: PersistedCandidate[] = [];
+    // The stable read transaction has closed. Only independent assessment
+    // transactions run concurrently, and every batch settles before we return.
+    for (let offset = 0; offset < scan.prepared.length;
+      offset += assessmentPersistenceConcurrency) {
+      if (this.timeBudgetExpired(command, startedAt)) return timeOverBudget();
+      const batch = scan.prepared.slice(offset, offset + assessmentPersistenceConcurrency);
+      const results = await Promise.allSettled(batch.map((prepared) =>
+        this.persistPrepared(prepared, command, startedAt)));
+      for (const result of results) {
+        if (result.status === "rejected") throw result.reason;
+        if (!result.value.ok) return result.value;
+        if (result.value.candidate !== null) candidates.push(result.value.candidate);
+      }
+    }
+    if (this.timeBudgetExpired(command, startedAt)) return timeOverBudget();
+
+    candidates.sort((left, right) => Buffer.compare(
+      Buffer.from(left.candidateId, "utf8"), Buffer.from(right.candidateId, "utf8")));
+    const references = candidates.map((candidate) => ({
+      assessmentId: candidate.assessmentId,
+      feedItemId: candidate.candidateId,
+      sourceBindingId: candidate.sourceBindingId,
+      sourceSnapshotSha256: candidate.sourceSnapshotSha256,
+      inputSha256: candidate.inputSha256,
+    }));
+    let pinned: boolean;
+    try {
+      pinned = await this.store.pin(scope, command.interestId, command.jobId, references);
+    } catch (error) {
+      if (error instanceof ReaderValueInventoryTimeCeilingExceeded) {
+        return timeOverBudget();
+      }
+      throw error;
+    }
+    if (!pinned) {
+      return { ok: false, code: "assessment_snapshot_unavailable" };
+    }
+    if (this.timeBudgetExpired(command, startedAt)) return timeOverBudget();
+    const manifest = {
+      schemaVersion: "reader_summary_preparation_manifest.v1" as const,
+      cutoffAt: command.cutoffAt,
+      interestSha256: scan.config.interestSha256,
+      rubricSha256: scan.config.rubricSha256,
+      inputBuilderVersion: scan.config.inputBuilderVersion,
+      modelConfigVersion: scan.config.modelConfigVersion,
+      candidates,
+    };
+    if (Buffer.byteLength(JSON.stringify(manifest), "utf8") > 64 * 1024 * 1024) {
+      return overBudget();
+    }
+    return { ok: true, config: scan.config, manifest,
+      manifestSha256: readerValueSha256(JSON.stringify(manifest)),
+      sourceBytes: scan.sourceBytes };
+  }
+
+  private async persistPrepared(prepared: PreparedCandidate,
+    command: PrepareReaderValueSummaryCommand, startedAt: number):
+    Promise<PersistedCandidateResult> {
+    let input = prepared.input;
+    let assessment = await this.store.ensure(this.ids.generate(), input);
+    // A content-equivalent source can acquire a new revision key while the
+    // existing interest-scoped cache row keeps the earlier revision. The
+    // alternate digest creates a distinct assessment without changing the
+    // long-lived input builder or mutating a pinned historical row.
+    if (assessment !== null &&
+        assessment.input.sourceRevisionKey !== input.sourceRevisionKey &&
+        sameCachedReaderValueInputExceptRevision(assessment.input, input)) {
+      input = { ...input, inputSha256: readerValueSha256(JSON.stringify({
+        version: "reader-value-revision-binding.v1",
+        inputSha256: input.inputSha256,
+        sourceRevisionKey: input.sourceRevisionKey,
+      })) };
+      if (this.timeBudgetExpired(command, startedAt)) return timeOverBudget();
+      assessment = await this.store.ensure(this.ids.generate(), input);
+    }
+    if (assessment === null ||
+        !sameCachedReaderValueInputExceptRevision(assessment.input, input) ||
+        assessment.input.sourceRevisionKey !== input.sourceRevisionKey) {
+      return { ok: false, code: "assessment_snapshot_unavailable" };
+    }
+    return { ok: true, candidate: prepared.candidate === null ? null : {
+      ...prepared.candidate,
+      sourceItemId: input.sourceItemId,
+      sourceRevisionKey: input.sourceRevisionKey,
+      sourceSnapshotSha256: input.sourceSnapshotSha256,
+      assessmentId: assessment.id,
+      inputSha256: input.inputSha256,
+    } };
+  }
+
+  private timeBudgetExpired(command: PrepareReaderValueSummaryCommand,
+    startedAt?: number): boolean {
+    return (startedAt !== undefined &&
+      performance.now() - startedAt >= preparationTimeCeilingMs) ||
+      command.deadlineAt !== undefined && this.clock !== undefined &&
+      compareTimestamp(this.clock.now().toISOString(), command.deadlineAt) >= 0;
+  }
+}
+
+const validWindow = (command: PrepareReaderValueSummaryCommand): boolean =>
+  [command.periodStartedAt, command.periodEndedAt, command.cutoffAt]
+    .every((value) => readerValueTimestampMicros(value) !== undefined) &&
+  compareTimestamp(command.periodStartedAt, command.periodEndedAt) < 0 &&
+  compareTimestamp(command.periodStartedAt, command.cutoffAt) <= 0;
+
+// The inventory accepts an exclusive published-at bound. Advance the inclusive
+// frozen cutoff by one PostgreSQL microsecond so active periods never scan rows
+// published after the request while admitting a row exactly at the cutoff.
+const exclusiveInventoryEnd = (command: PrepareReaderValueSummaryCommand): string => {
+  const end = readerValueTimestampMicros(command.periodEndedAt)!;
+  const cutoff = readerValueTimestampMicros(command.cutoffAt)!;
+  if (end <= cutoff + 1n) return command.periodEndedAt;
+  const next = cutoff + 1n;
+  const milliseconds = next >= 0n ? next / 1_000n : (next - 999n) / 1_000n;
+  const microseconds = next - milliseconds * 1_000n;
+  return `${new Date(Number(milliseconds)).toISOString().slice(0, -1)}` +
+    `${String(microseconds).padStart(3, "0")}Z`;
+};
+
+const compareTimestamp = (left: string, right: string): number => {
+  return compareReaderValueTimestamps(left, right);
+};
+
+const overBudget = (): { readonly ok: false; readonly code: "assessment_inventory_over_budget" } =>
+  ({ ok: false, code: "assessment_inventory_over_budget" });
+const timeOverBudget = (): { readonly ok: false; readonly code: "assessment_time_over_budget" } =>
+  ({ ok: false, code: "assessment_time_over_budget" });
+
+const sameConfig = (left: ReaderValueSummaryPreparationConfig,
+  right: ReaderValueSummaryPreparationConfig): boolean =>
+  left.schemaVersion === right.schemaVersion && left.interestId === right.interestId &&
+  left.interestSha256 === right.interestSha256 &&
+  left.rubricVersion === right.rubricVersion && left.rubricSha256 === right.rubricSha256 &&
+  left.inputBuilderVersion === right.inputBuilderVersion &&
+  left.modelConfigVersion === right.modelConfigVersion;
+
+const sameCachedReaderValueInputExceptRevision = (
+  cached: ReaderValuePreparedInput,
+  prepared: ReaderValuePreparedInput,
+): boolean => cached.tenantId === prepared.tenantId &&
+  cached.workspaceId === prepared.workspaceId &&
+  cached.interestId === prepared.interestId &&
+  cached.sourceItemId === prepared.sourceItemId &&
+  cached.sourceSnapshotSha256 === prepared.sourceSnapshotSha256 &&
+  cached.interestSha256 === prepared.interestSha256 &&
+  cached.rubricVersion === prepared.rubricVersion &&
+  cached.rubricSha256 === prepared.rubricSha256 &&
+  cached.inputBuilderVersion === prepared.inputBuilderVersion &&
+  cached.modelConfigVersion === prepared.modelConfigVersion &&
+  cached.inputSha256 === prepared.inputSha256 &&
+  cached.requestSha256 === prepared.requestSha256 &&
+  cached.requestedModel === prepared.requestedModel &&
+  cached.terminalFailure === prepared.terminalFailure;

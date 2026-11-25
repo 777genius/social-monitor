@@ -1,0 +1,18 @@
+[
+  {
+    "auditEventId": "audit-example-001",
+    "tenantId": "tenant-example",
+    "workspaceId": "workspace-example",
+    "actorId": "actor-example",
+    "operation": "create-source-binding",
+    "status": "recorded"
+  },
+  {
+    "auditEventId": "audit-example-002",
+    "tenantId": "tenant-example",
+    "workspaceId": "workspace-example",
+    "actorId": "api-key-example",
+    "operation": "request-summary",
+    "status": "recorded"
+  }
+]

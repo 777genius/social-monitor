@@ -1,0 +1,162 @@
+{
+  "artifactId": "social-research.typescript-sdk-conformance-report.v1",
+  "caseResults": [
+    {
+      "assertionResults": [
+        {
+          "assertion": "request_input_normalizes_to_intent",
+          "status": "passed"
+        },
+        {
+          "assertion": "planner_output_matches_expected_plan",
+          "status": "passed"
+        },
+        {
+          "assertion": "explanation_matches_expected_text",
+          "status": "passed"
+        }
+      ],
+      "caseId": "reddit_research_request_v1",
+      "executionMode": "portable_planner",
+      "status": "passed"
+    },
+    {
+      "assertionResults": [
+        {
+          "assertion": "request_input_normalizes_to_intent",
+          "status": "passed"
+        },
+        {
+          "assertion": "planner_output_matches_expected_plan",
+          "status": "passed"
+        },
+        {
+          "assertion": "explanation_matches_expected_text",
+          "status": "passed"
+        }
+      ],
+      "caseId": "x_account_recall_request_v1",
+      "executionMode": "portable_planner",
+      "status": "passed"
+    },
+    {
+      "assertionResults": [
+        {
+          "assertion": "request_input_normalizes_to_intent",
+          "status": "passed"
+        },
+        {
+          "assertion": "planner_output_matches_expected_plan",
+          "status": "passed"
+        },
+        {
+          "assertion": "explanation_matches_expected_text",
+          "status": "passed"
+        },
+        {
+          "assertion": "extension_profile_and_lane_strategy_recipe_supported",
+          "status": "passed"
+        }
+      ],
+      "caseId": "mastodon_extension_request_v1",
+      "executionMode": "extension_strategy_planner",
+      "status": "passed"
+    },
+    {
+      "assertionResults": [
+        {
+          "assertion": "ranked_items_match_expected_order_and_signals",
+          "status": "passed"
+        }
+      ],
+      "caseId": "ranking_quality_recipe_request_v1",
+      "executionMode": "portable_ranker",
+      "status": "passed"
+    },
+    {
+      "assertionResults": [
+        {
+          "assertion": "safe_method_returns_failure_envelope",
+          "status": "passed"
+        }
+      ],
+      "caseId": "invalid_empty_topic_failure_v1",
+      "executionMode": "portable_safe_failure",
+      "status": "passed"
+    }
+  ],
+  "generatedFrom": [
+    "libs/social-research/interfaces/contracts/social-research-language-sdk-conformance-suite.ts",
+    "libs/social-research/interfaces/contracts/social-research-sdk-cases.ts",
+    "libs/social-research/application/social-research-sdk.ts"
+  ],
+  "operationResults": [
+    {
+      "operationId": "createSearchPlan",
+      "status": "passed"
+    },
+    {
+      "operationId": "createSearchPlanFromRequest",
+      "status": "passed"
+    },
+    {
+      "operationId": "explainSearchPlan",
+      "safeOperationId": "tryExplainSearchPlan",
+      "status": "passed"
+    },
+    {
+      "operationId": "explainSearchRequest",
+      "safeOperationId": "tryExplainSearchRequest",
+      "status": "passed"
+    },
+    {
+      "operationId": "search",
+      "safeOperationId": "trySearch",
+      "status": "passed"
+    },
+    {
+      "operationId": "searchRequest",
+      "safeOperationId": "trySearchRequest",
+      "status": "passed"
+    },
+    {
+      "operationId": "fetchThread",
+      "safeOperationId": "tryFetchThread",
+      "status": "passed"
+    },
+    {
+      "operationId": "rankResults",
+      "safeOperationId": "tryRankResults",
+      "status": "passed"
+    },
+    {
+      "operationId": "listSources",
+      "status": "passed"
+    },
+    {
+      "operationId": "getSourceProfile",
+      "safeOperationId": "tryGetSourceProfile",
+      "status": "passed"
+    },
+    {
+      "operationId": "explainSourceReadiness",
+      "safeOperationId": "tryExplainSourceReadiness",
+      "status": "passed"
+    }
+  ],
+  "schemaVersion": 1,
+  "sourceOfTruth": "libs/social-research",
+  "suiteArtifact": "libs/contracts/social-research/social-research.language-sdk-conformance-suite.json",
+  "summary": {
+    "caseChecks": {
+      "passed": 5,
+      "total": 5
+    },
+    "operationChecks": {
+      "passed": 11,
+      "total": 11
+    },
+    "status": "passed"
+  },
+  "targetLanguage": "typescript"
+}

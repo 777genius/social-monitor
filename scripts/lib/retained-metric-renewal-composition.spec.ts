@@ -1,0 +1,31 @@
+import { FixedClock } from "@social-monitor/shared-kernel";
+import { PrismaSourceEngagementProjectionAdapter } from "@social-monitor/feed/adapters/persistence/prisma/prisma-source-engagement-projection.adapter";
+import { PrismaRetainedMetricInventory } from "@social-monitor/ingestion/adapters/persistence/prisma-retained-metric-inventory";
+import { RedditAppOnlyTokenProvider } from "@social-monitor/ingestion/adapters/source/reddit/app-only-reddit-token-provider";
+import { retainedMetricRenewalEffects } from "./retained-metric-renewal-composition";
+import { target } from "./retained-metric-refresh.spec-support";
+import { retainedMetricDailyGrant } from "@social-monitor/ingestion/domain/policies/retained-metric-daily-grant";
+
+jest.mock("@social-monitor/feed/adapters/persistence/prisma/prisma-source-engagement-projection.adapter", () => ({ PrismaSourceEngagementProjectionAdapter: jest.fn() }));
+jest.mock("@social-monitor/ingestion/adapters/persistence/prisma-retained-metric-inventory", () => ({ PrismaRetainedMetricInventory: jest.fn() }));
+jest.mock("@social-monitor/ingestion/adapters/source/reddit/app-only-reddit-token-provider", () => ({ RedditAppOnlyTokenProvider: jest.fn() }));
+it("shares retention skip and exact transactional sampleGuard without acquiring OAuth during construction", async () => {
+  const grant = retainedMetricDailyGrant("2026-09-02")!;
+  const expected = target({ publishedAt: "2026-09-02T12:00:00.000Z" });
+  const scope = { tenantId: grant.tenantId, workspaceId: grant.workspaceId, dates: grant.dates, endAt: grant.endAt };
+  const read = jest.fn().mockResolvedValue(expected);
+  jest.mocked(PrismaRetainedMetricInventory).mockImplementation(() => ({ read }) as unknown as PrismaRetainedMetricInventory);
+  retainedMetricRenewalEffects({} as never, { targets: [expected], scope }, new FixedClock(new Date("2026-09-09T12:00:00.000Z")), {});
+  expect(RedditAppOnlyTokenProvider).not.toHaveBeenCalled();
+  const options = jest.mocked(PrismaSourceEngagementProjectionAdapter).mock.calls[0]![2]!;
+  expect(options.retention).toBe("skip");
+  const transaction = {};
+  await options.sampleGuard!(transaction as never, {} as never, { sourceItemId: expected.sourceItemId } as never);
+  expect(PrismaRetainedMetricInventory).toHaveBeenCalledWith(transaction, expect.any(Function));
+  expect(read).toHaveBeenCalledWith(scope, expected.sourceItemId);
+  read.mockResolvedValue({ ...expected, identityDigest: "f".repeat(64) });
+  await expect(options.sampleGuard!(transaction as never, {} as never, { sourceItemId: expected.sourceItemId } as never)).rejects.toThrow("Transactional renewal target drift");
+  read.mockResolvedValue(null);
+  await expect(options.sampleGuard!(transaction as never, {} as never, { sourceItemId: expected.sourceItemId } as never)).rejects.toThrow();
+  expect(RedditAppOnlyTokenProvider).not.toHaveBeenCalled();
+});

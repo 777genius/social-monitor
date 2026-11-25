@@ -1,0 +1,387 @@
+import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
+
+import {
+  ReaderSummaryArtifact,
+  buildReaderSummaryPeriod,
+  type ReaderSummaryDedupeStrategy,
+  ReaderSummaryJob,
+  type ReaderSummaryJobProps,
+  type ReaderSummaryJobStatus,
+  ReaderSummaryPolicy,
+  type ReaderSummaryPolicyFormat,
+  type ReaderSummaryPolicyLanguage,
+  type ReaderSummaryPolicyProps,
+  type ReaderSummaryScheduleSettings,
+  type ReaderSummaryPolicyTone,
+  type ReaderSummaryScope,
+  assertReaderSummarySelectionStrategy,
+  canonicalReaderSummaryPreparationTimestamp,
+  type ScheduledReaderSummaryCadence,
+  readerSummaryScopeKey,
+} from "../../../domain";
+import {
+  normalizeReaderSummaryArtifactPayload,
+  readerSummaryScopeFromPrisma,
+} from "./prisma-reader-summary-artifact-payload";
+import type { PrismaSummaryStatus } from "./prisma-summary-records";
+export {
+  normalizeReaderSummaryArtifactPayload,
+} from "./prisma-reader-summary-artifact-payload";
+export {
+  readerSummaryCitationsToPrisma,
+  readerSummaryQualitySignalsToPrisma,
+  serializeReaderSummaryArtifact,
+} from "./prisma-reader-summary-json";
+
+export type PrismaReaderSummaryJobRecord = {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly scopeType: string;
+  readonly scopeKey: string;
+  readonly interestId: string | null;
+  readonly cadence: string;
+  readonly periodStartedAt: Date;
+  readonly periodEndedAt: Date;
+  readonly periodTimezone: string;
+  readonly periodKey: string;
+  readonly userId: string | null;
+  readonly subscriptionId: string | null;
+  readonly status: PrismaSummaryStatus;
+  readonly idempotencyKey: string;
+  readonly requestedAt: Date;
+  readonly startedAt: Date | null;
+  readonly completedAt: Date | null;
+  readonly failedAt: Date | null;
+  readonly readerSummaryArtifactId: string | null;
+  readonly failureReason: string | null;
+  readonly terminalFailureCode?: string | null;
+  readonly selectionStrategy?: string | null;
+  readonly preparationConfig?: unknown | null;
+  readonly preparationManifest?: unknown | null;
+  readonly preparationManifestSha256?: string | null;
+  readonly preparationCutoffAt?: Date | null;
+  readonly preparationDeadlineAt?: Date | null;
+  readonly preparationCutoffAtText?: string | null;
+  readonly preparationDeadlineAtText?: string | null;
+  readonly preparationNextCheckAt?: Date | null;
+  readonly preparationReadyAt?: Date | null;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+};
+
+export type PrismaReaderSummaryArtifactRecord = {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly scopeType: string;
+  readonly scopeKey: string;
+  readonly interestId: string | null;
+  readonly cadence: string;
+  readonly periodStartedAt: Date;
+  readonly periodEndedAt: Date;
+  readonly periodTimezone: string;
+  readonly periodKey: string;
+  readonly userId: string | null;
+  readonly subscriptionId: string | null;
+  readonly status: PrismaSummaryStatus;
+  readonly schemaVersion: number;
+  readonly modelVersion: string;
+  readonly promptVersion: string;
+  readonly headline: string;
+  readonly summaryText: string | null;
+  readonly artifactPayload: unknown;
+  readonly citations: unknown;
+  readonly qualitySignals: unknown;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+};
+
+export type PrismaReaderSummaryPeriodSummaryRecord = Pick<
+  PrismaReaderSummaryArtifactRecord,
+  | "id"
+  | "tenantId"
+  | "workspaceId"
+  | "scopeType"
+  | "scopeKey"
+  | "interestId"
+  | "cadence"
+  | "periodStartedAt"
+  | "periodEndedAt"
+  | "periodTimezone"
+  | "periodKey"
+  | "userId"
+  | "subscriptionId"
+  | "status"
+  | "headline"
+>;
+
+export type PrismaReaderSummaryPolicyRecord = {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly scopeType: string;
+  readonly scopeKey: string;
+  readonly interestId: string | null;
+  readonly language: string;
+  readonly format: string;
+  readonly tone: string;
+  readonly maxStories: number;
+  readonly includeRisks: boolean;
+  readonly includeInterestHighlights: boolean;
+  readonly includeRepeatedSignals: boolean;
+  readonly dedupeStrategy: string;
+  readonly customInstructions: string | null;
+  readonly rulesVersion: string;
+  readonly scheduleEnabled: boolean;
+  readonly scheduleTimezone: string;
+  readonly scheduleCadences: readonly string[];
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+};
+
+export const readerSummaryJobFromPrisma = (
+  record: PrismaReaderSummaryJobRecord,
+): ReaderSummaryJob => {
+  const selectionStrategy = record.selectionStrategy ?? undefined;
+  if (selectionStrategy !== undefined) {
+    assertReaderSummarySelectionStrategy(selectionStrategy);
+  }
+  return ReaderSummaryJob.rehydrate({
+    id: record.id,
+    tenantId: tenantId(record.tenantId),
+    workspaceId: workspaceId(record.workspaceId),
+    scope: readerSummaryScopeFromPrisma(record),
+    period: buildReaderSummaryPeriod({
+      cadence: normalizeReaderSummaryCadence(record.cadence),
+      startedAt: record.periodStartedAt,
+      endedAt: record.periodEndedAt,
+      timezone: record.periodTimezone,
+    }),
+    userId: record.userId ?? undefined,
+    subscriptionId: record.subscriptionId ?? undefined,
+    status: readerSummaryJobStatusFromPrisma(record.status),
+    idempotencyKey: record.idempotencyKey,
+    requestedAt: record.requestedAt,
+    startedAt: record.startedAt ?? undefined,
+    completedAt: record.completedAt ?? undefined,
+    failedAt: record.failedAt ?? undefined,
+    readerSummaryId: record.readerSummaryArtifactId ?? undefined,
+    failureReason: record.failureReason ?? undefined,
+    selectionStrategy,
+    preparationConfig: (record.preparationConfig ?? undefined) as ReaderSummaryJobProps["preparationConfig"],
+    preparationManifest: (record.preparationManifest ?? undefined) as ReaderSummaryJobProps["preparationManifest"],
+    preparationManifestSha256: record.preparationManifestSha256 ?? undefined,
+    preparationCutoffAt: exactPreparationTimestamp(
+      record.preparationCutoffAtText,
+      record.preparationCutoffAt,
+    ),
+    preparationDeadlineAt: exactPreparationTimestamp(
+      record.preparationDeadlineAtText,
+      record.preparationDeadlineAt,
+    ),
+    preparationNextCheckAt: record.preparationNextCheckAt ?? undefined,
+    preparationReadyAt: record.preparationReadyAt ?? undefined,
+    terminalFailureCode: (record.terminalFailureCode ?? undefined) as
+      ReaderSummaryJobProps["terminalFailureCode"],
+  } satisfies ReaderSummaryJobProps);
+};
+
+const exactPreparationTimestamp = (
+  text: string | null | undefined,
+  fallback: Date | null | undefined,
+): string | undefined => text !== null && text !== undefined
+  ? canonicalReaderSummaryPreparationTimestamp(text)
+  : fallback === null || fallback === undefined
+    ? undefined
+    : canonicalReaderSummaryPreparationTimestamp(fallback);
+
+export const readerSummaryArtifactFromPrisma = (
+  record: PrismaReaderSummaryArtifactRecord,
+): ReaderSummaryArtifact =>
+  ReaderSummaryArtifact.rehydrate(
+    normalizeReaderSummaryArtifactPayload(record.artifactPayload, record),
+  );
+
+export const readerSummaryPolicyFromPrisma = (
+  record: PrismaReaderSummaryPolicyRecord,
+): ReaderSummaryPolicy =>
+  ReaderSummaryPolicy.rehydrate({
+    id: record.id,
+    tenantId: tenantId(record.tenantId),
+    workspaceId: workspaceId(record.workspaceId),
+    scope: readerSummaryScopeFromPrisma(record),
+    language: normalizeReaderSummaryPolicyLanguage(record.language),
+    format: normalizeReaderSummaryPolicyFormat(record.format),
+    tone: normalizeReaderSummaryPolicyTone(record.tone),
+    maxStories: record.maxStories,
+    includeRisks: record.includeRisks,
+    includeInterestHighlights: record.includeInterestHighlights,
+    includeRepeatedSignals: record.includeRepeatedSignals,
+    dedupeStrategy: normalizeReaderSummaryDedupeStrategy(record.dedupeStrategy),
+    customInstructions: record.customInstructions ?? undefined,
+    rulesVersion: record.rulesVersion,
+    schedule: normalizeReaderSummaryScheduleSettings({
+      enabled: record.scheduleEnabled,
+      timezone: record.scheduleTimezone,
+      cadences: record.scheduleCadences,
+    }),
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  } satisfies ReaderSummaryPolicyProps);
+
+export const readerSummaryJobStatusToPrisma = (
+  status: ReaderSummaryJobStatus,
+): PrismaSummaryStatus => {
+  if (status === "requested") {
+    return "REQUESTED";
+  }
+
+  if (status === "running") {
+    return "RUNNING";
+  }
+
+  if (status === "completed") {
+    return "COMPLETED";
+  }
+
+  if (status === "no_signal") {
+    return "NO_SIGNAL";
+  }
+
+  if (status === "quality_rejected") {
+    return "REJECTED";
+  }
+
+  return "FAILED";
+};
+
+export const readerSummaryArtifactStatusToPrisma = (
+  artifact: ReaderSummaryArtifact,
+): PrismaSummaryStatus =>
+  artifact.toSnapshot().qualityFlags.includes("no_signal")
+    ? "NO_SIGNAL"
+    : "COMPLETED";
+
+export const readerSummaryScopeToPrisma = (
+  scope: ReaderSummaryScope,
+): {
+  readonly scopeType: string;
+  readonly scopeKey: string;
+  readonly interestId: string | null;
+} => ({
+  scopeType: scope.type,
+  scopeKey: readerSummaryScopeKey(scope),
+  interestId: scope.type === "interest" ? scope.interestId : null,
+});
+
+const readerSummaryJobStatusFromPrisma = (
+  status: PrismaSummaryStatus,
+): ReaderSummaryJobStatus => {
+  if (status === "REQUESTED") {
+    return "requested";
+  }
+
+  if (status === "RUNNING") {
+    return "running";
+  }
+
+  if (status === "COMPLETED") {
+    return "completed";
+  }
+
+  if (status === "NO_SIGNAL") {
+    return "no_signal";
+  }
+
+  if (status === "FAILED") {
+    return "failed";
+  }
+
+  if (status === "REJECTED") {
+    return "quality_rejected";
+  }
+
+  throw new Error(
+    `Cannot rehydrate unsupported reader summary job status "${status}"`,
+  );
+};
+
+const normalizeReaderSummaryPolicyLanguage = (
+  value: string,
+): ReaderSummaryPolicyLanguage => {
+  if (value === "auto" || value === "en" || value === "ru") {
+    return value;
+  }
+
+  throw new Error(`Unsupported reader summary policy language "${value}"`);
+};
+
+const normalizeReaderSummaryPolicyFormat = (
+  value: string,
+): ReaderSummaryPolicyFormat => {
+  if (
+    value === "executive_brief" ||
+    value === "bullet_digest" ||
+    value === "risk_brief"
+  ) {
+    return value;
+  }
+
+  throw new Error(`Unsupported reader summary policy format "${value}"`);
+};
+
+const normalizeReaderSummaryPolicyTone = (
+  value: string,
+): ReaderSummaryPolicyTone => {
+  if (value === "neutral" || value === "concise" || value === "analytical") {
+    return value;
+  }
+
+  throw new Error(`Unsupported reader summary policy tone "${value}"`);
+};
+
+const normalizeReaderSummaryCadence = (
+  value: string,
+): "daily" | "weekly" | "monthly" | "custom" => {
+  if (
+    value === "daily" ||
+    value === "weekly" ||
+    value === "monthly" ||
+    value === "custom"
+  ) {
+    return value;
+  }
+
+  throw new Error(`Unsupported reader summary cadence "${value}"`);
+};
+
+const normalizeReaderSummaryDedupeStrategy = (
+  value: string,
+): ReaderSummaryDedupeStrategy => {
+  if (value === "canonical_url_then_title") {
+    return value;
+  }
+
+  throw new Error(`Unsupported reader summary dedupe strategy "${value}"`);
+};
+
+const normalizeReaderSummaryScheduleSettings = (value: {
+  readonly enabled: boolean;
+  readonly timezone: string;
+  readonly cadences: readonly string[];
+}): ReaderSummaryScheduleSettings => ({
+  enabled: value.enabled,
+  timezone: value.timezone,
+  cadences: value.cadences.map(normalizeScheduledReaderSummaryCadence),
+});
+
+const normalizeScheduledReaderSummaryCadence = (
+  value: string,
+): ScheduledReaderSummaryCadence => {
+  if (value === "daily" || value === "weekly" || value === "monthly") {
+    return value;
+  }
+
+  throw new Error(`Unsupported scheduled reader summary cadence "${value}"`);
+};

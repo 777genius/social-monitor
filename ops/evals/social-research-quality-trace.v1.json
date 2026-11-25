@@ -1,0 +1,1831 @@
+{
+  "schemaVersion": 1,
+  "artifactFormat": "social-research-quality-trace-v1",
+  "evalRunId": "social-research-quality-trace-v1",
+  "generatedBy": "npm run check:social-research-quality-trace",
+  "gitShaPolicy": "release pipeline records the exact git sha next to this deterministic report",
+  "model": {
+    "judge": "none",
+    "liveNetwork": false,
+    "traceBuilder": "deterministic-eval-output-join"
+  },
+  "inputs": {
+    "datasetPath": "ops/evals/source-ranking-eval-dataset.v1.json",
+    "sourceRankingEvalPath": "ops/evals/source-ranking-eval-output.json",
+    "sourceQueryPlannerEvalPath": "ops/evals/source-query-planner-eval-output.json",
+    "summaryEvalPath": "ops/evals/summary-eval-output.json",
+    "feedbackBacklogPath": "ops/evals/summary-feedback-eval-backlog.v1.json"
+  },
+  "sourceCoverage": [
+    "reddit",
+    "x-twitter"
+  ],
+  "qualityGates": {
+    "sourceRankingEvalPassed": true,
+    "sourceQueryPlannerEvalPassed": true,
+    "summaryEvalPassed": true,
+    "feedbackEvalBacklogPassed": true,
+    "everyDatasetCaseTraced": true,
+    "everyTopRankedCandidateHasReasonCodes": true,
+    "requiredSourceCoverage": true,
+    "summaryGroundingComplete": true,
+    "noSummarySecretLeaks": true,
+    "feedbackBacklogHasItems": true,
+    "noRawSecretFragments": true
+  },
+  "blockingPassed": true,
+  "traces": [
+    {
+      "caseId": "reddit-ai-agents-mcp-reliability",
+      "topic": "AI agents MCP Claude Code reliability",
+      "sourceKeys": [
+        "reddit"
+      ],
+      "collection": {
+        "queryLaneCount": 2,
+        "candidateCount": 13,
+        "mustHaveCandidateCount": 3,
+        "queryLanes": [
+          {
+            "laneId": "reddit-general-search",
+            "sourceKey": "reddit",
+            "operation": "search",
+            "maxItems": 25
+          },
+          {
+            "laneId": "reddit-top-week-local-llama",
+            "sourceKey": "reddit",
+            "operation": "listing",
+            "maxItems": 15
+          }
+        ]
+      },
+      "planner": {
+        "baselineLaneCount": 1,
+        "experimentLaneCount": 10,
+        "decision": "improved"
+      },
+      "ranking": {
+        "rankedCandidateCount": 13,
+        "metrics": {
+          "precisionAt10": 1,
+          "ndcgAt20": 0.958,
+          "mustHaveRecallAt20": 1,
+          "duplicateRateAt20": 0.077,
+          "sourceDiversityAt20": 1,
+          "officialCommunityCoverageAt20": 1,
+          "viralOffTopicAt10": 0,
+          "lowConfidenceLabelRate": 0
+        },
+        "topBreakdowns": [
+          {
+            "candidateId": "r-mcp-reliability-notes",
+            "totalScore": 1585.468,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "r-mcp-tool-permissions",
+            "totalScore": 1418.74,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "r-mcp-reliability-duplicate",
+            "totalScore": 1251.875,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "r-agent-auth-retry-bug",
+            "totalScore": 1251.695,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "r-production-agent-logs",
+            "totalScore": 1086.025,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "traceComplete": true
+    },
+    {
+      "caseId": "x-openai-codex-cli-release",
+      "topic": "OpenAI Codex CLI release MCP",
+      "sourceKeys": [
+        "x-twitter"
+      ],
+      "collection": {
+        "queryLaneCount": 3,
+        "candidateCount": 13,
+        "mustHaveCandidateCount": 3,
+        "queryLanes": [
+          {
+            "laneId": "x-general-search",
+            "sourceKey": "x-twitter",
+            "operation": "search",
+            "maxItems": 20
+          },
+          {
+            "laneId": "x-official-openai",
+            "sourceKey": "x-twitter",
+            "operation": "account_feed",
+            "maxItems": 10
+          },
+          {
+            "laneId": "x-openai-mentions",
+            "sourceKey": "x-twitter",
+            "operation": "mention_search",
+            "maxItems": 10
+          }
+        ]
+      },
+      "planner": {
+        "baselineLaneCount": 1,
+        "experimentLaneCount": 6,
+        "decision": "improved"
+      },
+      "ranking": {
+        "rankedCandidateCount": 13,
+        "metrics": {
+          "precisionAt10": 1,
+          "ndcgAt20": 0.959,
+          "mustHaveRecallAt20": 1,
+          "duplicateRateAt20": 0.077,
+          "sourceDiversityAt20": 1,
+          "officialCommunityCoverageAt20": 1,
+          "viralOffTopicAt10": 0,
+          "lowConfidenceLabelRate": 0
+        },
+        "topBreakdowns": [
+          {
+            "candidateId": "x-openai-codex-mcp",
+            "totalScore": 1353.174,
+            "reasonCodes": [
+              "query_token_match",
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-dev-setup-thread",
+            "totalScore": 1002.661,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-codex-community-faq",
+            "totalScore": 1002.09,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-openai-terse-tool-mode",
+            "totalScore": 852.839,
+            "reasonCodes": [
+              "query_token_match",
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-codex-install-errors",
+            "totalScore": 835.285,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          }
+        ]
+      },
+      "traceComplete": true
+    },
+    {
+      "caseId": "mixed-agent-production-reliability",
+      "topic": "AI coding agent production reliability",
+      "sourceKeys": [
+        "x-twitter",
+        "reddit"
+      ],
+      "collection": {
+        "queryLaneCount": 2,
+        "candidateCount": 12,
+        "mustHaveCandidateCount": 2,
+        "queryLanes": [
+          {
+            "laneId": "mixed-general",
+            "sourceKey": "x-twitter",
+            "operation": "search",
+            "maxItems": 20
+          },
+          {
+            "laneId": "mixed-reddit-hot",
+            "sourceKey": "reddit",
+            "operation": "listing",
+            "maxItems": 15
+          }
+        ]
+      },
+      "planner": {
+        "baselineLaneCount": 2,
+        "experimentLaneCount": 13,
+        "decision": "same"
+      },
+      "ranking": {
+        "rankedCandidateCount": 12,
+        "metrics": {
+          "precisionAt10": 1,
+          "ndcgAt20": 0.982,
+          "mustHaveRecallAt20": 1,
+          "duplicateRateAt20": 0.083,
+          "sourceDiversityAt20": 1,
+          "officialCommunityCoverageAt20": 1,
+          "viralOffTopicAt10": 0,
+          "lowConfidenceLabelRate": 0
+        },
+        "topBreakdowns": [
+          {
+            "candidateId": "m-openai-production-guidance",
+            "totalScore": 1169.986,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "m-reddit-production-failures",
+            "totalScore": 1169.724,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "m-reddit-production-failures-duplicate",
+            "totalScore": 1001.968,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "m-agent-observability",
+            "totalScore": 835.847,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "m-agent-runbook",
+            "totalScore": 835.766,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "traceComplete": true
+    },
+    {
+      "caseId": "reddit-cursor-mcp-registry-outage",
+      "topic": "Cursor MCP registry outage",
+      "sourceKeys": [
+        "reddit"
+      ],
+      "collection": {
+        "queryLaneCount": 2,
+        "candidateCount": 6,
+        "mustHaveCandidateCount": 2,
+        "queryLanes": [
+          {
+            "laneId": "reddit-cursor-mcp-registry-outage-reddit-general",
+            "sourceKey": "reddit",
+            "operation": "search",
+            "maxItems": 20
+          },
+          {
+            "laneId": "reddit-cursor-mcp-registry-outage-reddit-community-top",
+            "sourceKey": "reddit",
+            "operation": "listing",
+            "maxItems": 20
+          }
+        ]
+      },
+      "planner": {
+        "baselineLaneCount": 1,
+        "experimentLaneCount": 8,
+        "decision": "improved"
+      },
+      "ranking": {
+        "rankedCandidateCount": 6,
+        "metrics": {
+          "precisionAt10": 0.833,
+          "ndcgAt20": 0.975,
+          "mustHaveRecallAt20": 1,
+          "duplicateRateAt20": 0,
+          "sourceDiversityAt20": 1,
+          "officialCommunityCoverageAt20": 1,
+          "viralOffTopicAt10": 0,
+          "lowConfidenceLabelRate": 0
+        },
+        "topBreakdowns": [
+          {
+            "candidateId": "reddit-cursor-mcp-registry-outage-general",
+            "totalScore": 918.884,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-cursor-mcp-registry-outage-keyword",
+            "totalScore": 918.727,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-cursor-mcp-registry-outage-community",
+            "totalScore": 585.481,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-cursor-mcp-registry-outage-checklist",
+            "totalScore": 585.325,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "reddit-cursor-mcp-registry-outage-unrelated",
+            "totalScore": 3.011,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "traceComplete": true
+    },
+    {
+      "caseId": "reddit-langchain-agent-memory-regression",
+      "topic": "LangChain agent memory regression",
+      "sourceKeys": [
+        "reddit"
+      ],
+      "collection": {
+        "queryLaneCount": 2,
+        "candidateCount": 6,
+        "mustHaveCandidateCount": 2,
+        "queryLanes": [
+          {
+            "laneId": "reddit-langchain-agent-memory-regression-reddit-general",
+            "sourceKey": "reddit",
+            "operation": "search",
+            "maxItems": 20
+          },
+          {
+            "laneId": "reddit-langchain-agent-memory-regression-reddit-community-top",
+            "sourceKey": "reddit",
+            "operation": "listing",
+            "maxItems": 20
+          }
+        ]
+      },
+      "planner": {
+        "baselineLaneCount": 1,
+        "experimentLaneCount": 8,
+        "decision": "improved"
+      },
+      "ranking": {
+        "rankedCandidateCount": 6,
+        "metrics": {
+          "precisionAt10": 0.833,
+          "ndcgAt20": 0.975,
+          "mustHaveRecallAt20": 1,
+          "duplicateRateAt20": 0,
+          "sourceDiversityAt20": 1,
+          "officialCommunityCoverageAt20": 1,
+          "viralOffTopicAt10": 0,
+          "lowConfidenceLabelRate": 0
+        },
+        "topBreakdowns": [
+          {
+            "candidateId": "reddit-langchain-agent-memory-regression-general",
+            "totalScore": 1085.551,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-langchain-agent-memory-regression-keyword",
+            "totalScore": 1085.394,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-langchain-agent-memory-regression-community",
+            "totalScore": 918.814,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-langchain-agent-memory-regression-checklist",
+            "totalScore": 918.658,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "reddit-langchain-agent-memory-regression-unrelated",
+            "totalScore": 3.011,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "traceComplete": true
+    },
+    {
+      "caseId": "reddit-llamaindex-workflow-tools",
+      "topic": "LlamaIndex workflow tool calling",
+      "sourceKeys": [
+        "reddit"
+      ],
+      "collection": {
+        "queryLaneCount": 2,
+        "candidateCount": 6,
+        "mustHaveCandidateCount": 2,
+        "queryLanes": [
+          {
+            "laneId": "reddit-llamaindex-workflow-tools-reddit-general",
+            "sourceKey": "reddit",
+            "operation": "search",
+            "maxItems": 20
+          },
+          {
+            "laneId": "reddit-llamaindex-workflow-tools-reddit-community-top",
+            "sourceKey": "reddit",
+            "operation": "listing",
+            "maxItems": 20
+          }
+        ]
+      },
+      "planner": {
+        "baselineLaneCount": 1,
+        "experimentLaneCount": 8,
+        "decision": "improved"
+      },
+      "ranking": {
+        "rankedCandidateCount": 6,
+        "metrics": {
+          "precisionAt10": 0.833,
+          "ndcgAt20": 0.975,
+          "mustHaveRecallAt20": 1,
+          "duplicateRateAt20": 0,
+          "sourceDiversityAt20": 1,
+          "officialCommunityCoverageAt20": 1,
+          "viralOffTopicAt10": 0,
+          "lowConfidenceLabelRate": 0
+        },
+        "topBreakdowns": [
+          {
+            "candidateId": "reddit-llamaindex-workflow-tools-general",
+            "totalScore": 1002.217,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-llamaindex-workflow-tools-community",
+            "totalScore": 1002.148,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-llamaindex-workflow-tools-keyword",
+            "totalScore": 1002.061,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-llamaindex-workflow-tools-checklist",
+            "totalScore": 1001.991,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "reddit-llamaindex-workflow-tools-unrelated",
+            "totalScore": 3.011,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "traceComplete": true
+    },
+    {
+      "caseId": "reddit-ollama-tool-use-release",
+      "topic": "Ollama tool use release",
+      "sourceKeys": [
+        "reddit"
+      ],
+      "collection": {
+        "queryLaneCount": 2,
+        "candidateCount": 6,
+        "mustHaveCandidateCount": 2,
+        "queryLanes": [
+          {
+            "laneId": "reddit-ollama-tool-use-release-reddit-general",
+            "sourceKey": "reddit",
+            "operation": "search",
+            "maxItems": 20
+          },
+          {
+            "laneId": "reddit-ollama-tool-use-release-reddit-community-top",
+            "sourceKey": "reddit",
+            "operation": "listing",
+            "maxItems": 20
+          }
+        ]
+      },
+      "planner": {
+        "baselineLaneCount": 1,
+        "experimentLaneCount": 8,
+        "decision": "improved"
+      },
+      "ranking": {
+        "rankedCandidateCount": 6,
+        "metrics": {
+          "precisionAt10": 0.833,
+          "ndcgAt20": 0.975,
+          "mustHaveRecallAt20": 1,
+          "duplicateRateAt20": 0,
+          "sourceDiversityAt20": 1,
+          "officialCommunityCoverageAt20": 1,
+          "viralOffTopicAt10": 0,
+          "lowConfidenceLabelRate": 0
+        },
+        "topBreakdowns": [
+          {
+            "candidateId": "reddit-ollama-tool-use-release-general",
+            "totalScore": 918.884,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-ollama-tool-use-release-keyword",
+            "totalScore": 752.061,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-ollama-tool-use-release-community",
+            "totalScore": 585.481,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-ollama-tool-use-release-checklist",
+            "totalScore": 585.325,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "reddit-ollama-tool-use-release-unrelated",
+            "totalScore": 3.011,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "traceComplete": true
+    },
+    {
+      "caseId": "reddit-vllm-agent-throughput",
+      "topic": "vLLM agent throughput regression",
+      "sourceKeys": [
+        "reddit"
+      ],
+      "collection": {
+        "queryLaneCount": 2,
+        "candidateCount": 6,
+        "mustHaveCandidateCount": 2,
+        "queryLanes": [
+          {
+            "laneId": "reddit-vllm-agent-throughput-reddit-general",
+            "sourceKey": "reddit",
+            "operation": "search",
+            "maxItems": 20
+          },
+          {
+            "laneId": "reddit-vllm-agent-throughput-reddit-community-top",
+            "sourceKey": "reddit",
+            "operation": "listing",
+            "maxItems": 20
+          }
+        ]
+      },
+      "planner": {
+        "baselineLaneCount": 1,
+        "experimentLaneCount": 8,
+        "decision": "improved"
+      },
+      "ranking": {
+        "rankedCandidateCount": 6,
+        "metrics": {
+          "precisionAt10": 0.833,
+          "ndcgAt20": 0.975,
+          "mustHaveRecallAt20": 1,
+          "duplicateRateAt20": 0,
+          "sourceDiversityAt20": 1,
+          "officialCommunityCoverageAt20": 1,
+          "viralOffTopicAt10": 0,
+          "lowConfidenceLabelRate": 0
+        },
+        "topBreakdowns": [
+          {
+            "candidateId": "reddit-vllm-agent-throughput-general",
+            "totalScore": 1002.217,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-vllm-agent-throughput-community",
+            "totalScore": 835.481,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-vllm-agent-throughput-keyword",
+            "totalScore": 835.394,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-vllm-agent-throughput-checklist",
+            "totalScore": 835.325,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "reddit-vllm-agent-throughput-unrelated",
+            "totalScore": 3.011,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "traceComplete": true
+    },
+    {
+      "caseId": "reddit-supabase-mcp-auth",
+      "topic": "Supabase MCP auth scopes",
+      "sourceKeys": [
+        "reddit"
+      ],
+      "collection": {
+        "queryLaneCount": 2,
+        "candidateCount": 6,
+        "mustHaveCandidateCount": 2,
+        "queryLanes": [
+          {
+            "laneId": "reddit-supabase-mcp-auth-reddit-general",
+            "sourceKey": "reddit",
+            "operation": "search",
+            "maxItems": 20
+          },
+          {
+            "laneId": "reddit-supabase-mcp-auth-reddit-community-top",
+            "sourceKey": "reddit",
+            "operation": "listing",
+            "maxItems": 20
+          }
+        ]
+      },
+      "planner": {
+        "baselineLaneCount": 1,
+        "experimentLaneCount": 8,
+        "decision": "improved"
+      },
+      "ranking": {
+        "rankedCandidateCount": 6,
+        "metrics": {
+          "precisionAt10": 0.833,
+          "ndcgAt20": 0.975,
+          "mustHaveRecallAt20": 1,
+          "duplicateRateAt20": 0,
+          "sourceDiversityAt20": 1,
+          "officialCommunityCoverageAt20": 1,
+          "viralOffTopicAt10": 0,
+          "lowConfidenceLabelRate": 0
+        },
+        "topBreakdowns": [
+          {
+            "candidateId": "reddit-supabase-mcp-auth-general",
+            "totalScore": 918.884,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-supabase-mcp-auth-keyword",
+            "totalScore": 918.727,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-supabase-mcp-auth-community",
+            "totalScore": 585.481,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-supabase-mcp-auth-checklist",
+            "totalScore": 585.325,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "reddit-supabase-mcp-auth-unrelated",
+            "totalScore": 3.011,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "traceComplete": true
+    },
+    {
+      "caseId": "reddit-nextjs-ai-sdk-streaming",
+      "topic": "Next.js AI SDK streaming agents",
+      "sourceKeys": [
+        "reddit"
+      ],
+      "collection": {
+        "queryLaneCount": 2,
+        "candidateCount": 6,
+        "mustHaveCandidateCount": 2,
+        "queryLanes": [
+          {
+            "laneId": "reddit-nextjs-ai-sdk-streaming-reddit-general",
+            "sourceKey": "reddit",
+            "operation": "search",
+            "maxItems": 20
+          },
+          {
+            "laneId": "reddit-nextjs-ai-sdk-streaming-reddit-community-top",
+            "sourceKey": "reddit",
+            "operation": "listing",
+            "maxItems": 20
+          }
+        ]
+      },
+      "planner": {
+        "baselineLaneCount": 1,
+        "experimentLaneCount": 8,
+        "decision": "improved"
+      },
+      "ranking": {
+        "rankedCandidateCount": 6,
+        "metrics": {
+          "precisionAt10": 0.833,
+          "ndcgAt20": 0.975,
+          "mustHaveRecallAt20": 1,
+          "duplicateRateAt20": 0,
+          "sourceDiversityAt20": 1,
+          "officialCommunityCoverageAt20": 1,
+          "viralOffTopicAt10": 0,
+          "lowConfidenceLabelRate": 0
+        },
+        "topBreakdowns": [
+          {
+            "candidateId": "reddit-nextjs-ai-sdk-streaming-general",
+            "totalScore": 918.884,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-nextjs-ai-sdk-streaming-keyword",
+            "totalScore": 918.727,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-nextjs-ai-sdk-streaming-community",
+            "totalScore": 585.481,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-nextjs-ai-sdk-streaming-checklist",
+            "totalScore": 585.325,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "reddit-nextjs-ai-sdk-streaming-unrelated",
+            "totalScore": 3.011,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "traceComplete": true
+    },
+    {
+      "caseId": "reddit-docker-mcp-desktop-permissions",
+      "topic": "Docker MCP Desktop permissions",
+      "sourceKeys": [
+        "reddit"
+      ],
+      "collection": {
+        "queryLaneCount": 2,
+        "candidateCount": 6,
+        "mustHaveCandidateCount": 2,
+        "queryLanes": [
+          {
+            "laneId": "reddit-docker-mcp-desktop-permissions-reddit-general",
+            "sourceKey": "reddit",
+            "operation": "search",
+            "maxItems": 20
+          },
+          {
+            "laneId": "reddit-docker-mcp-desktop-permissions-reddit-community-top",
+            "sourceKey": "reddit",
+            "operation": "listing",
+            "maxItems": 20
+          }
+        ]
+      },
+      "planner": {
+        "baselineLaneCount": 1,
+        "experimentLaneCount": 8,
+        "decision": "improved"
+      },
+      "ranking": {
+        "rankedCandidateCount": 6,
+        "metrics": {
+          "precisionAt10": 0.833,
+          "ndcgAt20": 0.975,
+          "mustHaveRecallAt20": 1,
+          "duplicateRateAt20": 0,
+          "sourceDiversityAt20": 1,
+          "officialCommunityCoverageAt20": 1,
+          "viralOffTopicAt10": 0,
+          "lowConfidenceLabelRate": 0
+        },
+        "topBreakdowns": [
+          {
+            "candidateId": "reddit-docker-mcp-desktop-permissions-general",
+            "totalScore": 918.884,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-docker-mcp-desktop-permissions-keyword",
+            "totalScore": 918.727,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-docker-mcp-desktop-permissions-community",
+            "totalScore": 585.481,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-docker-mcp-desktop-permissions-checklist",
+            "totalScore": 585.325,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "reddit-docker-mcp-desktop-permissions-unrelated",
+            "totalScore": 3.011,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "traceComplete": true
+    },
+    {
+      "caseId": "x-anthropic-claude-code-permissions",
+      "topic": "Claude Code tool permissions update",
+      "sourceKeys": [
+        "x-twitter"
+      ],
+      "collection": {
+        "queryLaneCount": 3,
+        "candidateCount": 6,
+        "mustHaveCandidateCount": 2,
+        "queryLanes": [
+          {
+            "laneId": "x-anthropic-claude-code-permissions-x-general",
+            "sourceKey": "x-twitter",
+            "operation": "search",
+            "maxItems": 20
+          },
+          {
+            "laneId": "x-anthropic-claude-code-permissions-x-from",
+            "sourceKey": "x-twitter",
+            "operation": "account_feed",
+            "maxItems": 10
+          },
+          {
+            "laneId": "x-anthropic-claude-code-permissions-x-mention",
+            "sourceKey": "x-twitter",
+            "operation": "mention_search",
+            "maxItems": 10
+          }
+        ]
+      },
+      "planner": {
+        "baselineLaneCount": 1,
+        "experimentLaneCount": 6,
+        "decision": "improved"
+      },
+      "ranking": {
+        "rankedCandidateCount": 6,
+        "metrics": {
+          "precisionAt10": 0.833,
+          "ndcgAt20": 0.956,
+          "mustHaveRecallAt20": 1,
+          "duplicateRateAt20": 0,
+          "sourceDiversityAt20": 1,
+          "officialCommunityCoverageAt20": 1,
+          "viralOffTopicAt10": 0,
+          "lowConfidenceLabelRate": 0
+        },
+        "topBreakdowns": [
+          {
+            "candidateId": "x-anthropic-claude-code-permissions-general",
+            "totalScore": 1168.873,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-anthropic-claude-code-permissions-mention",
+            "totalScore": 1168.509,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-anthropic-claude-code-permissions-operator",
+            "totalScore": 1001.993,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-anthropic-claude-code-permissions-keyword",
+            "totalScore": 835.214,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-anthropic-claude-code-permissions-official-terse",
+            "totalScore": 519.14,
+            "reasonCodes": [
+              "query_token_match",
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "traceComplete": true
+    },
+    {
+      "caseId": "x-openai-responses-api-tools",
+      "topic": "OpenAI Responses API tool calling",
+      "sourceKeys": [
+        "x-twitter"
+      ],
+      "collection": {
+        "queryLaneCount": 3,
+        "candidateCount": 6,
+        "mustHaveCandidateCount": 2,
+        "queryLanes": [
+          {
+            "laneId": "x-openai-responses-api-tools-x-general",
+            "sourceKey": "x-twitter",
+            "operation": "search",
+            "maxItems": 20
+          },
+          {
+            "laneId": "x-openai-responses-api-tools-x-from",
+            "sourceKey": "x-twitter",
+            "operation": "account_feed",
+            "maxItems": 10
+          },
+          {
+            "laneId": "x-openai-responses-api-tools-x-mention",
+            "sourceKey": "x-twitter",
+            "operation": "mention_search",
+            "maxItems": 10
+          }
+        ]
+      },
+      "planner": {
+        "baselineLaneCount": 1,
+        "experimentLaneCount": 6,
+        "decision": "improved"
+      },
+      "ranking": {
+        "rankedCandidateCount": 6,
+        "metrics": {
+          "precisionAt10": 0.833,
+          "ndcgAt20": 0.956,
+          "mustHaveRecallAt20": 1,
+          "duplicateRateAt20": 0,
+          "sourceDiversityAt20": 1,
+          "officialCommunityCoverageAt20": 1,
+          "viralOffTopicAt10": 0,
+          "lowConfidenceLabelRate": 0
+        },
+        "topBreakdowns": [
+          {
+            "candidateId": "x-openai-responses-api-tools-general",
+            "totalScore": 1252.207,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-openai-responses-api-tools-mention",
+            "totalScore": 1251.842,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-openai-responses-api-tools-operator",
+            "totalScore": 918.66,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-openai-responses-api-tools-keyword",
+            "totalScore": 918.547,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-openai-responses-api-tools-official-terse",
+            "totalScore": 352.473,
+            "reasonCodes": [
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "traceComplete": true
+    },
+    {
+      "caseId": "x-cursor-agent-terminal-mode",
+      "topic": "Cursor agent terminal mode rollout",
+      "sourceKeys": [
+        "x-twitter"
+      ],
+      "collection": {
+        "queryLaneCount": 3,
+        "candidateCount": 6,
+        "mustHaveCandidateCount": 2,
+        "queryLanes": [
+          {
+            "laneId": "x-cursor-agent-terminal-mode-x-general",
+            "sourceKey": "x-twitter",
+            "operation": "search",
+            "maxItems": 20
+          },
+          {
+            "laneId": "x-cursor-agent-terminal-mode-x-from",
+            "sourceKey": "x-twitter",
+            "operation": "account_feed",
+            "maxItems": 10
+          },
+          {
+            "laneId": "x-cursor-agent-terminal-mode-x-mention",
+            "sourceKey": "x-twitter",
+            "operation": "mention_search",
+            "maxItems": 10
+          }
+        ]
+      },
+      "planner": {
+        "baselineLaneCount": 1,
+        "experimentLaneCount": 6,
+        "decision": "improved"
+      },
+      "ranking": {
+        "rankedCandidateCount": 6,
+        "metrics": {
+          "precisionAt10": 0.833,
+          "ndcgAt20": 0.956,
+          "mustHaveRecallAt20": 1,
+          "duplicateRateAt20": 0,
+          "sourceDiversityAt20": 1,
+          "officialCommunityCoverageAt20": 1,
+          "viralOffTopicAt10": 0,
+          "lowConfidenceLabelRate": 0
+        },
+        "topBreakdowns": [
+          {
+            "candidateId": "x-cursor-agent-terminal-mode-general",
+            "totalScore": 1002.207,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-cursor-agent-terminal-mode-mention",
+            "totalScore": 1001.842,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-cursor-agent-terminal-mode-operator",
+            "totalScore": 835.327,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-cursor-agent-terminal-mode-keyword",
+            "totalScore": 835.214,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-cursor-agent-terminal-mode-official-terse",
+            "totalScore": 519.14,
+            "reasonCodes": [
+              "query_token_match",
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "traceComplete": true
+    },
+    {
+      "caseId": "x-windsurf-enterprise-agent-update",
+      "topic": "Windsurf enterprise agent update",
+      "sourceKeys": [
+        "x-twitter"
+      ],
+      "collection": {
+        "queryLaneCount": 3,
+        "candidateCount": 6,
+        "mustHaveCandidateCount": 2,
+        "queryLanes": [
+          {
+            "laneId": "x-windsurf-enterprise-agent-update-x-general",
+            "sourceKey": "x-twitter",
+            "operation": "search",
+            "maxItems": 20
+          },
+          {
+            "laneId": "x-windsurf-enterprise-agent-update-x-from",
+            "sourceKey": "x-twitter",
+            "operation": "account_feed",
+            "maxItems": 10
+          },
+          {
+            "laneId": "x-windsurf-enterprise-agent-update-x-mention",
+            "sourceKey": "x-twitter",
+            "operation": "mention_search",
+            "maxItems": 10
+          }
+        ]
+      },
+      "planner": {
+        "baselineLaneCount": 1,
+        "experimentLaneCount": 6,
+        "decision": "improved"
+      },
+      "ranking": {
+        "rankedCandidateCount": 6,
+        "metrics": {
+          "precisionAt10": 0.833,
+          "ndcgAt20": 0.956,
+          "mustHaveRecallAt20": 1,
+          "duplicateRateAt20": 0,
+          "sourceDiversityAt20": 1,
+          "officialCommunityCoverageAt20": 1,
+          "viralOffTopicAt10": 0,
+          "lowConfidenceLabelRate": 0
+        },
+        "topBreakdowns": [
+          {
+            "candidateId": "x-windsurf-enterprise-agent-update-general",
+            "totalScore": 1002.207,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-windsurf-enterprise-agent-update-mention",
+            "totalScore": 1001.842,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-windsurf-enterprise-agent-update-keyword",
+            "totalScore": 835.214,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-windsurf-enterprise-agent-update-operator",
+            "totalScore": 668.66,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-windsurf-enterprise-agent-update-official-terse",
+            "totalScore": 352.473,
+            "reasonCodes": [
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "traceComplete": true
+    },
+    {
+      "caseId": "x-devin-background-agent-queue",
+      "topic": "Devin background agent queue",
+      "sourceKeys": [
+        "x-twitter"
+      ],
+      "collection": {
+        "queryLaneCount": 3,
+        "candidateCount": 6,
+        "mustHaveCandidateCount": 2,
+        "queryLanes": [
+          {
+            "laneId": "x-devin-background-agent-queue-x-general",
+            "sourceKey": "x-twitter",
+            "operation": "search",
+            "maxItems": 20
+          },
+          {
+            "laneId": "x-devin-background-agent-queue-x-from",
+            "sourceKey": "x-twitter",
+            "operation": "account_feed",
+            "maxItems": 10
+          },
+          {
+            "laneId": "x-devin-background-agent-queue-x-mention",
+            "sourceKey": "x-twitter",
+            "operation": "mention_search",
+            "maxItems": 10
+          }
+        ]
+      },
+      "planner": {
+        "baselineLaneCount": 1,
+        "experimentLaneCount": 6,
+        "decision": "improved"
+      },
+      "ranking": {
+        "rankedCandidateCount": 6,
+        "metrics": {
+          "precisionAt10": 0.833,
+          "ndcgAt20": 0.977,
+          "mustHaveRecallAt20": 1,
+          "duplicateRateAt20": 0,
+          "sourceDiversityAt20": 1,
+          "officialCommunityCoverageAt20": 1,
+          "viralOffTopicAt10": 0,
+          "lowConfidenceLabelRate": 0
+        },
+        "topBreakdowns": [
+          {
+            "candidateId": "x-devin-background-agent-queue-mention",
+            "totalScore": 1001.842,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-devin-background-agent-queue-general",
+            "totalScore": 835.54,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-devin-background-agent-queue-keyword",
+            "totalScore": 835.214,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-devin-background-agent-queue-operator",
+            "totalScore": 668.66,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-devin-background-agent-queue-official-terse",
+            "totalScore": 352.473,
+            "reasonCodes": [
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "traceComplete": true
+    },
+    {
+      "caseId": "x-openrouter-tool-routing",
+      "topic": "OpenRouter tool routing reliability",
+      "sourceKeys": [
+        "x-twitter"
+      ],
+      "collection": {
+        "queryLaneCount": 3,
+        "candidateCount": 6,
+        "mustHaveCandidateCount": 2,
+        "queryLanes": [
+          {
+            "laneId": "x-openrouter-tool-routing-x-general",
+            "sourceKey": "x-twitter",
+            "operation": "search",
+            "maxItems": 20
+          },
+          {
+            "laneId": "x-openrouter-tool-routing-x-from",
+            "sourceKey": "x-twitter",
+            "operation": "account_feed",
+            "maxItems": 10
+          },
+          {
+            "laneId": "x-openrouter-tool-routing-x-mention",
+            "sourceKey": "x-twitter",
+            "operation": "mention_search",
+            "maxItems": 10
+          }
+        ]
+      },
+      "planner": {
+        "baselineLaneCount": 1,
+        "experimentLaneCount": 6,
+        "decision": "improved"
+      },
+      "ranking": {
+        "rankedCandidateCount": 6,
+        "metrics": {
+          "precisionAt10": 0.833,
+          "ndcgAt20": 0.956,
+          "mustHaveRecallAt20": 1,
+          "duplicateRateAt20": 0,
+          "sourceDiversityAt20": 1,
+          "officialCommunityCoverageAt20": 1,
+          "viralOffTopicAt10": 0,
+          "lowConfidenceLabelRate": 0
+        },
+        "topBreakdowns": [
+          {
+            "candidateId": "x-openrouter-tool-routing-general",
+            "totalScore": 1335.54,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-openrouter-tool-routing-mention",
+            "totalScore": 1335.175,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-openrouter-tool-routing-keyword",
+            "totalScore": 1168.547,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-openrouter-tool-routing-operator",
+            "totalScore": 1001.993,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-openrouter-tool-routing-official-terse",
+            "totalScore": 352.473,
+            "reasonCodes": [
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "traceComplete": true
+    },
+    {
+      "caseId": "x-prisma-mcp-database-tools",
+      "topic": "Prisma MCP database tools",
+      "sourceKeys": [
+        "x-twitter"
+      ],
+      "collection": {
+        "queryLaneCount": 3,
+        "candidateCount": 6,
+        "mustHaveCandidateCount": 2,
+        "queryLanes": [
+          {
+            "laneId": "x-prisma-mcp-database-tools-x-general",
+            "sourceKey": "x-twitter",
+            "operation": "search",
+            "maxItems": 20
+          },
+          {
+            "laneId": "x-prisma-mcp-database-tools-x-from",
+            "sourceKey": "x-twitter",
+            "operation": "account_feed",
+            "maxItems": 10
+          },
+          {
+            "laneId": "x-prisma-mcp-database-tools-x-mention",
+            "sourceKey": "x-twitter",
+            "operation": "mention_search",
+            "maxItems": 10
+          }
+        ]
+      },
+      "planner": {
+        "baselineLaneCount": 1,
+        "experimentLaneCount": 6,
+        "decision": "improved"
+      },
+      "ranking": {
+        "rankedCandidateCount": 6,
+        "metrics": {
+          "precisionAt10": 0.833,
+          "ndcgAt20": 0.948,
+          "mustHaveRecallAt20": 1,
+          "duplicateRateAt20": 0,
+          "sourceDiversityAt20": 1,
+          "officialCommunityCoverageAt20": 1,
+          "viralOffTopicAt10": 0,
+          "lowConfidenceLabelRate": 0
+        },
+        "topBreakdowns": [
+          {
+            "candidateId": "x-prisma-mcp-database-tools-general",
+            "totalScore": 918.873,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-prisma-mcp-database-tools-keyword",
+            "totalScore": 918.547,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-prisma-mcp-database-tools-mention",
+            "totalScore": 918.509,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-prisma-mcp-database-tools-operator",
+            "totalScore": 751.993,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-prisma-mcp-database-tools-official-terse",
+            "totalScore": 352.473,
+            "reasonCodes": [
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "traceComplete": true
+    },
+    {
+      "caseId": "x-kubernetes-agent-ops",
+      "topic": "Kubernetes AI agent operations",
+      "sourceKeys": [
+        "x-twitter"
+      ],
+      "collection": {
+        "queryLaneCount": 3,
+        "candidateCount": 6,
+        "mustHaveCandidateCount": 2,
+        "queryLanes": [
+          {
+            "laneId": "x-kubernetes-agent-ops-x-general",
+            "sourceKey": "x-twitter",
+            "operation": "search",
+            "maxItems": 20
+          },
+          {
+            "laneId": "x-kubernetes-agent-ops-x-from",
+            "sourceKey": "x-twitter",
+            "operation": "account_feed",
+            "maxItems": 10
+          },
+          {
+            "laneId": "x-kubernetes-agent-ops-x-mention",
+            "sourceKey": "x-twitter",
+            "operation": "mention_search",
+            "maxItems": 10
+          }
+        ]
+      },
+      "planner": {
+        "baselineLaneCount": 1,
+        "experimentLaneCount": 6,
+        "decision": "improved"
+      },
+      "ranking": {
+        "rankedCandidateCount": 6,
+        "metrics": {
+          "precisionAt10": 0.833,
+          "ndcgAt20": 0.956,
+          "mustHaveRecallAt20": 1,
+          "duplicateRateAt20": 0,
+          "sourceDiversityAt20": 1,
+          "officialCommunityCoverageAt20": 1,
+          "viralOffTopicAt10": 0,
+          "lowConfidenceLabelRate": 0
+        },
+        "topBreakdowns": [
+          {
+            "candidateId": "x-kubernetes-agent-ops-general",
+            "totalScore": 1085.54,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-kubernetes-agent-ops-mention",
+            "totalScore": 1085.175,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-kubernetes-agent-ops-keyword",
+            "totalScore": 918.547,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-kubernetes-agent-ops-operator",
+            "totalScore": 501.993,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-kubernetes-agent-ops-official-terse",
+            "totalScore": 352.473,
+            "reasonCodes": [
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "traceComplete": true
+    },
+    {
+      "caseId": "mixed-copilot-workspace-agent-rollout",
+      "topic": "GitHub Copilot workspace agent rollout MCP",
+      "sourceKeys": [
+        "reddit",
+        "x-twitter"
+      ],
+      "collection": {
+        "queryLaneCount": 4,
+        "candidateCount": 6,
+        "mustHaveCandidateCount": 2,
+        "queryLanes": [
+          {
+            "laneId": "mixed-copilot-workspace-agent-rollout-reddit-general",
+            "sourceKey": "reddit",
+            "operation": "search",
+            "maxItems": 20
+          },
+          {
+            "laneId": "mixed-copilot-workspace-agent-rollout-reddit-github-top",
+            "sourceKey": "reddit",
+            "operation": "listing",
+            "maxItems": 20
+          },
+          {
+            "laneId": "mixed-copilot-workspace-agent-rollout-x-general",
+            "sourceKey": "x-twitter",
+            "operation": "search",
+            "maxItems": 20
+          },
+          {
+            "laneId": "mixed-copilot-workspace-agent-rollout-x-from-github",
+            "sourceKey": "x-twitter",
+            "operation": "account_feed",
+            "maxItems": 10
+          }
+        ]
+      },
+      "planner": {
+        "baselineLaneCount": 2,
+        "experimentLaneCount": 14,
+        "decision": "improved"
+      },
+      "ranking": {
+        "rankedCandidateCount": 6,
+        "metrics": {
+          "precisionAt10": 0.833,
+          "ndcgAt20": 0.944,
+          "mustHaveRecallAt20": 1,
+          "duplicateRateAt20": 0,
+          "sourceDiversityAt20": 1,
+          "officialCommunityCoverageAt20": 1,
+          "viralOffTopicAt10": 0,
+          "lowConfidenceLabelRate": 0
+        },
+        "topBreakdowns": [
+          {
+            "candidateId": "mixed-copilot-workspace-agent-rollout-checklist",
+            "totalScore": 1085.442,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "mixed-copilot-workspace-agent-rollout-operator",
+            "totalScore": 1001.796,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "mixed-copilot-workspace-agent-rollout-mention",
+            "totalScore": 918.556,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "mixed-copilot-workspace-agent-rollout-reddit-terse",
+            "totalScore": 752.215,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "mixed-copilot-workspace-agent-rollout-official",
+            "totalScore": 685.945,
+            "reasonCodes": [
+              "query_token_match",
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "traceComplete": true
+    }
+  ],
+  "summaryCoverage": {
+    "fixtureGroups": [
+      "citation_regression",
+      "empty_no_signal",
+      "hn_golden",
+      "prompt_injection",
+      "secret_redaction",
+      "stale_marker"
+    ],
+    "checkedKeyPointCount": 9,
+    "groundedKeyPointCount": 9,
+    "secretLeakCount": 0
+  },
+  "feedbackEvalBacklogCoverage": {
+    "itemCount": 3,
+    "labelCounts": {
+      "citation_regression": 1,
+      "factuality_regression": 1,
+      "evidence_recall_regression": 1
+    },
+    "targetEvalSuiteCounts": {
+      "summary_quality": 3,
+      "source_ranking": 1
+    }
+  }
+}

@@ -1,0 +1,192 @@
+import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { SummaryReadyEventDispatcher } from '@social-monitor/delivery/interfaces/events/summary-ready-event.dispatcher';
+import { NestStructuredLogger, type StructuredLogger } from '@social-monitor/platform-logging';
+import type { MetricsRecorderPort } from '@social-monitor/platform-metrics';
+import { QueueDeliveryBatch, queueCommandDeliveryLagSeconds } from '@social-monitor/platform-queue';
+import { classifyWorkerRuntimeFailure } from '@social-monitor/platform-worker';
+import { DomainError, type Clock } from '@social-monitor/shared-kernel';
+
+import {
+  DELIVERY_SUMMARY_READY_EVENT_DRAIN_LOOP_OPTIONS,
+  type DeliverySummaryReadyEventDrainLoopOptions,
+} from './delivery-service-provider-tokens';
+import {
+  DELIVERY_SUMMARY_READY_EVENT_QUEUE_READER,
+  type SummaryReadyEventQueueReaderPort,
+} from './summary-ready-event-queue-reader';
+
+export type SummaryReadyEventHandlerPort = { handle(event: Readonly<Record<string, unknown>>): Promise<unknown> };
+
+@Injectable()
+export class SummaryReadyEventDrainLoop implements OnModuleInit, OnModuleDestroy {
+  private readonly logger: StructuredLogger = new NestStructuredLogger(SummaryReadyEventDrainLoop.name);
+  private timer: NodeJS.Timeout | undefined;
+  private currentTick: Promise<void> | undefined;
+  private shuttingDown = false;
+
+  constructor(
+    @Inject(DELIVERY_SUMMARY_READY_EVENT_QUEUE_READER)
+    private readonly queue: SummaryReadyEventQueueReaderPort,
+    @Inject(SummaryReadyEventDispatcher)
+    private readonly handler: SummaryReadyEventHandlerPort,
+    @Inject(DELIVERY_SUMMARY_READY_EVENT_DRAIN_LOOP_OPTIONS)
+    private readonly options: DeliverySummaryReadyEventDrainLoopOptions,
+    private readonly metrics: MetricsRecorderPort,
+    private readonly clock: Clock,
+  ) {}
+
+  async onModuleInit(): Promise<void> {
+    if (!this.options.enabled) {
+      this.logger.info('summary ready event drain loop disabled', { worker: 'delivery-service' });
+      return;
+    }
+
+    if (this.options.runOnStart) {
+      await this.runTick('startup');
+    }
+
+    this.timer = setInterval(() => {
+      void this.runTick('interval');
+    }, this.options.intervalMs);
+
+    this.logger.info('summary ready event drain loop started', {
+      intervalMs: this.options.intervalMs,
+      limit: this.options.limit,
+      worker: 'delivery-service',
+    });
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    if (this.shuttingDown) {
+      await this.currentTick;
+      return;
+    }
+    this.shuttingDown = true;
+
+    if (this.timer !== undefined) {
+      clearInterval(this.timer);
+      this.timer = undefined;
+    }
+
+    try {
+      await this.currentTick;
+    } catch (error) {
+      this.logger.error('summary ready event drain failed while stopping; RabbitMQ will requeue unacknowledged deliveries on channel close', {
+        error: error instanceof Error ? error.message : String(error),
+        worker: 'delivery-service',
+      });
+    }
+    this.logger.info('summary ready event drain loop stopped', { worker: 'delivery-service' });
+  }
+
+  onApplicationShutdown(signal?: string): Promise<void> {
+    void signal;
+    return this.onModuleDestroy();
+  }
+
+  private async runTick(trigger: 'startup' | 'interval'): Promise<void> {
+    if (this.shuttingDown || this.currentTick !== undefined) {
+      return;
+    }
+
+    this.currentTick = this.executeTick(trigger).catch((error: unknown) => {
+      // Startup remains fail-fast; a transient interval failure must not become
+      // an unhandled rejection or prevent the next scheduled recovery attempt.
+      if (trigger === 'startup') throw error;
+      const failure = classifyWorkerRuntimeFailure(error);
+      this.logger.error('queue drain loop tick failed', {
+        trigger,
+        error: failure.message,
+        errorClassification: failure.classification,
+        errorCode: failure.code,
+        worker: 'delivery-service',
+      });
+    }).finally(() => {
+      this.currentTick = undefined;
+    });
+    await this.currentTick;
+  }
+
+  private async executeTick(trigger: 'startup' | 'interval'): Promise<void> {
+    const deliveries = await this.queue.drain({ limit: this.options.limit });
+    const batch = new QueueDeliveryBatch(deliveries);
+    let completed = 0;
+    let failed = 0;
+    let requeued = 0;
+
+    try {
+      for (const delivery of deliveries) {
+        if (this.shuttingDown) {
+          await batch.nack(delivery, { requeue: true });
+          requeued += 1;
+          continue;
+        }
+        this.recordDeliveryLag(delivery);
+        let handlerFailed = false;
+        let handlerError: unknown;
+        try {
+          await this.handler.handle(delivery.event);
+        } catch (error) {
+          handlerFailed = true;
+          handlerError = error;
+        }
+        if (!handlerFailed) {
+          await batch.ack(delivery);
+          completed += 1;
+          continue;
+        }
+        const requeue = this.shuttingDown ||
+          (handlerError instanceof DomainError && handlerError.code === 'operation.backpressure');
+        await batch.nack(delivery, { requeue });
+        if (requeue) {
+          requeued += 1;
+          continue;
+        }
+        failed += 1;
+        const failure = classifyWorkerRuntimeFailure(handlerError);
+        this.logger.error('summary ready event queue drain loop item failed', {
+          trigger,
+          error: failure.message,
+          redelivered: delivery.diagnostics.redelivered,
+          deadLetterCount: delivery.diagnostics.deadLetterCount,
+          deadLetterReason: delivery.diagnostics.deadLetterReason,
+          deadLetterQueue: delivery.diagnostics.deadLetterQueue,
+          worker: 'delivery-service',
+        });
+      }
+
+      this.logger.info('summary ready event queue drain loop tick completed', {
+        trigger, evaluated: deliveries.length, completed, failed, requeued,
+        worker: 'delivery-service',
+      });
+    } finally {
+      for (const error of await batch.releaseUnsettled()) {
+        const failure = classifyWorkerRuntimeFailure(error);
+        this.logger.error('queue delivery cleanup remains unresolved; reader will retry before acquiring more work', {
+          error: failure.message, errorClassification: failure.classification,
+          errorCode: failure.code, worker: 'delivery-service',
+        });
+      }
+    }
+  }
+
+  private recordDeliveryLag(
+    delivery: Awaited<ReturnType<SummaryReadyEventQueueReaderPort['drain']>>[number],
+  ): void {
+    const lagSeconds = queueCommandDeliveryLagSeconds(delivery.diagnostics, this.clock.now());
+
+    if (lagSeconds === undefined) {
+      return;
+    }
+
+    this.metrics.recordGauge({
+      name: 'queue_command_delivery_lag_seconds',
+      value: lagSeconds,
+      labels: {
+        command_type: String(delivery.event.eventType),
+        queue: 'events',
+        worker: 'delivery-service',
+      },
+    });
+  }
+}

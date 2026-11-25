@@ -1,0 +1,877 @@
+import {
+  readerSummaryArtifact,
+  topRead,
+} from "./prisma-reader-summary-artifact-fixture.spec-support";
+import { READER_POST_PROMOTION_POLICY_V1 } from
+  "../../../domain/policies/reader-post-promotion-policy";
+import { READER_SUMMARY_EDITORIAL_SLATE_VERSION } from
+  "../../../domain/value-objects/reader-summary-editorial-slate";
+import { selectReaderPostPromotions } from
+  "../../../domain/policies/reader-post-promotion-selection";
+import {
+  canonicalPromotionPayload,
+  promotionPayloadDigest,
+} from
+  "../../../domain/services/reader-post-promotion-attestation";
+import { buildReaderPromotionV2TestAttestations } from
+  "../../../domain/services/reader-post-promotion-attestation.spec-support";
+import {
+  ReaderSummaryArtifact,
+  type ReaderSummaryArtifactProps,
+} from "../../../domain/entities/reader-summary-artifact";
+import type {
+  ReaderPostPromotionInput,
+  ReaderPostPromotionAttestationV1,
+  ReaderPostPromotionAttestationV2,
+} from
+  "../../../domain/policies/reader-post-promotion-policy";
+import { assertReaderSummaryPromotionAttestations } from
+  "../../../domain/entities/reader-summary-promotion-attestation-validation";
+import type { TopRead } from "../../../domain/entities/top-read";
+
+describe("ReaderSummaryArtifact promotion immutability", () => {
+  it("rehydrates a historical V1 attestation with legacy peer facts", () => {
+    const fixture = legacyPeerContextFixture(
+      new Date("2026-08-27T13:48:17.317Z"),
+    );
+
+    expect(() => assertReaderSummaryPromotionAttestations(
+      fixture.props,
+      fixture.attestations,
+    )).not.toThrow();
+  });
+
+  it("keeps V1 read compatibility after the V2 writer rollout", () => {
+    const fixture = legacyPeerContextFixture(
+      new Date("2026-08-27T21:11:02.430Z"),
+      0,
+    );
+
+    expect(() => assertReaderSummaryPromotionAttestations(
+      fixture.props,
+      fixture.attestations,
+    )).not.toThrow();
+  });
+
+  it.each([
+    ["missing marker", (card: TopRead): TopRead => {
+      const { promotionMarker: _marker, ...withoutMarker } = card;
+      void _marker;
+      return withoutMarker;
+    }],
+    ["changed policy marker", (card: TopRead): TopRead => ({
+      ...card,
+      promotionPolicyVersion: "reader_post_promotion.v2" as const,
+    })],
+    ["changed promotion tier", (card: TopRead): TopRead => ({
+      ...card,
+      promotionTier: "additional" as const,
+    })],
+  ] as const)("fails closed for V1 card %s", (_label, mutate) => {
+    const fixture = legacyPeerContextFixture(
+      new Date("2026-08-27T21:11:02.430Z"),
+    );
+    const card = fixture.props.content!.topReads[0]!;
+
+    expect(() => assertReaderSummaryPromotionAttestations({
+      ...fixture.props,
+      content: {
+        ...fixture.props.content!,
+        topReads: [mutate(card)],
+      },
+    }, fixture.attestations)).toThrow(/promotion attestation|promotion board/u);
+  });
+
+  it("fails closed when a V1 board mixes card policy markers", () => {
+    const fixture = isolatedLegacyBoardFixture([
+      legacyBoardInput("mixed-x", "x-twitter", "story:mixed-x", 300),
+      legacyBoardInput("mixed-hn", "hacker-news", "story:mixed-hn", 250),
+    ]);
+    const cards = fixture.props.content!.topReads;
+
+    expect(() => assertReaderSummaryPromotionAttestations({
+      ...fixture.props,
+      content: {
+        ...fixture.props.content!,
+        topReads: [
+          { ...cards[0]! },
+          {
+            ...cards[1]!,
+            promotionPolicyVersion: "reader_post_promotion.v2" as const,
+          },
+        ],
+      },
+    }, fixture.attestations)).toThrow(/promotion attestation|promotion board/u);
+  });
+
+  it("rejects a re-digested V1 board when peer-context eligibility changes", () => {
+    const fixture = legacyPeerContextFixture(
+      new Date("2026-08-27T21:11:02.430Z"),
+      0,
+    );
+    const peer = fixture.props.promotionEvidenceFacts![1]!;
+    const tamperedPeer = {
+      ...peer,
+      metrics: { provider: "hacker_news" as const, points: 100 },
+    };
+
+    expect(() => assertReaderSummaryPromotionAttestations({
+      ...fixture.props,
+      promotionEvidenceFacts: [
+        fixture.props.promotionEvidenceFacts![0]!,
+        tamperedPeer,
+      ],
+    }, fixture.attestations)).toThrow(
+      "promotion attestation differs from persisted evidence facts",
+    );
+  });
+
+  it("rejects a pre-rollout V1 board with globally swapped Top order", () => {
+    const inputs = [
+      legacyBoardInput("ordered-x", "x-twitter", "story:ordered-x", 300),
+      legacyBoardInput("ordered-hn", "hacker-news", "story:ordered-hn", 250),
+    ];
+    const canonicalOrder = selectReaderPostPromotions(inputs).top.map(
+      (selected) => selected.candidate,
+    );
+    const fixture = isolatedLegacyBoardFixture([...canonicalOrder].reverse());
+
+    expect(() => assertReaderSummaryPromotionAttestations(
+      fixture.props,
+      fixture.attestations,
+    )).toThrow("promotion attestation differs from persisted evidence facts");
+  });
+
+  it("rejects a pre-rollout V1 board that bypasses the Top provider cap", () => {
+    const fixture = isolatedLegacyBoardFixture([
+      ...Array.from({ length: 5 }, (_, index) => legacyBoardInput(
+        `cap-x-${index + 1}`,
+        "x-twitter",
+        `story:cap-x-${index + 1}`,
+        500 - index,
+      )),
+      legacyBoardInput("cap-hn", "hacker-news", "story:cap-hn", 400),
+    ]);
+
+    expect(() => assertReaderSummaryPromotionAttestations(
+      fixture.props,
+      fixture.attestations,
+    )).toThrow("promotion attestation differs from persisted evidence facts");
+  });
+
+  it("rejects semantic-duplicate leads in a pre-rollout V1 board", () => {
+    const fixture = isolatedLegacyBoardFixture([
+      legacyBoardInput("duplicate-x", "x-twitter", "story:duplicate", 300),
+      legacyBoardInput(
+        "duplicate-hn",
+        "hacker-news",
+        "story:duplicate",
+        250,
+      ),
+    ]);
+
+    expect(() => assertReaderSummaryPromotionAttestations(
+      fixture.props,
+      fixture.attestations,
+    )).toThrow("promotion attestation differs from persisted evidence facts");
+  });
+
+  it("validates V2 cards after persisted score object-key reordering", () => {
+    const base = readerSummaryArtifact("artifact-contextual-attestation")
+      .toSnapshot();
+    const periodStart = new Date("2026-07-05T00:00:00.000Z");
+    const periodEnd = new Date("2026-07-06T00:00:00.000Z");
+    const publishedAt = new Date("2026-07-05T08:00:00.000Z");
+    const observedAt = new Date("2026-07-05T08:05:00.000Z");
+    const cutoff = new Date("2026-07-05T09:00:00.000Z");
+    const common = {
+      clusterId: "cluster:runtime-release",
+      publishedAt,
+      observedAt,
+      periodStart,
+      periodEnd,
+      ingestionCutoff: cutoff,
+      freshnessValid: true,
+      qualityScore: 0.9,
+      relevanceScore: 0.9,
+      integrityScore: 0.9,
+      qualityValid: true,
+      safetyValid: true,
+      citationValid: true,
+      metricsState: "observed" as const,
+    };
+    const selection = selectReaderPostPromotions([{
+      ...common,
+      candidateId: "feed-context-lead",
+      provider: "reddit",
+      contentKind: "original_post",
+      canonicalIdentity: "story:runtime-release-reddit",
+      citationId: "citation-context-lead",
+      metrics: { provider: "reddit", score: 500, upvoteRatio: 0.95 },
+    }, {
+      ...common,
+      candidateId: "feed-context-support",
+      provider: "hacker-news",
+      contentKind: "story",
+      canonicalIdentity: "story:runtime-release-hn",
+      citationId: "citation-context-support",
+      metrics: { provider: "hacker_news", points: 50 },
+    }]);
+    const selected = selection.top[0]!;
+    expect(selected.support).toHaveLength(1);
+    const sourceWindow = {
+      ...base.sourceWindow,
+      selectedFeedItemIds: ["feed-context-lead", "feed-context-support"],
+      periodStartedAt: periodStart,
+      periodEndedAt: periodEnd,
+      ingestionCutoff: cutoff,
+    };
+    const attestations = buildReaderPromotionV2TestAttestations(selection, {
+      artifactId: base.readerSummaryId,
+      sourceWindow,
+    });
+
+    const props = {
+      ...base,
+      sourceWindow,
+      citationMap: [{
+        citationId: "citation-context-lead",
+        feedItemId: "feed-context-lead",
+        sourceItemId: "source-context-lead",
+        providerKey: "reddit",
+        field: "canonicalUrl",
+      }, {
+        citationId: "citation-context-support",
+        feedItemId: "feed-context-support",
+        sourceItemId: "source-context-support",
+        providerKey: "hacker-news",
+        field: "canonicalUrl",
+      }],
+      content: {
+        ...base.content!,
+        topReads: [{
+          ...topRead(),
+          ...v2CardFields(attestations[0]!),
+          editorialScoreComponents: reverseObjectKeys(
+            attestations[0]!.scoreComponents,
+          ),
+          promotionMarker: "reader_post_promotion",
+          promotionTier: "top",
+          promotionCandidateId: selected.candidate.candidateId,
+          promotionCanonicalIdentity: selected.candidate.canonicalIdentity,
+          citationIds: selected.citationIds,
+        }],
+        selectedPosts: [],
+      },
+      promotionAttestations: attestations,
+      promotionEvidenceFacts: [selected.candidate, ...selected.support],
+    } satisfies ReaderSummaryArtifactProps;
+
+    expect(() => assertReaderSummaryPromotionAttestations(props, attestations))
+      .not.toThrow();
+
+    const card = props.content.topReads[0]!;
+    expect(() => assertReaderSummaryPromotionAttestations({
+      ...props,
+      content: {
+        ...props.content,
+        topReads: [{
+          ...card,
+          editorialScoreComponents: {
+            ...card.editorialScoreComponents,
+            engagementSalience: 0.5,
+          },
+        }],
+      },
+    }, attestations)).toThrow(/editorial|promotion attestation/u);
+  });
+
+  it("isolates nested signed support facts from input and snapshot mutation", () => {
+    const base = readerSummaryArtifact("artifact-promotion-immutability")
+      .toSnapshot();
+    const periodStart = new Date("2026-07-05T00:00:00.000Z");
+    const periodEnd = new Date("2026-07-06T00:00:00.000Z");
+    const publishedAt = new Date("2026-07-05T08:00:00.000Z");
+    const observedAt = new Date("2026-07-05T08:05:00.000Z");
+    const cutoff = new Date("2026-07-05T09:00:00.000Z");
+    const sourceWindow = {
+      windowId: "reader-window",
+      startedAt: new Date(publishedAt),
+      endedAt: new Date(cutoff),
+      selectedFeedItemIds: ["feed-1", "feed-2"],
+      storyClusterIds: ["story-1"],
+      periodStartedAt: new Date(periodStart),
+      periodEndedAt: new Date(periodEnd),
+      ingestionCutoff: new Date(cutoff),
+    };
+    const selection = selectReaderPostPromotions([{
+      candidateId: "feed-1",
+      clusterId: "story-1",
+      provider: "reddit",
+      contentKind: "original_post",
+      canonicalIdentity: "story:runtime-release",
+      citationId: "citation-1",
+      publishedAt,
+      observedAt,
+      periodStart,
+      periodEnd,
+      ingestionCutoff: cutoff,
+      freshnessValid: true,
+      qualityScore: 0.9,
+      relevanceScore: 0.9,
+      integrityScore: 0.9,
+      qualityValid: true,
+      safetyValid: true,
+      citationValid: true,
+      metricsState: "observed",
+      metrics: { provider: "reddit", score: 50, upvoteRatio: 0.6 },
+    }, {
+      candidateId: "feed-2",
+      clusterId: "story-1",
+      provider: "hacker-news",
+      contentKind: "story",
+      canonicalIdentity: "story:runtime-release-support",
+      citationId: "citation-2",
+      publishedAt,
+      observedAt,
+      periodStart,
+      periodEnd,
+      ingestionCutoff: cutoff,
+      freshnessValid: true,
+      qualityScore: 0.8,
+      relevanceScore: 0.8,
+      integrityScore: 0.8,
+      qualityValid: true,
+      safetyValid: true,
+      citationValid: true,
+      authorityAttestation: {
+        status: "attested",
+        official: true,
+        trusted: true,
+        attestedBy: "source_catalog",
+      },
+      metricsState: "observed",
+      metrics: { provider: "hacker_news", points: 25 },
+      relation: {
+        kind: "same_story",
+        targetCanonicalIdentity: "story:runtime-release",
+        confidence: 0.95,
+        approved: true,
+      },
+    }]);
+    const attestations = buildReaderPromotionV2TestAttestations(selection, {
+      artifactId: base.readerSummaryId,
+      sourceWindow,
+    });
+    const promotedCard = {
+      ...topRead(),
+      ...v2CardFields(attestations[0]!),
+      promotionMarker: "reader_post_promotion" as const,
+      promotionTier: "top" as const,
+      promotionCandidateId: "feed-1",
+      promotionCanonicalIdentity: "story:runtime-release",
+      providerKey: "reddit",
+      providerName: "Reddit",
+      confirmedProviderKeys: ["hacker-news", "reddit"],
+      canonicalUrl: "https://reddit.example.test/runtime-release",
+      citationIds: ["citation-1", "citation-2"],
+    };
+    const artifact = ReaderSummaryArtifact.create({
+      ...base,
+      period: {
+        ...base.period,
+        startedAt: periodStart,
+        endedAt: periodEnd,
+      },
+      sourceWindow,
+      storyClusters: [{
+        ...base.storyClusters[0]!,
+        representativeFeedItemId: "feed-1",
+        duplicateFeedItemIds: ["feed-2"],
+        providerKeys: ["hacker-news", "reddit"],
+      }],
+      citationMap: [{
+        ...base.citationMap[0]!,
+        providerKey: "reddit",
+        canonicalUrl: promotedCard.canonicalUrl,
+      }, {
+        citationId: "citation-2",
+        feedItemId: "feed-2",
+        sourceItemId: "source-2",
+        providerKey: "hacker-news",
+        field: "canonicalUrl",
+        canonicalUrl: "https://news.ycombinator.com/item?id=runtime-release",
+      }],
+      topStories: base.topStories.map((story) => ({
+        ...story,
+        providerKeys: ["hacker-news", "reddit"],
+        citationIds: ["citation-1", "citation-2"],
+      })),
+      content: {
+        ...base.content!,
+        sourceMix: [{
+          providerKey: "reddit",
+          itemCount: 1,
+          citationCount: 1,
+          storyClusterCount: 1,
+          crossSourceClusterCount: 1,
+          singleSourceOnly: false,
+          interestIds: ["interest-ai"],
+        }, {
+          providerKey: "hacker-news",
+          itemCount: 1,
+          citationCount: 1,
+          storyClusterCount: 1,
+          crossSourceClusterCount: 1,
+          singleSourceOnly: false,
+          interestIds: ["interest-ai"],
+        }],
+        topReads: [promotedCard],
+        selectedPosts: [],
+      },
+      promotionAttestations: attestations,
+      promotionEvidenceFacts: [...selection.top, ...selection.additional]
+        .flatMap((item) => [item.candidate, ...item.support]),
+    });
+
+    periodStart.setUTCFullYear(1998);
+    periodEnd.setUTCFullYear(1998);
+    sourceWindow.startedAt.setUTCFullYear(1998);
+    sourceWindow.endedAt.setUTCFullYear(1998);
+    sourceWindow.ingestionCutoff!.setUTCFullYear(1998);
+    sourceWindow.periodStartedAt!.setUTCFullYear(1998);
+    sourceWindow.periodEndedAt!.setUTCFullYear(1998);
+    sourceWindow.selectedFeedItemIds.push("feed-forged");
+    sourceWindow.storyClusterIds.push("story-forged");
+    const protectedWindow = artifact.toSnapshot();
+    expect(protectedWindow.period.startedAt.getUTCFullYear()).toBe(2026);
+    expect(protectedWindow.period.endedAt.getUTCFullYear()).toBe(2026);
+    expect(protectedWindow.sourceWindow.ingestionCutoff?.getUTCFullYear())
+      .toBe(2026);
+    expect(protectedWindow.sourceWindow.periodStartedAt?.getUTCFullYear())
+      .toBe(2026);
+    expect(protectedWindow.sourceWindow.periodEndedAt?.getUTCFullYear())
+      .toBe(2026);
+    expect(protectedWindow.sourceWindow.selectedFeedItemIds)
+      .toEqual(["feed-1", "feed-2"]);
+    expect(protectedWindow.sourceWindow.storyClusterIds).toEqual(["story-1"]);
+
+    protectedWindow.period.startedAt.setUTCFullYear(1997);
+    protectedWindow.period.endedAt.setUTCFullYear(1997);
+    protectedWindow.sourceWindow.startedAt.setUTCFullYear(1997);
+    protectedWindow.sourceWindow.endedAt.setUTCFullYear(1997);
+    protectedWindow.sourceWindow.ingestionCutoff?.setUTCFullYear(1997);
+    protectedWindow.sourceWindow.periodStartedAt?.setUTCFullYear(1997);
+    protectedWindow.sourceWindow.periodEndedAt?.setUTCFullYear(1997);
+    (protectedWindow.sourceWindow.selectedFeedItemIds as string[])
+      .push("feed-snapshot-forged");
+    (protectedWindow.sourceWindow.storyClusterIds as string[])
+      .push("story-snapshot-forged");
+    const protectedAgain = artifact.toSnapshot();
+    expect(protectedAgain.period.startedAt.getUTCFullYear()).toBe(2026);
+    expect(protectedAgain.period.endedAt.getUTCFullYear()).toBe(2026);
+    expect(protectedAgain.sourceWindow.ingestionCutoff?.getUTCFullYear())
+      .toBe(2026);
+    expect(protectedAgain.sourceWindow.periodStartedAt?.getUTCFullYear())
+      .toBe(2026);
+    expect(protectedAgain.sourceWindow.periodEndedAt?.getUTCFullYear())
+      .toBe(2026);
+    expect(protectedAgain.sourceWindow.selectedFeedItemIds)
+      .toEqual(["feed-1", "feed-2"]);
+    expect(protectedAgain.sourceWindow.storyClusterIds).toEqual(["story-1"]);
+
+    const inputFact = attestations[0]!.supportFacts[0]!;
+    inputFact.publishedAt.setUTCFullYear(1999);
+    (inputFact.relation as { confidence: number }).confidence = 0;
+    (inputFact.authorityAttestation as { official: boolean }).official = false;
+    if (inputFact.metrics?.provider === "hacker_news") {
+      (inputFact.metrics as { points: number }).points = 0;
+    }
+    const snapshotAttestation = artifact.toSnapshot().promotionAttestations![0]!;
+    if (snapshotAttestation.schemaVersion === "reader_post_promotion_attestation.v3") throw new Error("fixture");
+    const snapshotFact = snapshotAttestation.supportFacts[0]!;
+    expect(snapshotFact.publishedAt.getUTCFullYear()).toBe(2026);
+    expect(snapshotFact.relation?.confidence).toBe(0.95);
+    expect(snapshotFact.authorityAttestation?.official).toBe(true);
+    expect(snapshotFact.metrics).toMatchObject({ points: 25 });
+
+    snapshotFact.publishedAt.setUTCFullYear(2000);
+    (snapshotFact.relation as { confidence: number }).confidence = 0;
+    (snapshotFact.authorityAttestation as { official: boolean }).official = false;
+    const protectedAttestation = artifact.toSnapshot().promotionAttestations![0]!;
+    if (protectedAttestation.schemaVersion === "reader_post_promotion_attestation.v3") throw new Error("fixture");
+    const protectedFact = protectedAttestation.supportFacts[0]!;
+    expect(protectedFact.publishedAt.getUTCFullYear()).toBe(2026);
+    expect(protectedFact.relation?.confidence).toBe(0.95);
+    expect(protectedFact.authorityAttestation?.official).toBe(true);
+
+    const mutations: readonly [
+      string,
+      (value: Record<string, unknown>) => void,
+    ][] = [
+      ["attestedBy", (value) => {
+        nestedRecord(supportFact(value), "authorityAttestation").attestedBy =
+          "producer";
+      }],
+      ["support whyImportant", (value) => {
+        supportFact(value).whyImportant = "Rewritten after persistence";
+      }],
+      ["candidate", (value) => { value.candidateId = "feed-forged"; }],
+      ["provider", (value) => { value.provider = "hacker-news"; }],
+      ["content kind", (value) => { value.contentKind = "story"; }],
+      ["canonical identity", (value) => {
+        value.canonicalIdentity = "story:forged";
+      }],
+      ["citation", (value) => { value.citationId = "citation-2"; }],
+      ["source window", (value) => { value.sourceWindowId = "window-forged"; }],
+      ["timestamp", (value) => {
+        value.observedAt = new Date("2026-07-05T08:06:00.000Z");
+      }],
+      ["metrics", (value) => { nestedRecord(value, "metrics").score = 51; }],
+      ["gates", (value) => { value.qualityValid = false; }],
+      ["usefulness", (value) => {
+        const usefulness = nestedRecord(value, "usefulnessComponents");
+        usefulness.total = (usefulness.total as number) + 0.01;
+      }],
+      ["dedupe", (value) => {
+        value.canonicalDedupeOutcome = "deduplicated";
+      }],
+      ["cap", (value) => { value.capOutcome = "excluded_by_cap"; }],
+    ];
+    for (const [label, mutate] of mutations) {
+      const currentSnapshot = artifact.toSnapshot();
+      const mutatedSnapshot = {
+        ...currentSnapshot,
+        period: {
+          ...currentSnapshot.period,
+          startedAt: new Date(currentSnapshot.period.startedAt),
+          endedAt: new Date(currentSnapshot.period.endedAt),
+        },
+        sourceWindow: {
+          ...currentSnapshot.sourceWindow,
+          startedAt: new Date(currentSnapshot.sourceWindow.startedAt),
+          endedAt: new Date(currentSnapshot.sourceWindow.endedAt),
+        },
+      };
+      const mutated = mutatedSnapshot.promotionAttestations![0]! as unknown as
+        Record<string, unknown>;
+      mutate(mutated);
+      const body = { ...mutated };
+      delete body.digest;
+      delete body.canonicalPayload;
+      mutated.canonicalPayload = canonicalPromotionPayload(body);
+      mutated.digest = promotionPayloadDigest(mutated.canonicalPayload as string);
+      try {
+        ReaderSummaryArtifact.rehydrate(mutatedSnapshot);
+        throw new Error(`${label}: mutated attestation was accepted`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        expect(`${label}: ${message}`).toMatch(
+          /promotion (?:attestation|usefulness)|persisted evidence/u,
+        );
+      }
+      expect(label).not.toHaveLength(0);
+    }
+  });
+});
+
+const legacyPeerContextFixture = (generatedAt: Date, peerPoints = 100) => {
+  const base = readerSummaryArtifact("artifact-legacy-peer-context")
+    .toSnapshot();
+  const periodStart = new Date("2026-08-26T00:00:00.000Z");
+  const periodEnd = new Date("2026-08-27T00:00:00.000Z");
+  const cutoff = new Date("2026-08-27T00:00:00.000Z");
+  const lead = {
+    candidateId: "feed-legacy-lead",
+    provider: "reddit",
+    contentKind: "original_post" as const,
+    canonicalIdentity: "story:legacy-lead",
+    citationId: "citation-legacy-lead",
+    publishedAt: new Date("2026-08-26T08:00:00.000Z"),
+    observedAt: new Date("2026-08-26T08:05:00.000Z"),
+    periodStart,
+    periodEnd,
+    ingestionCutoff: cutoff,
+    freshnessValid: true,
+    qualityScore: 0.9,
+    relevanceScore: 0.9,
+    integrityScore: 0.9,
+    qualityValid: true,
+    safetyValid: true,
+    citationValid: true,
+    metricsState: "observed" as const,
+    metrics: { provider: "reddit" as const, score: 500, upvoteRatio: 0.95 },
+  };
+  const peer = {
+    ...lead,
+    candidateId: "feed-peer-added-before-contextual-verification",
+    provider: "hacker-news",
+    contentKind: "story" as const,
+    canonicalIdentity: "story:legacy-peer",
+    citationId: "citation-legacy-peer",
+    metrics: { provider: "hacker_news" as const, points: peerPoints },
+  };
+  const selection = selectReaderPostPromotions([lead]);
+  const sourceWindow = {
+    ...base.sourceWindow,
+    selectedFeedItemIds: [lead.candidateId, peer.candidateId],
+    periodStartedAt: periodStart,
+    periodEndedAt: periodEnd,
+    ingestionCutoff: cutoff,
+  };
+  const v2Attestations = buildReaderPromotionV2TestAttestations(selection, {
+    artifactId: base.readerSummaryId,
+    sourceWindow,
+  });
+  const attestations = historicalV1FixtureAttestations(
+    v2Attestations,
+    selection,
+  );
+  const selected = selection.top[0]!;
+
+  return {
+    attestations,
+    props: {
+      ...base,
+      generatedAt,
+      sourceWindow,
+      citationMap: [{
+        citationId: lead.citationId,
+        feedItemId: lead.candidateId,
+        sourceItemId: "source-legacy-lead",
+        providerKey: lead.provider,
+        field: "canonicalUrl" as const,
+      }, {
+        citationId: peer.citationId,
+        feedItemId: peer.candidateId,
+        sourceItemId: "source-legacy-peer",
+        providerKey: peer.provider,
+        field: "canonicalUrl" as const,
+      }],
+      content: {
+        ...base.content!,
+        topReads: [{
+          ...topRead(),
+          promotionMarker: "reader_post_promotion" as const,
+          promotionPolicyVersion: "reader_post_promotion.v1" as const,
+          promotionTier: "top" as const,
+          promotionCandidateId: selected.candidate.candidateId,
+          promotionCanonicalIdentity: selected.candidate.canonicalIdentity,
+          citationIds: selected.citationIds,
+        }],
+        selectedPosts: [],
+      },
+      promotionAttestations: attestations,
+      promotionEvidenceFacts: [lead, peer],
+    },
+  };
+};
+
+const isolatedLegacyBoardFixture = (
+  inputs: readonly ReaderPostPromotionInput[],
+) => {
+  const base = readerSummaryArtifact("artifact-legacy-board").toSnapshot();
+  const periodStart = new Date("2026-08-26T00:00:00.000Z");
+  const periodEnd = new Date("2026-08-27T00:00:00.000Z");
+  const sourceWindow = {
+    ...base.sourceWindow,
+    selectedFeedItemIds: inputs.map((input) => input.candidateId),
+    periodStartedAt: periodStart,
+    periodEndedAt: periodEnd,
+    ingestionCutoff: periodEnd,
+  };
+  const attestations = inputs.map((input, slot) => {
+    const selection = selectReaderPostPromotions([input]);
+    const v2 = buildReaderPromotionV2TestAttestations(selection, {
+      artifactId: base.readerSummaryId,
+      sourceWindow,
+    });
+    return redigestV1Attestation({
+      ...historicalV1FixtureAttestations(v2, selection)[0]!,
+      slot,
+    });
+  });
+  return {
+    attestations,
+    props: {
+      ...base,
+      generatedAt: new Date("2026-08-27T13:48:17.317Z"),
+      sourceWindow,
+      citationMap: inputs.map((input) => ({
+        citationId: input.citationId,
+        feedItemId: input.candidateId,
+        sourceItemId: `source-${input.candidateId}`,
+        providerKey: input.provider,
+        field: "canonicalUrl" as const,
+      })),
+      content: {
+        ...base.content!,
+        topReads: inputs.map((input) => ({
+          ...topRead(),
+          promotionMarker: "reader_post_promotion" as const,
+          promotionPolicyVersion: "reader_post_promotion.v1" as const,
+          promotionTier: "top" as const,
+          promotionCandidateId: input.candidateId,
+          promotionCanonicalIdentity: input.canonicalIdentity,
+          citationIds: [input.citationId],
+        })),
+        selectedPosts: [],
+      },
+      promotionAttestations: attestations,
+      promotionEvidenceFacts: inputs,
+    },
+  };
+};
+
+const legacyBoardInput = (
+  candidateId: string,
+  provider: "x-twitter" | "hacker-news",
+  canonicalIdentity: string,
+  signal: number,
+) => ({
+  candidateId,
+  provider,
+  contentKind: provider === "x-twitter"
+    ? "original_post" as const
+    : "story" as const,
+  canonicalIdentity,
+  citationId: `citation-${candidateId}`,
+  publishedAt: new Date("2026-08-26T08:00:00.000Z"),
+  observedAt: new Date("2026-08-26T08:05:00.000Z"),
+  periodStart: new Date("2026-08-26T00:00:00.000Z"),
+  periodEnd: new Date("2026-08-27T00:00:00.000Z"),
+  ingestionCutoff: new Date("2026-08-27T00:00:00.000Z"),
+  freshnessValid: true,
+  qualityScore: 0.9,
+  relevanceScore: 0.9,
+  integrityScore: 0.9,
+  qualityValid: true,
+  safetyValid: true,
+  citationValid: true,
+  metricsState: "observed" as const,
+  metrics: provider === "x-twitter"
+    ? { provider: "x" as const, likes: signal, reposts: 0,
+        weightedScore: signal }
+    : { provider: "hacker_news" as const, points: signal },
+});
+
+const redigestV1Attestation = (
+  attestation: ReaderPostPromotionAttestationV1,
+): ReaderPostPromotionAttestationV1 => {
+  const {
+    canonicalPayload: ignoredCanonicalPayload,
+    digest: ignoredDigest,
+    ...body
+  } = attestation;
+  void ignoredCanonicalPayload;
+  void ignoredDigest;
+  const canonicalPayload = canonicalPromotionPayload(body);
+  return {
+    ...attestation,
+    canonicalPayload,
+    digest: promotionPayloadDigest(canonicalPayload),
+  };
+};
+
+const nestedRecord = (
+  value: Record<string, unknown>,
+  key: string,
+): Record<string, unknown> => value[key] as Record<string, unknown>;
+
+const reverseObjectKeys = <Value extends object>(value: Value): Value =>
+  Object.fromEntries(Object.entries(value).reverse()) as Value;
+
+const supportFact = (
+  value: Record<string, unknown>,
+): Record<string, unknown> =>
+  (value.supportFacts as Record<string, unknown>[])[0]!;
+
+const v2CardFields = (attestation: ReaderPostPromotionAttestationV2) => ({
+  storyClusterId: attestation.storyClusterId,
+  promotionPolicyVersion: attestation.policyVersion,
+  editorialPolicyVersion: READER_SUMMARY_EDITORIAL_SLATE_VERSION,
+  editorialPlacement: attestation.placement,
+  editorialSlot: attestation.slot,
+  editorialScoreComponents: attestation.scoreComponents,
+  editorialReasonCodes: attestation.reasonCodes,
+  editorialCandidateDigestInput: attestation.candidateDigestInput,
+  editorialDigestInput: attestation.slateEntryDigestInput,
+});
+
+const historicalV1FixtureAttestations = (
+  attestations: readonly ReaderPostPromotionAttestationV2[],
+  selection: ReturnType<typeof selectReaderPostPromotions>,
+): readonly ReaderPostPromotionAttestationV1[] => attestations.map(
+  (attestation, index) => {
+    const {
+      schemaVersion: _schemaVersion,
+      policyVersion: _policyVersion,
+      digestVersion: _digestVersion,
+      digest: _digest,
+      canonicalPayload: _canonicalPayload,
+      storyClusterId: _storyClusterId,
+      scoreComponents: _scoreComponents,
+      reasonCodes: _reasonCodes,
+      candidateDigestInput: _candidateDigestInput,
+      slateEntryDigestInput: _slateEntryDigestInput,
+      slateDigestInput: _slateDigestInput,
+      slateDigest: _slateDigest,
+      evidenceLineage: _evidenceLineage,
+      ...common
+    } = attestation;
+    void _schemaVersion;
+    void _policyVersion;
+    void _digestVersion;
+    void _digest;
+    void _canonicalPayload;
+    void _storyClusterId;
+    void _scoreComponents;
+    void _reasonCodes;
+    void _candidateDigestInput;
+    void _slateEntryDigestInput;
+    void _slateDigestInput;
+    void _slateDigest;
+    void _evidenceLineage;
+    const decision = selection.decisions.find((item) =>
+      item.candidateId === attestation.candidateId)!;
+    const weights = READER_POST_PROMOTION_POLICY_V1
+      .additionalUsefulnessWeights;
+    const duration = attestation.periodEndedAt.getTime() -
+      attestation.periodStartedAt.getTime();
+    const freshness = duration <= 0 ? 0 : Math.max(0, Math.min(
+      1,
+      (attestation.publishedAt.getTime() -
+        attestation.periodStartedAt.getTime()) / duration,
+    ));
+    const components = {
+      normalizedStrength:
+        decision.normalizedStrength * weights.normalizedStrength,
+      qualityScore: attestation.qualityScore * weights.qualityScore,
+      interestRelevanceScore:
+        attestation.relevanceScore * weights.interestRelevanceScore,
+      engagementIntegrityScore:
+        attestation.integrityScore * weights.engagementIntegrityScore,
+      freshness: freshness * weights.freshness,
+    };
+    const body = {
+      ...common,
+      schemaVersion: "reader_post_promotion_attestation.v1" as const,
+      policyVersion: "reader_post_promotion.v1" as const,
+      digestVersion: "reader_post_promotion_digest.sha256.v1" as const,
+      slot: index,
+      usefulnessComponents: {
+        ...components,
+        total: Object.values(components).reduce(
+          (sum, value) => sum + value,
+          0,
+        ),
+      },
+    };
+    const canonicalPayload = canonicalPromotionPayload(body);
+    return {
+      ...body,
+      canonicalPayload,
+      digest: promotionPayloadDigest(canonicalPayload),
+    };
+  },
+);

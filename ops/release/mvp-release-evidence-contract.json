@@ -1,0 +1,699 @@
+{
+  "schemaVersion": 1,
+  "releaseType": "beta-mvp",
+  "artifactEvidence": {
+    "requiresCommitSha": true,
+    "requiresImageDigest": true,
+    "requiresOpenApiSnapshot": "libs/contracts/rest/openapi.snapshot.json",
+    "requiresEventCatalog": "libs/contracts/events/event-catalog.json",
+    "requiresMigrationSchema": "prisma/schema.prisma"
+  },
+  "requiredGates": [
+    {
+      "gateId": "architecture-boundaries",
+      "command": "npm run check:architecture",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "code-quality-guardrails",
+      "command": "npm run check:code-quality",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "source-test-line-cap",
+      "command": "npm run check:source-line-cap",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "secret-scan",
+      "command": "npm run check:secrets",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "dependency-audit",
+      "command": "npm run check:dependencies",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "container-contract",
+      "command": "npm run check:container",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "runtime-compose-contract",
+      "command": "npm run check:runtime-compose",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "runtime-profile-guards",
+      "command": "npm run check:runtime-profile-guards",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "security-final-sweep",
+      "command": "npm run check:security-final-sweep",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "release-baseline",
+      "command": "npm run check:release-baseline",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "backend-safe-verify-contract",
+      "command": "npm run check:backend-safe-verify",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "durable-runtime-proof",
+      "command": "npm run check:durable-runtime-proof",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "auth-boundary",
+      "command": "npm run check:auth-boundary",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "user-auth-boundary",
+      "command": "npm run check:user-auth-boundary",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "production-auth-matrix",
+      "command": "npm run check:production-auth-matrix",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "reader-surface-tenant-isolation",
+      "command": "npm run check:reader-surface-tenant-isolation",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "production-secret-boundary",
+      "command": "npm run check:production-secret-boundary",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "credential-secret-runtime-flow",
+      "command": "npm run check:credential-secret-runtime-flow",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "backend-ops-readiness",
+      "command": "npm run check:backend-ops-readiness",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "external-beta-readiness",
+      "command": "npm run check:external-beta-readiness",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "backend-mvp-completion-audit",
+      "command": "npm run check:backend-mvp-completion-audit",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "backend-mvp-status",
+      "command": "npm run check:backend-mvp-status",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "external-beta-evidence-inputs",
+      "command": "npm run check:external-beta-evidence-inputs",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "docker-backend-staging-evidence-bundle",
+      "command": "npm run check:docker-backend-staging-evidence-bundle",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "no-go-cleanup",
+      "command": "npm run check:no-go-cleanup",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "release-artifact-evidence",
+      "command": "npm run check:release-artifact-evidence",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "observability-contract",
+      "command": "npm run check:observability",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "operational-support-package",
+      "command": "npm run check:operational-support-package",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "api-health-smoke",
+      "command": "npm run check:api-health",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "openapi-drift",
+      "command": "npm run check:openapi",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "event-contracts",
+      "command": "npm run check:events",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "platform-event-store",
+      "command": "npm run check:event-store",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "event-relay",
+      "command": "npm run check:event-relay",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "cross-process-scheduler",
+      "command": "npm run check:cross-process-scheduler",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "local-infra-contract",
+      "command": "npm run check:local-infra",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "rabbitmq-queue-publisher",
+      "command": "npm run check:rabbitmq-queue-publisher",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "migration-safety",
+      "command": "npm run check:migrations",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "tenant-db-guards",
+      "command": "npm run check:tenant-db-guards",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "persistence-readiness",
+      "command": "npm run check:persistence-readiness",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "monitoring-prisma-persistence",
+      "command": "npm run check:monitoring-persistence",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "monitoring-read-rest",
+      "command": "npm run check:monitoring-read-rest",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "interest-source-daily-history-rest",
+      "command": "npm run check:interest-source-daily-history-rest",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "source-binding-health-rest",
+      "command": "npm run check:source-binding-health-rest",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "source-profile-rest",
+      "command": "npm run check:source-profile-rest",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "source-config-protector",
+      "command": "npm run check:source-config-protector",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "source-config-reader-boundary",
+      "command": "npm run check:source-config-reader-boundary",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "reddit-credential-ref",
+      "command": "npm run check:reddit-credential-ref",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "scan-status-attempt-rest",
+      "command": "npm run check:scan-status-attempt-rest",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "scan-scheduler-command",
+      "command": "npm run check:scan-scheduler-command",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "scan-scheduler-loop",
+      "command": "npm run check:scan-scheduler-loop",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "scan-queue-drain-loop",
+      "command": "npm run check:scan-queue-drain-loop",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "ingestion-feed-prisma-persistence",
+      "command": "npm run check:ingestion-feed-persistence",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-prisma-persistence",
+      "command": "npm run check:summary-persistence",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-feedback-rest",
+      "command": "npm run check:summary-feedback-rest",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-policy-rest",
+      "command": "npm run check:summary-policy-rest",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-request-queue",
+      "command": "npm run check:summary-request-queue",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "reader-summary-workflow",
+      "command": "npm run check:reader-summary-workflow",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-worker-command",
+      "command": "npm run check:summary-worker-command",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-job-polling-loop",
+      "command": "npm run check:summary-job-polling-loop",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-queue-drain-loop",
+      "command": "npm run check:summary-queue-drain-loop",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-ready-projection-handler",
+      "command": "npm run check:summary-ready-projection-handler",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-ready-event-drain-loop",
+      "command": "npm run check:summary-ready-event-drain-loop",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "identity-prisma-persistence",
+      "command": "npm run check:identity-persistence",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "api-key-read-scope",
+      "command": "npm run check:read-api-key-scope",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "api-key-write-scope",
+      "command": "npm run check:write-api-key-scope",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "usage-prisma-persistence",
+      "command": "npm run check:usage-persistence",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "usage-audit-rest",
+      "command": "npm run check:usage-audit-rest",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "delivery-prisma-persistence",
+      "command": "npm run check:delivery-persistence",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "delivery-attempt-rest",
+      "command": "npm run check:delivery-attempt-rest",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "delivery-worker-command",
+      "command": "npm run check:delivery-worker-command",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "delivery-attempt-dispatch-loop",
+      "command": "npm run check:delivery-attempt-dispatch-loop",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "delivery-attempt-queue-drain-loop",
+      "command": "npm run check:delivery-attempt-queue-drain-loop",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "http-webhook-delivery-provider",
+      "command": "npm run check:http-webhook-delivery-provider",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "realtime-websocket",
+      "command": "npm run check:realtime-websocket",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "digest-scheduler-loop",
+      "command": "npm run check:digest-scheduler-loop",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "digest-schedule-rest",
+      "command": "npm run check:digest-schedule-rest",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "notification-preference-rest",
+      "command": "npm run check:notification-preference-rest",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "personalized-relevance-engine",
+      "command": "npm run check:personalized-relevance-engine",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "relevance-prisma-persistence",
+      "command": "npm run check:relevance-persistence",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "relevance-memory-runtime-canary-evidence",
+      "command": "npm run check:relevance-memory-runtime-canary-evidence",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "load-cost-guardrail",
+      "command": "npm run check:load-cost",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "source-provider-certification",
+      "command": "npm run check:source-certification",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "source-provider-runtime-contract",
+      "command": "npm run check:source-provider-runtime-contract",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "source-live-certification-evidence",
+      "command": "npm run check:source-live-certification-evidence",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "hacker-news-ingestion-smoke",
+      "command": "npm run check:hn-smoke",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "github-ingestion-smoke",
+      "command": "npm run check:github-smoke",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "github-repo-radar-ingestion-smoke",
+      "command": "npm run check:github-repo-radar-smoke",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "github-trending-page-ingestion-smoke",
+      "command": "npm run check:github-trending-page-smoke",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "github-trending-page-html-e2e",
+      "command": "npm run check:github-trending-page-html-e2e",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "reddit-ingestion-smoke",
+      "command": "npm run check:reddit-smoke",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "rss-ingestion-smoke",
+      "command": "npm run check:rss-smoke",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "delivery-replay-idempotency",
+      "command": "npm run check:delivery-replay",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "write-idempotency-proof",
+      "command": "npm run check:write-idempotency",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "mvp-core-loop",
+      "command": "npm run check:mvp-core-loop",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "autonomous-monitoring-loop",
+      "command": "npm run check:autonomous-monitoring-loop",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "beta-scope-policy",
+      "command": "npm run check:beta-scope-policy",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "beta-ring-policy",
+      "command": "npm run check:beta-ring-policy",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "beta-ring-decision",
+      "command": "npm run check:beta-ring-decision",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "capacity-envelope-beta-ring-decision",
+      "command": "npm run check:capacity-envelope-beta-ring-decision",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "beta-launch-support",
+      "command": "npm run check:beta-launch-support",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "beta-feedback-report",
+      "command": "npm run check:beta-feedback-report",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-evidence-citations",
+      "command": "npm run check:summary-evidence-smoke",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-eval-regression",
+      "command": "npm run check:summary-evals",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "reader-summary-quality-regression",
+      "command": "npm run check:reader-summary-quality-regression",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-production-quality-loop",
+      "command": "npm run check:summary-quality-loop",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-cost-attribution",
+      "command": "npm run check:summary-cost",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-window-freshness",
+      "command": "npm run check:summary-window",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-retry-safety",
+      "command": "npm run check:summary-retry",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-feedback-hardening",
+      "command": "npm run check:summary-feedback-hardening",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-feedback-sample-capture",
+      "command": "npm run check:summary-feedback-sample-capture",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-feedback-eval-backlog",
+      "command": "npm run check:summary-feedback-eval-backlog",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-memory-sdk",
+      "command": "npm run check:summary-memory-sdk",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-memory-sdk-package",
+      "command": "npm run check:summary-memory-sdk-package",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-memory-boundary",
+      "command": "npm run check:summary-memory-boundary",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-memory-feedback-loop",
+      "command": "npm run check:summary-memory-feedback-loop",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-memory-preference-loop",
+      "command": "npm run check:summary-memory-preference-loop",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-memory-rich-context",
+      "command": "npm run check:summary-memory-rich-context",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-memory-review-loop",
+      "command": "npm run check:summary-memory-review-loop",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-memory-redaction",
+      "command": "npm run check:summary-memory-redaction",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-memory-product-loop",
+      "command": "npm run check:summary-memory-product-loop",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "summary-memory-runtime-canary-evidence",
+      "command": "npm run check:summary-memory-runtime-canary-evidence",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "backup-restore-contract",
+      "command": "npm run check:backup-restore",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "retention-contract",
+      "command": "npm run check:retention",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "retention-plan",
+      "command": "npm run check:retention-plan",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "staging-drills",
+      "command": "npm run check:drills",
+      "blocksRelease": true
+    },
+    {
+      "gateId": "staging-reliability-evidence",
+      "command": "npm run check:staging-reliability-evidence",
+      "blocksRelease": true
+    }
+  ],
+  "deploySmokeChecks": [
+    {
+      "smokeId": "api-health",
+      "target": "GET /health and GET /healthz",
+      "expectedSignal": "service accepts REST traffic and exposes compatible liveness aliases"
+    },
+    {
+      "smokeId": "openapi-contract",
+      "target": "libs/contracts/rest/openapi.snapshot.json",
+      "expectedSignal": "deployed REST contract matches committed snapshot"
+    },
+    {
+      "smokeId": "migration-version",
+      "target": "prisma/schema.prisma",
+      "expectedSignal": "deployed database schema is compatible with release commit"
+    },
+    {
+      "smokeId": "worker-pause-resume",
+      "target": "ingestion-worker/source-bindings",
+      "expectedSignal": "workers can stay paused during rollback or restore validation and paused source bindings reject new scan work"
+    }
+  ],
+  "rollbackTriggers": [
+    {
+      "triggerId": "security-regression",
+      "condition": "tenant isolation, redaction or credential protection gate fails",
+      "firstAction": "hold release and keep beta traffic disabled",
+      "owner": "release-owner"
+    },
+    {
+      "triggerId": "migration-regression",
+      "condition": "migration gate fails or restore validation cannot prove replay/idempotency state",
+      "firstAction": "stop workers, do not replay queues, restore or rework migration",
+      "owner": "release-owner"
+    },
+    {
+      "triggerId": "provider-failure-spike",
+      "condition": "provider outage/rate-limit alerts fire after deploy",
+      "firstAction": "pause affected sources and reduce scan frequency before adding workers",
+      "owner": "ops-owner"
+    },
+    {
+      "triggerId": "summary-cost-spike",
+      "condition": "summary cost alert fires after prompt, model or routing change",
+      "firstAction": "reduce summary frequency or model budget before replaying summary jobs",
+      "owner": "ops-owner"
+    },
+    {
+      "triggerId": "delivery-failure-spike",
+      "condition": "webhook delivery failure alert fires after deploy",
+      "firstAction": "check endpoint status, signing secret rotation and quarantine state before replay",
+      "owner": "ops-owner"
+    }
+  ],
+  "runbook": "docs/iterations/06-production-hardening/12-operational-runbook.md#release-rollback-triage",
+  "promotionDoc": "docs/iterations/06-production-hardening/42-release-gate-and-promotion.md"
+}

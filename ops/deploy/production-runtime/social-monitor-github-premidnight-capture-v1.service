@@ -1,0 +1,16 @@
+[Unit]
+Description=Social Monitor GitHub-only pre-midnight durable snapshot capture v1
+After=social-monitor-prod.service network-online.target
+Requires=social-monitor-prod.service
+
+[Service]
+Type=oneshot
+ExecStart=/var/data/social-monitor/control/github-premidnight-capture-v1.sh
+TimeoutStartSec=600
+TimeoutStopSec=5
+KillMode=control-group
+SendSIGKILL=yes
+Restart=no
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6

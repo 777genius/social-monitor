@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "fixtureOnly": true,
+  "description": "Shape example for relevance memory runtime canary artifacts. This is not live memory evidence and must not unblock external beta.",
+  "examples": [
+    {
+      "schemaVersion": 1,
+      "artifactFormat": "relevance-memory-runtime-canary-v1",
+      "artifactId": "relevance-memory-runtime-canary-v1",
+      "generatedAt": "2026-06-24T09:00:00.000Z",
+      "runId": "redacted-runtime-canary-shape",
+      "baseUrlOrigin": "https://memo.example.invalid",
+      "persistenceMode": "prisma",
+      "result": {
+        "projectedCount": 1,
+        "pendingAfterProjection": 0,
+        "projectedAfterProjection": 1,
+        "projectedFactMatched": true,
+        "projectedFactCategory": "user_preferences",
+        "contextMatched": true,
+        "spaceSlugHash": "0000000000000001",
+        "memoryScopeHash": "0000000000000002"
+      },
+      "redaction": {
+        "tokenIncluded": false,
+        "rawAuthorizationHeaderIncluded": false,
+        "rawMemoryTextIncluded": false,
+        "rawSourceTextIncluded": false
+      }
+    }
+  ]
+}

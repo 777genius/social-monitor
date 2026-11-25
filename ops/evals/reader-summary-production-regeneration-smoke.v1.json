@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 1,
+  "artifactFormat": "reader-summary-production-regeneration-smoke-v1",
+  "collectionDate": "2026-07-03",
+  "generatedBy": "npm run check:reader-summary-production-regeneration-smoke",
+  "model": {
+    "liveNetwork": false,
+    "regenerationModel": "deterministic-local",
+    "writesProductionData": false,
+    "rawPostTextPersistedInReport": false,
+    "finalSummaryTextPersistedInReport": false
+  },
+  "collectionIntegrity": {
+    "status": "clean"
+  },
+  "inputs": {
+    "period": {
+      "startedAt": "2026-07-03T00:00:00.000Z",
+      "endedAt": "2026-07-04T00:00:00.000Z",
+      "timezone": "UTC"
+    },
+    "maxEvidenceItems": 40,
+    "maxStories": 10,
+    "scope": {
+      "tenantFingerprint": "88237c6b",
+      "workspaceFingerprint": "88237c6c"
+    }
+  },
+  "oldArtifact": {
+    "artifactFingerprint": "a296c5ae",
+    "confidenceLevel": "low",
+    "confidenceScore": 0.55,
+    "selectedFeedItemCount": 120,
+    "storyClusterCount": 119,
+    "crossSourceClusterRate": 0,
+    "topReadCount": 10,
+    "citationCount": 120,
+    "providerCount": 4,
+    "topReadProviderCounts": [
+      {
+        "providerKey": "reddit",
+        "count": 6
+      },
+      {
+        "providerKey": "hacker-news",
+        "count": 3
+      },
+      {
+        "providerKey": "x-twitter",
+        "count": 1
+      }
+    ],
+    "primaryTopReadCounts": {
+      "reddit": 6,
+      "x-twitter": 1
+    },
+    "topReadProviderSkew": 0.6,
+    "claimCount": 0,
+    "claimQualityPassed": false,
+    "technicalLeakCount": 0,
+    "textFingerprint": "e31171f8",
+    "headlineChars": 103,
+    "oneLineTakeawayChars": 75,
+    "bulletCount": 2,
+    "openQuestionCount": 1,
+    "nextActionCount": 6,
+    "riskCount": 3
+  },
+  "regeneratedArtifact": {
+    "artifactFingerprint": "dec19ba3",
+    "confidenceLevel": "medium",
+    "confidenceScore": 0.65,
+    "selectedFeedItemCount": 40,
+    "storyClusterCount": 39,
+    "crossSourceClusterRate": 0,
+    "topReadCount": 10,
+    "citationCount": 40,
+    "providerCount": 4,
+    "topReadProviderCounts": [
+      {
+        "providerKey": "hacker-news",
+        "count": 4
+      },
+      {
+        "providerKey": "reddit",
+        "count": 2
+      },
+      {
+        "providerKey": "rss",
+        "count": 2
+      },
+      {
+        "providerKey": "x-twitter",
+        "count": 2
+      }
+    ],
+    "primaryTopReadCounts": {
+      "reddit": 2,
+      "x-twitter": 2
+    },
+    "topReadProviderSkew": 0.4,
+    "claimCount": 7,
+    "claimQualityPassed": true,
+    "technicalLeakCount": 0,
+    "textFingerprint": "16aaabd1",
+    "headlineChars": 88,
+    "oneLineTakeawayChars": 89,
+    "bulletCount": 2,
+    "openQuestionCount": 1,
+    "nextActionCount": 6,
+    "riskCount": 1,
+    "requestStatus": "requested",
+    "executionStatus": "completed",
+    "queuedCommandCount": 1,
+    "publishedEventCount": 1
+  },
+  "comparison": {
+    "primaryTopReadsDelta": {
+      "reddit": -4,
+      "x-twitter": 1
+    },
+    "topReadProviderSkewDelta": -0.2,
+    "claimCountDelta": 7,
+    "technicalLeakDelta": 0,
+    "confidenceTruthful": true,
+    "textNotWorse": true,
+    "providerMixNotWorse": true,
+    "regeneratedPrimaryTopReadsBalanced": true,
+    "topReadDiversityNotWorse": true
+  },
+  "qualityGates": {
+    "collectionIntegrityCleanForEval": true,
+    "oldArtifactPresent": true,
+    "regenerationCompleted": true,
+    "regenerationDidNotWriteProductionData": true,
+    "providerMixNotWorse": true,
+    "regeneratedPrimaryTopReadsBalanced": true,
+    "topReadDiversityNotWorse": true,
+    "claimQualityImprovedOrPassed": true,
+    "confidenceTruthful": true,
+    "textNotWorse": true,
+    "noTechnicalLeakRegression": true,
+    "noRawSecretFragments": true
+  },
+  "blockingPassed": true
+}

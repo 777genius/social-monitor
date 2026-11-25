@@ -1,0 +1,2694 @@
+{
+  "schemaVersion": 1,
+  "datasetVersion": "source-ranking-silver-v1",
+  "generatedBy": "npm run check:source-ranking-eval",
+  "labelingPolicy": "Silver labels are frozen, deterministic and not used for self-training. LLM/manual refresh may create a later dataset version, but normal eval runs use saved labels only.",
+  "qualityGates": {
+    "minPrecisionAt10": 0.7,
+    "minNdcgAt20": 0.78,
+    "minMustHaveRecallAt20": 1,
+    "maxDuplicateRateAt20": 0.25,
+    "minSourceDiversityAt20": 0.8,
+    "minOfficialCommunityCoverageAt20": 0.8,
+    "maxViralOffTopicAt10": 0,
+    "maxLowConfidenceLabelRate": 0.35
+  },
+  "blockingPassed": true,
+  "metrics": [
+    {
+      "metricId": "precisionAt10",
+      "value": 0.858,
+      "threshold": 0.7,
+      "passed": true
+    },
+    {
+      "metricId": "ndcgAt20",
+      "value": 0.965,
+      "threshold": 0.78,
+      "passed": true
+    },
+    {
+      "metricId": "mustHaveRecallAt20",
+      "value": 1,
+      "threshold": 1,
+      "passed": true
+    },
+    {
+      "metricId": "duplicateRateAt20",
+      "value": 0.012,
+      "threshold": 0.25,
+      "passed": true
+    },
+    {
+      "metricId": "sourceDiversityAt20",
+      "value": 1,
+      "threshold": 0.8,
+      "passed": true
+    },
+    {
+      "metricId": "officialCommunityCoverageAt20",
+      "value": 1,
+      "threshold": 0.8,
+      "passed": true
+    },
+    {
+      "metricId": "viralOffTopicAt10",
+      "value": 0,
+      "threshold": 0,
+      "passed": true
+    },
+    {
+      "metricId": "lowConfidenceLabelRate",
+      "value": 0,
+      "threshold": 0.35,
+      "passed": true
+    }
+  ],
+  "caseResults": [
+    {
+      "caseId": "reddit-ai-agents-mcp-reliability",
+      "rankedCandidateIds": [
+        "r-mcp-reliability-notes",
+        "r-mcp-tool-permissions",
+        "r-mcp-reliability-duplicate",
+        "r-agent-auth-retry-bug",
+        "r-production-agent-logs",
+        "r-agent-workflow-compare",
+        "r-claude-code-postmortem",
+        "r-agent-sandboxing",
+        "r-agent-benchmark",
+        "r-mcp-observability",
+        "r-gaming-laptop-deals",
+        "r-claudeai-terse-incident",
+        "r-unrelated-pricing-backlash"
+      ],
+      "rankingMetadata": {
+        "rankingMode": "relevance",
+        "queryCount": 3,
+        "topBreakdowns": [
+          {
+            "candidateId": "r-mcp-reliability-notes",
+            "mode": "relevance",
+            "totalScore": 1585.468,
+            "relevanceScore": 1.583,
+            "tokenMatchRatio": 1.583,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 135.5,
+            "engagementCapped": 2.135,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "r-mcp-tool-permissions",
+            "mode": "relevance",
+            "totalScore": 1418.74,
+            "relevanceScore": 1.417,
+            "tokenMatchRatio": 1.417,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 117.5,
+            "engagementCapped": 2.074,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "r-mcp-reliability-duplicate",
+            "mode": "relevance",
+            "totalScore": 1251.875,
+            "relevanceScore": 1.25,
+            "tokenMatchRatio": 1.25,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 74,
+            "engagementCapped": 1.875,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "r-agent-auth-retry-bug",
+            "mode": "relevance",
+            "totalScore": 1251.695,
+            "relevanceScore": 1.25,
+            "tokenMatchRatio": 1.25,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 48.5,
+            "engagementCapped": 1.695,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "r-production-agent-logs",
+            "mode": "relevance",
+            "totalScore": 1086.025,
+            "relevanceScore": 1.083,
+            "tokenMatchRatio": 1.083,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 491,
+            "engagementCapped": 2.692,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "r-agent-workflow-compare",
+            "mode": "relevance",
+            "totalScore": 1085.898,
+            "relevanceScore": 1.083,
+            "tokenMatchRatio": 1.083,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 366,
+            "engagementCapped": 2.565,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "r-claude-code-postmortem",
+            "mode": "relevance",
+            "totalScore": 919.097,
+            "relevanceScore": 0.917,
+            "tokenMatchRatio": 0.917,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 268.5,
+            "engagementCapped": 2.431,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "r-agent-sandboxing",
+            "mode": "relevance",
+            "totalScore": 918.93,
+            "relevanceScore": 0.917,
+            "tokenMatchRatio": 0.917,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 182.5,
+            "engagementCapped": 2.264,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "r-agent-benchmark",
+            "mode": "relevance",
+            "totalScore": 752.135,
+            "relevanceScore": 0.75,
+            "tokenMatchRatio": 0.75,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 135.5,
+            "engagementCapped": 2.135,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "r-mcp-observability",
+            "mode": "relevance",
+            "totalScore": 585.542,
+            "relevanceScore": 0.583,
+            "tokenMatchRatio": 0.583,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 160.5,
+            "engagementCapped": 2.208,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "metrics": {
+        "precisionAt10": 1,
+        "ndcgAt20": 0.958,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0.077,
+        "sourceDiversityAt20": 1,
+        "officialCommunityCoverageAt20": 1,
+        "viralOffTopicAt10": 0,
+        "lowConfidenceLabelRate": 0
+      },
+      "missingMustHaveCandidateIds": []
+    },
+    {
+      "caseId": "x-openai-codex-cli-release",
+      "rankedCandidateIds": [
+        "x-openai-codex-mcp",
+        "x-dev-setup-thread",
+        "x-codex-community-faq",
+        "x-openai-terse-tool-mode",
+        "x-codex-install-errors",
+        "x-openai-codex-duplicate",
+        "x-codex-docs-sandboxing",
+        "x-codex-mcp-video",
+        "x-codex-security-note",
+        "x-cli-agent-benchmark",
+        "x-devday-schedule",
+        "x-maintainer-mcp-reliability",
+        "x-viral-ai-video"
+      ],
+      "rankingMetadata": {
+        "rankingMode": "relevance",
+        "queryCount": 4,
+        "topBreakdowns": [
+          {
+            "candidateId": "x-openai-codex-mcp",
+            "mode": "relevance",
+            "totalScore": 1353.174,
+            "relevanceScore": 1.35,
+            "tokenMatchRatio": 1,
+            "exactPhraseScore": 0,
+            "authorityScore": 0.35,
+            "engagementRaw": 1492,
+            "engagementCapped": 3.174,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-dev-setup-thread",
+            "mode": "relevance",
+            "totalScore": 1002.661,
+            "relevanceScore": 1,
+            "tokenMatchRatio": 1,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 457,
+            "engagementCapped": 2.661,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-codex-community-faq",
+            "mode": "relevance",
+            "totalScore": 1002.09,
+            "relevanceScore": 1,
+            "tokenMatchRatio": 1,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 122,
+            "engagementCapped": 2.09,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-openai-terse-tool-mode",
+            "mode": "relevance",
+            "totalScore": 852.839,
+            "relevanceScore": 0.85,
+            "tokenMatchRatio": 0.5,
+            "exactPhraseScore": 0,
+            "authorityScore": 0.35,
+            "engagementRaw": 690,
+            "engagementCapped": 2.839,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-codex-install-errors",
+            "mode": "relevance",
+            "totalScore": 835.285,
+            "relevanceScore": 0.833,
+            "tokenMatchRatio": 0.833,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 88.5,
+            "engagementCapped": 1.952,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-openai-codex-duplicate",
+            "mode": "relevance",
+            "totalScore": 835.089,
+            "relevanceScore": 0.833,
+            "tokenMatchRatio": 0.833,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 56,
+            "engagementCapped": 1.756,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-codex-docs-sandboxing",
+            "mode": "relevance",
+            "totalScore": 669.004,
+            "relevanceScore": 0.667,
+            "tokenMatchRatio": 0.667,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 216.5,
+            "engagementCapped": 2.337,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-codex-mcp-video",
+            "mode": "relevance",
+            "totalScore": 502.502,
+            "relevanceScore": 0.5,
+            "tokenMatchRatio": 0.5,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 316.5,
+            "engagementCapped": 2.502,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-codex-security-note",
+            "mode": "relevance",
+            "totalScore": 502.199,
+            "relevanceScore": 0.5,
+            "tokenMatchRatio": 0.5,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 157,
+            "engagementCapped": 2.199,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-cli-agent-benchmark",
+            "mode": "relevance",
+            "totalScore": 501.954,
+            "relevanceScore": 0.5,
+            "tokenMatchRatio": 0.5,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 89,
+            "engagementCapped": 1.954,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          }
+        ]
+      },
+      "metrics": {
+        "precisionAt10": 1,
+        "ndcgAt20": 0.959,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0.077,
+        "sourceDiversityAt20": 1,
+        "officialCommunityCoverageAt20": 1,
+        "viralOffTopicAt10": 0,
+        "lowConfidenceLabelRate": 0
+      },
+      "missingMustHaveCandidateIds": []
+    },
+    {
+      "caseId": "mixed-agent-production-reliability",
+      "rankedCandidateIds": [
+        "m-openai-production-guidance",
+        "m-reddit-production-failures",
+        "m-reddit-production-failures-duplicate",
+        "m-agent-observability",
+        "m-agent-runbook",
+        "m-agent-slo",
+        "m-coding-agent-checklist",
+        "m-reddit-retry-budget",
+        "m-agent-rollbacks",
+        "m-agent-safety-review",
+        "m-agent-jokes",
+        "m-unrelated-startup-launch"
+      ],
+      "rankingMetadata": {
+        "rankingMode": "relevance",
+        "queryCount": 3,
+        "topBreakdowns": [
+          {
+            "candidateId": "m-openai-production-guidance",
+            "mode": "relevance",
+            "totalScore": 1169.986,
+            "relevanceScore": 1.167,
+            "tokenMatchRatio": 1.167,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 2085,
+            "engagementCapped": 3.319,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "m-reddit-production-failures",
+            "mode": "relevance",
+            "totalScore": 1169.724,
+            "relevanceScore": 1.167,
+            "tokenMatchRatio": 1.167,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 1140.5,
+            "engagementCapped": 3.057,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "m-reddit-production-failures-duplicate",
+            "mode": "relevance",
+            "totalScore": 1001.968,
+            "relevanceScore": 1,
+            "tokenMatchRatio": 1,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 92,
+            "engagementCapped": 1.968,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "m-agent-observability",
+            "mode": "relevance",
+            "totalScore": 835.847,
+            "relevanceScore": 0.833,
+            "tokenMatchRatio": 0.833,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 325.5,
+            "engagementCapped": 2.514,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "m-agent-runbook",
+            "mode": "relevance",
+            "totalScore": 835.766,
+            "relevanceScore": 0.833,
+            "tokenMatchRatio": 0.833,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 269.5,
+            "engagementCapped": 2.432,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "m-agent-slo",
+            "mode": "relevance",
+            "totalScore": 835.442,
+            "relevanceScore": 0.833,
+            "tokenMatchRatio": 0.833,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 127.5,
+            "engagementCapped": 2.109,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "m-coding-agent-checklist",
+            "mode": "relevance",
+            "totalScore": 669.411,
+            "relevanceScore": 0.667,
+            "tokenMatchRatio": 0.667,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 554.5,
+            "engagementCapped": 2.745,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "m-reddit-retry-budget",
+            "mode": "relevance",
+            "totalScore": 669.244,
+            "relevanceScore": 0.667,
+            "tokenMatchRatio": 0.667,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 376.5,
+            "engagementCapped": 2.577,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "m-agent-rollbacks",
+            "mode": "relevance",
+            "totalScore": 669.021,
+            "relevanceScore": 0.667,
+            "tokenMatchRatio": 0.667,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 225,
+            "engagementCapped": 2.354,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "m-agent-safety-review",
+            "mode": "relevance",
+            "totalScore": 668.731,
+            "relevanceScore": 0.667,
+            "tokenMatchRatio": 0.667,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 115,
+            "engagementCapped": 2.064,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "metrics": {
+        "precisionAt10": 1,
+        "ndcgAt20": 0.982,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0.083,
+        "sourceDiversityAt20": 1,
+        "officialCommunityCoverageAt20": 1,
+        "viralOffTopicAt10": 0,
+        "lowConfidenceLabelRate": 0
+      },
+      "missingMustHaveCandidateIds": []
+    },
+    {
+      "caseId": "reddit-cursor-mcp-registry-outage",
+      "rankedCandidateIds": [
+        "reddit-cursor-mcp-registry-outage-general",
+        "reddit-cursor-mcp-registry-outage-keyword",
+        "reddit-cursor-mcp-registry-outage-community",
+        "reddit-cursor-mcp-registry-outage-checklist",
+        "reddit-cursor-mcp-registry-outage-unrelated",
+        "reddit-cursor-mcp-registry-outage-listing-terse"
+      ],
+      "rankingMetadata": {
+        "rankingMode": "relevance",
+        "queryCount": 2,
+        "topBreakdowns": [
+          {
+            "candidateId": "reddit-cursor-mcp-registry-outage-general",
+            "mode": "relevance",
+            "totalScore": 918.884,
+            "relevanceScore": 0.917,
+            "tokenMatchRatio": 0.917,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 164,
+            "engagementCapped": 2.217,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-cursor-mcp-registry-outage-keyword",
+            "mode": "relevance",
+            "totalScore": 918.727,
+            "relevanceScore": 0.917,
+            "tokenMatchRatio": 0.917,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 114,
+            "engagementCapped": 2.061,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-cursor-mcp-registry-outage-community",
+            "mode": "relevance",
+            "totalScore": 585.481,
+            "relevanceScore": 0.583,
+            "tokenMatchRatio": 0.583,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 139.5,
+            "engagementCapped": 2.148,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-cursor-mcp-registry-outage-checklist",
+            "mode": "relevance",
+            "totalScore": 585.325,
+            "relevanceScore": 0.583,
+            "tokenMatchRatio": 0.583,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 97,
+            "engagementCapped": 1.991,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "reddit-cursor-mcp-registry-outage-unrelated",
+            "mode": "relevance",
+            "totalScore": 3.011,
+            "relevanceScore": 0,
+            "tokenMatchRatio": 0,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 1024,
+            "engagementCapped": 3.011,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-cursor-mcp-registry-outage-listing-terse",
+            "mode": "relevance",
+            "totalScore": 1.952,
+            "relevanceScore": 0,
+            "tokenMatchRatio": 0,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 88.5,
+            "engagementCapped": 1.952,
+            "freshnessScore": 0,
+            "reasonCodes": []
+          }
+        ]
+      },
+      "metrics": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.975,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "sourceDiversityAt20": 1,
+        "officialCommunityCoverageAt20": 1,
+        "viralOffTopicAt10": 0,
+        "lowConfidenceLabelRate": 0
+      },
+      "missingMustHaveCandidateIds": []
+    },
+    {
+      "caseId": "reddit-langchain-agent-memory-regression",
+      "rankedCandidateIds": [
+        "reddit-langchain-agent-memory-regression-general",
+        "reddit-langchain-agent-memory-regression-keyword",
+        "reddit-langchain-agent-memory-regression-community",
+        "reddit-langchain-agent-memory-regression-checklist",
+        "reddit-langchain-agent-memory-regression-unrelated",
+        "reddit-langchain-agent-memory-regression-listing-terse"
+      ],
+      "rankingMetadata": {
+        "rankingMode": "relevance",
+        "queryCount": 2,
+        "topBreakdowns": [
+          {
+            "candidateId": "reddit-langchain-agent-memory-regression-general",
+            "mode": "relevance",
+            "totalScore": 1085.551,
+            "relevanceScore": 1.083,
+            "tokenMatchRatio": 1.083,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 164,
+            "engagementCapped": 2.217,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-langchain-agent-memory-regression-keyword",
+            "mode": "relevance",
+            "totalScore": 1085.394,
+            "relevanceScore": 1.083,
+            "tokenMatchRatio": 1.083,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 114,
+            "engagementCapped": 2.061,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-langchain-agent-memory-regression-community",
+            "mode": "relevance",
+            "totalScore": 918.814,
+            "relevanceScore": 0.917,
+            "tokenMatchRatio": 0.917,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 139.5,
+            "engagementCapped": 2.148,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-langchain-agent-memory-regression-checklist",
+            "mode": "relevance",
+            "totalScore": 918.658,
+            "relevanceScore": 0.917,
+            "tokenMatchRatio": 0.917,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 97,
+            "engagementCapped": 1.991,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "reddit-langchain-agent-memory-regression-unrelated",
+            "mode": "relevance",
+            "totalScore": 3.011,
+            "relevanceScore": 0,
+            "tokenMatchRatio": 0,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 1024,
+            "engagementCapped": 3.011,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-langchain-agent-memory-regression-listing-terse",
+            "mode": "relevance",
+            "totalScore": 1.952,
+            "relevanceScore": 0,
+            "tokenMatchRatio": 0,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 88.5,
+            "engagementCapped": 1.952,
+            "freshnessScore": 0,
+            "reasonCodes": []
+          }
+        ]
+      },
+      "metrics": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.975,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "sourceDiversityAt20": 1,
+        "officialCommunityCoverageAt20": 1,
+        "viralOffTopicAt10": 0,
+        "lowConfidenceLabelRate": 0
+      },
+      "missingMustHaveCandidateIds": []
+    },
+    {
+      "caseId": "reddit-llamaindex-workflow-tools",
+      "rankedCandidateIds": [
+        "reddit-llamaindex-workflow-tools-general",
+        "reddit-llamaindex-workflow-tools-community",
+        "reddit-llamaindex-workflow-tools-keyword",
+        "reddit-llamaindex-workflow-tools-checklist",
+        "reddit-llamaindex-workflow-tools-unrelated",
+        "reddit-llamaindex-workflow-tools-listing-terse"
+      ],
+      "rankingMetadata": {
+        "rankingMode": "relevance",
+        "queryCount": 2,
+        "topBreakdowns": [
+          {
+            "candidateId": "reddit-llamaindex-workflow-tools-general",
+            "mode": "relevance",
+            "totalScore": 1002.217,
+            "relevanceScore": 1,
+            "tokenMatchRatio": 1,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 164,
+            "engagementCapped": 2.217,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-llamaindex-workflow-tools-community",
+            "mode": "relevance",
+            "totalScore": 1002.148,
+            "relevanceScore": 1,
+            "tokenMatchRatio": 1,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 139.5,
+            "engagementCapped": 2.148,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-llamaindex-workflow-tools-keyword",
+            "mode": "relevance",
+            "totalScore": 1002.061,
+            "relevanceScore": 1,
+            "tokenMatchRatio": 1,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 114,
+            "engagementCapped": 2.061,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-llamaindex-workflow-tools-checklist",
+            "mode": "relevance",
+            "totalScore": 1001.991,
+            "relevanceScore": 1,
+            "tokenMatchRatio": 1,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 97,
+            "engagementCapped": 1.991,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "reddit-llamaindex-workflow-tools-unrelated",
+            "mode": "relevance",
+            "totalScore": 3.011,
+            "relevanceScore": 0,
+            "tokenMatchRatio": 0,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 1024,
+            "engagementCapped": 3.011,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-llamaindex-workflow-tools-listing-terse",
+            "mode": "relevance",
+            "totalScore": 1.952,
+            "relevanceScore": 0,
+            "tokenMatchRatio": 0,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 88.5,
+            "engagementCapped": 1.952,
+            "freshnessScore": 0,
+            "reasonCodes": []
+          }
+        ]
+      },
+      "metrics": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.975,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "sourceDiversityAt20": 1,
+        "officialCommunityCoverageAt20": 1,
+        "viralOffTopicAt10": 0,
+        "lowConfidenceLabelRate": 0
+      },
+      "missingMustHaveCandidateIds": []
+    },
+    {
+      "caseId": "reddit-ollama-tool-use-release",
+      "rankedCandidateIds": [
+        "reddit-ollama-tool-use-release-general",
+        "reddit-ollama-tool-use-release-keyword",
+        "reddit-ollama-tool-use-release-community",
+        "reddit-ollama-tool-use-release-checklist",
+        "reddit-ollama-tool-use-release-unrelated",
+        "reddit-ollama-tool-use-release-listing-terse"
+      ],
+      "rankingMetadata": {
+        "rankingMode": "relevance",
+        "queryCount": 2,
+        "topBreakdowns": [
+          {
+            "candidateId": "reddit-ollama-tool-use-release-general",
+            "mode": "relevance",
+            "totalScore": 918.884,
+            "relevanceScore": 0.917,
+            "tokenMatchRatio": 0.917,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 164,
+            "engagementCapped": 2.217,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-ollama-tool-use-release-keyword",
+            "mode": "relevance",
+            "totalScore": 752.061,
+            "relevanceScore": 0.75,
+            "tokenMatchRatio": 0.75,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 114,
+            "engagementCapped": 2.061,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-ollama-tool-use-release-community",
+            "mode": "relevance",
+            "totalScore": 585.481,
+            "relevanceScore": 0.583,
+            "tokenMatchRatio": 0.583,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 139.5,
+            "engagementCapped": 2.148,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-ollama-tool-use-release-checklist",
+            "mode": "relevance",
+            "totalScore": 585.325,
+            "relevanceScore": 0.583,
+            "tokenMatchRatio": 0.583,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 97,
+            "engagementCapped": 1.991,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "reddit-ollama-tool-use-release-unrelated",
+            "mode": "relevance",
+            "totalScore": 3.011,
+            "relevanceScore": 0,
+            "tokenMatchRatio": 0,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 1024,
+            "engagementCapped": 3.011,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-ollama-tool-use-release-listing-terse",
+            "mode": "relevance",
+            "totalScore": 1.952,
+            "relevanceScore": 0,
+            "tokenMatchRatio": 0,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 88.5,
+            "engagementCapped": 1.952,
+            "freshnessScore": 0,
+            "reasonCodes": []
+          }
+        ]
+      },
+      "metrics": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.975,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "sourceDiversityAt20": 1,
+        "officialCommunityCoverageAt20": 1,
+        "viralOffTopicAt10": 0,
+        "lowConfidenceLabelRate": 0
+      },
+      "missingMustHaveCandidateIds": []
+    },
+    {
+      "caseId": "reddit-vllm-agent-throughput",
+      "rankedCandidateIds": [
+        "reddit-vllm-agent-throughput-general",
+        "reddit-vllm-agent-throughput-community",
+        "reddit-vllm-agent-throughput-keyword",
+        "reddit-vllm-agent-throughput-checklist",
+        "reddit-vllm-agent-throughput-unrelated",
+        "reddit-vllm-agent-throughput-listing-terse"
+      ],
+      "rankingMetadata": {
+        "rankingMode": "relevance",
+        "queryCount": 2,
+        "topBreakdowns": [
+          {
+            "candidateId": "reddit-vllm-agent-throughput-general",
+            "mode": "relevance",
+            "totalScore": 1002.217,
+            "relevanceScore": 1,
+            "tokenMatchRatio": 1,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 164,
+            "engagementCapped": 2.217,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-vllm-agent-throughput-community",
+            "mode": "relevance",
+            "totalScore": 835.481,
+            "relevanceScore": 0.833,
+            "tokenMatchRatio": 0.833,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 139.5,
+            "engagementCapped": 2.148,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-vllm-agent-throughput-keyword",
+            "mode": "relevance",
+            "totalScore": 835.394,
+            "relevanceScore": 0.833,
+            "tokenMatchRatio": 0.833,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 114,
+            "engagementCapped": 2.061,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-vllm-agent-throughput-checklist",
+            "mode": "relevance",
+            "totalScore": 835.325,
+            "relevanceScore": 0.833,
+            "tokenMatchRatio": 0.833,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 97,
+            "engagementCapped": 1.991,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "reddit-vllm-agent-throughput-unrelated",
+            "mode": "relevance",
+            "totalScore": 3.011,
+            "relevanceScore": 0,
+            "tokenMatchRatio": 0,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 1024,
+            "engagementCapped": 3.011,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-vllm-agent-throughput-listing-terse",
+            "mode": "relevance",
+            "totalScore": 1.952,
+            "relevanceScore": 0,
+            "tokenMatchRatio": 0,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 88.5,
+            "engagementCapped": 1.952,
+            "freshnessScore": 0,
+            "reasonCodes": []
+          }
+        ]
+      },
+      "metrics": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.975,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "sourceDiversityAt20": 1,
+        "officialCommunityCoverageAt20": 1,
+        "viralOffTopicAt10": 0,
+        "lowConfidenceLabelRate": 0
+      },
+      "missingMustHaveCandidateIds": []
+    },
+    {
+      "caseId": "reddit-supabase-mcp-auth",
+      "rankedCandidateIds": [
+        "reddit-supabase-mcp-auth-general",
+        "reddit-supabase-mcp-auth-keyword",
+        "reddit-supabase-mcp-auth-community",
+        "reddit-supabase-mcp-auth-checklist",
+        "reddit-supabase-mcp-auth-unrelated",
+        "reddit-supabase-mcp-auth-listing-terse"
+      ],
+      "rankingMetadata": {
+        "rankingMode": "relevance",
+        "queryCount": 2,
+        "topBreakdowns": [
+          {
+            "candidateId": "reddit-supabase-mcp-auth-general",
+            "mode": "relevance",
+            "totalScore": 918.884,
+            "relevanceScore": 0.917,
+            "tokenMatchRatio": 0.917,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 164,
+            "engagementCapped": 2.217,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-supabase-mcp-auth-keyword",
+            "mode": "relevance",
+            "totalScore": 918.727,
+            "relevanceScore": 0.917,
+            "tokenMatchRatio": 0.917,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 114,
+            "engagementCapped": 2.061,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-supabase-mcp-auth-community",
+            "mode": "relevance",
+            "totalScore": 585.481,
+            "relevanceScore": 0.583,
+            "tokenMatchRatio": 0.583,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 139.5,
+            "engagementCapped": 2.148,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-supabase-mcp-auth-checklist",
+            "mode": "relevance",
+            "totalScore": 585.325,
+            "relevanceScore": 0.583,
+            "tokenMatchRatio": 0.583,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 97,
+            "engagementCapped": 1.991,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "reddit-supabase-mcp-auth-unrelated",
+            "mode": "relevance",
+            "totalScore": 3.011,
+            "relevanceScore": 0,
+            "tokenMatchRatio": 0,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 1024,
+            "engagementCapped": 3.011,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-supabase-mcp-auth-listing-terse",
+            "mode": "relevance",
+            "totalScore": 1.952,
+            "relevanceScore": 0,
+            "tokenMatchRatio": 0,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 88.5,
+            "engagementCapped": 1.952,
+            "freshnessScore": 0,
+            "reasonCodes": []
+          }
+        ]
+      },
+      "metrics": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.975,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "sourceDiversityAt20": 1,
+        "officialCommunityCoverageAt20": 1,
+        "viralOffTopicAt10": 0,
+        "lowConfidenceLabelRate": 0
+      },
+      "missingMustHaveCandidateIds": []
+    },
+    {
+      "caseId": "reddit-nextjs-ai-sdk-streaming",
+      "rankedCandidateIds": [
+        "reddit-nextjs-ai-sdk-streaming-general",
+        "reddit-nextjs-ai-sdk-streaming-keyword",
+        "reddit-nextjs-ai-sdk-streaming-community",
+        "reddit-nextjs-ai-sdk-streaming-checklist",
+        "reddit-nextjs-ai-sdk-streaming-unrelated",
+        "reddit-nextjs-ai-sdk-streaming-listing-terse"
+      ],
+      "rankingMetadata": {
+        "rankingMode": "relevance",
+        "queryCount": 2,
+        "topBreakdowns": [
+          {
+            "candidateId": "reddit-nextjs-ai-sdk-streaming-general",
+            "mode": "relevance",
+            "totalScore": 918.884,
+            "relevanceScore": 0.917,
+            "tokenMatchRatio": 0.917,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 164,
+            "engagementCapped": 2.217,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-nextjs-ai-sdk-streaming-keyword",
+            "mode": "relevance",
+            "totalScore": 918.727,
+            "relevanceScore": 0.917,
+            "tokenMatchRatio": 0.917,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 114,
+            "engagementCapped": 2.061,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-nextjs-ai-sdk-streaming-community",
+            "mode": "relevance",
+            "totalScore": 585.481,
+            "relevanceScore": 0.583,
+            "tokenMatchRatio": 0.583,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 139.5,
+            "engagementCapped": 2.148,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-nextjs-ai-sdk-streaming-checklist",
+            "mode": "relevance",
+            "totalScore": 585.325,
+            "relevanceScore": 0.583,
+            "tokenMatchRatio": 0.583,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 97,
+            "engagementCapped": 1.991,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "reddit-nextjs-ai-sdk-streaming-unrelated",
+            "mode": "relevance",
+            "totalScore": 3.011,
+            "relevanceScore": 0,
+            "tokenMatchRatio": 0,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 1024,
+            "engagementCapped": 3.011,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-nextjs-ai-sdk-streaming-listing-terse",
+            "mode": "relevance",
+            "totalScore": 1.952,
+            "relevanceScore": 0,
+            "tokenMatchRatio": 0,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 88.5,
+            "engagementCapped": 1.952,
+            "freshnessScore": 0,
+            "reasonCodes": []
+          }
+        ]
+      },
+      "metrics": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.975,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "sourceDiversityAt20": 1,
+        "officialCommunityCoverageAt20": 1,
+        "viralOffTopicAt10": 0,
+        "lowConfidenceLabelRate": 0
+      },
+      "missingMustHaveCandidateIds": []
+    },
+    {
+      "caseId": "reddit-docker-mcp-desktop-permissions",
+      "rankedCandidateIds": [
+        "reddit-docker-mcp-desktop-permissions-general",
+        "reddit-docker-mcp-desktop-permissions-keyword",
+        "reddit-docker-mcp-desktop-permissions-community",
+        "reddit-docker-mcp-desktop-permissions-checklist",
+        "reddit-docker-mcp-desktop-permissions-unrelated",
+        "reddit-docker-mcp-desktop-permissions-listing-terse"
+      ],
+      "rankingMetadata": {
+        "rankingMode": "relevance",
+        "queryCount": 2,
+        "topBreakdowns": [
+          {
+            "candidateId": "reddit-docker-mcp-desktop-permissions-general",
+            "mode": "relevance",
+            "totalScore": 918.884,
+            "relevanceScore": 0.917,
+            "tokenMatchRatio": 0.917,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 164,
+            "engagementCapped": 2.217,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-docker-mcp-desktop-permissions-keyword",
+            "mode": "relevance",
+            "totalScore": 918.727,
+            "relevanceScore": 0.917,
+            "tokenMatchRatio": 0.917,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 114,
+            "engagementCapped": 2.061,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-docker-mcp-desktop-permissions-community",
+            "mode": "relevance",
+            "totalScore": 585.481,
+            "relevanceScore": 0.583,
+            "tokenMatchRatio": 0.583,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 139.5,
+            "engagementCapped": 2.148,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-docker-mcp-desktop-permissions-checklist",
+            "mode": "relevance",
+            "totalScore": 585.325,
+            "relevanceScore": 0.583,
+            "tokenMatchRatio": 0.583,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 97,
+            "engagementCapped": 1.991,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "reddit-docker-mcp-desktop-permissions-unrelated",
+            "mode": "relevance",
+            "totalScore": 3.011,
+            "relevanceScore": 0,
+            "tokenMatchRatio": 0,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 1024,
+            "engagementCapped": 3.011,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "reddit-docker-mcp-desktop-permissions-listing-terse",
+            "mode": "relevance",
+            "totalScore": 1.952,
+            "relevanceScore": 0,
+            "tokenMatchRatio": 0,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 88.5,
+            "engagementCapped": 1.952,
+            "freshnessScore": 0,
+            "reasonCodes": []
+          }
+        ]
+      },
+      "metrics": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.975,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "sourceDiversityAt20": 1,
+        "officialCommunityCoverageAt20": 1,
+        "viralOffTopicAt10": 0,
+        "lowConfidenceLabelRate": 0
+      },
+      "missingMustHaveCandidateIds": []
+    },
+    {
+      "caseId": "x-anthropic-claude-code-permissions",
+      "rankedCandidateIds": [
+        "x-anthropic-claude-code-permissions-general",
+        "x-anthropic-claude-code-permissions-mention",
+        "x-anthropic-claude-code-permissions-operator",
+        "x-anthropic-claude-code-permissions-keyword",
+        "x-anthropic-claude-code-permissions-official-terse",
+        "x-anthropic-claude-code-permissions-unrelated"
+      ],
+      "rankingMetadata": {
+        "rankingMode": "relevance",
+        "queryCount": 4,
+        "topBreakdowns": [
+          {
+            "candidateId": "x-anthropic-claude-code-permissions-general",
+            "mode": "relevance",
+            "totalScore": 1168.873,
+            "relevanceScore": 1.167,
+            "tokenMatchRatio": 1.167,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 160,
+            "engagementCapped": 2.207,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-anthropic-claude-code-permissions-mention",
+            "mode": "relevance",
+            "totalScore": 1168.509,
+            "relevanceScore": 1.167,
+            "tokenMatchRatio": 1.167,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 68.5,
+            "engagementCapped": 1.842,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-anthropic-claude-code-permissions-operator",
+            "mode": "relevance",
+            "totalScore": 1001.993,
+            "relevanceScore": 1,
+            "tokenMatchRatio": 1,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 97.5,
+            "engagementCapped": 1.993,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-anthropic-claude-code-permissions-keyword",
+            "mode": "relevance",
+            "totalScore": 835.214,
+            "relevanceScore": 0.833,
+            "tokenMatchRatio": 0.833,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 75,
+            "engagementCapped": 1.881,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-anthropic-claude-code-permissions-official-terse",
+            "mode": "relevance",
+            "totalScore": 519.14,
+            "relevanceScore": 0.517,
+            "tokenMatchRatio": 0.167,
+            "exactPhraseScore": 0,
+            "authorityScore": 0.35,
+            "engagementRaw": 296.5,
+            "engagementCapped": 2.473,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-anthropic-claude-code-permissions-unrelated",
+            "mode": "relevance",
+            "totalScore": 4.111,
+            "relevanceScore": 0,
+            "tokenMatchRatio": 0,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 12900,
+            "engagementCapped": 4.111,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "metrics": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.956,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "sourceDiversityAt20": 1,
+        "officialCommunityCoverageAt20": 1,
+        "viralOffTopicAt10": 0,
+        "lowConfidenceLabelRate": 0
+      },
+      "missingMustHaveCandidateIds": []
+    },
+    {
+      "caseId": "x-openai-responses-api-tools",
+      "rankedCandidateIds": [
+        "x-openai-responses-api-tools-general",
+        "x-openai-responses-api-tools-mention",
+        "x-openai-responses-api-tools-operator",
+        "x-openai-responses-api-tools-keyword",
+        "x-openai-responses-api-tools-official-terse",
+        "x-openai-responses-api-tools-unrelated"
+      ],
+      "rankingMetadata": {
+        "rankingMode": "relevance",
+        "queryCount": 4,
+        "topBreakdowns": [
+          {
+            "candidateId": "x-openai-responses-api-tools-general",
+            "mode": "relevance",
+            "totalScore": 1252.207,
+            "relevanceScore": 1.25,
+            "tokenMatchRatio": 1.25,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 160,
+            "engagementCapped": 2.207,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-openai-responses-api-tools-mention",
+            "mode": "relevance",
+            "totalScore": 1251.842,
+            "relevanceScore": 1.25,
+            "tokenMatchRatio": 1.25,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 68.5,
+            "engagementCapped": 1.842,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-openai-responses-api-tools-operator",
+            "mode": "relevance",
+            "totalScore": 918.66,
+            "relevanceScore": 0.917,
+            "tokenMatchRatio": 0.917,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 97.5,
+            "engagementCapped": 1.993,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-openai-responses-api-tools-keyword",
+            "mode": "relevance",
+            "totalScore": 918.547,
+            "relevanceScore": 0.917,
+            "tokenMatchRatio": 0.917,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 75,
+            "engagementCapped": 1.881,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-openai-responses-api-tools-official-terse",
+            "mode": "relevance",
+            "totalScore": 352.473,
+            "relevanceScore": 0.35,
+            "tokenMatchRatio": 0,
+            "exactPhraseScore": 0,
+            "authorityScore": 0.35,
+            "engagementRaw": 296.5,
+            "engagementCapped": 2.473,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-openai-responses-api-tools-unrelated",
+            "mode": "relevance",
+            "totalScore": 4.111,
+            "relevanceScore": 0,
+            "tokenMatchRatio": 0,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 12900,
+            "engagementCapped": 4.111,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "metrics": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.956,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "sourceDiversityAt20": 1,
+        "officialCommunityCoverageAt20": 1,
+        "viralOffTopicAt10": 0,
+        "lowConfidenceLabelRate": 0
+      },
+      "missingMustHaveCandidateIds": []
+    },
+    {
+      "caseId": "x-cursor-agent-terminal-mode",
+      "rankedCandidateIds": [
+        "x-cursor-agent-terminal-mode-general",
+        "x-cursor-agent-terminal-mode-mention",
+        "x-cursor-agent-terminal-mode-operator",
+        "x-cursor-agent-terminal-mode-keyword",
+        "x-cursor-agent-terminal-mode-official-terse",
+        "x-cursor-agent-terminal-mode-unrelated"
+      ],
+      "rankingMetadata": {
+        "rankingMode": "relevance",
+        "queryCount": 4,
+        "topBreakdowns": [
+          {
+            "candidateId": "x-cursor-agent-terminal-mode-general",
+            "mode": "relevance",
+            "totalScore": 1002.207,
+            "relevanceScore": 1,
+            "tokenMatchRatio": 1,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 160,
+            "engagementCapped": 2.207,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-cursor-agent-terminal-mode-mention",
+            "mode": "relevance",
+            "totalScore": 1001.842,
+            "relevanceScore": 1,
+            "tokenMatchRatio": 1,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 68.5,
+            "engagementCapped": 1.842,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-cursor-agent-terminal-mode-operator",
+            "mode": "relevance",
+            "totalScore": 835.327,
+            "relevanceScore": 0.833,
+            "tokenMatchRatio": 0.833,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 97.5,
+            "engagementCapped": 1.993,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-cursor-agent-terminal-mode-keyword",
+            "mode": "relevance",
+            "totalScore": 835.214,
+            "relevanceScore": 0.833,
+            "tokenMatchRatio": 0.833,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 75,
+            "engagementCapped": 1.881,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-cursor-agent-terminal-mode-official-terse",
+            "mode": "relevance",
+            "totalScore": 519.14,
+            "relevanceScore": 0.517,
+            "tokenMatchRatio": 0.167,
+            "exactPhraseScore": 0,
+            "authorityScore": 0.35,
+            "engagementRaw": 296.5,
+            "engagementCapped": 2.473,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-cursor-agent-terminal-mode-unrelated",
+            "mode": "relevance",
+            "totalScore": 4.111,
+            "relevanceScore": 0,
+            "tokenMatchRatio": 0,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 12900,
+            "engagementCapped": 4.111,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "metrics": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.956,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "sourceDiversityAt20": 1,
+        "officialCommunityCoverageAt20": 1,
+        "viralOffTopicAt10": 0,
+        "lowConfidenceLabelRate": 0
+      },
+      "missingMustHaveCandidateIds": []
+    },
+    {
+      "caseId": "x-windsurf-enterprise-agent-update",
+      "rankedCandidateIds": [
+        "x-windsurf-enterprise-agent-update-general",
+        "x-windsurf-enterprise-agent-update-mention",
+        "x-windsurf-enterprise-agent-update-keyword",
+        "x-windsurf-enterprise-agent-update-operator",
+        "x-windsurf-enterprise-agent-update-official-terse",
+        "x-windsurf-enterprise-agent-update-unrelated"
+      ],
+      "rankingMetadata": {
+        "rankingMode": "relevance",
+        "queryCount": 4,
+        "topBreakdowns": [
+          {
+            "candidateId": "x-windsurf-enterprise-agent-update-general",
+            "mode": "relevance",
+            "totalScore": 1002.207,
+            "relevanceScore": 1,
+            "tokenMatchRatio": 1,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 160,
+            "engagementCapped": 2.207,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-windsurf-enterprise-agent-update-mention",
+            "mode": "relevance",
+            "totalScore": 1001.842,
+            "relevanceScore": 1,
+            "tokenMatchRatio": 1,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 68.5,
+            "engagementCapped": 1.842,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-windsurf-enterprise-agent-update-keyword",
+            "mode": "relevance",
+            "totalScore": 835.214,
+            "relevanceScore": 0.833,
+            "tokenMatchRatio": 0.833,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 75,
+            "engagementCapped": 1.881,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-windsurf-enterprise-agent-update-operator",
+            "mode": "relevance",
+            "totalScore": 668.66,
+            "relevanceScore": 0.667,
+            "tokenMatchRatio": 0.667,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 97.5,
+            "engagementCapped": 1.993,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-windsurf-enterprise-agent-update-official-terse",
+            "mode": "relevance",
+            "totalScore": 352.473,
+            "relevanceScore": 0.35,
+            "tokenMatchRatio": 0,
+            "exactPhraseScore": 0,
+            "authorityScore": 0.35,
+            "engagementRaw": 296.5,
+            "engagementCapped": 2.473,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-windsurf-enterprise-agent-update-unrelated",
+            "mode": "relevance",
+            "totalScore": 4.111,
+            "relevanceScore": 0,
+            "tokenMatchRatio": 0,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 12900,
+            "engagementCapped": 4.111,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "metrics": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.956,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "sourceDiversityAt20": 1,
+        "officialCommunityCoverageAt20": 1,
+        "viralOffTopicAt10": 0,
+        "lowConfidenceLabelRate": 0
+      },
+      "missingMustHaveCandidateIds": []
+    },
+    {
+      "caseId": "x-devin-background-agent-queue",
+      "rankedCandidateIds": [
+        "x-devin-background-agent-queue-mention",
+        "x-devin-background-agent-queue-general",
+        "x-devin-background-agent-queue-keyword",
+        "x-devin-background-agent-queue-operator",
+        "x-devin-background-agent-queue-official-terse",
+        "x-devin-background-agent-queue-unrelated"
+      ],
+      "rankingMetadata": {
+        "rankingMode": "relevance",
+        "queryCount": 4,
+        "topBreakdowns": [
+          {
+            "candidateId": "x-devin-background-agent-queue-mention",
+            "mode": "relevance",
+            "totalScore": 1001.842,
+            "relevanceScore": 1,
+            "tokenMatchRatio": 1,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 68.5,
+            "engagementCapped": 1.842,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-devin-background-agent-queue-general",
+            "mode": "relevance",
+            "totalScore": 835.54,
+            "relevanceScore": 0.833,
+            "tokenMatchRatio": 0.833,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 160,
+            "engagementCapped": 2.207,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-devin-background-agent-queue-keyword",
+            "mode": "relevance",
+            "totalScore": 835.214,
+            "relevanceScore": 0.833,
+            "tokenMatchRatio": 0.833,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 75,
+            "engagementCapped": 1.881,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-devin-background-agent-queue-operator",
+            "mode": "relevance",
+            "totalScore": 668.66,
+            "relevanceScore": 0.667,
+            "tokenMatchRatio": 0.667,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 97.5,
+            "engagementCapped": 1.993,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-devin-background-agent-queue-official-terse",
+            "mode": "relevance",
+            "totalScore": 352.473,
+            "relevanceScore": 0.35,
+            "tokenMatchRatio": 0,
+            "exactPhraseScore": 0,
+            "authorityScore": 0.35,
+            "engagementRaw": 296.5,
+            "engagementCapped": 2.473,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-devin-background-agent-queue-unrelated",
+            "mode": "relevance",
+            "totalScore": 4.111,
+            "relevanceScore": 0,
+            "tokenMatchRatio": 0,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 12900,
+            "engagementCapped": 4.111,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "metrics": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.977,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "sourceDiversityAt20": 1,
+        "officialCommunityCoverageAt20": 1,
+        "viralOffTopicAt10": 0,
+        "lowConfidenceLabelRate": 0
+      },
+      "missingMustHaveCandidateIds": []
+    },
+    {
+      "caseId": "x-openrouter-tool-routing",
+      "rankedCandidateIds": [
+        "x-openrouter-tool-routing-general",
+        "x-openrouter-tool-routing-mention",
+        "x-openrouter-tool-routing-keyword",
+        "x-openrouter-tool-routing-operator",
+        "x-openrouter-tool-routing-official-terse",
+        "x-openrouter-tool-routing-unrelated"
+      ],
+      "rankingMetadata": {
+        "rankingMode": "relevance",
+        "queryCount": 4,
+        "topBreakdowns": [
+          {
+            "candidateId": "x-openrouter-tool-routing-general",
+            "mode": "relevance",
+            "totalScore": 1335.54,
+            "relevanceScore": 1.333,
+            "tokenMatchRatio": 1.333,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 160,
+            "engagementCapped": 2.207,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-openrouter-tool-routing-mention",
+            "mode": "relevance",
+            "totalScore": 1335.175,
+            "relevanceScore": 1.333,
+            "tokenMatchRatio": 1.333,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 68.5,
+            "engagementCapped": 1.842,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-openrouter-tool-routing-keyword",
+            "mode": "relevance",
+            "totalScore": 1168.547,
+            "relevanceScore": 1.167,
+            "tokenMatchRatio": 1.167,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 75,
+            "engagementCapped": 1.881,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-openrouter-tool-routing-operator",
+            "mode": "relevance",
+            "totalScore": 1001.993,
+            "relevanceScore": 1,
+            "tokenMatchRatio": 1,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 97.5,
+            "engagementCapped": 1.993,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-openrouter-tool-routing-official-terse",
+            "mode": "relevance",
+            "totalScore": 352.473,
+            "relevanceScore": 0.35,
+            "tokenMatchRatio": 0,
+            "exactPhraseScore": 0,
+            "authorityScore": 0.35,
+            "engagementRaw": 296.5,
+            "engagementCapped": 2.473,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-openrouter-tool-routing-unrelated",
+            "mode": "relevance",
+            "totalScore": 4.111,
+            "relevanceScore": 0,
+            "tokenMatchRatio": 0,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 12900,
+            "engagementCapped": 4.111,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "metrics": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.956,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "sourceDiversityAt20": 1,
+        "officialCommunityCoverageAt20": 1,
+        "viralOffTopicAt10": 0,
+        "lowConfidenceLabelRate": 0
+      },
+      "missingMustHaveCandidateIds": []
+    },
+    {
+      "caseId": "x-prisma-mcp-database-tools",
+      "rankedCandidateIds": [
+        "x-prisma-mcp-database-tools-general",
+        "x-prisma-mcp-database-tools-keyword",
+        "x-prisma-mcp-database-tools-mention",
+        "x-prisma-mcp-database-tools-operator",
+        "x-prisma-mcp-database-tools-official-terse",
+        "x-prisma-mcp-database-tools-unrelated"
+      ],
+      "rankingMetadata": {
+        "rankingMode": "relevance",
+        "queryCount": 4,
+        "topBreakdowns": [
+          {
+            "candidateId": "x-prisma-mcp-database-tools-general",
+            "mode": "relevance",
+            "totalScore": 918.873,
+            "relevanceScore": 0.917,
+            "tokenMatchRatio": 0.917,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 160,
+            "engagementCapped": 2.207,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-prisma-mcp-database-tools-keyword",
+            "mode": "relevance",
+            "totalScore": 918.547,
+            "relevanceScore": 0.917,
+            "tokenMatchRatio": 0.917,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 75,
+            "engagementCapped": 1.881,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-prisma-mcp-database-tools-mention",
+            "mode": "relevance",
+            "totalScore": 918.509,
+            "relevanceScore": 0.917,
+            "tokenMatchRatio": 0.917,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 68.5,
+            "engagementCapped": 1.842,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-prisma-mcp-database-tools-operator",
+            "mode": "relevance",
+            "totalScore": 751.993,
+            "relevanceScore": 0.75,
+            "tokenMatchRatio": 0.75,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 97.5,
+            "engagementCapped": 1.993,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-prisma-mcp-database-tools-official-terse",
+            "mode": "relevance",
+            "totalScore": 352.473,
+            "relevanceScore": 0.35,
+            "tokenMatchRatio": 0,
+            "exactPhraseScore": 0,
+            "authorityScore": 0.35,
+            "engagementRaw": 296.5,
+            "engagementCapped": 2.473,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-prisma-mcp-database-tools-unrelated",
+            "mode": "relevance",
+            "totalScore": 4.111,
+            "relevanceScore": 0,
+            "tokenMatchRatio": 0,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 12900,
+            "engagementCapped": 4.111,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "metrics": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.948,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "sourceDiversityAt20": 1,
+        "officialCommunityCoverageAt20": 1,
+        "viralOffTopicAt10": 0,
+        "lowConfidenceLabelRate": 0
+      },
+      "missingMustHaveCandidateIds": []
+    },
+    {
+      "caseId": "x-kubernetes-agent-ops",
+      "rankedCandidateIds": [
+        "x-kubernetes-agent-ops-general",
+        "x-kubernetes-agent-ops-mention",
+        "x-kubernetes-agent-ops-keyword",
+        "x-kubernetes-agent-ops-operator",
+        "x-kubernetes-agent-ops-official-terse",
+        "x-kubernetes-agent-ops-unrelated"
+      ],
+      "rankingMetadata": {
+        "rankingMode": "relevance",
+        "queryCount": 4,
+        "topBreakdowns": [
+          {
+            "candidateId": "x-kubernetes-agent-ops-general",
+            "mode": "relevance",
+            "totalScore": 1085.54,
+            "relevanceScore": 1.083,
+            "tokenMatchRatio": 1.083,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 160,
+            "engagementCapped": 2.207,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-kubernetes-agent-ops-mention",
+            "mode": "relevance",
+            "totalScore": 1085.175,
+            "relevanceScore": 1.083,
+            "tokenMatchRatio": 1.083,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 68.5,
+            "engagementCapped": 1.842,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-kubernetes-agent-ops-keyword",
+            "mode": "relevance",
+            "totalScore": 918.547,
+            "relevanceScore": 0.917,
+            "tokenMatchRatio": 0.917,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 75,
+            "engagementCapped": 1.881,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-kubernetes-agent-ops-operator",
+            "mode": "relevance",
+            "totalScore": 501.993,
+            "relevanceScore": 0.5,
+            "tokenMatchRatio": 0.5,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 97.5,
+            "engagementCapped": 1.993,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "x-kubernetes-agent-ops-official-terse",
+            "mode": "relevance",
+            "totalScore": 352.473,
+            "relevanceScore": 0.35,
+            "tokenMatchRatio": 0,
+            "exactPhraseScore": 0,
+            "authorityScore": 0.35,
+            "engagementRaw": 296.5,
+            "engagementCapped": 2.473,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "x-kubernetes-agent-ops-unrelated",
+            "mode": "relevance",
+            "totalScore": 4.111,
+            "relevanceScore": 0,
+            "tokenMatchRatio": 0,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 12900,
+            "engagementCapped": 4.111,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "metrics": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.956,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "sourceDiversityAt20": 1,
+        "officialCommunityCoverageAt20": 1,
+        "viralOffTopicAt10": 0,
+        "lowConfidenceLabelRate": 0
+      },
+      "missingMustHaveCandidateIds": []
+    },
+    {
+      "caseId": "mixed-copilot-workspace-agent-rollout",
+      "rankedCandidateIds": [
+        "mixed-copilot-workspace-agent-rollout-checklist",
+        "mixed-copilot-workspace-agent-rollout-operator",
+        "mixed-copilot-workspace-agent-rollout-mention",
+        "mixed-copilot-workspace-agent-rollout-reddit-terse",
+        "mixed-copilot-workspace-agent-rollout-official",
+        "mixed-copilot-workspace-agent-rollout-unrelated"
+      ],
+      "rankingMetadata": {
+        "rankingMode": "relevance",
+        "queryCount": 3,
+        "topBreakdowns": [
+          {
+            "candidateId": "mixed-copilot-workspace-agent-rollout-checklist",
+            "mode": "relevance",
+            "totalScore": 1085.442,
+            "relevanceScore": 1.083,
+            "tokenMatchRatio": 1.083,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 127.5,
+            "engagementCapped": 2.109,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "mixed-copilot-workspace-agent-rollout-operator",
+            "mode": "relevance",
+            "totalScore": 1001.796,
+            "relevanceScore": 1,
+            "tokenMatchRatio": 1,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 61.5,
+            "engagementCapped": 1.796,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "mixed-copilot-workspace-agent-rollout-mention",
+            "mode": "relevance",
+            "totalScore": 918.556,
+            "relevanceScore": 0.917,
+            "tokenMatchRatio": 0.917,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 76.5,
+            "engagementCapped": 1.889,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match"
+            ]
+          },
+          {
+            "candidateId": "mixed-copilot-workspace-agent-rollout-reddit-terse",
+            "mode": "relevance",
+            "totalScore": 752.215,
+            "relevanceScore": 0.75,
+            "tokenMatchRatio": 0.75,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 163,
+            "engagementCapped": 2.215,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "mixed-copilot-workspace-agent-rollout-official",
+            "mode": "relevance",
+            "totalScore": 685.945,
+            "relevanceScore": 0.683,
+            "tokenMatchRatio": 0.333,
+            "exactPhraseScore": 0,
+            "authorityScore": 0.35,
+            "engagementRaw": 408,
+            "engagementCapped": 2.612,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "trusted_handle_match",
+              "strong_engagement_signal"
+            ]
+          },
+          {
+            "candidateId": "mixed-copilot-workspace-agent-rollout-unrelated",
+            "mode": "relevance",
+            "totalScore": 336.367,
+            "relevanceScore": 0.333,
+            "tokenMatchRatio": 0.333,
+            "exactPhraseScore": 0,
+            "authorityScore": 0,
+            "engagementRaw": 1079,
+            "engagementCapped": 3.033,
+            "freshnessScore": 0,
+            "reasonCodes": [
+              "query_token_match",
+              "strong_engagement_signal"
+            ]
+          }
+        ]
+      },
+      "metrics": {
+        "precisionAt10": 0.833,
+        "ndcgAt20": 0.944,
+        "mustHaveRecallAt20": 1,
+        "duplicateRateAt20": 0,
+        "sourceDiversityAt20": 1,
+        "officialCommunityCoverageAt20": 1,
+        "viralOffTopicAt10": 0,
+        "lowConfidenceLabelRate": 0
+      },
+      "missingMustHaveCandidateIds": []
+    }
+  ],
+  "evalRunId": "source-ranking-eval-v1",
+  "gitShaPolicy": "release pipeline records the exact git sha next to this deterministic report",
+  "datasetPath": "ops/evals/source-ranking-eval-dataset.v1.json",
+  "model": {
+    "judge": "none",
+    "rankingProvider": "source-item-ranking-policy",
+    "liveNetwork": false
+  }
+}

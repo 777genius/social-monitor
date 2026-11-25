@@ -1,0 +1,9 @@
+name: social-monitor-local
+
+services:
+  agent-runtime:
+    environment:
+      AGENT_RUNTIME_PROVIDER: codex
+      AGENT_RUNTIME_CODEX_AUTH_JSON_PATH: /run/secrets/codex-auth.json
+    volumes:
+      - ${CODEX_AUTH_JSON_HOST_PATH:-${HOME}/.codex/auth.json}:/run/secrets/codex-auth.json:ro

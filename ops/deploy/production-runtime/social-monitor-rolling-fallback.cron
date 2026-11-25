@@ -1,0 +1,4 @@
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+
+15 4,8,12,16,20 * * * root timeout 7500 /var/data/social-monitor/control/rolling-containerd-fallback.sh >> /var/data/social-monitor/artifacts/rolling-summary/cron-fallback.log 2>&1

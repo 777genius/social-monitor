@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "artifactFormat": "collection-integrity-overrides-v1",
+  "records": [
+    {
+      "collectionDate": "2026-07-04",
+      "status": "collection_integrity_failed",
+      "reason": "Historical feed_items for this UTC day reference deleted or unavailable interests and source bindings, and were collected before feed projection snapshots were persisted.",
+      "evidence": {
+        "feedItemCount": 308,
+        "orphanInterestCount": 308,
+        "orphanSourceBindingCount": 308
+      },
+      "action": "Exclude from clean ranking and summary eval baselines until the day is backfilled from trustworthy source-binding snapshots or recollected."
+    }
+  ]
+}

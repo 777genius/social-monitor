@@ -1,0 +1,442 @@
+import { buildProviders, xCollectorConfigured } from "./clean-real-day-source-providers";
+import { ArticleContentSourceItemEnrichmentAdapter } from "@social-monitor/ingestion/adapters/enrichment/article-content-source-item-enrichment.adapter";
+import { HttpReadabilityArticleContentExtractor } from "@social-monitor/ingestion/adapters/enrichment/http-readability-article-content-extractor";
+import { ConversationUnitProjectionAdapter } from "@social-monitor/conversation/adapters/ingestion/conversation-unit-projection.adapter";
+import { PrismaConversationUnitRepository } from "@social-monitor/conversation/adapters/persistence/prisma/prisma-conversation-unit.repository";
+import { PrismaFeedProjectionAdapter } from "@social-monitor/feed/adapters/persistence/prisma/prisma-feed-projection.adapter";
+import { PrismaSourceEngagementProjectionAdapter } from "@social-monitor/feed/adapters/persistence/prisma/prisma-source-engagement-projection.adapter";
+import { PrismaScanAttemptRepository } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-scan-attempt.repository";
+import { PrismaScanFailureQueueAdapter } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-scan-failure-queue.adapter";
+import { PrismaScanLeaseAdapter } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-scan-lease.adapter";
+import { PrismaSourceItemRepository } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-source-item.repository";
+import { PrismaSourceCandidateMemoryRepository } from "@social-monitor/ingestion/adapters/persistence/prisma/prisma-source-candidate-memory.repository";
+import { CircuitBreakerSourceFetcherAdapter } from "@social-monitor/ingestion/adapters/source/circuit-breaker-source-fetcher.adapter";
+import { InMemorySourceProviderRegistry } from "@social-monitor/ingestion/adapters/source/in-memory-source-provider.registry";
+import { RegistrySourceFetcherAdapter } from "@social-monitor/ingestion/adapters/source/registry-source-fetcher.adapter";
+import { SocialResearchSourceQueryPlannerAdapter } from "@social-monitor/ingestion/adapters/source/social-research-source-query-planner.adapter";
+import { sourceReadinessProfiles } from "@social-monitor/ingestion/adapters/source/source-readiness-profiles";
+import { ExecuteScanUseCase } from "@social-monitor/ingestion/features/execute-scan/execute-scan.use-case";
+import {
+  SourceFetchError,
+  type SourceQuery,
+  type SourceRuntimeConfig,
+} from "@social-monitor/ingestion/ports";
+import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
+import { runWithTenantDatabaseAccess } from "@social-monitor/platform-persistence";
+import {
+  CryptoIdGenerator,
+  SystemClock,
+  tenantId,
+  workspaceId,
+} from "@social-monitor/shared-kernel";
+
+import type { PrismaIngestionWorkerConnection } from "../../apps/ingestion-worker/src/adapters/persistence/prisma-ingestion-worker-connection";
+import type {
+  CleanRealDayCollectionProviderKey,
+  CleanRealDayCollectionReport,
+} from "./clean-real-day-collection-report";
+import { CleanRealDaySourceConfigReader, cleanDaySourceQuery } from "./clean-real-day-source-config-reader";
+import {
+  composeCollectionScanExecution,
+  type CollectionScanExecution,
+} from "./collection-scan-execution";
+import {
+  configuredProviderCollectionTargetItemCount,
+  durableSnapshotReuseProviderCollectionObservation,
+  providerCollectionFreshnessReferenceAt,
+  successfulProviderCollectionObservation,
+  unavailableProviderCollectionObservation,
+} from "./provider-collection-observability";
+import { selectPreferredProviderScanResult } from "./provider-scan-result-selection";
+import { providerMeetsProductionBlockingPolicy } from "./production-collection-quality-policy";
+import { runTargetedProviderCollection } from "./targeted-provider-collection";
+import {
+  fingerprint,
+  message,
+} from "./yesterday-social-replay-support";
+import {
+  successfulXCollectionRetryPlanKey,
+  shouldStopSuccessfulDuplicateXRetry,
+  xCollectionReadinessRetryPolicy,
+} from "./x-collection-retry-policy";
+import {
+  reuseGitHubTrendingDurableSnapshot,
+  type GitHubTrendingDurableSnapshotReader,
+} from "./github-trending-durable-snapshot-reuse";
+
+export type CleanRealDaySourceBindingTarget = {
+  readonly tenantId: string;
+  readonly workspaceId: string;
+  readonly interestId: string;
+  readonly interestQuery: string;
+  readonly sourceBindingId: string;
+  readonly scanPolicyId: string;
+  readonly providerKey: CleanRealDayCollectionProviderKey;
+  readonly config: SourceRuntimeConfig;
+  readonly sourceQuery: SourceQuery;
+};
+
+type ProviderScanResult = Omit<
+  CleanRealDayCollectionReport["scans"][number],
+  "attemptCount"
+>;
+
+type FeedProjectionClient = ConstructorParameters<
+  typeof PrismaFeedProjectionAdapter
+>[0];
+
+type CleanRealDayFeedProjectionConnection = Pick<
+  PrismaIngestionWorkerConnection,
+  "feedItem" | "feedSignalBaselineSample" | "$transaction"
+>;
+
+type TransactionalFeedProjectionClient = FeedProjectionClient & {
+  readonly $transaction: <Result>(
+    operation: (transaction: FeedProjectionClient) => Promise<Result>,
+    options: { readonly isolationLevel: "Serializable" },
+  ) => Promise<Result>;
+};
+
+type AcquisitionPlanParams = {
+  readonly targets: readonly CleanRealDaySourceBindingTarget[];
+  readonly closedRequestedUtcDay: boolean;
+  readonly collectLive: (
+    target: CleanRealDaySourceBindingTarget,
+  ) => Promise<ProviderScanResult>;
+  readonly collectDurableSnapshot: (
+    target: CleanRealDaySourceBindingTarget,
+  ) => Promise<ProviderScanResult>;
+  readonly waitForXReadiness: boolean;
+};
+
+export const runCleanRealDayProviderAcquisitionPlan = async (
+  params: AcquisitionPlanParams,
+): Promise<CleanRealDayCollectionReport["scans"]> => {
+  const outcomes = await runTargetedProviderCollection({
+    targets: params.targets,
+    retryBudget: 2,
+    collect: (target) =>
+      shouldReuseDurableSnapshot(target, params.closedRequestedUtcDay)
+        ? params.collectDurableSnapshot(target)
+        : params.collectLive(target),
+    retryDisposition: (result) =>
+      result.acquisitionMode === "durable_snapshot_reuse" ||
+      providerMeetsProductionBlockingPolicy(result)
+        ? "none"
+        : result.observability.slo.retryDisposition,
+    selectPreferredResult: selectPreferredProviderScanResult,
+    retryPlanKey: ({ target }) => successfulXCollectionRetryPlanKey(target),
+    stopDuplicatePlanRetry: shouldStopSuccessfulDuplicateXRetry,
+    readinessRetry: xCollectionReadinessRetryPolicy(
+      params.waitForXReadiness,
+    ),
+  });
+
+  return outcomes.map((outcome) => ({
+    ...outcome.result,
+    attemptCount: outcome.attempts.length,
+    ...(outcome.retryStopReason === undefined
+      ? {}
+      : { retryStopReason: outcome.retryStopReason }),
+  }));
+};
+
+export const executeCleanRealDayProviderAcquisition = async (params: {
+  readonly targets: readonly CleanRealDaySourceBindingTarget[];
+  readonly connection: PrismaIngestionWorkerConnection;
+  readonly durableSnapshotReader: GitHubTrendingDurableSnapshotReader;
+  readonly requestedUtcDay: string;
+  readonly targetWindowEndedAt: Date;
+  readonly runStartedAt: Date;
+  readonly waitForXReadiness: boolean;
+  readonly scanExecution?: CollectionScanExecution;
+}): Promise<CleanRealDayCollectionReport["scans"]> => {
+  const closedRequestedUtcDay = requestedUtcDayIsClosed(
+    params.runStartedAt,
+    params.targetWindowEndedAt,
+  );
+  const freshnessReferenceAt = providerCollectionFreshnessReferenceAt({
+    observedAt: params.runStartedAt,
+    targetWindowEndedAt: params.targetWindowEndedAt,
+  });
+  const liveTargets = params.targets.filter(
+    (target) => !shouldReuseDurableSnapshot(target, closedRequestedUtcDay),
+  );
+  const liveRuntime =
+    liveTargets.length === 0
+      ? undefined
+      : buildLiveRuntime({
+          connection: params.connection,
+          targets: params.targets,
+          includeGitHub: !closedRequestedUtcDay,
+          scanExecution: params.scanExecution,
+        });
+
+  return runCleanRealDayProviderAcquisitionPlan({
+    targets: params.targets,
+    closedRequestedUtcDay,
+    waitForXReadiness: params.waitForXReadiness,
+    collectLive: (target) => {
+      if (liveRuntime === undefined) {
+        throw new Error("Live provider acquisition runtime is unavailable");
+      }
+      return runCleanRealDayLiveTargetWithDatabaseAccess(target, () =>
+        executeLiveTargetScan(
+          target,
+          liveRuntime.executeScan,
+          freshnessReferenceAt,
+          liveRuntime.scanExecution,
+        ),
+      );
+    },
+    collectDurableSnapshot: (target) =>
+      acquireDurableGitHubSnapshot({
+        target,
+        reader: params.durableSnapshotReader,
+        requestedUtcDay: params.requestedUtcDay,
+        observedThrough: params.runStartedAt,
+        targetWindowEndedAt: params.targetWindowEndedAt,
+      }),
+  });
+};
+
+export const requestedUtcDayIsClosed = (
+  runStartedAt: Date,
+  targetWindowEndedAt: Date,
+): boolean =>
+  Number.isFinite(runStartedAt.getTime()) &&
+  Number.isFinite(targetWindowEndedAt.getTime()) &&
+  runStartedAt.getTime() >= targetWindowEndedAt.getTime();
+
+const acquireDurableGitHubSnapshot = async (params: {
+  readonly target: CleanRealDaySourceBindingTarget;
+  readonly reader: GitHubTrendingDurableSnapshotReader;
+  readonly requestedUtcDay: string;
+  readonly observedThrough: Date;
+  readonly targetWindowEndedAt: Date;
+}): Promise<ProviderScanResult> => {
+  const bindingFingerprint = fingerprint(params.target.sourceBindingId);
+  try {
+    const durableSnapshotProof = await reuseGitHubTrendingDurableSnapshot({
+      reader: params.reader,
+      tenantId: params.target.tenantId,
+      workspaceId: params.target.workspaceId,
+      sourceBindingId: params.target.sourceBindingId,
+      requestedUtcDay: params.requestedUtcDay,
+      observedThrough: params.observedThrough,
+    });
+    return {
+      providerKey: "github-trending-page",
+      bindingFingerprint,
+      acquisitionMode: "durable_snapshot_reuse",
+      status: "succeeded",
+      fetched: 0,
+      inserted: 0,
+      projected: 0,
+      skippedDuplicates: 0,
+      warningCount: 0,
+      observability: durableSnapshotReuseProviderCollectionObservation({
+        itemCount: durableSnapshotProof.rows.length,
+        newestPublishedAt: new Date(durableSnapshotProof.group.publishedAt),
+        targetWindowEndedAt: params.targetWindowEndedAt,
+      }),
+      durableSnapshotProof,
+    };
+  } catch (error) {
+    return {
+      providerKey: "github-trending-page",
+      bindingFingerprint,
+      acquisitionMode: "durable_snapshot_reuse",
+      status: "failed",
+      fetched: 0,
+      inserted: 0,
+      projected: 0,
+      skippedDuplicates: 0,
+      warningCount: 0,
+      observability: unavailableProviderCollectionObservation({
+        targetItemCount: 10,
+        status: "failed",
+        acquisitionMode: "durable_snapshot_reuse",
+        targetWindowEndedAt: params.targetWindowEndedAt,
+      }),
+      failureFingerprint: fingerprint(message(error)),
+    };
+  }
+};
+
+export const buildLiveRuntime = (params: {
+  readonly connection: PrismaIngestionWorkerConnection;
+  readonly targets: readonly CleanRealDaySourceBindingTarget[];
+  readonly includeGitHub: boolean;
+  readonly scanExecution?: CollectionScanExecution;
+}): {
+  readonly executeScan: ExecuteScanUseCase;
+  readonly scanExecution: CollectionScanExecution;
+} => {
+  const clock = new SystemClock();
+  const ids = new CryptoIdGenerator();
+  const scanExecution = composeCollectionScanExecution(
+    params.connection, ids, clock, params.scanExecution,
+  );
+  const executeScan = new ExecuteScanUseCase(
+    new CircuitBreakerSourceFetcherAdapter(
+      new RegistrySourceFetcherAdapter(
+        new InMemorySourceProviderRegistry(
+          buildProviders(clock, params.includeGitHub),
+          sourceReadinessProfiles,
+        ),
+        new CleanRealDaySourceConfigReader(params.targets, clock),
+        new SocialResearchSourceQueryPlannerAdapter(),
+      ),
+      clock,
+      { failureThreshold: 3, cooldownSeconds: 60 },
+    ),
+    new PrismaSourceItemRepository(params.connection),
+    new PrismaFeedProjectionAdapter(
+      cleanRealDayFeedProjectionClient(params.connection),
+      ids,
+    ),
+    new PrismaScanAttemptRepository(params.connection),
+    scanExecution.scanCursors,
+    scanExecution.reporter,
+    new PrismaScanFailureQueueAdapter(
+      params.connection,
+      new InMemoryMetricsRecorder(),
+      ids,
+    ),
+    new PrismaScanLeaseAdapter(params.connection, ids),
+    ids,
+    clock,
+    undefined,
+    new ArticleContentSourceItemEnrichmentAdapter(new HttpReadabilityArticleContentExtractor()),
+    new ConversationUnitProjectionAdapter(
+      new PrismaConversationUnitRepository(params.connection, ids),
+      ids,
+    ),
+    new PrismaSourceCandidateMemoryRepository(params.connection, ids),
+    new PrismaSourceEngagementProjectionAdapter(params.connection, ids),
+  );
+  return { executeScan, scanExecution };
+};
+
+export const runCleanRealDayLiveTargetWithDatabaseAccess = <Result>(
+  target: Pick<CleanRealDaySourceBindingTarget, "tenantId" | "workspaceId">,
+  operation: () => Result,
+): Result => runWithTenantDatabaseAccess(target, operation);
+
+export const cleanRealDayFeedProjectionClient = (
+  connection: CleanRealDayFeedProjectionConnection,
+): TransactionalFeedProjectionClient => ({
+  feedItem: connection.feedItem,
+  feedSignalBaselineSample: connection.feedSignalBaselineSample,
+  $transaction: (operation, options) =>
+    connection.$transaction(operation, {
+      ...options,
+      maxWait: 30_000,
+      timeout: 300_000,
+    }),
+});
+
+const executeLiveTargetScan = async (
+  target: CleanRealDaySourceBindingTarget,
+  executeScan: ExecuteScanUseCase,
+  targetWindowEndedAt: Date,
+  scanExecution: CollectionScanExecution,
+): Promise<ProviderScanResult> => {
+  const bindingFingerprint = fingerprint(target.sourceBindingId);
+  if (target.providerKey === "x-twitter" && !xCollectorConfigured()) {
+    return {
+      providerKey: target.providerKey,
+      bindingFingerprint,
+      acquisitionMode: "live_collection",
+      status: "skipped",
+      fetched: 0,
+      inserted: 0,
+      projected: 0,
+      skippedDuplicates: 0,
+      warningCount: 0,
+      observability: unavailableProviderCollectionObservation({
+        targetItemCount: configuredProviderCollectionTargetItemCount(
+          target.config,
+        ),
+        status: "skipped",
+        targetWindowEndedAt,
+      }),
+      failureFingerprint: fingerprint("x_collector_not_configured"),
+    };
+  }
+  const scanJobId = scanExecution.scanJobIdForAttempt({
+    tenantId: tenantId(target.tenantId),
+    workspaceId: workspaceId(target.workspaceId),
+    sourceBindingId: target.sourceBindingId,
+    scanPolicyId: target.scanPolicyId,
+  });
+  const result = await executeScan.execute({
+    tenantId: tenantId(target.tenantId),
+    workspaceId: workspaceId(target.workspaceId),
+    scanJobId,
+    interestId: target.interestId,
+    sourceBindingId: target.sourceBindingId,
+    scanPolicyId: target.scanPolicyId,
+    providerKey: target.providerKey,
+    sourceQuery: cleanDaySourceQuery(target.providerKey, target.sourceQuery),
+    interestQuerySnapshot: target.interestQuery,
+    correlationId: scanExecution.correlationId,
+    causationId: scanExecution.causationId,
+    retryBudget: 0,
+    leaseTtlSeconds: 600,
+  });
+  if (!result.ok) {
+    const rateLimited =
+      result.error instanceof SourceFetchError &&
+      result.error.kind === "rate_limited";
+    return {
+      providerKey: target.providerKey,
+      bindingFingerprint,
+      acquisitionMode: "live_collection",
+      status: "failed",
+      fetched: 0,
+      inserted: 0,
+      projected: 0,
+      skippedDuplicates: 0,
+      warningCount: 0,
+      observability: unavailableProviderCollectionObservation({
+        targetItemCount: configuredProviderCollectionTargetItemCount(
+          target.config,
+        ),
+        status: "failed",
+        rateLimited,
+        failureKind:
+          result.error instanceof SourceFetchError
+            ? result.error.kind
+            : "unknown",
+        targetWindowEndedAt,
+      }),
+      failureFingerprint: fingerprint(message(result.error)),
+    };
+  }
+  return {
+    providerKey: target.providerKey,
+    bindingFingerprint,
+    acquisitionMode: "live_collection",
+    status: "succeeded",
+    fetched: result.value.fetched,
+    inserted: result.value.inserted,
+    projected: result.value.projected,
+    skippedDuplicates: result.value.skippedDuplicates,
+    warningCount: result.value.warnings.length,
+    observability: successfulProviderCollectionObservation({
+      telemetry: result.value.telemetry,
+      fetched: result.value.fetched,
+      inserted: result.value.inserted,
+      storageDuplicates: result.value.skippedDuplicates,
+      targetWindowEndedAt,
+    }),
+  };
+};
+
+const shouldReuseDurableSnapshot = (
+  target: CleanRealDaySourceBindingTarget,
+  closedRequestedUtcDay: boolean,
+): boolean =>
+  closedRequestedUtcDay && target.providerKey === "github-trending-page";

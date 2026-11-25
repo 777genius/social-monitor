@@ -1,0 +1,160 @@
+{
+  "schemaVersion": 1,
+  "artifactFormat": "reader-summary-production-day-run-v1",
+  "generatedBy": "npm run run:reader-summary-production-day",
+  "requestedDate": "2026-07-10",
+  "collectionDate": "2026-07-10",
+  "model": {
+    "liveCollection": false,
+    "summaryModel": "agent-runtime",
+    "physicalModel": "gpt-5.5",
+    "reasoningEffort": "xhigh",
+    "topicLabeler": "agent-runtime",
+    "writesProductionData": true,
+    "allowDegraded": false,
+    "allowHistorical": false,
+    "rawProviderPayloadPersistedInReport": false,
+    "rawPostTextPersistedInReport": false
+  },
+  "inputs": {
+    "periodStartedAt": "2026-07-10T00:00:00.000Z",
+    "periodEndedAt": "2026-07-11T00:00:00.000Z",
+    "tenantFingerprint": "ec29f9d19b2f",
+    "workspaceFingerprint": "c27aefd6f61b",
+    "evidencePath": "/var/folders/7b/ydmc_b0n251bc4hss4tz8y880000gn/T/social-monitor/reader-summary-production-day/2026-07-10/durable-reader-summary-2026-07-10.v1.json",
+    "frontendFixturePath": "/var/folders/7b/ydmc_b0n251bc4hss4tz8y880000gn/T/social-monitor/reader-summary-production-day/2026-07-10/frontend-reader-summary-2026-07-10.fixture.v1.json"
+  },
+  "run": {
+    "startedAt": "2026-07-11T15:58:28.114Z",
+    "completedAt": "2026-07-11T16:06:05.446Z"
+  },
+  "summary": {
+    "evidenceArtifactId": null,
+    "readerSummaryId": null,
+    "readerSummaryJobId": null,
+    "headline": null
+  },
+  "steps": [
+    {
+      "id": "migrate",
+      "command": "npm run migrate:deploy",
+      "status": "passed",
+      "durationMs": 2463,
+      "exitCode": 0
+    },
+    {
+      "id": "collect",
+      "command": "npm run run:reader-summary-clean-real-day-collection -- skipped",
+      "status": "skipped",
+      "durationMs": 0,
+      "exitCode": null
+    },
+    {
+      "id": "collection-quality",
+      "command": "npm run check:yesterday-social-collection-quality -- --update --date 2026-07-10 --write-failed-report",
+      "status": "passed",
+      "durationMs": 1647,
+      "exitCode": 0
+    },
+    {
+      "id": "durable-reader-summary",
+      "command": "npm run capture:durable-reader-summary",
+      "status": "failed",
+      "durationMs": 438076,
+      "exitCode": 1
+    },
+    {
+      "id": "artifact-quality",
+      "command": "npm run check:yesterday-reader-summary-artifact-quality -- --update --date 2026-07-10",
+      "status": "passed",
+      "durationMs": 5778,
+      "exitCode": 0
+    },
+    {
+      "id": "quality-dashboard",
+      "command": "npm run check:reader-summary-quality-dashboard -- --update --date 2026-07-10",
+      "status": "passed",
+      "durationMs": 2928,
+      "exitCode": 0
+    },
+    {
+      "id": "top-read-ranking",
+      "command": "npm run check:reader-summary-top-read-ranking -- --update --date 2026-07-10",
+      "status": "passed",
+      "durationMs": 2261,
+      "exitCode": 0
+    },
+    {
+      "id": "source-quality-trace",
+      "command": "npm run check:reader-summary-source-quality-trace -- --update --date 2026-07-10",
+      "status": "passed",
+      "durationMs": 4155,
+      "exitCode": 0
+    },
+    {
+      "id": "clean-day-e2e",
+      "command": "npm run check:reader-summary-clean-real-day-e2e -- skipped for historical production-day date",
+      "status": "skipped",
+      "durationMs": 0,
+      "exitCode": null
+    }
+  ],
+  "stats": {
+    "collectedFeedItemCount": 840,
+    "publishedInsideWindowFeedItemCount": 840,
+    "observedButPublishedOutsideWindowFeedItemCount": 403,
+    "duplicateFeedItemCount": 0,
+    "lowRelevanceFeedItemCount": 0,
+    "summaryCandidateFeedItemCount": 831,
+    "selectedFeedItemCount": null,
+    "topReadCount": null,
+    "providerCounts": {
+      "github-trending-page": 9,
+      "hacker-news": 93,
+      "reddit": 341,
+      "rss": 318,
+      "x-twitter": 79
+    },
+    "xAccountCount": 2,
+    "xAccountUsageEventCount": 110,
+    "xAccounts": [
+      {
+        "accountFingerprint": "305b9c91ff51",
+        "priorityRank": 100,
+        "prioritySource": "account_profile",
+        "dailyRequests": 29,
+        "dailyTweets": 387,
+        "passSucceededCount": 29,
+        "passFailedCount": 0,
+        "rateLimitCount": 0,
+        "cooldownObservedCount": 0,
+        "lastUsedAt": "2026-07-11 15:46:01",
+        "cooldownUntil": null
+      },
+      {
+        "accountFingerprint": "8ca1818c55b8",
+        "priorityRank": 100,
+        "prioritySource": "account_profile",
+        "dailyRequests": 26,
+        "dailyTweets": 317,
+        "passSucceededCount": 26,
+        "passFailedCount": 0,
+        "rateLimitCount": 2,
+        "cooldownObservedCount": 0,
+        "lastUsedAt": "2026-07-11 15:46:00",
+        "cooldownUntil": null
+      }
+    ]
+  },
+  "qualityGates": {
+    "allRequiredStepsPassed": false,
+    "degradedFailuresAreExplicitlyAllowed": false,
+    "collectionQualityReported": true,
+    "durableSummaryCaptured": false,
+    "durableSummaryPersisted": false,
+    "xAccountPoolReported": true,
+    "reportDateMatchesRequestedDate": true,
+    "noRawSecretFragments": true
+  },
+  "blockingPassed": false
+}

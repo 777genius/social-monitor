@@ -1,0 +1,998 @@
+import { type INestApplication, ValidationPipe } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
+import request from 'supertest';
+
+import { AppModule } from '../../apps/api-gateway/src/app.module';
+import { InMemoryFeedItemReadRepository } from '../../libs/feed/adapters/persistence/in-memory-feed-item-read.repository';
+import { deterministicTestUuid } from './support/deterministic-test-uuid';
+import { createFeedItemsListSeeders, githubRepositoryTrendMetadata } from
+  './support/feed-items-list-seeders';
+
+describe('Feed items list (e2e)', () => {
+  let app: INestApplication;
+  let repository: InMemoryFeedItemReadRepository;
+  const { seedFeedItem, seedRedditItems, seedHackerNewsItem } =
+    createFeedItemsListSeeders(() => repository);
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+
+    app = moduleRef.createNestApplication();
+    repository = moduleRef.get(InMemoryFeedItemReadRepository);
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    );
+    await app.init();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('returns tenant-scoped paginated feed items ordered by publish time', async () => {
+    seedFeedItem({
+      id: 'feed-1',
+      sourceItemId: 'source-1',
+      tenant: deterministicTestUuid('tenant-feed-e2e'),
+      workspace: deterministicTestUuid('workspace-feed-e2e'),
+      publishedAt: new Date('2026-06-05T10:00:00.000Z'),
+    });
+    seedFeedItem({
+      id: 'feed-2',
+      sourceItemId: 'source-2',
+      tenant: deterministicTestUuid('tenant-feed-e2e'),
+      workspace: deterministicTestUuid('workspace-feed-e2e'),
+      publishedAt: new Date('2026-06-05T11:00:00.000Z'),
+    });
+    seedFeedItem({
+      id: 'feed-3',
+      sourceItemId: 'source-3',
+      tenant: 'other-tenant',
+      workspace: deterministicTestUuid('workspace-feed-e2e'),
+      publishedAt: new Date('2026-06-05T12:00:00.000Z'),
+    });
+
+    const missingRole = await request(app.getHttpServer())
+      .get('/feed/items')
+      .query({ limit: 1 })
+      .set('x-tenant-id', deterministicTestUuid('tenant-feed-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-feed-e2e'))
+      .expect(403);
+
+    expect(missingRole.body).toMatchObject({
+      code: 'authorization.denied',
+      detail: 'Workspace role is required',
+      details: {
+        action: 'feed.read',
+      },
+    });
+
+    const firstPage = await request(app.getHttpServer())
+      .get('/feed/items')
+      .query({ limit: 1 })
+      .set('x-tenant-id', deterministicTestUuid('tenant-feed-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-feed-e2e'))
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(firstPage.body).toMatchObject({
+      items: [
+        expect.objectContaining({
+          id: 'feed-2',
+          sourceItemId: 'source-2',
+          canonicalUrl: 'https://example.test/feed-2',
+          publishedAt: '2026-06-05T11:00:00.000Z',
+        }),
+      ],
+      nextCursor: expect.any(String),
+      sourceBreakdown: {
+        totalItems: 1,
+        providerCount: 1,
+        sourceCount: 1,
+        sources: [
+          expect.objectContaining({
+            providerKey: 'rss',
+            sourceKey: 'binding:binding-feed-e2e',
+            contentType: 'item',
+            sourceBindingIds: ['binding-feed-e2e'],
+            itemCount: 1,
+            latestObservedAt: '2026-06-05T11:00:00.000Z',
+            latestPublishedAt: '2026-06-05T11:00:00.000Z',
+            sampleItemIds: ['feed-2'],
+          }),
+        ],
+      },
+    });
+
+    const secondPage = await request(app.getHttpServer())
+      .get('/feed/items')
+      .query({ limit: 10, cursor: firstPage.body.nextCursor })
+      .set('x-tenant-id', deterministicTestUuid('tenant-feed-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-feed-e2e'))
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(secondPage.body).toMatchObject({
+      items: [
+        expect.objectContaining({
+          id: 'feed-1',
+          sourceItemId: 'source-1',
+        }),
+      ],
+      sourceBreakdown: {
+        totalItems: 1,
+        providerCount: 1,
+        sourceCount: 1,
+        sources: [
+          expect.objectContaining({
+            sourceKey: 'binding:binding-feed-e2e',
+            itemCount: 1,
+            sampleItemIds: ['feed-1'],
+          }),
+        ],
+      },
+    });
+
+    const search = await request(app.getHttpServer())
+      .get('/feed/items')
+      .query({ limit: 10, q: 'Title feed-1' })
+      .set('x-tenant-id', deterministicTestUuid('tenant-feed-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-feed-e2e'))
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(search.body).toMatchObject({
+      items: [
+        expect.objectContaining({
+          id: 'feed-1',
+          sourceItemId: 'source-1',
+        }),
+      ],
+      sourceBreakdown: {
+        totalItems: 1,
+        sourceCount: 1,
+        sources: [
+          expect.objectContaining({
+            sourceKey: 'binding:binding-feed-e2e',
+            sampleItemIds: ['feed-1'],
+          }),
+        ],
+      },
+    });
+
+    const crossTenantSearch = await request(app.getHttpServer())
+      .get('/feed/items')
+      .query({ limit: 10, q: 'feed-3' })
+      .set('x-tenant-id', deterministicTestUuid('tenant-feed-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-feed-e2e'))
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(crossTenantSearch.body).toEqual({
+      items: [],
+      sourceBreakdown: {
+        totalItems: 0,
+        providerCount: 0,
+        sourceCount: 0,
+        sources: [],
+      },
+    });
+
+    seedFeedItem({
+      id: 'feed-other-topic',
+      sourceItemId: 'source-other-topic',
+      tenant: deterministicTestUuid('tenant-feed-e2e'),
+      workspace: deterministicTestUuid('workspace-feed-e2e'),
+      interestId: 'topic-feed-other-e2e',
+      publishedAt: new Date('2026-06-05T12:30:00.000Z'),
+    });
+    const topicFiltered = await request(app.getHttpServer())
+      .get('/feed/items')
+      .query({ limit: 10, interestId: 'topic-feed-e2e' })
+      .set('x-tenant-id', deterministicTestUuid('tenant-feed-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-feed-e2e'))
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(topicFiltered.body.items).toEqual([
+      expect.objectContaining({ id: 'feed-2', interestId: 'topic-feed-e2e' }),
+      expect.objectContaining({ id: 'feed-1', interestId: 'topic-feed-e2e' }),
+    ]);
+    expect(topicFiltered.body.sourceBreakdown).toEqual({
+      totalItems: 2,
+      providerCount: 1,
+      sourceCount: 1,
+      sources: [
+        expect.objectContaining({
+          providerKey: 'rss',
+          sourceKey: 'binding:binding-feed-e2e',
+          contentType: 'item',
+          sourceBindingIds: ['binding-feed-e2e'],
+          itemCount: 2,
+          latestObservedAt: '2026-06-05T11:00:00.000Z',
+          latestPublishedAt: '2026-06-05T11:00:00.000Z',
+          sampleItemIds: ['feed-2', 'feed-1'],
+        }),
+      ],
+    });
+    expect(JSON.stringify(topicFiltered.body.sourceBreakdown)).not.toContain('feed-other-topic');
+
+    const detail = await request(app.getHttpServer())
+      .get('/feed/items/feed-1')
+      .set('x-tenant-id', deterministicTestUuid('tenant-feed-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-feed-e2e'))
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(detail.body).toEqual(expect.objectContaining({
+      id: 'feed-1',
+      sourceItemId: 'source-1',
+      canonicalUrl: 'https://example.test/feed-1',
+    }));
+
+    await request(app.getHttpServer())
+      .get('/feed/items/feed-3')
+      .set('x-tenant-id', deterministicTestUuid('tenant-feed-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-feed-e2e'))
+      .set('x-workspace-role', 'viewer')
+      .expect(404)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          status: 404,
+          code: 'resource.not_found',
+          detail: 'Feed item not found',
+        });
+      });
+
+    await request(app.getHttpServer())
+      .get('/feed/items')
+      .query({ limit: 0 })
+      .set('x-tenant-id', deterministicTestUuid('tenant-feed-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-feed-e2e'))
+      .set('x-workspace-role', 'viewer')
+      .expect(400)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          status: 400,
+          code: 'validation.failed',
+          detail: 'Feed page limit must be between 1 and 100',
+        });
+      });
+  });
+
+  it('dedupes tenant feed items by normalized canonical URL', async () => {
+    seedFeedItem({
+      id: 'feed-dedupe-1',
+      sourceItemId: 'source-dedupe-1',
+      tenant: deterministicTestUuid('tenant-feed-dedupe-e2e'),
+      workspace: deterministicTestUuid('workspace-feed-dedupe-e2e'),
+      canonicalUrl: 'https://Example.test/articles/story?utm_source=newsletter&b=2&a=1#comments',
+      publishedAt: new Date('2026-06-05T10:00:00.000Z'),
+    });
+    seedFeedItem({
+      id: 'feed-dedupe-2',
+      sourceItemId: 'source-dedupe-2',
+      tenant: deterministicTestUuid('tenant-feed-dedupe-e2e'),
+      workspace: deterministicTestUuid('workspace-feed-dedupe-e2e'),
+      canonicalUrl: 'https://example.test/articles/story?a=1&b=2',
+      publishedAt: new Date('2026-06-05T11:00:00.000Z'),
+    });
+    seedFeedItem({
+      id: 'feed-dedupe-other-tenant',
+      sourceItemId: 'source-dedupe-other-tenant',
+      tenant: deterministicTestUuid('tenant-feed-dedupe-other'),
+      workspace: deterministicTestUuid('workspace-feed-dedupe-e2e'),
+      canonicalUrl: 'https://example.test/articles/story?a=1&b=2',
+      publishedAt: new Date('2026-06-05T12:00:00.000Z'),
+    });
+
+    const response = await request(app.getHttpServer())
+      .get('/feed/items')
+      .query({ limit: 10 })
+      .set('x-tenant-id', deterministicTestUuid('tenant-feed-dedupe-e2e'))
+      .set('x-workspace-id', deterministicTestUuid('workspace-feed-dedupe-e2e'))
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      items: [
+        expect.objectContaining({
+          id: 'feed-dedupe-1',
+          canonicalUrl: 'https://Example.test/articles/story?utm_source=newsletter&b=2&a=1#comments',
+        }),
+      ],
+      sourceBreakdown: {
+        totalItems: 1,
+        providerCount: 1,
+        sourceCount: 1,
+        sources: [
+          expect.objectContaining({
+            sourceKey: 'binding:binding-feed-e2e',
+            itemCount: 1,
+            sampleItemIds: ['feed-dedupe-1'],
+          }),
+        ],
+      },
+    });
+  });
+
+  it('returns raw provider metrics and cohort-normalized signal', async () => {
+    const tenant = deterministicTestUuid('tenant-feed-signal-e2e');
+    const workspace = deterministicTestUuid('workspace-feed-signal-e2e');
+    const interestId = 'topic-feed-signal-e2e';
+    const publishedAt = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+
+    seedRedditItems({
+      tenant,
+      workspace,
+      interestId,
+      subreddit: 'tiny-saas',
+      publishedAt,
+      samples: [
+        ['feed-signal-tiny-1', 3],
+        ['feed-signal-tiny-2', 8],
+        ['feed-signal-tiny-3', 10],
+        ['feed-signal-tiny-4', 12],
+        ['feed-signal-tiny-5', 40],
+        ['feed-signal-tiny-target', 55],
+      ],
+    });
+    seedRedditItems({
+      tenant,
+      workspace,
+      interestId,
+      subreddit: 'programming',
+      publishedAt,
+      samples: [
+        ['feed-signal-programming-1', 200],
+        ['feed-signal-programming-2', 400],
+        ['feed-signal-programming-target', 550],
+        ['feed-signal-programming-3', 600],
+        ['feed-signal-programming-4', 1000],
+        ['feed-signal-programming-5', 2500],
+      ],
+    });
+
+    const response = await request(app.getHttpServer())
+      .get('/feed/items')
+      .query({ limit: 20, interestId })
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    const tinyTarget = response.body.items.find((item: { readonly id: string }) =>
+      item.id === 'feed-signal-tiny-target');
+    const programmingTarget = response.body.items.find((item: { readonly id: string }) =>
+      item.id === 'feed-signal-programming-target');
+
+    expect(tinyTarget).toMatchObject({
+      providerKey: 'reddit',
+      providerMetrics: {
+        kind: 'reddit_post',
+        providerKey: 'reddit',
+        sourceKey: 'r/tiny-saas',
+        contentType: 'post',
+        score: 55,
+        comments: 10,
+        upvoteRatio: 0.9,
+      },
+      normalizedSignal: {
+        basis: 'cohort_baseline_v1',
+        band: expect.stringMatching(/high|breakout/),
+        confidence: expect.any(Number),
+        cohort: {
+          providerKey: 'reddit',
+          sourceKey: 'r/tiny-saas',
+          contentType: 'post',
+          baselineWindow: '30d',
+          sampleSize: 6,
+          fallback: 'exact',
+        },
+      },
+    });
+    expect(programmingTarget).toMatchObject({
+      providerMetrics: {
+        kind: 'reddit_post',
+        score: 550,
+        sourceKey: 'r/programming',
+      },
+      normalizedSignal: {
+        basis: 'cohort_baseline_v1',
+        cohort: {
+          sourceKey: 'r/programming',
+          baselineWindow: '30d',
+          sampleSize: 6,
+          fallback: 'exact',
+        },
+      },
+    });
+    expect(tinyTarget.providerMetrics.score).toBeLessThan(programmingTarget.providerMetrics.score);
+    expect(tinyTarget.normalizedSignal.score).toBeGreaterThan(programmingTarget.normalizedSignal.score);
+    expect(tinyTarget.normalizedSignal.confidence).toBeGreaterThan(0);
+    expect(tinyTarget.normalizedSignal.confidence).toBeLessThanOrEqual(0.98);
+    expect(response.body.sourceBreakdown).toMatchObject({
+      totalItems: 12,
+      providerCount: 1,
+      sourceCount: 2,
+      sources: expect.arrayContaining([
+        expect.objectContaining({
+          providerKey: 'reddit',
+          sourceKey: 'r/programming',
+          contentType: 'post',
+          sourceBindingIds: ['reddit-programming'],
+          itemCount: 6,
+        }),
+        expect.objectContaining({
+          providerKey: 'reddit',
+          sourceKey: 'r/tiny-saas',
+          contentType: 'post',
+          sourceBindingIds: ['reddit-tiny-saas'],
+          itemCount: 6,
+        }),
+      ]),
+    });
+
+    const detail = await request(app.getHttpServer())
+      .get('/feed/items/feed-signal-tiny-target')
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(detail.body).toMatchObject({
+      id: 'feed-signal-tiny-target',
+      providerMetrics: {
+        kind: 'reddit_post',
+        score: 55,
+        sourceKey: 'r/tiny-saas',
+      },
+      normalizedSignal: {
+        basis: 'cohort_baseline_v1',
+        cohort: {
+          fallback: 'exact',
+          baselineWindow: '30d',
+          sampleSize: 6,
+        },
+      },
+    });
+  });
+
+  it('keeps a niche source cohort when the broad topic baseline is crowded by newer popular sources', async () => {
+    const tenant = deterministicTestUuid('tenant-feed-crowded-baseline-e2e');
+    const workspace = deterministicTestUuid('workspace-feed-crowded-baseline-e2e');
+    const interestId = 'topic-feed-crowded-baseline-e2e';
+    const now = Date.now();
+
+    seedFeedItem({
+      id: 'feed-crowded-tiny-target',
+      sourceItemId: 'source-crowded-tiny-target',
+      tenant,
+      workspace,
+      interestId,
+      sourceBindingId: 'reddit-tiny-saas',
+      providerKey: 'reddit',
+      canonicalUrl: 'https://reddit.test/r/tiny-saas/comments/target',
+      publishedAt: new Date(now - 30 * 60 * 1000),
+      observedAt: new Date(now - 29 * 60 * 1000),
+      providerMetadata: {
+        subreddit: 'tiny-saas',
+        score: 70,
+        numComments: 14,
+      },
+    });
+    for (const index of [1, 2, 3, 4]) {
+      seedFeedItem({
+        id: `feed-crowded-tiny-history-${index}`,
+        sourceItemId: `source-crowded-tiny-history-${index}`,
+        tenant,
+        workspace,
+        interestId,
+        sourceBindingId: 'reddit-tiny-saas',
+        providerKey: 'reddit',
+        canonicalUrl: `https://reddit.test/r/tiny-saas/comments/history-${index}`,
+        publishedAt: new Date(now - (48 + index) * 60 * 60 * 1000),
+        observedAt: new Date(now - (48 + index) * 60 * 60 * 1000),
+        providerMetadata: {
+          subreddit: 'tiny-saas',
+          score: 10 + index,
+          numComments: 2,
+        },
+      });
+    }
+    for (let index = 0; index < 2001; index += 1) {
+      seedFeedItem({
+        id: `feed-crowded-programming-${index}`,
+        sourceItemId: `source-crowded-programming-${index}`,
+        tenant,
+        workspace,
+        interestId,
+        sourceBindingId: 'reddit-programming',
+        providerKey: 'reddit',
+        canonicalUrl: `https://reddit.test/r/programming/comments/${index}`,
+        publishedAt: new Date(now - 60 * 60 * 1000 - index),
+        observedAt: new Date(now - 60 * 60 * 1000 - index),
+        providerMetadata: {
+          subreddit: 'programming',
+          score: 500 + index,
+          numComments: 50,
+        },
+      });
+    }
+
+    const response = await request(app.getHttpServer())
+      .get('/feed/items')
+      .query({ limit: 1, interestId })
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(response.body.items).toEqual([
+      expect.objectContaining({
+        id: 'feed-crowded-tiny-target',
+        providerMetrics: expect.objectContaining({
+          sourceKey: 'r/tiny-saas',
+          score: 70,
+        }),
+        normalizedSignal: expect.objectContaining({
+          cohort: expect.objectContaining({
+            sourceKey: 'r/tiny-saas',
+            fallback: 'source',
+            baselineWindow: '7d',
+            sampleSize: 5,
+          }),
+        }),
+      }),
+    ]);
+  });
+
+  it('returns provider-specific raw metrics for GitHub, Hacker News and X posts', async () => {
+    const tenant = deterministicTestUuid('tenant-feed-provider-metrics-e2e');
+    const workspace = deterministicTestUuid('workspace-feed-provider-metrics-e2e');
+    const interestId = 'topic-feed-provider-metrics-e2e';
+    const publishedAt = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+
+    seedFeedItem({
+      id: 'feed-provider-github',
+      sourceItemId: 'source-provider-github',
+      tenant,
+      workspace,
+      interestId,
+      providerKey: 'github-repo-radar',
+      canonicalUrl: 'https://github.test/openai/codex',
+      publishedAt,
+      providerMetadata: githubRepositoryTrendMetadata({
+        stars: 54000,
+        forks: 6100,
+        stars24h: 210,
+        stars7d: 1200,
+        stars30d: 4800,
+        stars90d: 11000,
+        primaryWindow: '24h',
+      }),
+    });
+    seedFeedItem({
+      id: 'feed-provider-hn',
+      sourceItemId: 'source-provider-hn',
+      tenant,
+      workspace,
+      interestId,
+      providerKey: 'hacker-news',
+      canonicalUrl: 'https://news.ycombinator.test/item?id=42',
+      publishedAt,
+      providerMetadata: {
+        kind: 'hacker_news_story',
+        source: 'front_page',
+        points: 128,
+        comments: 37,
+      },
+    });
+    seedFeedItem({
+      id: 'feed-provider-x',
+      sourceItemId: 'source-provider-x',
+      tenant,
+      workspace,
+      interestId,
+      providerKey: 'x-twitter',
+      canonicalUrl: 'https://x.test/post/42',
+      publishedAt,
+      providerMetadata: {
+        kind: 'x_post',
+        accountHandle: 'OpenAI',
+        public_metrics: {
+          like_count: 1200,
+          retweet_count: 340,
+          reply_count: 75,
+          quote_count: 42,
+          bookmark_count: 88,
+          impression_count: 90000,
+        },
+      },
+    });
+
+    const response = await request(app.getHttpServer())
+      .get('/feed/items')
+      .query({ limit: 10, interestId })
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    const github = response.body.items.find((item: { readonly id: string }) =>
+      item.id === 'feed-provider-github');
+    const hn = response.body.items.find((item: { readonly id: string }) =>
+      item.id === 'feed-provider-hn');
+    const x = response.body.items.find((item: { readonly id: string }) =>
+      item.id === 'feed-provider-x');
+
+    expect(github).toMatchObject({
+      providerMetrics: {
+        kind: 'github_repository',
+        providerKey: 'github-repo-radar',
+        sourceKey:
+          'repo-trending:24h:query:any:language:typescript:topic:agents+ai',
+        contentType: 'repository',
+        stars: 54000,
+        forks: 6100,
+        trendingDelta: {
+          window: '24h',
+          value: 210,
+        },
+        trendDeltas: [
+          { window: '24h', value: 210 },
+          { window: '48h', value: 420 },
+          { window: '7d', value: 1200 },
+          { window: '30d', value: 4800 },
+          { window: '90d', value: 11000 },
+        ],
+      },
+      normalizedSignal: {
+        basis: 'cohort_baseline_v1',
+        cohort: {
+          providerKey: 'github-repo-radar',
+          sourceKey:
+            'repo-trending:24h:query:any:language:typescript:topic:agents+ai',
+          contentType: 'repository',
+          baselineWindow: '30d',
+        },
+      },
+    });
+    expect(hn).toMatchObject({
+      providerMetrics: {
+        kind: 'hacker_news_story',
+        providerKey: 'hacker-news',
+        sourceKey: 'hn:front_page',
+        contentType: 'story',
+        points: 128,
+        comments: 37,
+      },
+      normalizedSignal: {
+        basis: 'cohort_baseline_v1',
+        cohort: {
+          providerKey: 'hacker-news',
+          sourceKey: 'hn:front_page',
+          contentType: 'story',
+          baselineWindow: '30d',
+        },
+      },
+    });
+    expect(x).toMatchObject({
+      providerMetrics: {
+        kind: 'x_post',
+        providerKey: 'x-twitter',
+        sourceKey: 'account:openai',
+        contentType: 'post',
+        likes: 1200,
+        reposts: 340,
+        replies: 75,
+        quotes: 42,
+        bookmarks: 88,
+        impressions: 90000,
+      },
+      normalizedSignal: {
+        basis: 'cohort_baseline_v1',
+        cohort: {
+          providerKey: 'x-twitter',
+          sourceKey: 'account:openai',
+          contentType: 'post',
+          baselineWindow: '30d',
+        },
+      },
+    });
+    expect(response.body.sourceBreakdown).toMatchObject({
+      totalItems: 3,
+      providerCount: 3,
+      sourceCount: 3,
+      sources: expect.arrayContaining([
+        expect.objectContaining({
+          providerKey: 'github-repo-radar',
+          sourceKey:
+            'repo-trending:24h:query:any:language:typescript:topic:agents+ai',
+          contentType: 'repository',
+          itemCount: 1,
+          sampleItemIds: ['feed-provider-github'],
+        }),
+        expect.objectContaining({
+          providerKey: 'hacker-news',
+          sourceKey: 'hn:front_page',
+          contentType: 'story',
+          itemCount: 1,
+          sampleItemIds: ['feed-provider-hn'],
+        }),
+        expect.objectContaining({
+          providerKey: 'x-twitter',
+          sourceKey: 'account:openai',
+          contentType: 'post',
+          itemCount: 1,
+          sampleItemIds: ['feed-provider-x'],
+        }),
+      ]),
+    });
+  });
+
+  it('filters GitHub repo radar feed by long trend windows', async () => {
+    const tenant = deterministicTestUuid('tenant-feed-repo-window-e2e');
+    const workspace = deterministicTestUuid('workspace-feed-repo-window-e2e');
+    const interestId = 'topic-feed-repo-window-e2e';
+    const publishedAt = new Date(Date.now() - 30 * 60 * 1000);
+
+    seedFeedItem({
+      id: 'feed-repo-window-24h',
+      sourceItemId: 'source-repo-window-24h',
+      tenant,
+      workspace,
+      interestId,
+      providerKey: 'github-repo-radar',
+      canonicalUrl: 'https://github.test/openai/codex',
+      publishedAt,
+      providerMetadata: githubRepositoryTrendMetadata({
+        stars: 54000,
+        forks: 6100,
+        stars24h: 210,
+        stars7d: 1200,
+        stars30d: 4800,
+        stars90d: 11000,
+        primaryWindow: '24h',
+      }),
+    });
+    seedFeedItem({
+      id: 'feed-repo-window-30d',
+      sourceItemId: 'source-repo-window-30d',
+      tenant,
+      workspace,
+      interestId,
+      providerKey: 'github-repo-radar',
+      canonicalUrl: 'https://github.test/langchain-ai/langgraph',
+      publishedAt,
+      providerMetadata: githubRepositoryTrendMetadata({
+        stars: 42000,
+        forks: 5200,
+        stars24h: 75,
+        stars7d: 900,
+        stars30d: 6200,
+        stars90d: 14000,
+        primaryWindow: '30d',
+      }),
+    });
+
+    const response = await request(app.getHttpServer())
+      .get('/feed/items')
+      .query({
+        limit: 10,
+        interestId,
+        providerKey: 'github-repo-radar',
+        repositoryTrendWindow: '30d',
+      })
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(response.body.items.map((item: { readonly id: string }) => item.id)).toEqual([
+      'feed-repo-window-30d',
+    ]);
+    expect(response.body.items[0]).toMatchObject({
+      providerMetrics: {
+        kind: 'github_repository',
+        trendingDelta: {
+          window: '30d',
+          value: 6200,
+        },
+        trendDeltas: expect.arrayContaining([
+          { window: '7d', value: 900, observation: 'observed' },
+          { window: '30d', value: 6200, observation: 'observed' },
+          { window: '90d', value: 14000, observation: 'observed' },
+        ]),
+      },
+    });
+    expect(response.body.sourceBreakdown).toMatchObject({
+      totalItems: 1,
+      providerCount: 1,
+      sourceCount: 1,
+      sources: [
+        expect.objectContaining({
+          providerKey: 'github-repo-radar',
+          contentType: 'repository',
+          sampleItemIds: ['feed-repo-window-30d'],
+        }),
+      ],
+    });
+  });
+
+  it('omits normalized signal when a provider has no comparable raw metrics', async () => {
+    const tenant = deterministicTestUuid('tenant-feed-no-signal-e2e');
+    const workspace = deterministicTestUuid('workspace-feed-no-signal-e2e');
+    const interestId = 'topic-feed-no-signal-e2e';
+
+    seedFeedItem({
+      id: 'feed-no-signal-rss',
+      sourceItemId: 'source-no-signal-rss',
+      tenant,
+      workspace,
+      interestId,
+      providerKey: 'rss',
+      publishedAt: new Date(Date.now() - 60 * 60 * 1000),
+      providerMetadata: {
+        rawScore: 9999,
+      },
+    });
+
+    const response = await request(app.getHttpServer())
+      .get('/feed/items')
+      .query({ limit: 10, interestId })
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    expect(response.body.items).toEqual([
+      expect.objectContaining({
+        id: 'feed-no-signal-rss',
+        providerKey: 'rss',
+        providerMetadata: {
+          rawScore: 9999,
+        },
+      }),
+    ]);
+    expect(response.body.items[0].providerMetrics).toBeUndefined();
+    expect(response.body.items[0].normalizedSignal).toBeUndefined();
+    expect(response.body.sourceBreakdown).toEqual({
+      totalItems: 1,
+      providerCount: 1,
+      sourceCount: 1,
+      sources: [
+        expect.objectContaining({
+          providerKey: 'rss',
+          sourceKey: 'binding:binding-feed-e2e',
+          contentType: 'item',
+          sourceBindingIds: ['binding-feed-e2e'],
+          itemCount: 1,
+          sampleItemIds: ['feed-no-signal-rss'],
+        }),
+      ],
+    });
+  });
+
+  it('keeps cohorts topic-scoped and lowers confidence when exact baseline is too small', async () => {
+    const tenant = deterministicTestUuid('tenant-feed-signal-fallback-e2e');
+    const workspace = deterministicTestUuid('workspace-feed-signal-fallback-e2e');
+    const interestId = 'topic-feed-signal-fallback-e2e';
+    const otherInterestId = 'topic-feed-signal-fallback-other-e2e';
+    const now = Date.now();
+
+    seedHackerNewsItem({
+      id: 'feed-signal-hn-target',
+      tenant,
+      workspace,
+      interestId,
+      points: 40,
+      comments: 12,
+      publishedAt: new Date(now - 30 * 60 * 1000),
+    });
+    seedHackerNewsItem({
+      id: 'feed-signal-hn-same-age',
+      tenant,
+      workspace,
+      interestId,
+      points: 25,
+      comments: 8,
+      publishedAt: new Date(now - 45 * 60 * 1000),
+    });
+    seedHackerNewsItem({
+      id: 'feed-signal-hn-older-1',
+      tenant,
+      workspace,
+      interestId,
+      points: 5,
+      comments: 1,
+      publishedAt: new Date(now - 2 * 60 * 60 * 1000),
+    });
+    seedHackerNewsItem({
+      id: 'feed-signal-hn-older-2',
+      tenant,
+      workspace,
+      interestId,
+      points: 10,
+      comments: 3,
+      publishedAt: new Date(now - 4 * 60 * 60 * 1000),
+    });
+    seedHackerNewsItem({
+      id: 'feed-signal-hn-older-3',
+      tenant,
+      workspace,
+      interestId,
+      points: 15,
+      comments: 5,
+      publishedAt: new Date(now - 8 * 60 * 60 * 1000),
+    });
+    for (const index of [1, 2, 3, 4, 5, 6]) {
+      seedHackerNewsItem({
+        id: `feed-signal-hn-other-topic-${index}`,
+        tenant,
+        workspace,
+        interestId: otherInterestId,
+        points: 1000 + index,
+        comments: 100 + index,
+        publishedAt: new Date(now - 30 * 60 * 1000),
+      });
+    }
+
+    const response = await request(app.getHttpServer())
+      .get('/feed/items')
+      .query({ limit: 10, interestId })
+      .set('x-tenant-id', tenant)
+      .set('x-workspace-id', workspace)
+      .set('x-workspace-role', 'viewer')
+      .expect(200);
+
+    const target = response.body.items.find((item: { readonly id: string }) =>
+      item.id === 'feed-signal-hn-target');
+
+    expect(target).toMatchObject({
+      providerMetrics: {
+        kind: 'hacker_news_story',
+        sourceKey: 'hn:front_page',
+        points: 40,
+        comments: 12,
+      },
+      normalizedSignal: {
+        basis: 'cohort_baseline_v1',
+        cohort: {
+          sourceKey: 'hn:front_page',
+          baselineWindow: '24h',
+          sampleSize: 5,
+          fallback: 'source',
+        },
+      },
+    });
+    expect(target.normalizedSignal.confidence).toBeLessThan(0.5);
+    expect(response.body.items.some((item: { readonly interestId: string }) =>
+      item.interestId === otherInterestId)).toBe(false);
+    expect(response.body.sourceBreakdown).toEqual({
+      totalItems: 5,
+      providerCount: 1,
+      sourceCount: 1,
+      sources: [
+        expect.objectContaining({
+          providerKey: 'hacker-news',
+          sourceKey: 'hn:front_page',
+          contentType: 'story',
+          itemCount: 5,
+          sampleItemIds: [
+            'feed-signal-hn-target',
+            'feed-signal-hn-same-age',
+            'feed-signal-hn-older-1',
+          ],
+        }),
+      ],
+    });
+    expect(JSON.stringify(response.body.sourceBreakdown)).not.toContain(otherInterestId);
+  });
+
+});

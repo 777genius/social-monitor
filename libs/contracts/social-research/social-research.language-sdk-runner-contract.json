@@ -1,0 +1,65 @@
+{
+  "artifactId": "social-research.language-sdk-runner-contract.v1",
+  "contractArtifacts": {
+    "languageConformanceSuite": "libs/contracts/social-research/social-research.language-sdk-conformance-suite.json",
+    "languageSdkManifest": "libs/contracts/social-research/social-research.language-sdk-manifest.json"
+  },
+  "generatedFrom": [
+    "libs/social-research/interfaces/contracts/social-research-language-sdk-manifest.ts",
+    "libs/social-research/interfaces/contracts/social-research-language-sdk-conformance-suite.ts",
+    "libs/social-research/interfaces/contracts/social-research-language-sdk-conformance-report.ts"
+  ],
+  "runnerPolicy": {
+    "generatedReportActivationPolicy": "report_artifact_required_before_target_is_conformance_ready",
+    "inputFormat": "stable_json_contract_artifacts",
+    "outputFormat": "stable_json_conformance_report",
+    "providerPolicy": "no_provider_clients_or_credentials",
+    "reportValidator": "validateSocialResearchLanguageSdkConformanceReport"
+  },
+  "schemaVersion": 1,
+  "sourceOfTruth": "libs/social-research",
+  "targets": [
+    {
+      "activationCriteria": [
+        "buildSocialResearchTypescriptSdkConformanceReport emits a passed report",
+        "validateSocialResearchLanguageSdkConformanceReport returns ok=true for the emitted report"
+      ],
+      "command": "npm run check:social-research-contract",
+      "language": "typescript",
+      "packageName": "@social-monitor/social-research",
+      "reportArtifact": "libs/contracts/social-research/social-research.typescript-sdk-conformance-report.json",
+      "reportValidator": "validateSocialResearchLanguageSdkConformanceReport",
+      "requiredInputArtifacts": [
+        "libs/contracts/social-research/social-research.contract.json",
+        "libs/contracts/social-research/social-research.sdk-cases.json",
+        "libs/contracts/social-research/social-research.sdk-conformance.json",
+        "libs/contracts/social-research/social-research.language-sdk-manifest.json",
+        "libs/contracts/social-research/social-research.language-sdk-conformance-suite.json"
+      ],
+      "runnerKind": "typescript_reference_in_process",
+      "runnerStatus": "reference_report_ready"
+    },
+    {
+      "activationCriteria": [
+        "runner reads stable JSON contract artifacts instead of TypeScript source",
+        "runner emits stable JSON conformance report at reportArtifact",
+        "validateSocialResearchLanguageSdkConformanceReport returns ok=true for the emitted report",
+        "runner report executes against the real Python SDK client and MCP adapter package"
+      ],
+      "command": "npm run check:social-research-python-sdk-conformance",
+      "language": "python",
+      "packageName": "social_monitor_social_research",
+      "reportArtifact": "libs/contracts/social-research/social-research.python-sdk-conformance-report.json",
+      "reportValidator": "validateSocialResearchLanguageSdkConformanceReport",
+      "requiredInputArtifacts": [
+        "libs/contracts/social-research/social-research.contract.json",
+        "libs/contracts/social-research/social-research.sdk-cases.json",
+        "libs/contracts/social-research/social-research.sdk-conformance.json",
+        "libs/contracts/social-research/social-research.language-sdk-manifest.json",
+        "libs/contracts/social-research/social-research.language-sdk-conformance-suite.json"
+      ],
+      "runnerKind": "generated_sdk_external_process",
+      "runnerStatus": "contract_client_report_ready"
+    }
+  ]
+}

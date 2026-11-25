@@ -1,0 +1,156 @@
+{
+  "schemaVersion": 1,
+  "artifactEvidenceId": "backend-mvp-release-artifact-evidence-v1",
+  "status": "pending_image_digest_and_deploy_smoke",
+  "commitSha": {
+    "mode": "computed_at_release_time",
+    "command": "git rev-parse HEAD"
+  },
+  "migrationVersion": {
+    "mode": "latest_prisma_migration_directory",
+    "value": "20260618143000_baseline",
+    "path": "prisma/migrations/20260618143000_baseline/migration.sql"
+  },
+  "imageDigest": {
+    "requiredForExternalBeta": true,
+    "status": "pending_external_registry",
+    "value": null,
+    "exitCondition": "Attach immutable image digest sha256:<64 hex chars> for the promoted backend image."
+  },
+  "deploySmokeArtifactContentSchema": {
+    "schemaVersion": 1,
+    "format": "release-deploy-smoke-artifact-v1",
+    "exampleArtifactPath": "ops/release/fixtures/release-deploy-smoke-artifact-examples.json",
+    "requiredTopLevelFields": [
+      "schemaVersion",
+      "format",
+      "artifactId",
+      "environmentId",
+      "imageDigest",
+      "apiBaseUrl",
+      "commitSha",
+      "migrationVersion",
+      "operator",
+      "sampledAt",
+      "provenance",
+      "redaction",
+      "artifactDigests",
+      "smokeResults"
+    ],
+    "provenanceRequirements": {
+      "evidenceKind": "staging_deploy",
+      "fixtureOnly": false,
+      "requiredFields": [
+        "evidenceKind",
+        "collectionMethod",
+        "runner",
+        "fixtureOnly"
+      ],
+      "forbiddenRealFragments": [
+        "example",
+        "fixture",
+        "synthetic",
+        "mock",
+        "test"
+      ]
+    },
+    "redactionRequirements": {
+      "secretsIncluded": false,
+      "rawHeadersIncluded": false,
+      "rawPayloadsIncluded": false,
+      "databaseUrlsIncluded": false,
+      "brokerUrlsIncluded": false
+    },
+    "smokeResultRequirements": {
+      "status": "passed",
+      "requiredFields": [
+        "smokeId",
+        "status",
+        "observedAt",
+        "evidence"
+      ],
+      "matchingRules": [
+        "artifact commitSha must match the release commit",
+        "artifact imageDigest must match imageDigest.value and every passed deploySmokeEvidence entry",
+        "artifact migrationVersion must match the release evidence migrationVersion",
+        "artifact artifactDigests must match committed OpenAPI, event catalog and Prisma schema hashes",
+        "artifact smokeResults must include every deploy smoke declared in the release contract",
+        "artifact smokeResults observedAt and artifact sampledAt must use strict ISO-8601 timestamps",
+        "artifact smokeResults.evidence must be a smoke-specific redacted object with required fields",
+        "artifact JSON must not include tokens, raw headers, raw payloads, DB URLs or broker URLs"
+      ]
+    },
+    "envArtifactValidation": [
+      {
+        "envVar": "RELEASE_DEPLOY_SMOKE_ARTIFACT_PATH",
+        "format": "release-deploy-smoke-artifact-v1",
+        "requiredEnv": [
+          "STAGING_ENVIRONMENT_ID",
+          "BACKEND_IMAGE_DIGEST",
+          "API_BASE_URL"
+        ]
+      }
+    ],
+    "realArtifactGuards": [
+      "real release deploy smoke artifact nested values must not contain example, fixture, synthetic, mock or test markers"
+    ]
+  },
+  "artifactDigests": [
+    {
+      "artifactId": "openapi-snapshot",
+      "path": "libs/contracts/rest/openapi.snapshot.json",
+      "algorithm": "sha256",
+      "value": "5c6a14ed03ddea39bacbc7464e3cf186edf72012c2bd18797798caac05724de3"
+    },
+    {
+      "artifactId": "event-catalog",
+      "path": "libs/contracts/events/event-catalog.json",
+      "algorithm": "sha256",
+      "value": "5201ccceaad724c023c8eea9b663ccc0430cf7d4f08f4803bee68b39734a741d"
+    },
+    {
+      "artifactId": "prisma-schema",
+      "path": "prisma/schema.prisma",
+      "algorithm": "sha256",
+      "value": "7da5ecf3d1b2c31dbc6f4782209ddcd864063cc5b8cd99a2561734481f33bb6e"
+    }
+  ],
+  "deploySmokeEvidence": [
+    {
+      "smokeId": "api-health",
+      "status": "pending_staging_deploy",
+      "stagingArtifactPath": null,
+      "environmentId": null,
+      "imageDigest": null,
+      "sampledAt": null,
+      "requiredSignal": "GET /health and GET /healthz return healthy on promoted image"
+    },
+    {
+      "smokeId": "openapi-contract",
+      "status": "pending_staging_deploy",
+      "stagingArtifactPath": null,
+      "environmentId": null,
+      "imageDigest": null,
+      "sampledAt": null,
+      "requiredSignal": "deployed OpenAPI contract matches committed snapshot"
+    },
+    {
+      "smokeId": "migration-version",
+      "status": "pending_staging_deploy",
+      "stagingArtifactPath": null,
+      "environmentId": null,
+      "imageDigest": null,
+      "sampledAt": null,
+      "requiredSignal": "database schema version matches release commit"
+    },
+    {
+      "smokeId": "worker-pause-resume",
+      "status": "pending_staging_deploy",
+      "stagingArtifactPath": null,
+      "environmentId": null,
+      "imageDigest": null,
+      "sampledAt": null,
+      "requiredSignal": "workers can pause during restore and resume without duplicate side effects"
+    }
+  ]
+}
