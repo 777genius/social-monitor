@@ -26,7 +26,15 @@ export const readAgentRuntimeObjectOutput = (
   }
 
   if (result.outputText !== undefined) {
-    return parseOutputText(result.outputText);
+    try {
+      return parseOutputText(result.outputText);
+    } catch (error) {
+      // JSON parser diagnostics can quote provider text in persisted failures.
+      if (error instanceof SyntaxError) {
+        throw new SyntaxError(`${label} output must be valid JSON`);
+      }
+      throw error;
+    }
   }
 
   throw new AgentRuntimeModelProviderError({

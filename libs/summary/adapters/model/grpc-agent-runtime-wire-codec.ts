@@ -70,6 +70,8 @@ const fromGrpcTaskStatus = (
     case GrpcAgentRuntimeTaskStatus.AGENT_RUNTIME_TASK_STATUS_FAILED:
     case GrpcAgentRuntimeTaskStatus.AGENT_RUNTIME_TASK_STATUS_UNSPECIFIED:
     case GrpcAgentRuntimeTaskStatus.UNRECOGNIZED:
+    default:
+      // Binary protobuf decoding preserves future numeric enum values verbatim.
       return "failed";
   }
 };

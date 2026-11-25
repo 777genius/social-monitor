@@ -15,7 +15,14 @@ export const readGrpcOptionalStructuredOutput = (
     return undefined;
   }
 
-  const parsed = JSON.parse(trimmed);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    // Native parser errors can quote provider output in persisted job failures.
+    throw new SyntaxError("Agent runtime structured output is not valid JSON");
+  }
 
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("Agent runtime structured output must be a JSON object");

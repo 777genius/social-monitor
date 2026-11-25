@@ -63,11 +63,19 @@ describe("agent runtime output trust and request identity boundaries", () => {
       .toEqual({ approved: true });
   });
 
-  it("rejects absent output and propagates strict text parse failures", () => {
+  it("rejects absent output and keeps parser diagnostics out of failures", () => {
     expect(() => decodeAgentOutput(result(), JSON.parse, "Reader"))
       .toThrow("Reader agent task returned no structured output");
-    expect(() => decodeAgentOutput(result({ outputText: "{" }), JSON.parse, "Reader"))
-      .toThrow(SyntaxError);
+    const decodeInvalid = () => decodeAgentOutput(result({
+      outputText: "PRIVATE_SYNTHETIC_SOURCE_FRAGMENT",
+    }), JSON.parse, "Reader");
+    expect(decodeInvalid).toThrow(SyntaxError);
+    expect(decodeInvalid).toThrow("Reader output must be valid JSON");
+
+    const validationFailure = new Error("Unsupported reader schema");
+    expect(() => decodeAgentOutput(result({ outputText: "{}" }), () => {
+      throw validationFailure;
+    }, "Reader")).toThrow(validationFailure);
   });
 
   it("keeps scope, timestamp, sanitization and 240-character request-id cap", () => {
