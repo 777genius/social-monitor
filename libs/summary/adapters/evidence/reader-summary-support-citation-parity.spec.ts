@@ -7,6 +7,15 @@ import { composeReaderSummaryEditorialSlate, materializeReaderSummaryEditorialSl
 import { buildReaderPostPromotionProjection } from "../../domain/services/reader-post-promotion-projection";
 import { readerSummaryPromotionPublicationOracle } from "../../domain/policies/reader-summary-promotion-publication-oracle";
 import { promotionPublicationFindings } from "../../domain/policies/reader-summary-promotion-publication-verification";
+import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
+import {
+  buildReaderSummaryCoveragePlan,
+  primaryReaderSummaryEvidence,
+  ReaderSummaryArtifact,
+  ReaderSummaryPublicationPolicy,
+} from "../../domain";
+import type { ReaderSummaryModelInput } from "../../ports";
+import { DeterministicReaderSummaryModelAdapter } from "../model/deterministic-reader-summary-model.adapter";
 
 const trust = {
   status: "attested" as const, trusted: true, official: false,
@@ -145,6 +154,73 @@ const assertParity = (params: ReturnType<typeof fixture>, retained: boolean) => 
     expectedPolicyVersion: "reader_post_promotion.v2",
   }), []);
 };
+
+it("publishes repeated Additional signals with their own evidence instead of the first Top story", async () => {
+  const selected = fixture(
+    (item) => ({ ...item, interestId: "interest-tools" }),
+    "additional",
+  );
+  const evidence = {
+    ...selected.upstream,
+    clusters: selected.clusters,
+    selectedEvidence: selected.evidence,
+    sourceWindow: selected.sourceWindow,
+    editorialSlate: selected.editorialSlate,
+  };
+  const input: ReaderSummaryModelInput = {
+    tenantId: tenantId("tenant-reader-summary-publication"),
+    workspaceId: workspaceId("workspace-reader-summary-publication"),
+    scope: { type: "workspace" },
+    period: {
+      cadence: "daily", timezone: "UTC",
+      startedAt: new Date("2026-07-05T00:00:00.000Z"),
+      endedAt: new Date("2026-07-06T00:00:00.000Z"),
+      periodKey: "daily:2026-07-05T00:00:00.000Z:2026-07-06T00:00:00.000Z:UTC",
+    },
+    evidence,
+    coveragePlan: buildReaderSummaryCoveragePlan(primaryReaderSummaryEvidence(evidence)),
+    contextArtifacts: [],
+    policy: {
+      language: "auto", format: "executive_brief", tone: "analytical", maxStories: 10,
+      includeRisks: true, includeInterestHighlights: true, includeRepeatedSignals: true,
+      dedupeStrategy: "canonical_url_then_title", rulesVersion: "reader_summary.rules.test.v1",
+    },
+    requestedAt: new Date("2026-07-05T09:01:00.000Z"),
+  };
+  const model = new DeterministicReaderSummaryModelAdapter();
+  const route = model.route(input, {
+    preferredProvider: "deterministic-local", maxInputTokens: 24_000,
+    maxOutputTokens: 2_500, maxEstimatedCostUsd: 1,
+  }, { remainingTokens: 32_000, remainingCostUsd: 2 });
+  const attempt = await model.generate(input, route);
+  const readerSummaryId = "repeated-additional-summary";
+  const promotion = buildReaderPostPromotionProjection({
+    ...selected, citations: attempt.draft.citationMap,
+    attestationBinding: { artifactId: readerSummaryId, sourceWindow: evidence.sourceWindow },
+  });
+  const artifact = ReaderSummaryArtifact.create({
+    schemaVersion: "reader_summary.artifact.v1", readerSummaryId,
+    tenantId: input.tenantId, workspaceId: input.workspaceId,
+    scope: input.scope, period: input.period, sourceWindow: evidence.sourceWindow,
+    storyClusters: evidence.clusters, contextArtifacts: [], ...attempt.draft,
+    promotionAttestations: promotion.attestations,
+    promotionEvidenceFacts: promotion.attestedEvidenceFacts,
+  });
+  expect(new ReaderSummaryPublicationPolicy().evaluate({ artifact, evidence }))
+    .toMatchObject({ status: "published", qualityPassed: true });
+
+  const repeatedEvidence = evidence.selectedEvidence.find(item =>
+    item.feedItemId === "feed-publication-2")!;
+  const repeatedCitation = attempt.draft.citationMap.find(citation =>
+    citation.feedItemId === repeatedEvidence.feedItemId)!;
+  expect(attempt.draft.repeatedSignals).toEqual([{
+    storyClusterId: "story-publication-1", title: repeatedEvidence.title,
+    interestIds: ["interest-ai", "interest-tools"], citationIds: [repeatedCitation.citationId],
+  }]);
+  expect(attempt.draft.content?.trendDelta.repeatedSignals).toEqual([repeatedEvidence.title]);
+  expect(attempt.draft.content?.topReads.map(item => item.promotionCandidateId))
+    .toEqual(selected.editorialSlate.top.map(item => item.candidateId));
+});
 
 const invalidSupport: readonly (readonly [string, Change])[] = [
   ["missing promotion facts", (item) => ({ ...item, promotionFacts: undefined })],

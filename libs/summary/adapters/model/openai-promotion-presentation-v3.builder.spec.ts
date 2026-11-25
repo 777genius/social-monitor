@@ -15,6 +15,18 @@ const input = (index: number): ReaderPostPresentationV3Input => ({
   captureComplete: true,
 });
 
+const supportedInput = { ...input(1), title: "Useful method",
+  body: "Useful body text with exact evidence." };
+const assistantOutput = {
+  type: "message", role: "assistant", status: "completed",
+  content: [{ type: "output_text", text: JSON.stringify({ presentations: [{
+    candidateId: supportedInput.candidateId, status: "available", kind: "claim",
+    text: "Useful method", support: [{ field: "bodyPreview", start: 0, end: 12,
+      quote: "Useful body " }], qualifications: [], confidence: 0.9,
+    qualificationJudgment: "none",
+  }] }) }],
+};
+
 describe("OpenAI Promotion V3 presentation builder", () => {
   it("splits batches by the complete encoded wire request budget", async () => {
     const requestSizes: number[] = [];
@@ -198,6 +210,41 @@ describe("OpenAI Promotion V3 presentation builder", () => {
     });
     await expect(builder.build([{ ...input(1), body: "Source body" }]))
       .rejects.toThrow("V3 presentation did not complete");
+  });
+
+  it.each([
+    ["non-assistant text", { output: [{ ...assistantOutput, role: "user" }] }],
+    ["incomplete message", { output: [{ ...assistantOutput, status: "incomplete" }] }],
+    ["refusal after text", { output: [{ ...assistantOutput, content: [
+      ...assistantOutput.content, { type: "refusal", refusal: "Synthetic refusal" },
+    ] }] }],
+    ["provider error", { output: [assistantOutput], error: { message: "Synthetic error" } }],
+    ["conflicting output", { output: [assistantOutput, { ...assistantOutput,
+      content: [{ type: "output_text", text: "{}" }],
+    }] }],
+  ])("rejects %s before sealing an otherwise valid presentation", async (_scenario, envelope) => {
+    const fetchFn = jest.fn(async () => new Response(JSON.stringify({
+      status: "completed", ...envelope,
+    })));
+    const builder = new OpenAiPromotionPresentationV3Builder({ apiKey: "fixture", fetchFn });
+
+    await expect(builder.build([supportedInput]))
+      .rejects.toThrow("V3 presentation did not complete");
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("seals supported assistant output after reasoning metadata", async () => {
+    const builder = new OpenAiPromotionPresentationV3Builder({ apiKey: "fixture",
+      fetchFn: async () => new Response(JSON.stringify({ status: "completed", output: [
+        { type: "reasoning", status: "completed", content: [{
+          type: "reasoning_text", text: "Synthetic reasoning metadata",
+        }] },
+        assistantOutput,
+      ] })) });
+
+    await expect(builder.build([supportedInput])).resolves.toMatchObject([
+      { status: "available", seal: { headline: { text: "Useful method" } } },
+    ]);
   });
 
 });

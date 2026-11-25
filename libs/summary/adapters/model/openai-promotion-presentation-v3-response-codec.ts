@@ -1,4 +1,5 @@
 import { record } from "./openai-promotion-presentation-v3-response-contract";
+import { openAiResponsesCompletionIssue } from "./openai-responses-completion-state";
 
 /** Parser diagnostics must not carry provider text into persisted failures. */
 export const parsePresentationJson = (text: string): unknown => {
@@ -31,7 +32,8 @@ export const boundedResponseText = async (response: Response): Promise<string> =
   return Buffer.concat(chunks).toString("utf8");
 };
 export const outputText = (payload: Record<string, unknown>): string => {
-  if (payload.status !== "completed" || !Array.isArray(payload.output)) {
+  if (payload.status !== "completed" || !Array.isArray(payload.output) ||
+      openAiResponsesCompletionIssue(payload) !== null) {
     throw new Error("V3 presentation did not complete");
   }
   for (const item of payload.output) {

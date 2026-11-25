@@ -1,8 +1,14 @@
 import { type INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
+import {
+  AgentRuntimeTaskStatus,
+  AgentRuntimeTaskResponse,
+  type AgentRuntimeServiceClient,
+} from "@social-monitor/contracts/generated/grpc/agent_runtime/v1/agent_runtime";
 import { InMemoryMetricsRecorder } from "@social-monitor/platform-metrics";
 import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 import { AgentRuntimeSummaryModelAdapter } from "@social-monitor/summary/adapters/model/agent-runtime-summary-model.adapter";
+import { GrpcAgentRuntimeClient } from "@social-monitor/summary/adapters/model/grpc-agent-runtime-client";
 import { MeteredSummaryModelAdapter } from "@social-monitor/summary/adapters/model/metered-summary-model.adapter";
 import { InMemorySummaryArtifactRepository } from "@social-monitor/summary/adapters/persistence/in-memory-summary-artifact.repository";
 import { InMemorySummaryEventPublisher } from "@social-monitor/summary/adapters/messaging/in-memory-summary-event-publisher";
@@ -64,7 +70,9 @@ describe("Agent Runtime summary provider through REST and job execution (e2e)", 
   let app: INestApplication;
   const commands: AgentRuntimeTaskCommand[] = [];
   const metrics = new InMemoryMetricsRecorder();
-  let responseMode: "completed" | "waiting_for_input" = "completed";
+  const privateWireText = "SENSITIVE";
+  let wireDispatches = 0;
+  let responseMode: "completed" | "waiting_for_input" | "malformed_wire" | "unknown_wire_status" = "completed";
 
   beforeAll(async () => {
     const selector: SummaryEvidenceSelectorPort = {
@@ -81,9 +89,29 @@ describe("Agent Runtime summary provider through REST and job execution (e2e)", 
           : evidence;
       },
     };
+    const wireClient = new GrpcAgentRuntimeClient({
+      runAgentTask(_request: unknown, _metadata: unknown, _options: unknown,
+        callback: (error: null, response: AgentRuntimeTaskResponse) => void) {
+        wireDispatches += 1;
+        const response = AgentRuntimeTaskResponse.create({
+          schemaVersion: 1,
+          status: responseMode === "unknown_wire_status"
+            ? 42 as AgentRuntimeTaskStatus : AgentRuntimeTaskStatus.AGENT_RUNTIME_TASK_STATUS_COMPLETED,
+          outputText: "",
+          structuredOutputJson: responseMode === "unknown_wire_status"
+            ? JSON.stringify(providerDraft()) : privateWireText,
+          warnings: [],
+        });
+        callback(null, AgentRuntimeTaskResponse.decode(AgentRuntimeTaskResponse.encode(response).finish()));
+        return { cancel: () => undefined };
+      },
+    } as unknown as AgentRuntimeServiceClient, { now: () => now }, { timeoutMs: 1_000 });
     const client: AgentRuntimeClientPort = {
       runTask: async (command) => {
         commands.push(command);
+        if (responseMode === "malformed_wire" || responseMode === "unknown_wire_status") {
+          return wireClient.runTask(command);
+        }
         return responseMode === "completed"
           ? {
               status: "completed",
@@ -219,6 +247,72 @@ describe("Agent Runtime summary provider through REST and job execution (e2e)", 
       qualityFlags: ["no_signal", "limited_sources"],
       lineage: { providerVersion: "agent-runtime" },
     });
+  });
+
+  it("keeps malformed gRPC output out of persisted and public failure diagnostics", async () => {
+    responseMode = "malformed_wire";
+    const commandCount = commands.length;
+    const eventCount = app.get(InMemorySummaryEventPublisher).all().length;
+    const artifacts = app.get(InMemorySummaryArtifactRepository);
+    const beforeArtifacts = await artifacts.list({ tenantId: tenant, workspaceId: workspace, limit: 10 });
+    const requested = await requestJob("agent-model-e2e-wire-privacy");
+    const summaryJobId = requested.body.summaryJobId as string;
+    const executed = await app.get(ExecuteSummaryJobUseCase).execute({
+      tenantId: tenant, workspaceId: workspace, summaryJobId,
+    });
+    const message = "Agent runtime structured output is not valid JSON";
+    expect(executed).toMatchObject({
+      ok: false,
+      error: { code: "external.dependency_unavailable", message, details: { kind: "invalid_schema" } },
+    });
+    expect(commands).toHaveLength(commandCount + 1);
+    expect(wireDispatches).toBe(1);
+    const job = await app.get(InMemorySummaryJobRepository).findById({
+      tenantId: tenant, workspaceId: workspace, summaryJobId,
+    });
+    expect(job?.toSnapshot()).toMatchObject({ status: "failed", failureReason: message });
+    expect(JSON.stringify(job?.toSnapshot())).not.toContain(privateWireText);
+    const status = await request(app.getHttpServer())
+      .get(`/summary-jobs/${summaryJobId}/status`)
+      .set("x-tenant-id", tenant).set("x-workspace-id", workspace)
+      .set("x-workspace-role", "member").expect(200);
+    expect(status.body).toMatchObject({ status: "failed", failureReason: message });
+    expect(status.body.timeline).toContainEqual(expect.objectContaining({ status: "failed", message }));
+    expect(JSON.stringify(status.body)).not.toContain(privateWireText);
+    expect(app.get(InMemorySummaryEventPublisher).all()).toHaveLength(eventCount);
+    await expect(artifacts.list({ tenantId: tenant, workspaceId: workspace, limit: 10 }))
+      .resolves.toEqual(beforeArtifacts);
+    expect(metrics.counterValue("summary_model_requests_total", {
+      model: "codex:synthetic-summary", provider: "agent-runtime",
+      status: "failed", failure_kind: "invalid_schema",
+    })).toBe(1);
+  });
+
+  it("rejects a future protobuf task status before unattested output can be published", async () => {
+    responseMode = "unknown_wire_status";
+    const commandCount = commands.length;
+    const wireCount = wireDispatches;
+    const eventCount = app.get(InMemorySummaryEventPublisher).all().length;
+    const artifacts = app.get(InMemorySummaryArtifactRepository);
+    const beforeArtifacts = await artifacts.list({ tenantId: tenant, workspaceId: workspace, limit: 10 });
+    const requested = await requestJob("agent-model-e2e-unknown-status");
+    const summaryJobId = requested.body.summaryJobId as string;
+    const executed = await app.get(ExecuteSummaryJobUseCase).execute({
+      tenantId: tenant, workspaceId: workspace, summaryJobId,
+    });
+    expect(executed).toMatchObject({
+      ok: false,
+      error: { code: "external.dependency_unavailable", details: { kind: "provider_unavailable" } },
+    });
+    expect(commands).toHaveLength(commandCount + 1);
+    expect(wireDispatches).toBe(wireCount + 1);
+    const job = await app.get(InMemorySummaryJobRepository).findById({
+      tenantId: tenant, workspaceId: workspace, summaryJobId,
+    });
+    expect(job?.toSnapshot()).toMatchObject({ status: "failed", failureReason: "Summary agent task failed" });
+    expect(app.get(InMemorySummaryEventPublisher).all()).toHaveLength(eventCount);
+    await expect(artifacts.list({ tenantId: tenant, workspaceId: workspace, limit: 10 }))
+      .resolves.toEqual(beforeArtifacts);
   });
 
 });
