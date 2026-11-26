@@ -39,7 +39,7 @@ function common(): Mapping[] {
         'persist-credentials': false, submodules: false, lfs: false } },
     { name: 'Verify trusted checkout before executing scripts', if: ENABLED, shell: 'bash',
       env: { TRUSTED_MAIN: BASE_ENV.TRUSTED_MAIN }, run: HEAD },
-    { name: 'Set up Node 22', if: ENABLED, uses: NODE, with: { 'node-version': 22 } },
+    { name: 'Set up Node 24.22.3', if: ENABLED, uses: NODE, with: { 'node-version': '24.22.3' } },
   ];
 }
 function host(lane: 'preflight' | 'activate'): Mapping {

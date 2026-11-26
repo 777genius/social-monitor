@@ -1,6 +1,6 @@
 # Stage B2 — consumer-owned GitHub Trending archive snapshot
 
-Status: **Draft / not merge-ready**. Stacked on Stage B1 (#791), itself stacked on Stage A (#790). This change must not be merged or retargeted before its parents have final native E2E, independent reviews and merged main.
+Status: **Consolidated into #793 / merge HOLD**. Stage A (#790) is already merged; Stage B1 (#791) and this Stage B2 (#792) are included in #793 and must not be merged separately. Qualify the exact integrated HEAD against current main, including all required native E2E, full TS7 compiler/parser parity and independent review, before merge.
 
 ## Problem and ownership
 
@@ -26,7 +26,7 @@ No change to `libs/ingestion`, archived projection runtime, event or database wi
 - Security: no fake archive provenance, no timestamp rewriting and no changes to fail-closed archive verification.
 - Architecture: exactly one additional source+specifier exception removed; do not broaden any exception or weaken existing scanners.
 - Regression: focused Jest plus real `npm ci`, `npx tsc --noEmit`, `npm run check:architecture`, source cap, full native PG18/backend E2E, security and independent final-head reviews; skipped/queued/cancelled are not PASS.
-- Integration: merge Stage A #790, then Stage B1 #791, then retarget this PR onto the *current* `main`, qualify exact final HEAD and squash merge with postmerge verification. Stop if a current-main fix conflicts.
+- Integration: retain the merged Stage A #790 baseline and the consolidated B1/B2 source in #793; do not merge #791 or #792 separately. Reconcile with *current* `main`, preserve the TS7 and independent-review HOLD, qualify exact final HEAD, and only then squash merge with main-push native 20/20 and API image verification. Stop if a current-main fix conflicts.
 
 ## Limits
 
