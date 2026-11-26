@@ -34,12 +34,8 @@ const config: Config = {
     '^@social-monitor/social-research/(.*)$': '<rootDir>/libs/social-research/$1',
     '^@social-monitor/([^/]+)/(.*)$': '<rootDir>/libs/$1/$2',
   },
-  // The account-gateway SDK ships ESM only; ts-jest transpiles that package.
-  // Both backend unit and E2E runners must transpile the ESM-only Gateway SDK
-  // and Get Modular packages through Jest's existing CommonJS transform.
-  transformIgnorePatterns: [
-    '/node_modules/(?!(?:@agent-teams/account-gateway|@get-modular/[^/]+)/)',
-  ],
+  // Match the unit runner: native ESM dependencies must not be transformed into CommonJS.
+  transformIgnorePatterns: ['/node_modules/'],
   testPathIgnorePatterns: ['/node_modules/', '/dist/', '/prisma/generated/'],
   testEnvironment: 'node',
   setupFiles: ['<rootDir>/test/e2e/support/deterministic-runtime-env.ts'],

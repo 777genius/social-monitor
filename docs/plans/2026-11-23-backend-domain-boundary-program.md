@@ -98,7 +98,7 @@ Only **seven** exact tuples remain in `scripts/check-architecture.mjs`. The runt
 
 B2 removes **only** the type-only import `libs/summary/domain/policies/reader-summary-github-projection-audit-types.ts|@social-monitor/ingestion/domain` by introducing a Summary-owned archived GitHub observation snapshot. The snapshot's nested structure is mutually assignable to the current Ingestion `GitHubTrendingArchiveMetadata` contract and is checked in a test at the adapter boundary. This preserves the existing runtime validator, archival provenance, parsing, external ID, UTC window and publication behavior.
 
-The remaining active exception set is **six** exact (source path, specifier) tuples: two `conversation → feed`, one runtime `summary → ingestion`, one runtime `summary → relevance`, and two `delivery → summary`. This count applies only to Stage B2; the preceding ten-entry baseline is retained for audit history. The stacked change is not merge-qualified until full native checks on the final code, external review and parent PR merges are confirmed.
+The remaining active exception set is **six** exact (source path, specifier) tuples: two `conversation → feed`, one runtime `summary → ingestion`, one runtime `summary → relevance`, and two `delivery → summary`. This count applies only to Stage B2; the preceding ten-entry baseline is retained for audit history. The consolidated PR #793 contains B1 and B2; #791 and #792 must not merge separately. Require full native checks on the exact final #793 head, independent approval and the owner TS7 gate before expected-head merge; verify postmerge main native and API image results.
 
 ### Separate dependency/runtime qualification (#793)
 

@@ -45,6 +45,6 @@ Retained weekly proofs, refresh reconciliation/successor originals and stored ev
 - Full deterministic API/worker E2E, followed by all protected final-head native unit shards, PostgreSQL 18, RabbitMQ, security, candidate/lifecycle and frontend checks.
 - Real offline candidate build/runtime proof, including the selected Node version and immutable image/source binding.
 - Independent source and scope review; preserve open refactor PR changes, especially shared package script registrations.
-- Merge only after the parent sequence and full final-head success, using expected-head protection; inspect postmerge results. Queued, skipped or cancelled jobs are not PASS.
+- Qualify consolidated PR #793 at its exact final head and obtain independent approval; #791 and #792 are superseded and must not merge separately. Preserve the owner TS7 HOLD until full supported toolchain parity is proven or the owner explicitly revises the scope. Merge only with expected-head protection; inspect postmerge main native and API image results. Queued, skipped or cancelled jobs are not PASS.
 
 No real provider/account call, production database query, manual production activation or public npm publication is part of this implementation. Source and package qualification use isolated fixtures and disposable CI environments.

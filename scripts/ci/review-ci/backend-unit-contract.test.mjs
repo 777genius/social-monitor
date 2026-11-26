@@ -156,3 +156,11 @@ test('local Node16 Jest launch preserves VM imports and nested ts-node alias res
       /--node-options "--max-old-space-size=\d+ --experimental-vm-modules" --env TS_NODE_BASEURL=\. -- jest\b/u);
   }
 });
+
+test('E2E Jest launch preserves native ESM and the existing test selection', () => {
+  const scripts = JSON.parse(readFileSync('package.json', 'utf8')).scripts;
+  assert.equal(scripts['test:e2e'],
+    'node scripts/run-with-timeout.mjs --timeout-ms 1200000 --node-options "--max-old-space-size=3072 --experimental-vm-modules" -- jest --config test/jest-e2e.config.ts --runInBand');
+  const config = readFileSync('test/jest-e2e.config.ts', 'utf8');
+  assert.match(config, /transformIgnorePatterns: \['\/node_modules\/'\]/u);
+});
