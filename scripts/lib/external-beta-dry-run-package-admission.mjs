@@ -53,7 +53,8 @@ export function createExternalBetaDryRunPackageAdmission(dependencies) {
       if (!assignment.test(source)) {
         violations.push(`${dryRun.envExample}: must include ${envName}=`);
       }
-      const nonEmptyAssignment = new RegExp(`^${escapeRegex(envName)}=\\S`, 'm');
+      // Keep the canonical empty entry, but inspect every assignment, including dotenv aliases.
+      const nonEmptyAssignment = new RegExp(`^[^\\S\\r\\n]*(?:export[^\\S\\r\\n]+)?${escapeRegex(envName)}[^\\S\\r\\n]*(?:=|:[^\\S\\r\\n]+)[^\\S\\r\\n]*\\S`, 'm');
       if (nonEmptyAssignment.test(source)) {
         violations.push(`${dryRun.envExample}: ${envName} must not have a committed value`);
       }

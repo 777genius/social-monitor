@@ -728,6 +728,40 @@ test('package artifact/env checks preserve exact fail-closed diagnostic ordering
   ]);
 });
 
+test('package env admission rejects whitespace and alternate nonempty assignments without exposing values', () => {
+  for (const source of [
+    'REPORT_ENV= synthetic\nOPTIONAL_ENV=\n',
+    'REPORT_ENV=\n export REPORT_ENV=synthetic\nOPTIONAL_ENV=\n',
+    'REPORT_ENV=\n REPORT_ENV = synthetic\nOPTIONAL_ENV=\n',
+    'REPORT_ENV=\nREPORT_ENV: synthetic\nOPTIONAL_ENV=\n',
+    'REPORT_ENV=\nREPORT_ENV=synthetic\nREPORT_ENV=\nOPTIONAL_ENV=\n',
+    'REPORT_ENV=synthetic\r\nOPTIONAL_ENV=\r\n',
+  ]) {
+    const f = packageAdmissionFixture();
+    createExternalBetaDryRunPackageAdmission({
+      ...f.dependencies, readFileSync: () => source,
+    }).validateEnvExample();
+    assert.deepStrictEqual(f.violations, [
+      'example.env: REPORT_ENV must not have a committed value',
+    ]);
+  }
+  const f = packageAdmissionFixture();
+  createExternalBetaDryRunPackageAdmission({
+    ...f.dependencies, readFileSync: () => 'REPORT_ENV=\nOPTIONAL_ENV= synthetic\n',
+  }).validateEnvExample();
+  assert.deepStrictEqual(f.violations, [
+    'example.env: OPTIONAL_ENV must not have a committed value',
+  ]);
+});
+
+test('package env admission keeps empty CRLF assignments and comments valid', () => {
+  const f = packageAdmissionFixture();
+  createExternalBetaDryRunPackageAdmission({
+    ...f.dependencies, readFileSync: () => 'REPORT_ENV= \t\r\n# REPORT_ENV=synthetic\r\nOPTIONAL_ENV=\r\n',
+  }).validateEnvExample();
+  assert.deepStrictEqual(f.violations, []);
+});
+
 test('package wiring diagnostics remain ordered across npm/backend/baseline owners', () => {
   const f = packageAdmissionFixture();
   f.dependencies.packageScripts['check:external-beta-evidence-dry-run'] = 'node wrong';
