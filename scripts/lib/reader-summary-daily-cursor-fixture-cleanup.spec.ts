@@ -20,7 +20,7 @@ class WireClient extends EventEmitter {
 }
 
 async function idleFixture(): Promise<{ pool: Pool; wire: WireClient }> {
-  const pool = new Pool({ Client: WireClient, min: 0, max: 1 } as unknown as PoolConfig);
+  const pool = new Pool({ Client: WireClient, min: 0, max: 2 } as unknown as PoolConfig);
   const client = await pool.connect();
   client.release();
   expect(pool.idleCount).toBe(1);
@@ -68,7 +68,7 @@ describe("daily cursor fixture cleanup", () => {
   });
 
   it("waits for every released client in the publication runtime pool", async () => {
-    const pool = new Pool({ Client: WireClient, min: 0, max: 2 } as unknown as PoolConfig);
+    const { pool } = await idleFixture();
     const first = await pool.connect();
     const second = await pool.connect();
     first.release();
