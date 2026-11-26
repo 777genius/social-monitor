@@ -160,7 +160,7 @@ test('local Node16 Jest launch preserves VM imports and nested ts-node alias res
 test('E2E Jest launch preserves native ESM and the existing test selection', () => {
   const scripts = JSON.parse(readFileSync('package.json', 'utf8')).scripts;
   assert.equal(scripts['test:e2e'],
-    'node scripts/run-with-timeout.mjs --timeout-ms 1200000 --node-options "--max-old-space-size=3072 --experimental-vm-modules" -- jest --config test/jest-e2e.config.ts --runInBand');
+    'node scripts/run-with-timeout.mjs --timeout-ms 1200000 --node-options "--max-old-space-size=3072 --experimental-vm-modules" -- jest --config test/jest-e2e.config.ts --maxWorkers=1');
   assert.equal(scripts['check:reader-surface-tenant-isolation'],
     'node scripts/run-with-timeout.mjs --timeout-ms 150000 --clean-env --env READER_SUMMARY_MODEL_PROVIDER=deterministic --env READER_SUMMARY_TOPIC_LABELER=deterministic --node-options "--max-old-space-size=2048 --experimental-vm-modules" -- jest --config test/jest-e2e.config.ts --runInBand --runTestsByPath test/e2e/reader-surfaces.tenant-scope.e2e-spec.ts');
   assert.equal(scripts['check:production-auth-matrix'],
@@ -169,4 +169,5 @@ test('E2E Jest launch preserves native ESM and the existing test selection', () 
   assert.match(authRunner, /'--clean-env',\s*'--node-options',\s*'--max-old-space-size=1536 --experimental-vm-modules',\s*'--',\s*jestPath,\s*'--config',\s*'test\/jest-e2e\.config\.ts'/u);
   const config = readFileSync('test/jest-e2e.config.ts', 'utf8');
   assert.match(config, /transformIgnorePatterns: \['\/node_modules\/'\]/u);
+  assert.match(config, /workerIdleMemoryLimit: '1GiB'/u);
 });

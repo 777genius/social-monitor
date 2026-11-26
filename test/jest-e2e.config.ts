@@ -38,6 +38,8 @@ const config: Config = {
   transformIgnorePatterns: ['/node_modules/'],
   testPathIgnorePatterns: ['/node_modules/', '/dist/', '/prisma/generated/'],
   testEnvironment: 'node',
+  // Recycle the serial E2E worker between suites before native ESM contexts exhaust the heap.
+  workerIdleMemoryLimit: '1GiB',
   setupFiles: ['<rootDir>/test/e2e/support/deterministic-runtime-env.ts'],
 };
 
