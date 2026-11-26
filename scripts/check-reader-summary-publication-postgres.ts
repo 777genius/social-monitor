@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { assertLargeDailyPublicationPostgresContract } from "./lib/reader-summary-large-daily-publication-postgres-contract";
 import { spawnSync } from "node:child_process";
 import { Pool, type PoolClient } from "pg";
+import { endDailyCursorFixturePool } from "./lib/reader-summary-daily-cursor-fixture-cleanup";
 import {
   provisionReaderSummaryPublicationFixtureScope,
   readerSummaryPublicationBackendPid,
@@ -451,9 +452,7 @@ export const runReaderSummaryPublicationPostgresContract = async (
         second.release();
       }
     } finally {
-      await runtime.end();
-      await admin.end();
-      await auditorPool.end();
+      await Promise.all([runtime, admin, auditorPool].map(endDailyCursorFixturePool));
     }
   } finally {
     removeReaderSummaryPublicationMigrationWorkspace(migrationWorkspace);
