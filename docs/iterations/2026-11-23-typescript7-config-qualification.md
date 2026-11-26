@@ -1,6 +1,6 @@
 # TypeScript 7 compatibility — Stage T0 (configuration preparation)
 
-**Status: DRAFT / NOT MERGE QUALIFIED.** Parent: current `main` after architecture #790. This is a bounded prerequisite to the still-open #791 → #792 → #793 refactor/SDK stack, not a substitute for their native end-to-end gates.
+**Status: T0 included in consolidated #793 / NOT MERGE QUALIFIED.** Original baseline: `main` after architecture #790. Superseded #791 and #792 must not be retargeted or merged separately. T0 is a bounded configuration prerequisite, not a substitute for #793's full native end-to-end gates or the T1 toolchain HOLD.
 
 ## Verified blocker
 
@@ -23,7 +23,7 @@ The organization [Engineering Quality Standard](https://github.com/agent-teams-a
 - Qualify `ts-jest` and `ts-node` replacements at their owner (including Nest decorator metadata, alias resolution and full unit/E2E inventory). Keep the existing strict type-aware lint coverage and fail closed on missing metadata; no `isolatedModules` or test skip bypass.
 - Generate the **real** npm lockfile using the repository's package manager; verify package integrity, engine/peer compatibility and dependency admission. Do not hand-edit lock integrity or invent published versions.
 - Run actual native TypeScript >=7.0.2 `--noEmit` and build, compare required emitted Nest metadata/SDK exports with the accepted behavior, then full canonical 20/20 native GitHub CI, PostgreSQL18, RabbitMQ, security, 6 unit shards, all backend E2E, Docker/host and frontend tests on one qualified exact tree.
-- Retarget/requalify the stacked #791/#792/#793 in order, preserve the concurrently-owned #665 code, and validate a protected owner merge plus postmerge main E2E. QUEUED, SKIPPED, CANCELLED, old-head and TS6 runs do not qualify.
+- Qualify consolidated #793 at its exact current HEAD against current `main`, preserve the concurrently-owned #665 code, require independent approval and satisfy all owner gates (including full TS7 T1 compatibility) before an ordinary protected merge with the expected HEAD SHA. Require native main-push 20/20 SUCCESS and the exact merged main API image build SUCCESS before any subsequent merge. QUEUED, SKIPPED, CANCELLED, old-head and TS6 runs do not qualify.
 
 ## Five review passes / limits
 
@@ -31,6 +31,6 @@ The organization [Engineering Quality Standard](https://github.com/agent-teams-a
 2. **Type safety:** preserve all previous options except two obsolete fields; preserve ordered alias keys and their exact targets after stripping one `./` prefix; no new wildcard or module-resolution fallback.
 3. **Security:** do not weaken domain importer gating; check foreign root alias and exact-ten-exception synthetic tests after native7 implementation.
 4. **Runtime:** Nest decorated DI, CommonJS output, Prisma and SDK identity remain unchanged; these are *qualification obligations*, not assumed proven by config JSON.
-5. **Merge:** T0 remains Draft while the original TS7 toolchain compatibility blocker and final CI gates are open. An upstream issue or a partial local config proof is not E2E or permission to merge.
+5. **Merge:** Consolidated #793 remains on HOLD while the original TS7 toolchain compatibility blocker and final CI gates are open, regardless of its GitHub Ready status. An upstream issue or a partial local config proof is not E2E or permission to merge.
 
 **Complexity estimate:** T0 ≈ 4–8 modified maintained executable lines plus 34 configuration target-prefix edits; T1 is a separate substantial toolchain migration requiring its own implementation estimate after npm ecosystem/API qualification. T0 complexity 2/10, expected standalone reliability 7/10, confidence 8/10 in config equivalence; full project target-profile confidence remains low pending T1. No new production logic is authorized by this stage.
