@@ -62,3 +62,39 @@ test('registry errors and incomplete audit reports fail closed', (t) => {
     assert.doesNotMatch(result.stdout, /Dependency audit contract OK/);
   }
 });
+
+test('advisory-scoped exceptions require complete blocking evidence', async (t) => {
+  const moderate = { severity: 'moderate' };
+  const childException = { ...exception, packageName: 'child' };
+  const wrong = { severity: 'high', url: 'https://github.com/advisories/GHSA-2222-2222-2222' };
+  const cases = [
+    ['direct', high.via, {}, true],
+    ['mixed direct', [moderate, ...high.via], {}, true],
+    ['derived', ['child'], { child: high }, true],
+    ['mixed derived', ['child', ...high.via], { child: moderate }, true],
+    ['missing via', undefined, {}, false],
+    ['empty via', [], {}, false],
+    ['non-array via', {}, {}, false],
+    ['missing severity', [{}], {}, false],
+    ['unknown severity', [{ severity: 'unknown' }, ...high.via], {}, false],
+    ['null advisory', [null], {}, false],
+    ['only moderate', [moderate], {}, false],
+    ['missing child', ['child'], {}, false],
+    ['nonblocking child only', ['child'], { child: moderate }, false],
+    ['wrong direct advisory', [...high.via, wrong], {}, false],
+    ['wrong derived advisory', ['child'], { child: { severity: 'high', via: [wrong] } }, false],
+    ['unexcepted child', ['unknown'], { unknown: high }, false],
+  ];
+  for (const [name, via, others, allowed] of cases) {
+    await t.test(name, (subtest) => {
+      const result = run(subtest, report({ example: { severity: 'high', via }, ...others }), 1, [exception, childException]);
+      if (allowed) {
+        assert.equal(result.status, 0, result.stderr);
+        assert.match(result.stdout, /Dependency audit contract OK/);
+      } else {
+        assert.notEqual(result.status, 0, result.stdout);
+        assert.doesNotMatch(result.stdout, /Dependency audit contract OK/);
+      }
+    });
+  }
+});
