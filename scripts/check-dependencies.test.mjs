@@ -98,3 +98,56 @@ test('advisory-scoped exceptions require complete blocking evidence', async (t) 
     });
   }
 });
+
+test('derived exceptions preserve the original advisory scope across the graph', async (t) => {
+  const wrongId = 'GHSA-2222-2222-2222';
+  const wrong = { severity: 'high', via: [{ severity: 'high', url: `https://github.com/advisories/${wrongId}` }] };
+  const derived = (...via) => ({ severity: 'high', via });
+  const scoped = (packageName, advisories = exception.advisories) => ({ ...exception, packageName, advisories });
+  const broad = (packageName) => ({ ...exception, packageName, advisories: undefined });
+  const cases = [
+    ['different child scope', { child: wrong }, [scoped('child', [wrongId])], false],
+    ['package-wide child with unrelated advisory', { child: wrong }, [broad('child')], false],
+    ['package-wide child with matching advisory', { child: high }, [broad('child')], true],
+    ['grandchild with unrelated advisory', { child: derived('grandchild'), grandchild: wrong }, [broad('child'), broad('grandchild')], false],
+    ['matching multihop chain', { child: derived('grandchild'), grandchild: high }, [scoped('child'), scoped('grandchild')], true],
+    ['cycle without leaf', { child: derived('example') }, [broad('child')], false],
+    ['cycle with direct matching leaf', { child: derived('example', ...high.via) }, [broad('child')], true],
+    ['cycle with unrelated advisory', { child: derived('example', ...wrong.via) }, [broad('child')], false],
+    ['cycle reaches matching leaf through sibling', { child: derived('left', 'right'), left: derived('child'), right: high }, ['child', 'left', 'right'].map((name) => broad(name)), true],
+    ['matching sibling cannot cover a leafless cycle', { child: derived('left', 'right'), left: high, right: derived('loop'), loop: derived('right') }, ['child', 'left', 'right', 'loop'].map((name) => broad(name)), false],
+    ['nonblocking child of broad package needs no exception', { child: derived('low', ...high.via), low: { severity: 'low' } }, [broad('child')], true],
+    ['nonblocking child of scoped package needs no exception', { child: derived('moderate', ...high.via), moderate: { severity: 'moderate' } }, [scoped('child')], true],
+    ['package-wide child without evidence', { child: { severity: 'high' } }, [broad('child')], false],
+    ['package-wide child with invalid evidence', { child: derived(null, ...high.via) }, [broad('child')], false],
+    ['unexcepted grandchild', { child: derived('grandchild'), grandchild: high }, [broad('child')], false],
+    ['shared diamond is not a cycle', { child: derived('left', 'right'), left: derived('leaf'), right: derived('leaf'), leaf: high }, ['child', 'left', 'right', 'leaf'].map((name) => scoped(name)), true],
+    ['matching leaf cannot cover unrelated sibling', { child: derived('left', 'right'), left: high, right: wrong }, ['child', 'left', 'right'].map((name) => broad(name)), false],
+    ['different child scope may not borrow parent approval', { child: high }, [scoped('child', [wrongId])], false],
+    ['lower severity evidence is ignored', { child: derived({ severity: 'moderate' }, ...high.via) }, [broad('child')], true],
+  ];
+  for (const [name, others, exceptions, allowed] of cases) {
+    await t.test(name, (subtest) => {
+      const result = run(subtest, report({ example: derived('child'), ...others }), 1, [exception, ...exceptions]);
+      if (allowed) {
+        assert.equal(result.status, 0, result.stderr);
+        assert.match(result.stdout, /Dependency audit contract OK/);
+      } else {
+        assert.notEqual(result.status, 0, result.stdout);
+        assert.doesNotMatch(result.stdout, /Dependency audit contract OK/);
+      }
+    });
+  }
+});
+
+test('separate roots cannot share advisory approval regardless of traversal order', (t) => {
+  const root = { severity: 'high', via: ['child'] };
+  const other = { ...exception, packageName: 'other', advisories: ['GHSA-2222-2222-2222'] };
+  const child = { ...exception, packageName: 'child', advisories: undefined };
+  for (const roots of [{ example: root, other: root }, { other: root, example: root }]) {
+    const result = run(t, report({ ...roots, child: high }), 1, [exception, other, child]);
+    assert.notEqual(result.status, 0, result.stdout);
+    assert.match(result.stderr, /other: incomplete or out-of-scope advisory evidence/);
+    assert.doesNotMatch(result.stdout, /Dependency audit contract OK/);
+  }
+});

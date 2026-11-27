@@ -96,29 +96,51 @@ for (const [packageName, vulnerability] of Object.entries(audit.vulnerabilities)
     continue;
   }
 
-  // An exception that names advisories covers only those at blocking severity: advisory objects must match by id
-  // (advisories below blockSeverities are ignored, like everywhere else in this gate), and a derived entry (a
-  // package name in `via`) must itself be an excepted package.
+  // The root exception must cover every blocking advisory reached through npm's
+  // derived package entries, even when a child has its own package-wide exception.
   if (exception.advisories !== undefined) {
     const evidenceSeverity = (via) => typeof via === 'string'
       ? (Object.hasOwn(audit.vulnerabilities, via) ? audit.vulnerabilities[via].severity : undefined)
       : via?.severity;
-    if (!Array.isArray(vulnerability.via) || vulnerability.via.length === 0 ||
-        vulnerability.via.some((via) => !severities.has(evidenceSeverity(via))) ||
-        !vulnerability.via.some((via) => blockSeverities.has(evidenceSeverity(via)))) {
-      violations.push(`${packageName}: incomplete advisory evidence for approved exception`);
-      continue;
-    }
-    for (const via of vulnerability.via) {
-      const covered =
-        typeof via === 'string'
-          ? allowedExceptions.has(via)
-          : !blockSeverities.has(via.severity) ||
-            exception.advisories.some((id) => String(via.url ?? '').endsWith(`/${id}`));
-      if (!covered) {
-        const label = typeof via === 'string' ? via : (via.url ?? via.title ?? 'unknown advisory');
-        violations.push(`${packageName}: ${label} is not covered by the approved exception`);
+    const hasApprovedEvidence = () => {
+      const parents = new Map([[packageName, new Set()]]);
+      const pending = [packageName];
+      const supported = new Set();
+      for (const name of pending) {
+        const { via } = audit.vulnerabilities[name];
+        if (!Array.isArray(via) || via.length === 0) return false;
+        for (const entry of via) {
+          const severity = evidenceSeverity(entry);
+          if (!severities.has(severity)) return false;
+          if (!blockSeverities.has(severity)) continue;
+          if (typeof entry === 'string') {
+            if (!allowedExceptions.has(entry)) return false;
+            if (!parents.has(entry)) {
+              parents.set(entry, new Set());
+              pending.push(entry);
+            }
+            parents.get(entry).add(name);
+          } else {
+            if (!exception.advisories.some((id) => String(entry.url ?? '').endsWith(`/${id}`))) return false;
+            supported.add(name);
+          }
+        }
       }
+
+      // Cycles are valid when every package can reach an approved advisory.
+      // A matching sibling must not cover a separate cycle without evidence.
+      const resolved = [...supported];
+      for (const name of resolved) {
+        for (const parent of parents.get(name)) {
+          if (supported.has(parent)) continue;
+          supported.add(parent);
+          resolved.push(parent);
+        }
+      }
+      return supported.size === parents.size;
+    };
+    if (!hasApprovedEvidence()) {
+      violations.push(`${packageName}: incomplete or out-of-scope advisory evidence for approved exception`);
     }
   }
 }
