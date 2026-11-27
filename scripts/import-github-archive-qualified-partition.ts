@@ -34,7 +34,7 @@ async function file(parent:FileHandle,name:string,uid:number,limit:number):Promi
 }
 export type GitHubArchivePartitionRequest=Readonly<{inputRoot:string;day:string;journalDir:string;semanticKey:string;expectedPlanSha256:string;packetSha256:string;correlationId:string}>;
 async function selected(request:Pick<GitHubArchivePartitionRequest,'inputRoot'|'day'|'semanticKey'|'packetSha256'>,uid:number){
- need(/^2026-(09|10)-[0-3][0-9]$/u.test(request.day)&&/^[a-f0-9]{64}$/u.test(request.semanticKey)&&/^[a-f0-9]{64}$/u.test(request.packetSha256),'Archived GitHub fixed date/key/packet required');
+ need(/^2026-(09|10|11)-[0-3][0-9]$/u.test(request.day)&&/^[a-f0-9]{64}$/u.test(request.semanticKey)&&/^[a-f0-9]{64}$/u.test(request.packetSha256),'Archived GitHub fixed date/key/packet required');
  const input=await directory(absolute(request.inputRoot),uid);
  try{
   const packet=await file(input,'packet.json',uid,128*1024),bytes=await file(input,'archive.json',uid,1024*1024);
