@@ -1,5 +1,6 @@
-import { EventEmitter } from 'node:events';
-import type { ChannelModel, ConfirmChannel } from 'amqplib';
+import { EventEmitter, once } from 'node:events';
+import { createServer, type Socket } from 'node:net';
+import type { ChannelModel, ConfirmChannel, SocketOptions } from 'amqplib';
 
 import { AmqplibRabbitMqChannel } from './amqplib-rabbitmq-channel';
 import type { RabbitMqPublishOptions } from './rabbitmq-queue-publisher';
@@ -9,6 +10,42 @@ const deferred = <T>() => {
   let reject!: (reason: unknown) => void;
   const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
   return { promise, resolve, reject };
+};
+
+const silentAmqpPeer = async (safetyTimeoutMs: number) => {
+  const sockets = new Set<Socket>();
+  const received: Buffer[][] = [];
+  const server = createServer((socket) => {
+    sockets.add(socket);
+    const chunks: Buffer[] = [];
+    received.push(chunks);
+    socket.on('data', (chunk: Buffer) => { chunks.push(chunk); });
+    socket.on('error', () => undefined);
+    socket.once('close', () => sockets.delete(socket));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const address = server.address();
+  if (address === null || typeof address === 'string') throw new Error('Expected a TCP listener');
+  let safetyExpired = false;
+  // The unpatched client has no deadline. Close its peer before Jest's limit
+  // so a regression fails with a socket-close error and still releases handles.
+  const safety = setTimeout(() => {
+    safetyExpired = true;
+    for (const socket of sockets) socket.destroy();
+  }, safetyTimeoutMs);
+  return {
+    url: 'amqp://127.0.0.1:' + address.port,
+    get headers(): string[] { return received.map((chunks) => Buffer.concat(chunks).toString('hex')); },
+    get safetyExpired(): boolean { return safetyExpired; },
+    async close(): Promise<void> {
+      clearTimeout(safety);
+      for (const socket of sockets) socket.destroy();
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => { if (error) reject(error); else resolve(); });
+      });
+    },
+  };
 };
 
 class AcquiredChannel extends EventEmitter {
@@ -47,6 +84,56 @@ const send = (adapter: AmqplibRabbitMqChannel, id = 'synthetic') => {
 };
 
 describe('RabbitMQ acquisition failures and replacement ownership', () => {
+  it('times out a silent real TCP peer with the default connection options', async () => {
+    const peer = await silentAmqpPeer(35_000);
+    const adapter = new AmqplibRabbitMqChannel({ url: peer.url });
+    try {
+      await expect(adapter.assertExchange('synthetic', 'topic', { durable: true }))
+        .rejects.toThrow('connect ETIMEDOUT');
+      expect(peer.headers).toEqual(['414d515000000901']);
+      expect(peer.safetyExpired).toBe(false);
+    } finally {
+      await peer.close();
+      await adapter.onApplicationShutdown();
+    }
+  }, 45_000);
+
+  it('retries a fresh native connection after an explicit handshake timeout', async () => {
+    const peer = await silentAmqpPeer(2_000);
+    const adapter = new AmqplibRabbitMqChannel({ url: peer.url, socketOptions: { timeout: 200 } });
+    try {
+      await expect(adapter.assertExchange('synthetic', 'topic', { durable: true }))
+        .rejects.toThrow('connect ETIMEDOUT');
+      await expect(adapter.assertExchange('synthetic', 'topic', { durable: true }))
+        .rejects.toThrow('connect ETIMEDOUT');
+      expect(peer.headers).toEqual(['414d515000000901', '414d515000000901']);
+      expect(peer.safetyExpired).toBe(false);
+    } finally {
+      await peer.close();
+      await adapter.onApplicationShutdown();
+    }
+  });
+
+  it.each([undefined, 75, 0])('preserves socket options with timeout %s', async (timeout) => {
+    const socketOptions: SocketOptions = Object.freeze({
+      ...(timeout === undefined ? {} : { timeout }),
+      noDelay: true, keepAlive: true, clientProperties: { connection_name: 'synthetic' },
+    });
+    const connect = jest.fn<Promise<ChannelModel>, [string, SocketOptions?]>()
+      .mockRejectedValue(new Error('synthetic acquisition failure'));
+    const adapter = new AmqplibRabbitMqChannel({ url: 'amqp://synthetic', socketOptions, connect });
+    try {
+      await expect(adapter.assertExchange('synthetic', 'topic', { durable: true }))
+        .rejects.toThrow('synthetic acquisition failure');
+      expect(connect).toHaveBeenCalledWith('amqp://synthetic', {
+        ...socketOptions, timeout: timeout ?? 30_000,
+      });
+      expect(socketOptions.timeout).toBe(timeout);
+    } finally {
+      await adapter.onApplicationShutdown();
+    }
+  });
+
   it('bounds admission before connecting and releases a failed acquisition slot', async () => {
     const connecting = deferred<ChannelModel>();
     const native = new AcquiredChannel();

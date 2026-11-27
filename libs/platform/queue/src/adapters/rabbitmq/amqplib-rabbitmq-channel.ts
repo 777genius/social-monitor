@@ -286,7 +286,10 @@ export class AmqplibRabbitMqChannel implements RabbitMqQueueChannelPort {
     const connectToBroker = this.options.connect ?? connect;
     const pending = connectToBroker(
       this.options.url,
-      this.options.socketOptions,
+      {
+        ...this.options.socketOptions,
+        timeout: this.options.socketOptions?.timeout ?? 30_000,
+      },
     ).then((connection) => {
       this.connectionChannels.set(connection, new Set());
       connection.on('error', () => this.invalidateConnection(pending, connection));
