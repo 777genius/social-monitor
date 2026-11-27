@@ -19,6 +19,19 @@ const fixture=()=>{
 };
 
 describe('finite archived GitHub planning',()=>{
+ it('preserves a November archive publication day and its original observation time',()=>{
+  const input=fixture();
+  const board=JSON.parse(input.bytes.toString('utf8'));
+  board.pubDate='Fri, 06 Nov 2026 08:52:11 GMT';
+  const bytes=Buffer.from(JSON.stringify(board));
+  const archive={...input.archive,serializedAt:'2026-11-06T08:52:11.000Z',
+   committedAt:'2026-11-06T08:56:07.000Z',acquiredAt:'2026-11-23T00:00:00.000Z',
+   fileSha256:sha(bytes),gitBlobSha1:createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex')};
+  const result=planGitHubArchiveQualifiedPartition({...input,bytes,archive});
+  expect(result.plan.day).toBe('2026-11-06');
+  expect(result.plan.candidates[0]?.item.publishedAt.toISOString()).toBe(archive.serializedAt);
+  expect(result.plan.coverage).toBe('PARTIAL_ARCHIVED_OBSERVATIONS');
+ });
  it('selects missing identities after canonical Top10 and preserves original canonical rank/date',()=>{
   const input=fixture(),result=planGitHubArchiveQualifiedPartition(input);
   expect(result.plan.selectedCount).toBe(1);

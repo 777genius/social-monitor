@@ -58,6 +58,7 @@ for (const exception of policy.allowedExceptions ?? []) {
 }
 
 let audit;
+let auditExit = 0;
 try {
   const auditJson =
     process.platform === 'win32'
@@ -66,13 +67,25 @@ try {
   audit = JSON.parse(auditJson);
 } catch (error) {
   const stdout = String(error.stdout ?? '').trim();
-  if (stdout.length === 0) {
+  if (error.status !== 1 || error.signal || stdout.length === 0) {
     throw error;
   }
   audit = JSON.parse(stdout);
+  auditExit = error.status;
 }
 
-for (const [packageName, vulnerability] of Object.entries(audit.vulnerabilities ?? {})) {
+// npm audit exits 1 for blocking findings, but registry failures also exit 1.
+// Never interpret a failed or incomplete report as an empty vulnerability list.
+const severities = new Set(['info', 'low', 'moderate', 'high', 'critical']);
+if (audit?.auditReportVersion !== 2 || Object.hasOwn(audit, 'error') ||
+    !audit.vulnerabilities || typeof audit.vulnerabilities !== 'object' || Array.isArray(audit.vulnerabilities) ||
+    Object.values(audit.vulnerabilities).some((v) => !severities.has(v?.severity)) ||
+    (auditExit !== 0 && !Object.values(audit.vulnerabilities).some((v) => blockSeverities.has(v.severity)))) {
+  console.error('Dependency audit did not return a valid npm audit report');
+  process.exit(1);
+}
+
+for (const [packageName, vulnerability] of Object.entries(audit.vulnerabilities)) {
   if (!blockSeverities.has(vulnerability.severity)) {
     continue;
   }
@@ -83,20 +96,39 @@ for (const [packageName, vulnerability] of Object.entries(audit.vulnerabilities 
     continue;
   }
 
-  // An exception that names advisories covers only those at blocking severity: advisory objects must match by id
-  // (advisories below blockSeverities are ignored, like everywhere else in this gate), and a derived entry (a
-  // package name in `via`) must itself be an excepted package.
+  // The root exception must cover every blocking advisory reached through npm's
+  // derived package entries, even when a child has its own package-wide exception.
   if (exception.advisories !== undefined) {
-    for (const via of vulnerability.via ?? []) {
-      const covered =
-        typeof via === 'string'
-          ? allowedExceptions.has(via)
-          : !blockSeverities.has(via.severity) ||
-            exception.advisories.some((id) => String(via.url ?? '').endsWith(`/${id}`));
-      if (!covered) {
-        const label = typeof via === 'string' ? via : (via.url ?? via.title ?? 'unknown advisory');
-        violations.push(`${packageName}: ${label} is not covered by the approved exception`);
+    const evidenceSeverity = (via) => typeof via === 'string'
+      ? (Object.hasOwn(audit.vulnerabilities, via) ? audit.vulnerabilities[via].severity : undefined)
+      : via?.severity;
+    const visiting = new Set();
+    const checked = new Set();
+    const visit = (name) => {
+      if (checked.has(name)) return true;
+      if (visiting.has(name)) return false;
+      visiting.add(name);
+      const { via } = audit.vulnerabilities[name];
+      if (!Array.isArray(via) || via.length === 0 ||
+          via.some((entry) => !severities.has(evidenceSeverity(entry))) ||
+          !via.some((entry) => blockSeverities.has(evidenceSeverity(entry)))) {
+        return false;
       }
+      for (const entry of via) {
+        if (typeof entry === 'string') {
+          if (!allowedExceptions.has(entry) ||
+              (blockSeverities.has(evidenceSeverity(entry)) && !visit(entry))) return false;
+        } else if (blockSeverities.has(entry.severity) &&
+            !exception.advisories.some((id) => String(entry.url ?? '').endsWith(`/${id}`))) {
+          return false;
+        }
+      }
+      visiting.delete(name);
+      checked.add(name);
+      return true;
+    };
+    if (!visit(packageName)) {
+      violations.push(`${packageName}: incomplete or out-of-scope advisory evidence for approved exception`);
     }
   }
 }

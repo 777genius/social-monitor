@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import ts from 'typescript';
 
 import {
   validateRunnerImplementationMarkers, artifactShapePolicyPath, duplicatePathsPolicyPath,
   redactionPolicyPath, handoffPolicyPath, displayPolicyPath, consistencyPolicyPath,
-  readinessPolicyPath, valuePolicyPath, planPrinterPath, envFileLoaderPath,
+  readinessPolicyPath, valuePolicyPath, planPrinterPath, envFileLoaderPath, evidencePathAdmissionPath,
 } from '../lib/external-beta-evidence-runner-markers.mjs';
 
 const runnerFile = 'scripts/external-beta-evidence-runner.mjs';
@@ -22,6 +23,7 @@ const sources = {
   valuePolicySource: readFileSync(valuePolicyPath, 'utf8'),
   planPrinterSource: readFileSync(planPrinterPath, 'utf8'),
   envFileLoaderSource: readFileSync(envFileLoaderPath, 'utf8'),
+  evidencePathAdmissionSource: readFileSync(evidencePathAdmissionPath, 'utf8'),
   checkSource: readFileSync(checkFile, 'utf8'),
   selectionHelperSource: readFileSync(selectionHelperPath, 'utf8'),
   redactionPolicySource: readFileSync(redactionPolicyPath, 'utf8'),
@@ -29,6 +31,89 @@ const sources = {
   checkFile,
   selectionHelperPath,
 };
+
+function assertPathAdmissionBinding(text) {
+  const root = ts.createSourceFile(runnerFile, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  assert.equal(root.parseDiagnostics.length, 0);
+  const factory = 'createExternalBetaEvidencePathAdmission';
+  const imports = root.statements.filter(node => ts.isImportDeclaration(node)
+    && node.moduleSpecifier.text === './lib/external-beta-evidence-path-admission.mjs');
+  assert.equal(imports.length, 1);
+  assert.deepStrictEqual(imports[0].importClause.namedBindings.elements.map(node => node.name.text), [factory]);
+  const declarations = root.statements.filter(ts.isVariableStatement)
+    .flatMap(node => [...node.declarationList.declarations]);
+  const bindings = declarations.filter(node => node.initializer
+    && ts.isCallExpression(node.initializer) && node.initializer.expression.getText(root) === factory);
+  assert.equal(bindings.length, 1, 'admission must bind once at top level, before env-file loading');
+  const binding = bindings[0];
+  assert.ok(ts.isObjectBindingPattern(binding.name));
+  assert.deepStrictEqual(binding.name.elements.map(node => node.getText(root)), [
+    'validateExternalBetaEnvFilePath', 'validateExecutableOutputArtifactPathEnv',
+    'validatePlannedEvidencePathEnv', 'validateEvidencePathEnv',
+    'evidencePathMaxBytes', 'formatBytes', 'isFixtureLikeArtifactPath',
+  ]);
+  assert.equal(binding.initializer.arguments.length, 1);
+  const dependencies = binding.initializer.arguments[0];
+  assert.ok(ts.isObjectLiteralExpression(dependencies));
+  assert.deepStrictEqual(dependencies.properties.map(node => node.getText(root)), [
+    'contract', 'env: process.env', 'cwd: () => process.cwd()', 'jobInputEnvNames',
+    'accessSync', 'existsSync', 'lstatSync', 'readFileSync', 'realpathSync: realpathSync.native', 'statSync',
+    'execFileSync', 'writableMode: constants.W_OK',
+  ]);
+  const loader = declarations.find(node => node.initializer
+    && ts.isCallExpression(node.initializer) && node.initializer.expression.getText(root) === 'createExternalBetaEnvFileLoader');
+  assert.ok(loader && loader.pos > binding.pos, 'path policy is ready before environment loading');
+}
+
+test('path admission binds the live dependencies at the actual CLI composition root', () => {
+  assertPathAdmissionBinding(sources.runnerSource);
+  const start = sources.runnerSource.indexOf('const {\n  validateExternalBetaEnvFilePath,');
+  const end = sources.runnerSource.indexOf('\n});', start) + '\n});'.length;
+  assert.ok(start >= 0 && end > start);
+  const binding = sources.runnerSource.slice(start, end);
+  for (const changed of [
+    sources.runnerSource.replace(binding, '/* ' + binding + ' */'),
+    sources.runnerSource.replace(binding, 'function dormantAdmission() {\n' + binding + '\n}'),
+    sources.runnerSource.replace('env: process.env, cwd: () => process.cwd()', 'env: {}, cwd: () => process.cwd()'),
+    sources.runnerSource.replace('./lib/external-beta-evidence-path-admission.mjs', './lib/wrong-owner.mjs'),
+  ]) {
+    assert.throws(() => assertPathAdmissionBinding(changed));
+  }
+});
+
+test('path safety markers remain mandatory at the extracted implementation owner', () => {
+  for (const marker of [
+    'function validateExternalBetaEnvFilePath(', 'function validateExecutableOutputArtifactPathEnv(',
+    'function validatePlannedEvidencePathEnv(', 'function validateEvidencePathEnv(',
+    'lstatSync', 'isAbsentEvidencePath', 'isParentRelativePath',
+    'realpath must not be inside the git workspace before live execution',
+  ]) {
+    const violations = validateRunnerImplementationMarkers({
+      ...sources,
+      evidencePathAdmissionSource: sources.evidencePathAdmissionSource.replaceAll(marker, 'removed-admission-marker'),
+    });
+    assert.ok(violations.includes(evidencePathAdmissionPath + ': evidence path admission must preserve "' + marker + '"'));
+    assert.ok(violations.every(value => value.startsWith(evidencePathAdmissionPath)));
+  }
+  const missingOwner = validateRunnerImplementationMarkers({ ...sources, evidencePathAdmissionSource: '' });
+  assert.ok(missingOwner.length >= 52, 'all relocated safety markers remain enforced');
+  assert.match(sources.checkSource, /evidencePathAdmissionSource:\s*readFileSync\(evidencePathAdmissionPath,\s*'utf8'\)/);
+});
+
+test('runner cannot bypass the path-admission factory or any of its three safety stages', () => {
+  for (const [before, after] of [
+    ['env: process.env, cwd: () => process.cwd()', 'env: {}, cwd: () => process.cwd()'],
+    ['  validateExecutableOutputArtifactPathEnv(job, new Set(missingEnv), violations);', '  // removed live path admission'],
+    ['  validatePlannedEvidencePathEnv(job, missingEnvSet, violations);', '  // removed preflight path admission'],
+    ['  const invalidPathEnv = validateEvidencePathEnv(job, missingEnvSet, violations);', '  const invalidPathEnv = new Set();'],
+  ]) {
+    assert.ok(sources.runnerSource.includes(before));
+    const violations = validateRunnerImplementationMarkers({
+      ...sources, runnerSource: sources.runnerSource.replace(before, after),
+    });
+    assert.ok(violations.some(value => value.startsWith(runnerFile + ': runner must ') && value.includes('evidence path admission')));
+  }
+});
 
 test('every runner and checker implementation marker exists at its owning source', () => {
   assert.deepEqual(validateRunnerImplementationMarkers(sources), []);
@@ -387,3 +472,4 @@ test('runner cannot bypass live private env admission by commenting out its bind
 test('real checker reads the extracted private env-file policy for owner-marker enforcement', () => {
   assert.match(sources.checkSource, /envFileLoaderSource:\s*readFileSync\(envFileLoaderPath,\s*'utf8'\)/);
 });
+

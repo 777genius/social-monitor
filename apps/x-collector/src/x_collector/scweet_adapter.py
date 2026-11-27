@@ -223,6 +223,7 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
 
         def create_scweet(*, strict_lookup: bool = False) -> Any:
             from Scweet import Scweet, ScweetConfig
+            from x_collector.scweet_bootstrap import with_legacy_bootstrap
 
             reconcile_runs()
 
@@ -243,7 +244,7 @@ class ScweetDailySearchCollector(DailySearchCollectorPort):
                 request_404_retries=0 if strict_lookup else 1,
                 **lookup_config,
             )
-            return Scweet(
+            return with_legacy_bootstrap(Scweet)(
                 cookies_file=settings.scweet_cookies_file,
                 auth_token=settings.scweet_auth_token,
                 db_path=settings.scweet_db_path,

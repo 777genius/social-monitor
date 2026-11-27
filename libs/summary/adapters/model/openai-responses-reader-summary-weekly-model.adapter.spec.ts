@@ -159,6 +159,50 @@ describe("OpenAiResponsesReaderSummaryWeeklyModelAdapter", () => {
     );
   });
 
+  it.each([
+    ["user message", (text: string) => ({ ...outputMessage(text), role: "user" })],
+    ["non-message output", (text: string) => ({ ...outputMessage(text), type: "input_message" })],
+    ["input text", (text: string) => ({ ...outputMessage(text), content: [{ type: "input_text", text }] })],
+    ["non-array content", (text: string) => ({ ...outputMessage(text), content: { type: "output_text", text } })],
+    ["non-object content", (text: string) => ({ ...outputMessage(text), content: [null] })],
+    ["non-string text", (text: string) => ({ ...outputMessage(text), content: [{ type: "input_text", text: 42 }] })],
+    ["malformed reasoning", () => ({ type: "reasoning", content: [{ type: "reasoning_text" }] })],
+  ] as const)("rejects %s even with a valid sealed aggregate", async (_name, output) => {
+    const input = weeklyInput();
+    const text = JSON.stringify(weeklyOutput(input));
+    const fetchFn = jest.fn(async () => response({
+      status: "completed",
+      output_text: text,
+      output: [output(text)],
+    }));
+
+    expect(await classifiedRejection(adapterWith(fetchFn), input)).toMatchObject({
+      kind: "invalid_response",
+      retryable: false,
+    });
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps reasoning metadata separate from the sealed assistant output", async () => {
+    const input = weeklyInput();
+    const expected = weeklyOutput(input);
+    const text = JSON.stringify(expected);
+    const fetchFn = jest.fn(async () => response({
+      status: "completed",
+      output_text: text,
+      output: [
+        { type: "reasoning", content: [{ type: "reasoning_text", text: "synthetic reasoning metadata" }] },
+        outputMessage(text),
+      ],
+    }));
+
+    const result = await adapterWith(fetchFn).generate(input);
+
+    expect(result).toEqual(expected);
+    expect(Object.isFrozen(result)).toBe(true);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
   it("has identical direct and adapter execution for an immutable sealed weekly input", async () => {
     const input = Object.freeze(weeklyInput());
     const snapshot = JSON.stringify(input);

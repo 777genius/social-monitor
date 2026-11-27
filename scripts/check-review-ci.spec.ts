@@ -151,13 +151,20 @@ describe("quality gate lifecycle and Telegram native inventory", () => {
     expect(checkLifecycleInventory({ ...packageScripts, "check:code-quality": command }))
       .toEqual([expect.stringContaining("mandatory native containment and Telegram native checks")]);
   });
+  it("rejects replacing the reader-posts readiness test while preserving command count", () => {
+    const serial = packageScripts["check:production-deploy-lifecycle:serial"].replace(
+      "bash ops/deploy/reader-posts-proxy-readiness.test.sh", "bash unrelated-test.sh",
+    );
+    expect(checkLifecycleInventory({ ...packageScripts, "check:production-deploy-lifecycle:serial": serial }))
+      .toEqual([expect.stringContaining("retain all 29 serial commands")]);
+  });
   it.each([
     "check:production-lifecycle-runner",
     "check:production-lifecycle-runner:containment",
     "check:production-deploy-lifecycle:serial",
   ])("preserves rejection of a weakened lifecycle contract %s", (key) => {
     expect(checkLifecycleInventory({ ...packageScripts, [key]: "true" }))
-      .toEqual([expect.stringContaining("retain all 28 serial commands")]);
+      .toEqual([expect.stringContaining("retain all 29 serial commands")]);
   });
 });
 
