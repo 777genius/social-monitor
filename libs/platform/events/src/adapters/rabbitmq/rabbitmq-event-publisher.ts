@@ -17,8 +17,6 @@ export type RabbitMqEventPublisherOptions = {
 };
 
 export class RabbitMqEventPublisher implements EventPublisherPort {
-  private exchangeAsserted = false;
-
   constructor(
     private readonly channel: RabbitMqQueueChannelPort,
     private readonly options: RabbitMqEventPublisherOptions,
@@ -38,7 +36,7 @@ export class RabbitMqEventPublisher implements EventPublisherPort {
       throw new Error(`Event payload exceeds RabbitMQ max payload size: ${content.byteLength}`);
     }
 
-    const accepted = await this.channel.publishAndConfirm(this.options.exchange, event.eventType, content, {
+    await this.channel.publishAndConfirm(this.options.exchange, event.eventType, content, {
       contentType: this.options.contentType ?? 'application/json',
       deliveryMode: this.options.persistent === false ? 1 : 2,
       mandatory: this.options.mandatory ?? true,
@@ -55,22 +53,12 @@ export class RabbitMqEventPublisher implements EventPublisherPort {
         ...this.options.headers,
       },
     });
-
-    if (!accepted) {
-      throw new Error(`RabbitMQ publish backpressure for event type: ${event.eventType}`);
-    }
-
   }
 
   private async ensureExchange(): Promise<void> {
-    if (this.exchangeAsserted) {
-      return;
-    }
-
     await this.channel.assertExchange(this.options.exchange, this.options.exchangeType ?? 'topic', {
       durable: this.options.durable ?? true,
     });
-    this.exchangeAsserted = true;
   }
 }
 

@@ -133,6 +133,7 @@ describe('RabbitMQ channel generation ownership', () => {
     await expect(send(f.adapter, 'same-id')).rejects.toThrow('already pending');
     native.sends[0]!.confirm(null);
     await expect(backpressured).resolves.toBe(false);
+    native.emit('drain');
     const publish = jest.spyOn(native, 'publish').mockImplementationOnce(() => { throw new Error('wire failed'); });
     await expect(send(f.adapter, 'same-id')).rejects.toThrow('wire failed');
     publish.mockRestore();
@@ -157,6 +158,7 @@ describe('RabbitMQ channel generation ownership', () => {
     native.sends[0]!.confirm(null);
     await rejected;
     native.writable = true;
+    native.emit('drain');
     const retry = send(f.adapter, 'same-id');
     await flush();
     native.sends[1]!.confirm(null);
