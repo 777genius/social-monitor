@@ -45,6 +45,7 @@ export class AmqplibRabbitMqChannel implements RabbitMqQueueChannelPort {
   private readonly originRecovery = new WeakMap<ConfirmChannel, Promise<void>>();
   private readonly connectionChannels = new WeakMap<ChannelModel, Set<ConfirmChannel>>();
   private readonly closedConnections = new WeakSet<ChannelModel>();
+  private readonly closedDeliveryChannels = new WeakSet<ConfirmChannel>();
   private publishesCancelled = false;
 
   constructor(private readonly options: AmqplibRabbitMqChannelOptions) {
@@ -149,15 +150,18 @@ export class AmqplibRabbitMqChannel implements RabbitMqQueueChannelPort {
   async recoverDelivery(message: Message): Promise<void> {
     const origin = this.deliveryChannels.get(message);
     if (origin === undefined) throw new Error('RabbitMQ delivery has no unsettled origin channel');
-    if (!this.publications.isClosed(origin)) {
-      let recovery = this.originRecovery.get(origin);
-      if (recovery === undefined) {
-        recovery = this.closeDeliveryOrigin(origin).finally(() => { this.originRecovery.delete(origin); });
-        this.originRecovery.set(origin, recovery);
-      }
-      await recovery;
-    }
+    await this.recoverDeliveryOrigin(origin);
     this.deliveryChannels.delete(message);
+  }
+
+  private recoverDeliveryOrigin(origin: ConfirmChannel): Promise<void> {
+    if (this.closedDeliveryChannels.has(origin)) return Promise.resolve();
+    let recovery = this.originRecovery.get(origin);
+    if (recovery === undefined) {
+      recovery = this.closeDeliveryOrigin(origin).finally(() => { this.originRecovery.delete(origin); });
+      this.originRecovery.set(origin, recovery);
+    }
+    return recovery;
   }
 
   private async closeDeliveryOrigin(origin: ConfirmChannel): Promise<void> {
@@ -166,17 +170,19 @@ export class AmqplibRabbitMqChannel implements RabbitMqQueueChannelPort {
     } catch (error) {
       // A native close/error event independently proves this origin is gone.
       // Otherwise retain its authority and allow a later cleanup retry.
-      if (!this.publications.isClosed(origin)) throw error;
+      if (!this.closedDeliveryChannels.has(origin)) throw error;
     }
     const pending = this.channelOrigins.get(origin);
-    if (pending === undefined) this.publications.close(origin);
-    else this.invalidateChannel(pending, origin);
+    if (pending === undefined) {
+      this.closedDeliveryChannels.add(origin);
+      this.publications.close(origin);
+    } else this.invalidateChannel(pending, origin);
   }
 
   private deliveryChannel(message: Message): ConfirmChannel {
     const channel = this.deliveryChannels.get(message);
     if (channel === undefined) throw new Error('RabbitMQ delivery has no unsettled origin channel');
-    if (this.publications.isClosed(channel)) throw new Error('RabbitMQ delivery origin channel closed');
+    if (this.closedDeliveryChannels.has(channel)) throw new Error('RabbitMQ delivery origin channel closed');
     return channel;
   }
 
@@ -193,11 +199,17 @@ export class AmqplibRabbitMqChannel implements RabbitMqQueueChannelPort {
     this.connectionPromise = undefined;
     const channel = await pendingChannel?.catch(() => undefined);
     if (channel !== undefined && pendingChannel !== undefined) {
-      this.invalidateChannel(pendingChannel, channel);
-      await channel.close().catch(() => undefined);
+      this.publications.close(channel);
+      this.declarations.delete(channel);
+      await this.recoverDeliveryOrigin(channel).catch(() => undefined);
     }
     const connection = await pendingConnection?.catch(() => undefined);
-    await connection?.close().catch(() => undefined);
+    if (connection !== undefined && pendingConnection !== undefined) {
+      await connection.close().then(
+        () => this.invalidateConnection(pendingConnection, connection),
+        () => undefined,
+      );
+    }
   }
 
   async onApplicationShutdown(): Promise<void> {
@@ -226,10 +238,12 @@ export class AmqplibRabbitMqChannel implements RabbitMqQueueChannelPort {
   private retirePublicationChannel(channel: ConfirmChannel): void {
     if (this.publications.isClosed(channel)) return;
     const origin = this.channelOrigins.get(channel);
-    if (origin !== undefined) this.invalidateChannel(origin, channel);
-    else this.publications.close(channel);
-    // Native close retires the affected origin only; reconnect never waits on it.
-    void channel.close().catch(() => undefined);
+    this.publications.close(channel);
+    this.declarations.delete(channel);
+    if (this.channelPromise === origin) this.channelPromise = undefined;
+    // Stop new publication immediately, but a rejected close is not proof that
+    // acquired deliveries were requeued. Retain their native authority for retry.
+    void this.recoverDeliveryOrigin(channel).catch(() => undefined);
   }
 
   private async channel(): Promise<ConfirmChannel> {
@@ -286,6 +300,7 @@ export class AmqplibRabbitMqChannel implements RabbitMqQueueChannelPort {
 
   private invalidateChannel(pending: Promise<ConfirmChannel>, channel?: ConfirmChannel): void {
     if (channel !== undefined) {
+      this.closedDeliveryChannels.add(channel);
       this.publications.close(channel);
       this.declarations.delete(channel);
       const connection = this.channelConnections.get(channel);
@@ -303,6 +318,7 @@ export class AmqplibRabbitMqChannel implements RabbitMqQueueChannelPort {
       this.closedConnections.add(connection);
       const channels = this.connectionChannels.get(connection);
       for (const channel of channels ?? []) {
+        this.closedDeliveryChannels.add(channel);
         this.publications.close(channel);
         this.declarations.delete(channel);
       }

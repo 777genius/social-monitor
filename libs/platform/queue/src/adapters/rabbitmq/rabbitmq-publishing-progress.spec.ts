@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import type { ChannelModel, ConfirmChannel } from 'amqplib';
+import type { ChannelModel, ConfirmChannel, GetMessage } from 'amqplib';
 import { FixedClock } from '@social-monitor/shared-kernel';
 
 import { AmqplibRabbitMqChannel, type AmqplibRabbitMqChannelOptions } from './amqplib-rabbitmq-channel';
@@ -7,6 +7,9 @@ import { RabbitMqQueuePublisher, type RabbitMqPublishOptions } from './rabbitmq-
 
 class ProgressChannel extends EventEmitter {
   readonly sends: Array<{ id: string; confirm: (error: Error | null) => void }> = [];
+  readonly deliveries: GetMessage[] = [];
+  readonly ack = jest.fn();
+  async get(): Promise<GetMessage | false> { return this.deliveries.shift() ?? false; }
   writable = true;
   readonly assertExchange = jest.fn(async () => undefined);
   readonly assertQueue = jest.fn(async () => undefined);
@@ -253,6 +256,39 @@ describe('RabbitMQ bounded publisher progress', () => {
     expect(replacement.close).not.toHaveBeenCalled();
     replacement.sends[0]!.confirm(null);
     await expect(pending).resolves.toBe(true);
+  });
+
+
+  it('retains delivery ownership when publication timeout retires an origin whose close fails', async () => {
+    jest.useFakeTimers();
+    const f = fixture({ confirmationTimeoutMs: 25 });
+    await f.open();
+    const origin = f.native();
+    origin.deliveries.push({
+      fields: { deliveryTag: 1, redelivered: false, exchange: 'synthetic', routingKey: 'synthetic', messageCount: 0 },
+      properties: {}, content: Buffer.from('{}'),
+    } as GetMessage);
+    const delivery = await f.adapter.get('synthetic', { noAck: false });
+    if (delivery === false) throw new Error('Synthetic delivery absent');
+    origin.close.mockRejectedValueOnce(new Error('native close did not complete'));
+    const stalled = f.send('stalled');
+    const rejected = expect(stalled).rejects.toThrow('confirmation timed out');
+    await origin.waitForSends(1);
+    await jest.advanceTimersByTimeAsync(25);
+    await rejected;
+    expect(origin.close).toHaveBeenCalledTimes(1);
+
+    await f.open();
+    const replacement = f.native();
+    const next = f.send('healthy-replacement');
+    await replacement.waitForSends(1);
+    // Failed timeout cleanup must remain retryable for the captured delivery.
+    await f.adapter.recoverDelivery(delivery);
+    expect(origin.close).toHaveBeenCalledTimes(2);
+    expect(replacement.close).not.toHaveBeenCalled();
+    replacement.sends[0]!.confirm(null);
+    await expect(next).resolves.toBe(true);
+    await expect(f.adapter.ack(delivery)).rejects.toThrow('no unsettled origin');
   });
 
   it('cancels deadlines and prevents reconnect after application shutdown', async () => {
