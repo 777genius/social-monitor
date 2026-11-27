@@ -15,7 +15,14 @@ import {
   type WorkspaceAuthorizationPolicyPort,
 } from '@social-monitor/identity/ports';
 import { WorkspaceRoleHeaderParser } from '@social-monitor/identity/interfaces/authorization/workspace-role-header.parser';
-import { DomainError, requireTenantScope, type TenantId, type WorkspaceId } from '@social-monitor/shared-kernel';
+import {
+  DomainError,
+  redactSensitiveRecord,
+  redactSensitiveText,
+  requireTenantScope,
+  type TenantId,
+  type WorkspaceId,
+} from '@social-monitor/shared-kernel';
 import type { Server, Socket } from 'socket.io';
 
 import type { RealtimeEvent } from '../../domain';
@@ -54,6 +61,8 @@ type RealtimeAck =
   },
 })
 export class RealtimeEventsGateway implements RealtimeFanoutPort {
+  private readonly replaying = new WeakSet<Socket>();
+
   @WebSocketServer()
   private server?: Server;
 
@@ -67,7 +76,7 @@ export class RealtimeEventsGateway implements RealtimeFanoutPort {
 
   @SubscribeMessage('realtime.subscribe')
   async subscribe(
-    @MessageBody() payload: RealtimeSubscribePayload,
+    @MessageBody() payload: unknown,
     @ConnectedSocket() socket: Socket,
   ): Promise<RealtimeAck> {
     return this.replay(payload, socket, true);
@@ -75,7 +84,7 @@ export class RealtimeEventsGateway implements RealtimeFanoutPort {
 
   @SubscribeMessage('realtime.refresh')
   async refresh(
-    @MessageBody() payload: RealtimeSubscribePayload,
+    @MessageBody() payload: unknown,
     @ConnectedSocket() socket: Socket,
   ): Promise<RealtimeAck> {
     return this.replay(payload, socket, false);
@@ -94,11 +103,22 @@ export class RealtimeEventsGateway implements RealtimeFanoutPort {
   }
 
   private async replay(
-    payload: RealtimeSubscribePayload,
+    payload: unknown,
     socket: Socket,
     joinRoom: boolean,
   ): Promise<RealtimeAck> {
+    if (this.replaying.has(socket)) {
+      return errorAck(new DomainError(
+        'operation.backpressure',
+        'Realtime replay is already in progress',
+      ));
+    }
+
+    this.replaying.add(socket);
+    let joinedRoom: string | undefined;
     try {
+      const request = readReplayRequest(payload);
+      requireConnected(socket);
       const scope = requireTenantScope({
         tenantIdHeader: readSocketScopeValue(socket, 'x-tenant-id', 'tenantId'),
         workspaceIdHeader: readSocketScopeValue(socket, 'x-workspace-id', 'workspaceId'),
@@ -109,33 +129,48 @@ export class RealtimeEventsGateway implements RealtimeFanoutPort {
         readSocketScopeValue(socket, 'authorization', 'authorization'),
         readSocketScopeValue(socket, 'x-workspace-role', 'workspaceRole'),
       );
+      requireConnected(socket);
 
-      const channel = readNonEmptyString(payload.channel, 'channel');
+      const room = roomKey(scope.tenantId, scope.workspaceId, request.channel);
+      if (joinRoom && !socket.rooms.has(room)) {
+        // Own only the grant made by this operation. Duplicate subscriptions
+        // and refresh failures must preserve an earlier successful grant.
+        joinedRoom = room;
+        await socket.join(room);
+        requireConnected(socket);
+      }
+
+      // Join after authorization but before replay: a concurrent event may
+      // arrive live and in replay, as allowed by the best-effort contract.
       const result = await this.listRealtimeEvents.execute({
         tenantId: scope.tenantId,
         workspaceId: scope.workspaceId,
-        channel,
-        cursor: readOptionalString(payload.cursor, 'cursor'),
-        limit: readLimit(payload.limit),
+        ...request,
       });
-
       if (!result.ok) {
         throw result.error;
       }
-
-      if (joinRoom) {
-        await socket.join(roomKey(scope.tenantId, scope.workspaceId, channel));
-      }
+      requireConnected(socket);
 
       return {
         ok: true,
-        channel,
+        channel: request.channel,
         events: result.value.events,
         nextCursor: result.value.nextCursor,
         resyncRequired: result.value.resyncRequired,
       };
     } catch (error) {
+      if (joinedRoom !== undefined) {
+        try {
+          await socket.leave(joinedRoom);
+        } catch {
+          // A failed rollback cannot leave an abandoned subscription active.
+          socket.disconnect();
+        }
+      }
       return errorAck(error);
+    } finally {
+      this.replaying.delete(socket);
     }
   }
 
@@ -168,6 +203,39 @@ export class RealtimeEventsGateway implements RealtimeFanoutPort {
     }
   }
 }
+
+const requireConnected = (socket: Socket): void => {
+  if (!socket.connected) {
+    throw new DomainError(
+      'external.dependency_unavailable',
+      'Realtime client disconnected',
+    );
+  }
+};
+
+const readReplayRequest = (payload: unknown): {
+  readonly channel: string;
+  readonly cursor?: string;
+  readonly limit: number;
+} => {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    throw new DomainError('validation.failed', 'Realtime payload must be an object');
+  }
+  const input = payload as RealtimeSubscribePayload;
+  const channel = readNonEmptyString(input.channel, 'channel');
+  const cursor = readOptionalString(input.cursor, 'cursor');
+  const limit = readLimit(input.limit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    throw new DomainError(
+      'validation.failed',
+      'Realtime event page limit must be between 1 and 100',
+      { limit },
+    );
+  }
+  // Cursor contents belong to the replay repository. An opaque invalid or
+  // expired cursor must retain the existing resyncRequired response.
+  return { channel, cursor, limit };
+};
 
 const readSocketScopeValue = (socket: Socket, headerName: string, authName: string): string | undefined => {
   const header = socket.handshake.headers[headerName];
@@ -224,8 +292,8 @@ const errorAck = (error: unknown): RealtimeAck => {
       ok: false,
       error: {
         code: error.code,
-        message: error.message,
-        details: error.details,
+        message: redactSensitiveText(error.message),
+        details: redactSensitiveRecord(error.details),
       },
     };
   }
@@ -234,7 +302,7 @@ const errorAck = (error: unknown): RealtimeAck => {
     ok: false,
     error: {
       code: 'system.failure',
-      message: error instanceof Error ? error.message : 'Realtime gateway failure',
+      message: 'Realtime gateway failure',
     },
   };
 };

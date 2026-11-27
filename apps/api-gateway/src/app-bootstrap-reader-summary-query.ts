@@ -27,7 +27,8 @@ export class AppBootstrapReaderSummaryQuery {
     const { tenantId, workspaceId } = input;
     return this.cache.getOrLoad(tenantId, workspaceId, async () => {
       const scope = { type: 'workspace' } as const;
-      const [latestResult, periodsResult] = await Promise.all([
+      // Keep the cache slot until both underlying reads finish, even if one throws.
+      const [latestRead, periodsRead] = await Promise.allSettled([
         this.listReaderSummaries.execute({
           tenantId,
           workspaceId,
@@ -45,6 +46,15 @@ export class AppBootstrapReaderSummaryQuery {
           limit: INITIAL_READER_SUMMARY_PERIOD_LIMIT,
         }),
       ]);
+
+      if (latestRead.status === 'rejected') {
+        throw latestRead.reason;
+      }
+      if (periodsRead.status === 'rejected') {
+        throw periodsRead.reason;
+      }
+      const latestResult = latestRead.value;
+      const periodsResult = periodsRead.value;
 
       if (!latestResult.ok) {
         throw latestResult.error;
