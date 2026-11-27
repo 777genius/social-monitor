@@ -26,19 +26,22 @@ export async function checkEventOutboxPostgresRecovery(f: Fixture): Promise<void
   const clock = new SystemClock();
   const ids = new CryptoIdGenerator();
   const created: string[] = [];
+  let seedOrdinal = 0;
   const seed = async (options: {
     kind?: 'EVENT' | 'COMMAND'; status?: 'PENDING' | 'FAILED'; attempts?: number; future?: boolean;
   } = {}): Promise<string> => {
     const id = randomUUID();
+    const ordinal = ++seedOrdinal;
     created.push(id);
     await f.database.query(`INSERT INTO outbox_events
       (id, tenant_id, workspace_id, message_kind, event_type, schema_version,
        payload, status, correlation_id, causation_id, created_at, available_at, publish_attempts)
       VALUES ($1,$2,$3,$4,'reader_summary.ready',1,$5,$6,'relay-recovery-fixture','fixture-cause',$7,
-        clock_timestamp() + $8 * INTERVAL '1 millisecond',$9)`,
+        CASE WHEN $8::boolean THEN clock_timestamp() + INTERVAL '1 minute'
+          ELSE TIMESTAMPTZ '2000-01-01 00:00:00+00' + $9 * INTERVAL '1 millisecond' END,$10)`,
     [id, f.event.tenantId, f.event.workspaceId, options.kind ?? 'EVENT',
       JSON.stringify(f.event.payload), options.status ?? 'PENDING', f.event.occurredAt,
-      options.future ? 60_000 : 0, options.attempts ?? 0]);
+      options.future ?? false, ordinal, options.attempts ?? 0]);
     return id;
   };
   const reset = async () => {
