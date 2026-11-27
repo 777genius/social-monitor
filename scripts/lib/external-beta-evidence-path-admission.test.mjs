@@ -84,6 +84,52 @@ test('private evidence passes all stages and injected env/contract/cwd remain li
   assert.match(stage(s.policy, 'validateExecutableOutputArtifactPathEnv').violations[0], /absolute file path/);
 });
 
+test('Git lookup failures reject evidence in every admission stage without exposing child output', t => {
+  const s = sandbox(t);
+  s.contract.executionSafety.evidencePathEnvForbidsWorkspacePath = false;
+  s.env.OUTPUT_PATH = writePrivate(join(s.workspace, 'capture.json'));
+  const envFile = writePrivate(join(s.workspace, 'private.env'), 'SAFE_MODE=enabled\n');
+  for (const failure of [{ code: 'ENOENT' }, { status: 128 }, { status: null, signal: 'SIGTERM' }]) {
+    const policy = createExternalBetaEvidencePathAdmission({
+      ...s.dependencies,
+      execFileSync: () => { throw Object.assign(new Error('private child output'), failure); },
+    });
+    for (const name of ['validatePlannedEvidencePathEnv', 'validateExecutableOutputArtifactPathEnv', 'validateEvidencePathEnv']) {
+      assert.throws(() => stage(policy, name), {
+        message: 'Cannot verify whether evidence path is git-tracked',
+      });
+    }
+    assert.throws(() => policy.validateExternalBetaEnvFilePath(envFile, '--env-file', []), {
+      message: 'Cannot verify whether evidence path is git-tracked',
+    });
+  }
+});
+
+test('Git no-match is admitted while tracked evidence is rejected', t => {
+  const s = sandbox(t);
+  s.contract.executionSafety.evidencePathEnvForbidsWorkspacePath = false;
+  s.env.OUTPUT_PATH = writePrivate(join(s.workspace, 'capture.json'));
+  const envFile = writePrivate(join(s.workspace, 'private.env'), 'SAFE_MODE=enabled\n');
+  for (const tracked of [false, true]) {
+    const policy = createExternalBetaEvidencePathAdmission({
+      ...s.dependencies,
+      execFileSync: () => {
+        if (!tracked) throw Object.assign(new Error('no match'), { status: 1 });
+        return '';
+      },
+    });
+    for (const name of ['validatePlannedEvidencePathEnv', 'validateExecutableOutputArtifactPathEnv', 'validateEvidencePathEnv']) {
+      const { violations } = stage(policy, name);
+      if (tracked) assert.match(violations[0], /must not point to a git-tracked file/);
+      else assert.deepStrictEqual(violations, []);
+    }
+    const violations = [];
+    policy.validateExternalBetaEnvFilePath(envFile, '--env-file', violations);
+    if (tracked) assert.match(violations[0], /must not point to a git-tracked file/);
+    else assert.deepStrictEqual(violations, []);
+  }
+});
+
 test('existing output aliases cannot target workspace, fixture or non-JSON files', t => {
   const s = sandbox(t);
   const fixtureDirectory = join(s.root, 'fixtures');

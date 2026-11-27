@@ -538,8 +538,13 @@ export function createExternalBetaEvidencePathAdmission({
     try {
       execFileSync('git', ['ls-files', '--error-unmatch', '--', pathspec], { stdio: 'ignore' });
       return true;
-    } catch {
-      return false;
+    } catch (error) {
+      if (error?.status === 1) {
+        return false;
+      }
+      // Only Git exit 1 proves that the path is untracked.
+      // Do not expose child output, which can contain private evidence paths.
+      throw new Error('Cannot verify whether evidence path is git-tracked');
     }
   }
 
