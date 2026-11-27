@@ -16,8 +16,8 @@ const row = (id: string, availableAt = now): PrismaEventOutboxRecord & { availab
 });
 
 function fixture() {
-  const query = jest.fn(async (_sql: TemplateStringsArray, ..._values: unknown[]): Promise<unknown[]> => []);
-  const execute = jest.fn(async (_sql: TemplateStringsArray, ..._values: unknown[]): Promise<number> => 1);
+  const query = jest.fn<Promise<unknown[]>, [TemplateStringsArray, ...unknown[]]>(async () => []);
+  const execute = jest.fn<Promise<number>, [TemplateStringsArray, ...unknown[]]>(async () => 1);
   const client: PrismaEventOutboxClient = {
     $queryRaw: async <T>(sql: TemplateStringsArray, ...values: unknown[]) => await query(sql, ...values) as unknown as T,
     $executeRaw: execute,

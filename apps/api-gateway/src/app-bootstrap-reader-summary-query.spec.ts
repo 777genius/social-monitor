@@ -20,9 +20,9 @@ describe('AppBootstrapReaderSummaryQuery load ownership', () => {
   it.each(['latest', 'periods'] as const)(
     'retains its cache slot until the sibling read settles when %s throws',
     async (failedRead) => {
-      const empty = ok({ items: [] });
-      const latest = deferred<typeof empty>();
-      const periods = deferred<typeof empty>();
+      type EmptyRead = ReturnType<typeof ok<{ items: never[] }>>;
+      const latest = deferred<EmptyRead>();
+      const periods = deferred<EmptyRead>();
       const cache = new AppBootstrapReaderSummaryCache(
         new FixedClock(new Date('2026-11-27T00:00:00.000Z')),
         100,
