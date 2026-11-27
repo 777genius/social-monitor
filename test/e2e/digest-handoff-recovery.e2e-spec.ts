@@ -96,4 +96,62 @@ describe('digest worker startup through retry admission and schedule advancement
     }
     expect(jest.getTimerCount()).toBe(0);
   });
+
+  it('retries a failed head before a healthy sibling can extend the sweep with its next due window', async () => {
+    const d = setupDigestRecovery();
+    jest.spyOn(d.clock, 'now').mockImplementation(() => new Date(Date.now()));
+    await d.addSchedule('schedule-a', 'poison-recipient');
+    await d.addSchedule('schedule-b', 'healthy-recipient');
+    const saveAttempt = jest.spyOn(d.attempts, 'save')
+      .mockRejectedValueOnce(new Error('transient attempt persistence failure'));
+    const runtime = new WorkerRuntime({ serviceName: 'delivery-service' });
+    const handler = new ScheduleDueDigestsCommandHandler(d.scheduler, new InMemoryMetricsRecorder(), runtime);
+    const loop = new DigestSchedulerLoop(handler, {
+      enabled: true, intervalMs: 3_600_000, limit: 1, runOnStart: true,
+    });
+    const module = await Test.createTestingModule({
+      providers: [{ provide: DigestSchedulerLoop, useValue: loop }],
+    }).compile();
+    runtime.onModuleInit();
+    try {
+      await module.init();
+      expect(saveAttempt).toHaveBeenCalledTimes(1);
+      expect(await d.listAttempts()).toHaveLength(0);
+      const failedAttempt = saveAttempt.mock.calls[0]![0].toSnapshot();
+      const digestLookup = {
+        tenantId: failedAttempt.tenantId,
+        workspaceId: failedAttempt.workspaceId,
+        digestId: failedAttempt.resourceId,
+      };
+      const savedDigest = (await d.digests.findById(digestLookup))?.toSnapshot();
+      expect(savedDigest).toMatchObject({ recipientKey: 'poison-recipient', assembledAt: recoveryNow });
+      expect((await d.findSchedule('schedule-a'))?.toSnapshot().nextRunAt).toEqual(recoveryNow);
+
+      await jest.advanceTimersByTimeAsync(3_600_000);
+      expect((await d.listAttempts()).map((attempt) => attempt.toSnapshot().recipientKey))
+        .toEqual(['healthy-recipient']);
+      const nextHealthyWindow = new Date('2026-11-27T02:00:00.000Z');
+      expect((await d.findSchedule('schedule-b'))?.toSnapshot().nextRunAt).toEqual(nextHealthyWindow);
+      expect((await d.findSchedule('schedule-a'))?.toSnapshot().nextRunAt).toEqual(recoveryNow);
+
+      // B is due again, but the completed sweep must return to A without a restart.
+      await jest.advanceTimersByTimeAsync(3_600_000);
+      expect(Date.now()).toBe(new Date('2026-11-27T03:00:00.000Z').getTime());
+      const attempts = (await d.listAttempts()).map((attempt) => attempt.toSnapshot());
+      expect(attempts).toHaveLength(2);
+      expect(attempts.map((attempt) => attempt.recipientKey))
+        .toEqual(['poison-recipient', 'healthy-recipient']);
+      expect(attempts[0]?.resourceId).toBe(failedAttempt.resourceId);
+      expect((await d.digests.findById(digestLookup))?.toSnapshot()).toEqual(savedDigest);
+      expect((await d.findSchedule('schedule-a'))?.toSnapshot().nextRunAt).toEqual(nextHealthyWindow);
+      expect((await d.findSchedule('schedule-b'))?.toSnapshot().nextRunAt).toEqual(nextHealthyWindow);
+      expect(saveAttempt.mock.calls.map(([attempt]) => attempt.toSnapshot().recipientKey))
+        .toEqual(['poison-recipient', 'healthy-recipient', 'poison-recipient']);
+      expect(d.sources.readWindow).toHaveBeenCalledTimes(2);
+    } finally {
+      await module.close();
+      await runtime.onApplicationShutdown('digest-bounded-sweep-e2e');
+    }
+    expect(jest.getTimerCount()).toBe(0);
+  });
 });

@@ -5,6 +5,7 @@ import type { DigestSchedulePageCursor } from '../../ports';
 export type DueDigestContinuation = DigestSchedulePageCursor & {
   readonly tenantId?: TenantId;
   readonly workspaceId?: WorkspaceId;
+  readonly dueBefore: Date;
 };
 
 export type ScheduleDueDigestsCommand = {

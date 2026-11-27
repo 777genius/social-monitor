@@ -26,19 +26,22 @@ export class ScheduleDueDigestsUseCase {
     const continuation = command.continuation?.tenantId === command.tenantId &&
       command.continuation?.workspaceId === command.workspaceId
       ? command.continuation : undefined;
-    const readPage = (cursor?: DueDigestContinuation) => this.digestSchedules.findDue({
+    let dueBefore = continuation?.dueBefore ?? now;
+    const readPage = (cutoff: Date, cursor?: DueDigestContinuation) => this.digestSchedules.findDue({
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
-      now,
+      now: cutoff,
       limit: command.limit,
       ...(cursor === undefined ? {} : { cursor: { nextRunAt: cursor.nextRunAt, id: cursor.id } }),
     });
-    let schedules = await readPage(continuation);
+    let schedules = await readPage(dueBefore, continuation);
     if (schedules.length === 0 && continuation !== undefined) {
-      schedules = await readPage();
+      dueBefore = now;
+      schedules = await readPage(dueBefore);
     }
     // Advance past the original page, including failed schedules. Successful
     // schedule writes change nextRunAt and must not move this page boundary.
+    // Freeze the sweep cutoff so newly due windows cannot postpone wrap forever.
     const last = schedules.at(-1)?.toSnapshot();
     const digests: ScheduledDigestResultItem[] = [];
     let skipped = 0;
@@ -89,6 +92,7 @@ export class ScheduleDueDigestsUseCase {
         continuation: {
           tenantId: command.tenantId,
           workspaceId: command.workspaceId,
+          dueBefore,
           nextRunAt: last.nextRunAt,
           id: last.id,
         },

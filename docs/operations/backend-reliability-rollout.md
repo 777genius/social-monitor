@@ -20,10 +20,20 @@ it to REQUESTED merely because time elapsed can repeat paid provider work.
 An old process must not resume after the cutover while the new executors run.
 A rollback needs the same drain boundary. Stored events, artifacts and jobs use
 the existing schema, but schema compatibility alone does not make mixed executor
-versions safe. Existing deployment readiness and lifecycle changes in #799 remain
-a separate PR. The integration recheck at its head `ceb0ba66` found no changed-file
-overlap. The recorded #793, #783, #798 and #800 heads were unchanged; their work
-remains outside this PR's scope.
+versions safe.
+
+Existing deployment readiness and lifecycle changes in #799 remain a separate
+PR. An earlier recheck at its head `ceb0ba66` found no changed-file overlap for
+that checkpoint. At #801 head `763b831` and #799 head `e58a6d9`, both diffs
+include `package.json`; preserve both PRs' script registrations when integrating.
+Only #783's reviewed dependency-audit checker, regression test and one test
+registration are reused here. Its other readiness work and the changes owned
+by #793, #798 and #800 remain separate.
+
+Before any separately authorized rollout, recheck the referenced PR heads,
+their changed-file overlap, and completed checks for the intended release
+commit. Keep the historical source identities and test receipts below attached
+to the revisions actually tested; they do not qualify a newer head.
 
 ## Resource limits and expected behavior
 
@@ -40,7 +50,7 @@ remains outside this PR's scope.
 | Bootstrap lifetime | 30-second freshness, 5-minute stale window | Timer refresh does not extend user-idle lifetime. |
 | Socket replay | One active replay per socket; existing page limit 1–100 | Overlap receives backpressure without queueing another replay. |
 | Periodic scheduling | Existing limit 1–100; bounded inspection budget | Continuation advances policy, cadence and historical period. |
-| Digest scheduling | Existing limit 1–100 | Scoped due-time/ID continuation advances past failed pages and wraps once. |
+| Digest scheduling | Existing limit 1–100 | Scoped due-time/ID continuation freezes each sweep's due cutoff, advances past failed pages and wraps once. |
 | Source-binding page | Existing maximum 100 rows | Catalog data is read in a constant bounded number of queries. |
 
 These are local structural bounds, not a measured production user-capacity claim.
@@ -75,6 +85,9 @@ not cancel that work.
 scheduler checkpoint. Restart begins another sweep. Failed digest delivery
 admission is repaired from the already persisted digest identity without
 regenerating its content or advancing the failed schedule.
+Each digest sweep keeps its original due cutoff until exhaustion; later due
+windows enter the next sweep. This lets failed schedules receive another
+attempt even when healthy schedules become due again between ticks.
 
 **Summary completion:** the model call runs outside a short Serializable
 transaction. The transaction creates a new artifact, conditionally finalizes the

@@ -37,6 +37,7 @@ describe('due digest bounded page progress', () => {
     expect(result.value.continuation).toEqual({
       tenantId: undefined,
       workspaceId: undefined,
+      dueBefore: recoveryNow,
       nextRunAt: recoveryNow,
       id: 'schedule-a',
     });
@@ -46,6 +47,49 @@ describe('due digest bounded page progress', () => {
     const empty = await d.scheduler.execute({ limit: 1, continuation: result.value.continuation });
     expect(empty).toMatchObject({ ok: true, value: { evaluated: 0 } });
     expect(findDue).toHaveBeenCalledTimes(2);
+  });
+
+  it('admits newly due windows when the previous sweep ends', async () => {
+    const d = setupDigestRecovery();
+    await d.addSchedule('schedule-a');
+    const first = await d.scheduler.execute({ limit: 1 });
+    if (!first.ok) throw first.error;
+
+    jest.spyOn(d.clock, 'now').mockReturnValue(new Date('2026-11-27T02:00:00.000Z'));
+    const next = await d.scheduler.execute({ limit: 1, continuation: first.value.continuation });
+    expect(next).toMatchObject({ ok: true, value: { assembled: 1 } });
+    expect((await d.findSchedule('schedule-a'))?.toSnapshot().nextRunAt)
+      .toEqual(new Date('2026-11-27T03:00:00.000Z'));
+    expect(await d.listAttempts()).toHaveLength(2);
+  });
+
+  it('retries a failed head when later schedules become due again between ticks', async () => {
+    const d = setupDigestRecovery();
+    await d.addSchedule('schedule-a', 'poison-recipient');
+    await d.addSchedule('schedule-b', 'healthy-recipient');
+    let now = recoveryNow;
+    jest.spyOn(d.clock, 'now').mockImplementation(() => new Date(now));
+    const persist = d.attempts.save.bind(d.attempts);
+    jest.spyOn(d.attempts, 'save').mockRejectedValueOnce(new Error('delivery unavailable'))
+      .mockImplementation(persist);
+
+    let continuation: DueDigestContinuation | undefined;
+    for (let tick = 0; tick < 3; tick += 1) {
+      now = new Date(recoveryNow.getTime() + tick * 3_600_000);
+      const result = await d.scheduler.execute({ limit: 1, continuation });
+      if (!result.ok) throw result.error;
+      expect(result.value.scannedAt).toEqual(now);
+      expect(result.value.evaluated).toBe(1);
+      continuation = result.value.continuation;
+    }
+
+    expect((await d.findSchedule('schedule-a'))?.toSnapshot().nextRunAt)
+      .toEqual(new Date('2026-11-27T02:00:00.000Z'));
+    expect((await d.findSchedule('schedule-b'))?.toSnapshot().nextRunAt)
+      .toEqual(new Date('2026-11-27T02:00:00.000Z'));
+    expect((await d.listAttempts()).map((attempt) => attempt.toSnapshot().recipientKey))
+      .toEqual(['poison-recipient', 'healthy-recipient']);
+    expect(d.sources.readWindow).toHaveBeenCalledTimes(2);
   });
 
   it('drops continuation from a different scope and never evaluates that tenant', async () => {
@@ -65,6 +109,7 @@ describe('due digest bounded page progress', () => {
       continuation: {
         tenantId: tenantId('other-tenant'),
         workspaceId: workspaceId('other-workspace'),
+        dueBefore: new Date('2027-01-01T00:00:00.000Z'),
         nextRunAt: recoveryNow,
         id: 'foreign',
       },
