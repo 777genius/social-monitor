@@ -151,7 +151,7 @@ async function main(): Promise<void> {
         VALUES ($1, $2, $3, 'fixture.command', 1, $4, 'fixture', 'COMMAND')`,
         [commandId, base.tenantId, base.workspaceId, JSON.stringify({ synthetic: true })]);
       await assert.rejects(outbox.recordAttempt({ id: commandId, leaseOwner: 'wrong-kind' }), /ownership was lost/);
-      await assert.rejects(outbox.markPublished({ id: commandId, leaseOwner: 'wrong-kind', publishedAt: new Date(base.occurredAt) }), /ownership was lost/);
+      await assert.rejects(outbox.markPublished({ id: commandId, leaseOwner: 'wrong-kind', publishedAt: base.occurredAt }), /ownership was lost/);
       await assert.rejects(outbox.markFailed({ id: commandId, leaseOwner: 'wrong-kind', failedAt: base.occurredAt,
         availableAt: base.occurredAt, reason: 'wrong kind', terminal: true }), /ownership was lost/);
       const command = (await database.query(
@@ -160,7 +160,7 @@ async function main(): Promise<void> {
       assert.deepEqual(command, { message_kind: 'COMMAND', status: 'PENDING', publish_attempts: 0, last_error: null });
       await checkEventOutboxPostgresRecovery({
         database, adminUrl, first: events.client, second: eventPeer.client,
-        event: { tenantId: base.tenantId, workspaceId: base.workspaceId, payload: base.payload, occurredAt: base.occurredAt },
+        event: { tenantId: base.payload.tenantId, workspaceId: base.payload.workspaceId, payload: base.payload, occurredAt: base.occurredAt },
         project: async event => { await makeHandler(delivery).handle(JSON.parse(JSON.stringify(event))); },
       });
       console.log('Reader summary delivery PostgreSQL fixture OK: atomic rollback, concurrent dedupe, restart replay, RLS isolation, fenced EVENT recovery and heartbeat');
