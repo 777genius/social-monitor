@@ -110,7 +110,7 @@ assert_rolling_entrypoint_bridge() {
   git -C "$PROJECT_ROOT" cat-file blob "$bridge_blob" > "$bridge_file"
   git -C "$PROJECT_ROOT" cat-file blob "$reviewed_candidate_blob" > "$candidate_file"
   chmod 0644 "$candidate_file"
-  [[ $current_blob == 4322ac0ed50279d168db0dd71f0a6844c417c934 &&
+  [[ $current_blob == 9f9bbe3ef801e28dea3247c584d86949f27ab25b &&
      $(git -C "$PROJECT_ROOT" hash-object "$SCRIPT_DIR/social-monitor-production-deploy.sh") == "$current_blob" ]] || {
     echo 'current rolling entrypoint differs from the pinned release' >&2
     exit 1
