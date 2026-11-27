@@ -1,3 +1,4 @@
+export const evidencePathAdmissionPath = 'scripts/lib/external-beta-evidence-path-admission.mjs';
 export const redactionPolicyPath = 'scripts/lib/external-beta-evidence-artifact-redaction.mjs';
 export const handoffPolicyPath = 'scripts/lib/external-beta-evidence-handoff.mjs';
 export const displayPolicyPath = 'scripts/lib/external-beta-evidence-display-formatters.mjs';
@@ -20,6 +21,7 @@ export function validateRunnerImplementationMarkers({
   valuePolicySource,
   planPrinterSource,
   envFileLoaderSource,
+  evidencePathAdmissionSource,
   checkSource,
   selectionHelperSource,
   redactionPolicySource,
@@ -85,27 +87,51 @@ export function validateRunnerImplementationMarkers({
     'Refusing external beta evidence preflight',
     'Blocked by invalid env/path',
     'preflightRequiresEnvValueValidation',
-    'preflightRequiresEvidencePathValidation',
     'validatePlannedEvidencePathEnv',
-    'before preflight',
     'validateExecutableOutputArtifactPathEnv',
-    'liveExecutionValidatesOutputPathsBeforeRun',
-    'before live execution',
     'validateEvidenceValueEnv',
     'output artifact env',
     'readJsonArtifact',
     'valid JSON artifact',
     'artifactFormat',
     'must use format',
-    'forbiddenEvidencePathFragments',
     'isFixtureLikeArtifactPath',
-    'isFixtureLikePathSegment',
     'must not point to fixture or example evidence',
+    'schemaVersion 1',
+    'validateEvidencePathEnv',
+    'statSync',
+    'Evidence path max size',
+    'duplicateEvidencePathViolations',
+    'duplicateEvidencePathViolationsByJob',
+    'realpathSync',
+    'validateArtifactRedaction',
+    'validateArtifactIdentity',
+    'validateArtifactProviderKeys',
+    'validateArtifactEnvConsistency',
+    'validateArtifactFreshness',
+    'validateArtifactLiteralRedaction',
+    'validateArtifactStructuredRedaction',
+
+  ]) {
+    if (!runnerSource.includes(marker)) {
+      violations.push(`${runnerFile}: runner must fail fast before executing unsafe job selections`);
+    }
+  }
+
+  // Evidence filesystem policy has one owner; the CLI retains orchestration calls.
+  const activeEvidencePathAdmissionSource = evidencePathAdmissionSource
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^[ \t]*\/\/.*$/gm, '');
+  for (const marker of [
+    'preflightRequiresEvidencePathValidation',
+    'before preflight',
+    'liveExecutionValidatesOutputPathsBeforeRun',
+    'before live execution',
+    'forbiddenEvidencePathFragments',
+    'isFixtureLikePathSegment',
     'isGitTrackedPath',
     'ls-files',
     'git-tracked file',
-    'schemaVersion 1',
-    'validateEvidencePathEnv',
     'evidence path env',
     'absolute file path',
     'evidencePathEnvRequiresRegularFile',
@@ -116,13 +142,11 @@ export function validateRunnerImplementationMarkers({
     'before preflight',
     'before live execution',
     'isRegularEvidenceFile',
-    'statSync',
     'must point to a regular file',
     'realpath must point to a regular file',
     'evidencePathEnvMaxBytes',
     'isOversizedEvidenceFile',
     'must not exceed',
-    'Evidence path max size',
     'evidencePathEnvRequiresJsonExtension',
     'evidencePathEnvRequiresJsonContent',
     'evidencePathEnvForbidsWorkspacePath',
@@ -137,14 +161,11 @@ export function validateRunnerImplementationMarkers({
     'parent directory must exist',
     'parent directory must be writable',
     'parent directory must not be inside the git workspace',
-    'duplicateEvidencePathViolations',
-    'duplicateEvidencePathViolationsByJob',
     'outputArtifactPathEnvRequiresJsonExtension',
     'isJsonEvidencePath',
     'path must end with .json',
     'realpath must end with .json',
     'readEvidenceRealPath',
-    'realpathSync',
     'realpath must not point to fixture or example evidence',
     'realpath must not point to a git-tracked file',
     'validateEvidencePathFileContent',
@@ -153,18 +174,18 @@ export function validateRunnerImplementationMarkers({
     'JSON object or array evidence file',
     'parseJsonEvidenceContent',
     'isStructuredJsonEvidence',
-    'validateArtifactRedaction',
-    'validateArtifactIdentity',
-    'validateArtifactProviderKeys',
-    'validateArtifactEnvConsistency',
-    'validateArtifactFreshness',
-    'validateArtifactLiteralRedaction',
-    'validateArtifactStructuredRedaction',
     'validateArtifactDecodedRedaction',
-
+    'function validateExternalBetaEnvFilePath(',
+    'function validateExecutableOutputArtifactPathEnv(',
+    'function validatePlannedEvidencePathEnv(',
+    'function validateEvidencePathEnv(',
+    'lstatSync',
+    'isAbsentEvidencePath',
+    'isParentRelativePath',
+    'realpath must not be inside the git workspace before live execution',
   ]) {
-    if (!runnerSource.includes(marker)) {
-      violations.push(`${runnerFile}: runner must fail fast before executing unsafe job selections`);
+    if (!activeEvidencePathAdmissionSource.includes(marker)) {
+      violations.push(`${evidencePathAdmissionPath}: evidence path admission must preserve "${marker}"`);
     }
   }
 
@@ -277,6 +298,20 @@ export function validateRunnerImplementationMarkers({
     || !/^[ \t]*const \{ loadExternalBetaEnvFiles \} = createExternalBetaEnvFileLoader\(\{ parseDotenv, readFileSync, validateExternalBetaEnvFilePath, env: process\.env \}\);[ \t]*$/m.test(activeRunnerSource)
     || !/^[ \t]*const envFileViolations = loadExternalBetaEnvFiles\(envFileSelection\.paths\);[ \t]*$/m.test(activeRunnerSource)) {
     violations.push(runnerFile + ': runner must bind and invoke private env-file admission against live env');
+  }
+
+  if (!/^import \{ createExternalBetaEvidencePathAdmission \} from '\.\/lib\/external-beta-evidence-path-admission\.mjs';$/m.test(activeRunnerSource)
+    || !/^const \{\s*validateExternalBetaEnvFilePath, validateExecutableOutputArtifactPathEnv,\s*validatePlannedEvidencePathEnv, validateEvidencePathEnv,\s*evidencePathMaxBytes, formatBytes, isFixtureLikeArtifactPath,\s*\} = createExternalBetaEvidencePathAdmission\(\{\s*contract, env: process\.env, cwd: \(\) => process\.cwd\(\), jobInputEnvNames,\s*accessSync, existsSync, lstatSync, readFileSync, realpathSync: realpathSync\.native, statSync,\s*execFileSync, writableMode: constants\.W_OK,\s*\}\);$/m.test(activeRunnerSource)) {
+    violations.push(`${runnerFile}: runner must bind evidence path admission to live dependencies`);
+  }
+  for (const call of [
+    'validateExecutableOutputArtifactPathEnv(job, new Set(missingEnv), violations);',
+    'validatePlannedEvidencePathEnv(job, missingEnvSet, violations);',
+    'const invalidPathEnv = validateEvidencePathEnv(job, missingEnvSet, violations);',
+  ]) {
+    if (!activeRunnerSource.split('\n').some(line => line.trim() === call)) {
+      violations.push(`${runnerFile}: runner must invoke evidence path admission in every stage`);
+    }
   }
 
   // Retain the real CLI delegation, not merely an import or commented-out call.

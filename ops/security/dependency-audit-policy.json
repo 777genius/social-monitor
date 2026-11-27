@@ -23,33 +23,6 @@
       "owner": "iliya",
       "expiresAt": "2026-12-04",
       "mitigation": "inherits zod advisory only; same input-bound mitigation; upgrade tracked"
-    },
-    {
-      "packageName": "effect",
-      "owner": "iliya",
-      "expiresAt": "2026-12-04",
-      "mitigation": "GHSA-7589-6fvf-x4pw effect ReDoS in Schema.TemplateLiteral (<=3.22.0); reachable only through @prisma/config 7.9.1 (pins effect 3.20.0) which the prisma CLI loads at build and migrate time, never in request handling; no untrusted template-literal schemas are compiled; a patched effect 3.22.5 exists and moves in with the next prisma upgrade, because a lockfile change is a sensitive path for the production release policy",
-      "advisories": [
-        "GHSA-7589-6fvf-x4pw"
-      ]
-    },
-    {
-      "packageName": "@prisma/config",
-      "owner": "iliya",
-      "expiresAt": "2026-12-04",
-      "mitigation": "GHSA-7589-6fvf-x4pw effect ReDoS in Schema.TemplateLiteral (<=3.22.0); reachable only through @prisma/config 7.9.1 (pins effect 3.20.0) which the prisma CLI loads at build and migrate time, never in request handling; no untrusted template-literal schemas are compiled; a patched effect 3.22.5 exists and moves in with the next prisma upgrade, because a lockfile change is a sensitive path for the production release policy",
-      "advisories": [
-        "GHSA-7589-6fvf-x4pw"
-      ]
-    },
-    {
-      "packageName": "prisma",
-      "owner": "iliya",
-      "expiresAt": "2026-12-04",
-      "mitigation": "GHSA-7589-6fvf-x4pw effect ReDoS in Schema.TemplateLiteral (<=3.22.0); reachable only through @prisma/config 7.9.1 (pins effect 3.20.0) which the prisma CLI loads at build and migrate time, never in request handling; no untrusted template-literal schemas are compiled; a patched effect 3.22.5 exists and moves in with the next prisma upgrade, because a lockfile change is a sensitive path for the production release policy",
-      "advisories": [
-        "GHSA-7589-6fvf-x4pw"
-      ]
     }
   ]
 }

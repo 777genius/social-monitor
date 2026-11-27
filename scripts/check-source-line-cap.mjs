@@ -28,9 +28,7 @@ const ignoredPathPatterns = [
   /\.pbgrpc\.dart$/,
 ];
 
-const legacyLineCapDebt = new Map([
-  ["scripts/check-external-beta-evidence-runner.mjs", 1068],
-]);
+const legacyLineCapDebt = new Map();
 
 function normalizePath(file) {
   return file.replaceAll("\\", "/");
