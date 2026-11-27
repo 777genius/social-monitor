@@ -205,6 +205,10 @@ export type PrismaDeliveryClient = {
         readonly workspaceId?: string;
         readonly status?: PrismaDigestScheduleStatus;
         readonly nextRunAt?: { readonly lte: Date };
+        readonly OR?: readonly (
+          | { readonly nextRunAt: { readonly gt: Date } }
+          | { readonly nextRunAt: Date; readonly id: { readonly gt: string } }
+        )[];
       };
       readonly orderBy:
         | readonly [

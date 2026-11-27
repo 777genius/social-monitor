@@ -382,14 +382,7 @@ database round trips for the selected page, progression beyond first scheduling
 page, unique active owners, and stable retry/backoff. It is not a claim of a
 particular production users-per-second capacity without representative load.
 
-## Initial assessment and review log
-
-| Dimension | Initial score / 10 | Reason |
-| --- | --- | --- |
-| Implementation complexity | 7 | Multiple existing failure boundaries; no new subsystem. |
-| Target reliability | 8 | Durable intents, ownership and bounded resources with recovery proof. |
-| Confidence before implementation | 7 | Concrete bugs identified; concurrency and native integration need execution. |
-| Scope clarity | 8 | Named workflows and existing contracts, active PR exclusions. |
+## Review and execution log
 
 - Audit round: complete; findings and ownership recorded above.
 - Plan critique round 1: three independent reviews completed. Added retry-budget
@@ -404,7 +397,27 @@ particular production users-per-second capacity without representative load.
   replace local publisher declaration caches with per-native-channel assertion
   coalescing, avoiding new public generation APIs or per-send declaration RPCs.
   Existing test discovery/native fixture entrypoints avoid package/CI conflicts.
-- Implementation, qualification and final review: not yet complete.
+- Implementation review round 1: A–E integrated and cross-reviewed. Fixed digest
+  repair losing an explicit retry policy, background refresh moving its rotation
+  key, and timeout cleanup confusing publication retirement with proven native
+  channel closure. New broker regression retains retryable acquired delivery
+  cleanup after a failed close and proves replacement-channel progress.
+- Implementation review round 2: expanded the existing scheduler/outbox scope
+  only for reproduced poison-page risks. Digest polling now carries a scoped
+  due-time/ID continuation and retries earlier failures on bounded wrap. EVENT
+  persistence failures isolate the uncertain row and require fresh database proof
+  of all remaining claims before another send; systemic proof failure stops.
+  A native PostgreSQL trigger scenario proves healthy sibling progress.
+- F1 review: required atomic claim/complete/fail contract and constructor/DI
+  wiring reviewed. Requested create-only artifact insertion so an identity
+  collision cannot overwrite an existing result. New PostgreSQL/consumer tests
+  and final source review remain in progress.
+- Qualification: full existing workflow dispatched on c905885a at
+  https://github.com/777genius/social-monitor/actions/runs/45930518717.
+  The run was queued at this checkpoint. Local execution became unavailable;
+  implementation test success is not claimed. Final combined SHA still needs
+  executed focused, native and deterministic E2E qualification.
+- Final review/qualification: not yet complete.
 
 Primary transport references reviewed: [amqplib channel API](https://amqp-node.github.io/amqplib/channel_api.html)
 and [RabbitMQ reliability guide](https://www.rabbitmq.com/docs/reliability).

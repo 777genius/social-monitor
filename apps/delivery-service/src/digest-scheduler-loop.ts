@@ -1,4 +1,5 @@
 import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import type { DueDigestContinuation } from '@social-monitor/delivery/features/schedule-due-digests/schedule-due-digests.command';
 import { ScheduleDueDigestsCommandHandler } from '@social-monitor/delivery/interfaces/queue/schedule-due-digests-command.handler';
 import { NestStructuredLogger, type StructuredLogger } from '@social-monitor/platform-logging';
 import { WorkerCommandIdFactory } from '@social-monitor/platform-worker';
@@ -14,6 +15,7 @@ export class DigestSchedulerLoop implements OnModuleInit, OnModuleDestroy {
   private timer: NodeJS.Timeout | undefined;
   private currentTick: Promise<void> | undefined;
   private shuttingDown = false;
+  private continuation: DueDigestContinuation | undefined;
 
   constructor(
     private readonly handler: ScheduleDueDigestsCommandHandler,
@@ -94,7 +96,8 @@ export class DigestSchedulerLoop implements OnModuleInit, OnModuleDestroy {
                 workspaceId: this.options.workspaceId,
               }),
         },
-      });
+      }, this.continuation);
+      this.continuation = result.continuation;
 
       for (const failure of result.failures ?? []) {
         this.logger.error('digest scheduler item failed; schedule remains due', {

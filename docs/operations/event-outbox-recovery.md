@@ -42,9 +42,14 @@ identity and scope. This is at-least-once publication with durable consumer
 deduplication.
 
 A publication failure does not prevent healthy siblings from being processed.
-If ownership or persistence becomes uncertain, the batch stops and uncompleted
-claims expire. It does not clear another owner's lease or rewrite a confirmed
-terminal row. The next polling tick remains available after an error.
+An uncertain row is removed from renewal and left to expire. Before continuing
+with siblings, the relay requires a fresh successful database renewal of every
+remaining claim. This isolates a row-specific storage failure without admitting
+work during a database outage or after remaining ownership is lost. The original
+error is still raised after safely processed siblings, so the tick cannot hide
+the fault or credit uncertain work as published. It does not clear another
+owner's lease or rewrite a confirmed terminal row. The next polling tick remains
+available after an error.
 
 Stopping the relay drains an admitted publication and prevents starting further
 batch items. Unstarted siblings retain their attempt counts and become available
@@ -82,5 +87,6 @@ The existing `check-reader-summary-ready-delivery-postgres.ts` entrypoint now
 also runs `scripts/lib/event-outbox-postgres-scenarios.ts`. It uses a fresh
 disposable database and separate runtime connections to check concurrent claims,
 SKIP LOCKED progress, expiry after a row-lock wait, actual heartbeat renewal,
-and actual transactional consumer deduplication after lost ACK storage. Its
+a row-specific PostgreSQL trigger failure with healthy sibling progress, and
+actual transactional consumer deduplication after lost ACK storage. Its
 broker faults are injected; native RabbitMQ verification is a separate gate.

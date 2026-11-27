@@ -26,19 +26,22 @@ export async function checkEventOutboxPostgresRecovery(f: Fixture): Promise<void
   const clock = new SystemClock();
   const ids = new CryptoIdGenerator();
   const created: string[] = [];
+  let seedOrdinal = 0;
   const seed = async (options: {
     kind?: 'EVENT' | 'COMMAND'; status?: 'PENDING' | 'FAILED'; attempts?: number; future?: boolean;
   } = {}): Promise<string> => {
     const id = randomUUID();
+    const ordinal = ++seedOrdinal;
     created.push(id);
     await f.database.query(`INSERT INTO outbox_events
       (id, tenant_id, workspace_id, message_kind, event_type, schema_version,
        payload, status, correlation_id, causation_id, created_at, available_at, publish_attempts)
       VALUES ($1,$2,$3,$4,'reader_summary.ready',1,$5,$6,'relay-recovery-fixture','fixture-cause',$7,
-        clock_timestamp() + $8 * INTERVAL '1 millisecond',$9)`,
+        CASE WHEN $8::boolean THEN clock_timestamp() + INTERVAL '1 minute'
+          ELSE TIMESTAMPTZ '2000-01-01 00:00:00+00' + $9 * INTERVAL '1 millisecond' END,$10)`,
     [id, f.event.tenantId, f.event.workspaceId, options.kind ?? 'EVENT',
       JSON.stringify(f.event.payload), options.status ?? 'PENDING', f.event.occurredAt,
-      options.future ? 60_000 : 0, options.attempts ?? 0]);
+      options.future ?? false, ordinal, options.attempts ?? 0]);
     return id;
   };
   const reset = async () => {
@@ -202,18 +205,54 @@ export async function checkEventOutboxPostgresRecovery(f: Fixture): Promise<void
     assert.equal((await state(ackId)).publish_attempts, 2);
     await reset();
 
-    // A failure persisting one outcome cannot permanently strand claimed siblings.
+    // A deterministic PostgreSQL row error must not poison every sibling in
+    // the same page. The new subset proof excludes the uncertain first row.
     const interrupted = await seed();
     const untouched = await seed();
-    const failedStorage = proxyStore(first, {
-      markFailed: async () => { throw new Error('synthetic failure write unavailable'); },
+    const admitted: string[] = [];
+    await f.database.query(`CREATE FUNCTION fixture_reject_event_settlement()
+      RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW.id = '${interrupted}'::uuid AND NEW.status = 'PUBLISHED' THEN
+          RAISE EXCEPTION 'synthetic row settlement failed';
+        END IF;
+        RETURN NEW;
+      END; $$;
+      CREATE TRIGGER fixture_reject_event_settlement BEFORE UPDATE ON outbox_events
+      FOR EACH ROW EXECUTE FUNCTION fixture_reject_event_settlement();`);
+    try {
+      await assert.rejects(dispatch(first, async event => { admitted.push(event.eventId); }).dispatchBatch(2),
+        /synthetic row settlement failed/);
+      assert.deepEqual(admitted, [interrupted, untouched]);
+      assert.equal((await state(interrupted)).status, 'PENDING');
+      assert.equal((await state(interrupted)).publish_attempts, 1);
+      assert.equal((await state(untouched)).status, 'PUBLISHED');
+      assert.equal((await state(untouched)).publish_attempts, 1);
+    } finally {
+      await f.database.query(`DROP TRIGGER fixture_reject_event_settlement ON outbox_events;
+        DROP FUNCTION fixture_reject_event_settlement();`);
+    }
+    await expire([interrupted]);
+    assert.deepEqual(await dispatch(second, async () => undefined).dispatchBatch(2),
+      { published: 1, retrying: 0, failed: 0 });
+    await reset();
+
+    // If the database cannot prove the remaining subset, no further send starts.
+    const unavailableFirst = await seed();
+    const unavailableSecond = await seed();
+    let forbiddenSends = 0;
+    const unavailableStore = proxyStore(first, {
+      recordAttempt: async () => { throw new Error('synthetic start storage unavailable'); },
+      renewClaims: async () => { throw new Error('synthetic renewal storage unavailable'); },
     });
-    await assert.rejects(dispatch(failedStorage, async () => { throw new Error('broker failed'); }).dispatchBatch(2),
-      /failure write unavailable/);
-    assert.equal((await state(interrupted)).publish_attempts, 1);
-    assert.equal((await state(untouched)).publish_attempts, 0);
-    await expire([interrupted, untouched]);
-    assert.deepEqual(await dispatch(second, async () => undefined).dispatchBatch(2), { published: 2, retrying: 0, failed: 0 });
+    await assert.rejects(dispatch(unavailableStore, async () => { forbiddenSends += 1; }).dispatchBatch(2),
+      /start storage unavailable/);
+    assert.equal(forbiddenSends, 0);
+    assert.equal((await state(unavailableFirst)).publish_attempts, 0);
+    assert.equal((await state(unavailableSecond)).publish_attempts, 0);
+    await expire([unavailableFirst, unavailableSecond]);
+    assert.deepEqual(await dispatch(second, async () => undefined).dispatchBatch(2),
+      { published: 2, retrying: 0, failed: 0 });
     await reset();
 
     // Slow confirms retain the whole batch through real PostgreSQL renewals.

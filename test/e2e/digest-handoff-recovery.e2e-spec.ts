@@ -46,4 +46,54 @@ describe('digest worker startup through retry admission and schedule advancement
     }
     expect(jest.getTimerCount()).toBe(0);
   });
+
+  it('moves past a poison first page, retains progress after a read failure, and retries on wrap', async () => {
+    const d = setupDigestRecovery();
+    await d.addSchedule('schedule-a', 'poison-recipient');
+    await d.addSchedule('schedule-b', 'healthy-recipient');
+    let failing = true;
+    const persist = d.attempts.save.bind(d.attempts);
+    jest.spyOn(d.attempts, 'save').mockImplementation(async (attempt) => {
+      if (failing && attempt.toSnapshot().recipientKey === 'poison-recipient') {
+        throw new Error('poison delivery unavailable');
+      }
+      await persist(attempt);
+    });
+    const runtime = new WorkerRuntime({ serviceName: 'delivery-service' });
+    const handler = new ScheduleDueDigestsCommandHandler(d.scheduler, new InMemoryMetricsRecorder(), runtime);
+    const loop = new DigestSchedulerLoop(handler, {
+      enabled: true, intervalMs: 1_000, limit: 1, runOnStart: true,
+    });
+    const module = await Test.createTestingModule({
+      providers: [{ provide: DigestSchedulerLoop, useValue: loop }],
+    }).compile();
+    runtime.onModuleInit();
+    try {
+      await module.init();
+      expect(await d.listAttempts()).toHaveLength(0);
+      const findDue = jest.spyOn(d.schedules, 'findDue').mockRejectedValueOnce(new Error('poll failed'));
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(await d.listAttempts()).toHaveLength(0);
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect((await d.listAttempts()).map((attempt) => attempt.toSnapshot().recipientKey))
+        .toEqual(['healthy-recipient']);
+      expect((await d.findSchedule('schedule-a'))?.toSnapshot().nextRunAt).toEqual(recoveryNow);
+
+      findDue.mockClear();
+      await jest.advanceTimersByTimeAsync(1_000);
+      // The failed head is revisited after exactly one empty tail-page lookup.
+      expect(findDue).toHaveBeenCalledTimes(2);
+      expect(await d.listAttempts()).toHaveLength(1);
+      failing = false;
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(await d.listAttempts()).toHaveLength(2);
+      expect((await d.findSchedule('schedule-a'))?.toSnapshot().nextRunAt)
+        .toEqual(new Date('2026-11-27T02:00:00.000Z'));
+      expect(d.sources.readWindow).toHaveBeenCalledTimes(2);
+    } finally {
+      await module.close();
+      await runtime.onApplicationShutdown('digest-fairness-e2e');
+    }
+    expect(jest.getTimerCount()).toBe(0);
+  });
 });

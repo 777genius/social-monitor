@@ -96,6 +96,12 @@ export class PrismaDigestScheduleRepository implements DigestScheduleRepositoryP
           workspaceId: query.workspaceId,
           status: "ENABLED",
           nextRunAt: { lte: query.now },
+          ...(query.cursor === undefined ? {} : {
+            OR: [
+              { nextRunAt: { gt: query.cursor.nextRunAt } },
+              { nextRunAt: query.cursor.nextRunAt, id: { gt: query.cursor.id } },
+            ],
+          }),
         },
         orderBy: [{ nextRunAt: "asc" }, { id: "asc" }],
         take: Math.max(1, Math.min(query.limit, 100)),

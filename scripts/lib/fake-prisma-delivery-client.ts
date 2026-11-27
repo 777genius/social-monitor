@@ -494,13 +494,17 @@ const matchesDigestScheduleWhere = (
     readonly id?: string;
     readonly status?: string;
     readonly nextRunAt?: { readonly lte: Date };
+    readonly OR?: Parameters<PrismaDeliveryClient['digestSchedule']['findMany']>[0]['where']['OR'];
   },
 ): boolean =>
   (where.tenantId === undefined || record.tenantId === where.tenantId) &&
   (where.workspaceId === undefined || record.workspaceId === where.workspaceId) &&
   (where.id === undefined || record.id === where.id) &&
   (where.status === undefined || record.status === where.status) &&
-  (where.nextRunAt === undefined || record.nextRunAt.getTime() <= where.nextRunAt.lte.getTime());
+  (where.nextRunAt === undefined || record.nextRunAt.getTime() <= where.nextRunAt.lte.getTime()) &&
+  (where.OR === undefined || where.OR.some((cursor) => 'id' in cursor
+    ? record.nextRunAt.getTime() === cursor.nextRunAt.getTime() && record.id > cursor.id.gt
+    : record.nextRunAt.getTime() > cursor.nextRunAt.gt.getTime()));
 
 const compareDigestScheduleRecordsByNextRun = (
   left: PrismaDigestScheduleRecord,
@@ -512,7 +516,7 @@ const compareDigestScheduleRecordsByNextRun = (
     return nextRunDiff;
   }
 
-  return left.id.localeCompare(right.id);
+  return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
 };
 
 const compareDigestScheduleRecordsByCreation = (

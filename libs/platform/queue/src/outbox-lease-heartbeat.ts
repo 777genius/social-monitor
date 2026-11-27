@@ -58,16 +58,34 @@ export class OutboxLeaseHeartbeat {
     this.pending.delete(id);
   }
 
+  /**
+   * After isolating one uncertain row, establish authority for the remaining
+   * subset from the database. An older in-flight renewal may have included the
+   * removed row; only this fresh positive result can clear its uncertainty.
+   */
+  async verifyRemainingClaims(): Promise<void> {
+    await this.renewal;
+    if (this.pending.size === 0) return;
+    const renewal = this.renew(true);
+    this.renewal = renewal;
+    try {
+      await renewal;
+      await this.assertOwned();
+    } finally {
+      if (this.renewal === renewal) this.renewal = undefined;
+    }
+  }
+
   async stop(): Promise<void> {
     clearInterval(this.timer);
     await this.renewal;
   }
 
-  private async renew(): Promise<void> {
+  private async renew(recheckRemaining = false): Promise<void> {
     const ids = [...this.pending];
     if (ids.length === 0) return;
     const now = this.clock.now();
-    if (now.getTime() >= this.validUntil.getTime()) {
+    if (!recheckRemaining && now.getTime() >= this.validUntil.getTime()) {
       this.ownershipLost = true;
       return;
     }
@@ -81,6 +99,7 @@ export class OutboxLeaseHeartbeat {
         return;
       }
       this.validUntil = leasedUntil;
+      if (recheckRemaining) this.ownershipLost = false;
     } catch {
       // A database error makes lease ownership uncertain, never success.
       this.ownershipLost = true;

@@ -2,11 +2,17 @@ import type { TenantId, WorkspaceId } from '@social-monitor/shared-kernel';
 
 import type { DigestSchedule } from '../domain';
 
+export type DigestSchedulePageCursor = {
+  readonly nextRunAt: Date;
+  readonly id: string;
+};
+
 export type FindDueDigestSchedulesQuery = {
   readonly tenantId?: TenantId;
   readonly workspaceId?: WorkspaceId;
   readonly now: Date;
   readonly limit: number;
+  readonly cursor?: DigestSchedulePageCursor;
 };
 
 export type ListDigestSchedulesQuery = {

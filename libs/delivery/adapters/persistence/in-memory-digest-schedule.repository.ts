@@ -50,7 +50,10 @@ export class InMemoryDigestScheduleRepository implements DigestScheduleRepositor
           snapshot.status === 'enabled' &&
           (query.tenantId === undefined || snapshot.tenantId === query.tenantId) &&
           (query.workspaceId === undefined || snapshot.workspaceId === query.workspaceId) &&
-          snapshot.nextRunAt.getTime() <= query.now.getTime()
+          snapshot.nextRunAt.getTime() <= query.now.getTime() &&
+          (query.cursor === undefined ||
+            snapshot.nextRunAt.getTime() > query.cursor.nextRunAt.getTime() ||
+            (snapshot.nextRunAt.getTime() === query.cursor.nextRunAt.getTime() && snapshot.id > query.cursor.id))
         );
       })
       .sort(compareSchedules)
@@ -67,7 +70,7 @@ const compareSchedules = (left: DigestSchedule, right: DigestSchedule): number =
     return nextRunDiff;
   }
 
-  return leftSnapshot.id.localeCompare(rightSnapshot.id);
+  return leftSnapshot.id < rightSnapshot.id ? -1 : leftSnapshot.id > rightSnapshot.id ? 1 : 0;
 };
 
 const compareSchedulesByCreation = (left: DigestSchedule, right: DigestSchedule): number => {
