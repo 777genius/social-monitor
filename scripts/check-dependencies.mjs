@@ -58,6 +58,7 @@ for (const exception of policy.allowedExceptions ?? []) {
 }
 
 let audit;
+let auditExit = 0;
 try {
   const auditJson =
     process.platform === 'win32'
@@ -66,13 +67,25 @@ try {
   audit = JSON.parse(auditJson);
 } catch (error) {
   const stdout = String(error.stdout ?? '').trim();
-  if (stdout.length === 0) {
+  if (error.status !== 1 || error.signal || stdout.length === 0) {
     throw error;
   }
   audit = JSON.parse(stdout);
+  auditExit = error.status;
 }
 
-for (const [packageName, vulnerability] of Object.entries(audit.vulnerabilities ?? {})) {
+// npm audit exits 1 for blocking findings, but registry failures also exit 1.
+// Never interpret a failed or incomplete report as an empty vulnerability list.
+const severities = new Set(['info', 'low', 'moderate', 'high', 'critical']);
+if (audit?.auditReportVersion !== 2 || Object.hasOwn(audit, 'error') ||
+    !audit.vulnerabilities || typeof audit.vulnerabilities !== 'object' || Array.isArray(audit.vulnerabilities) ||
+    Object.values(audit.vulnerabilities).some((v) => !severities.has(v?.severity)) ||
+    (auditExit !== 0 && !Object.values(audit.vulnerabilities).some((v) => blockSeverities.has(v.severity)))) {
+  console.error('Dependency audit did not return a valid npm audit report');
+  process.exit(1);
+}
+
+for (const [packageName, vulnerability] of Object.entries(audit.vulnerabilities)) {
   if (!blockSeverities.has(vulnerability.severity)) {
     continue;
   }
@@ -87,7 +100,16 @@ for (const [packageName, vulnerability] of Object.entries(audit.vulnerabilities 
   // (advisories below blockSeverities are ignored, like everywhere else in this gate), and a derived entry (a
   // package name in `via`) must itself be an excepted package.
   if (exception.advisories !== undefined) {
-    for (const via of vulnerability.via ?? []) {
+    const evidenceSeverity = (via) => typeof via === 'string'
+      ? (Object.hasOwn(audit.vulnerabilities, via) ? audit.vulnerabilities[via].severity : undefined)
+      : via?.severity;
+    if (!Array.isArray(vulnerability.via) || vulnerability.via.length === 0 ||
+        vulnerability.via.some((via) => !severities.has(evidenceSeverity(via))) ||
+        !vulnerability.via.some((via) => blockSeverities.has(evidenceSeverity(via)))) {
+      violations.push(`${packageName}: incomplete advisory evidence for approved exception`);
+      continue;
+    }
+    for (const via of vulnerability.via) {
       const covered =
         typeof via === 'string'
           ? allowedExceptions.has(via)

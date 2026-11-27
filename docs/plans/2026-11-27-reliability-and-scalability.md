@@ -29,7 +29,7 @@ checks, or synthetic fixtures as a successful live production verification.
 | #790 | Merged, `9b5f8db9` | Preserve domain import guard and exact existing exceptions. |
 | #796 / #797 | Merged; #797 is baseline | Preserve response admission fixes and awaited PostgreSQL fixture shutdown. |
 | #793 | Open, `6789d767` | Independently owns Node/TS7/SDK, summary snapshot contracts, package/Jest/toolchain/CI. |
-| #783 | Draft, `e26517c1` | Independently owns external-beta evidence/readiness and dependency audit admission. |
+| #783 | Draft, `56a4544b` (final qualification recheck) | Owns external-beta evidence/readiness. Reuse only its reviewed dependency-audit result admission and regression test, as scoped below. |
 | #798 | Open, `60430924` | Weekly OpenAI response-envelope fix; leave its files alone. |
 | #799 | Open, `ceb0ba66` (integration recheck) | Public Likes deployment readiness and lifecycle registry; no file overlap with this PR. |
 | #800 | Open, `ca627da2` | Scweet dependency update; not proof of live X recovery. |
@@ -46,6 +46,16 @@ The integration recheck found #793, #783, #798 and #800 unchanged at the recorde
 heads. #799 had advanced to `ceb0ba66`; its changed-file inventory still had no
 overlap with this PR. These are recorded comparisons, not permission to merge
 either branch or a claim about subsequent updates to those PRs.
+
+A later qualification recheck reproduced a false-success dependency audit: npm's
+endpoint-error JSON lacked `vulnerabilities`, and the checker treated it as an
+empty report. Current #783 already fixes this. Reuse exactly its
+`scripts/check-dependencies.mjs` and `scripts/check-dependencies.test.mjs` from
+`56a4544b12e8001631d76cbeaa701d18ec133293`, plus one test-name insertion in the
+existing `check:architecture` command. Do not import its other readiness work.
+Dependency versions, lockfile, exception policy and workflow files stay unchanged.
+This is a required qualification fix, independently reviewed before integration;
+it does not establish that an earlier real CI run received an endpoint error.
 
 ## Concrete problems found in the baseline
 

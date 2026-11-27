@@ -28,9 +28,11 @@ The earlier composition extraction is recorded in
 its required workflow provider is 41 lines. Independent review confirmed the
 same token, five injected dependencies, adapter selection and null-client failure.
 
-No package, lockfile, Jest configuration, existing test timeout, schema or CI
-policy was changed for these checks. The added real 30-second handshake test has
-its own 45-second test budget and a 35-second peer cleanup guard.
+Dependency versions, lockfile, Jest configuration, existing test timeouts, schema
+and workflow files remain unchanged. The later audit-result fix below adds one
+regression-test entry to the existing architecture command in `package.json`;
+severity and exception policy are preserved. The added real 30-second handshake
+test has its own 45-second test budget and a 35-second peer cleanup guard.
 
 ## Executed local evidence
 
@@ -174,6 +176,50 @@ is not counted as complete unit qualification. SQLite was restored from official
 checksum-verified packages with its matching native library. Final execution uses
 isolated temporary space and preserves the existing discovery and completeness
 checker. Its actual six-shard result is recorded in the PR validation table.
+
+## Dependency audit result admission
+
+Final qualification reproduced a false-success path in the original checker on
+`eb59a87`: npm endpoint-error JSON without `vulnerabilities`, a top-level `error`
+object, and an empty object each returned exit 0 with the success message.
+The fixture used the real checker and isolated npm responses. This proves the
+checker defect; it does not show that an earlier real CI run received an error.
+
+The fix reuses exactly `scripts/check-dependencies.mjs` and
+`scripts/check-dependencies.test.mjs` from
+[PR #783 at 56a4544b](https://github.com/777genius/social-monitor/commit/56a4544b12e8001631d76cbeaa701d18ec133293).
+The respective Git blobs are `7ba66f8dec07446c59be6220e099efef736ceab6` and
+`3b565531a591586c0276f101d6f4b56b6271a886`. No other #783 readiness work is imported.
+One test-name insertion registers the regression in the existing architecture
+command; package versions, lockfile, severity thresholds and exceptions stay
+unchanged.
+
+The checker now requires a complete npm audit v2 report, distinguishes exit 1
+with blocking findings from failed execution, and rejects incomplete advisory
+evidence for an advisory-scoped exception. Valid direct and derived findings
+continue through the existing policy. This is a bounded check of consumed
+external fields, without a new validation framework.
+
+Independent source and final-diff reviews accepted the change. On Node 22.23.5,
+`node --test scripts/check-dependencies.test.mjs` passed **20 tests**, with zero
+failures, skips, cancellations or todo cases, in 2.717 seconds. The same three
+original reproductions now each exit 1 and emit no success message. These
+offline fixtures make no registry request and do not qualify a live npm audit.
+
+The earlier identical-tree security job reported 24 dependency vulnerabilities:
+1 low, 18 moderate and 5 high. The inherited dependency policy contains owned
+exceptions expiring on 2026-12-04, including two runtime packages and the
+Prisma CLI chain. A passing dependency contract means a complete report satisfies
+that policy; it does not mean there are no vulnerabilities.
+
+After the fix, a real registry audit on Node 22.23.5 with the locally available
+npm 11.19.1 returned a valid v2 report: the same 24 findings, zero critical, and
+exit 1 at the moderate threshold. Its five high entries were `zod`,
+`@vioxen/subscription-runtime`, `effect`, `@prisma/config` and `prisma`. A separate
+real invocation of the corrected dependency checker then passed, exit 0, against
+the unchanged policy. No packages were installed or upgraded for this check.
+The local npm version is recorded explicitly; final qualification on the CI
+toolchain and the combined new head still belongs in the PR validation table.
 
 ## Canonical CI and execution limits
 
