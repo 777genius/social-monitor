@@ -51,7 +51,8 @@ export interface RabbitMqQueueChannelPort {
     routingKey: string,
     args?: Readonly<Record<string, RabbitMqFieldValue>>,
   ): Promise<unknown>;
-  /** Returns true only after this exact wire send has a broker confirmation. */
+  /** Resolves only after the exact send is confirmed; the Boolean is native local buffer state,
+   * not broker acceptance. Rejection denotes a failed or unknown publication outcome. */
   publishAndConfirm(
     exchange: string,
     routingKey: string,
@@ -72,8 +73,6 @@ export type RabbitMqPublishOptions = {
 };
 
 export class RabbitMqQueuePublisher implements QueuePublisherPort {
-  private readonly assertedRoutes = new Set<string>();
-
   constructor(
     private readonly channel: RabbitMqQueueChannelPort,
     private readonly options: RabbitMqQueuePublisherOptions,
@@ -99,7 +98,7 @@ export class RabbitMqQueuePublisher implements QueuePublisherPort {
       throw new Error(`Queue command payload exceeds RabbitMQ max payload size: ${content.byteLength}`);
     }
 
-    const accepted = await this.channel.publishAndConfirm(this.options.exchange, route.routingKey, content, {
+    await this.channel.publishAndConfirm(this.options.exchange, route.routingKey, content, {
       contentType: this.options.contentType ?? 'application/json',
       deliveryMode: this.options.persistent === false ? 1 : 2,
       mandatory: this.options.mandatory ?? true,
@@ -114,20 +113,10 @@ export class RabbitMqQueuePublisher implements QueuePublisherPort {
         ...route.headers,
       },
     });
-
-    if (!accepted) {
-      throw new Error(`RabbitMQ publish backpressure for command type: ${command.commandType}`);
-    }
-
   }
 
   private async ensureRoute(route: RabbitMqQueueRoute): Promise<void> {
-    const routeKey = `${route.queue}:${route.routingKey}`;
-
-    if (this.assertedRoutes.has(routeKey)) {
-      return;
-    }
-
+    // The native channel coalesces declarations and resets them on reconnect.
     const durable = route.durable ?? this.options.durable ?? true;
     await this.channel.assertExchange(this.options.exchange, this.options.exchangeType ?? 'direct', { durable });
     if (route.deadLetterExchange !== undefined) {
@@ -145,7 +134,6 @@ export class RabbitMqQueuePublisher implements QueuePublisherPort {
       }),
     });
     await this.channel.bindQueue(route.queue, this.options.exchange, route.routingKey);
-    this.assertedRoutes.add(routeKey);
   }
 
   private resolveRoute(commandType: string): RabbitMqQueueRoute {

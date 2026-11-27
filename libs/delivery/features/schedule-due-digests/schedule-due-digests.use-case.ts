@@ -1,4 +1,4 @@
-import { type Clock, DomainError, err, ok, type Result } from '@social-monitor/shared-kernel';
+import { type Clock, DomainError, err, ok, redactSensitiveText, type Result } from '@social-monitor/shared-kernel';
 
 import type { DigestScheduleRepositoryPort } from '../../ports';
 import type { AssembleDigestUseCase } from '../assemble-digest/assemble-digest.use-case';
@@ -28,36 +28,45 @@ export class ScheduleDueDigestsUseCase {
     });
     const digests: ScheduledDigestResultItem[] = [];
     let skipped = 0;
+    const failures: { digestScheduleId: string; message: string }[] = [];
 
     for (const schedule of schedules) {
       const snapshot = schedule.toSnapshot();
       const windowEndedAt = snapshot.nextRunAt;
       const windowStartedAt = new Date(windowEndedAt.getTime() - snapshot.intervalSeconds * 1000);
-      const assembled = await this.assembleDigest.execute({
-        tenantId: snapshot.tenantId,
-        workspaceId: snapshot.workspaceId,
-        recipientKey: snapshot.recipientKey,
-        channel: snapshot.channel,
-        interestIds: snapshot.interestIds,
-        windowStartedAt,
-        windowEndedAt,
-        includeNoSignal: snapshot.includeNoSignal,
-      });
+      try {
+        const assembled = await this.assembleDigest.execute({
+          tenantId: snapshot.tenantId,
+          workspaceId: snapshot.workspaceId,
+          recipientKey: snapshot.recipientKey,
+          channel: snapshot.channel,
+          interestIds: snapshot.interestIds,
+          windowStartedAt,
+          windowEndedAt,
+          includeNoSignal: snapshot.includeNoSignal,
+        });
 
-      if (!assembled.ok) {
+        if (!assembled.ok) throw assembled.error;
+
+        await this.digestSchedules.save(schedule.scheduleNext({
+          nextRunAt: new Date(snapshot.nextRunAt.getTime() + snapshot.intervalSeconds * 1000),
+        }));
+        digests.push({
+          digestScheduleId: snapshot.id,
+          digestId: assembled.value.digest.id,
+          deliveryAttemptId: assembled.value.deliveryAttemptId,
+          created: assembled.value.created,
+        });
+      } catch (error) {
+        // Keep the failed window due. A retry repairs a saved digest's delivery
+        // intent, while unrelated schedules in this page keep progressing.
         skipped += 1;
-        continue;
+        failures.push({
+          digestScheduleId: snapshot.id,
+          message: redactSensitiveText(error instanceof Error ? error.message : 'Digest scheduling failed')
+            .replace(/[\r\n]+/g, ' ').slice(0, 240),
+        });
       }
-
-      digests.push({
-        digestScheduleId: snapshot.id,
-        digestId: assembled.value.digest.id,
-        deliveryAttemptId: assembled.value.deliveryAttemptId,
-        created: assembled.value.created,
-      });
-      await this.digestSchedules.save(schedule.scheduleNext({
-        nextRunAt: new Date(snapshot.nextRunAt.getTime() + snapshot.intervalSeconds * 1000),
-      }));
     }
 
     return ok({
@@ -66,6 +75,7 @@ export class ScheduleDueDigestsUseCase {
       assembled: digests.length,
       skipped,
       digests,
+      ...(failures.length === 0 ? {} : { failures }),
     });
   }
 }

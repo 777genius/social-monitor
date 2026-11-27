@@ -10,6 +10,7 @@ import {
   type StructuredLogger,
 } from "@social-monitor/platform-logging";
 import { RequestCorrelationIdFactory } from "@social-monitor/platform-request-context";
+import type { PeriodicReaderSummaryContinuation } from "@social-monitor/summary/features/schedule-periodic-reader-summaries/schedule-periodic-reader-summaries.command";
 import { SchedulePeriodicReaderSummariesUseCase } from "@social-monitor/summary/features/schedule-periodic-reader-summaries/schedule-periodic-reader-summaries.use-case";
 import {
   SystemClock,
@@ -34,6 +35,7 @@ export class PeriodicReaderSummarySchedulerLoop
   private timer: NodeJS.Timeout | undefined;
   private currentTick: Promise<void> | undefined;
   private shuttingDown = false;
+  private continuation: PeriodicReaderSummaryContinuation | undefined;
 
   constructor(
     private readonly schedulePeriodicReaderSummaries: SchedulePeriodicReaderSummariesUseCase,
@@ -54,6 +56,8 @@ export class PeriodicReaderSummarySchedulerLoop
     if (this.options.runOnStart) {
       await this.runTick("startup");
     }
+
+    if (this.shuttingDown) return;
 
     this.timer = setInterval(() => {
       void this.runTick("interval");
@@ -111,6 +115,7 @@ export class PeriodicReaderSummarySchedulerLoop
           `periodic-reader-summary-${trigger}`,
         ),
         now: this.clock.now(),
+        continuation: this.continuation,
         readyAtUtc: this.options.readyAtUtc,
         ...(this.options.tenantId === undefined
           ? {}
@@ -134,6 +139,8 @@ export class PeriodicReaderSummarySchedulerLoop
         );
         return;
       }
+
+      this.continuation = result.value.continuation;
 
       for (const summary of result.value.summaries) {
         this.logger.info("periodic reader summary scheduler item completed", {

@@ -2,6 +2,7 @@ import type {
   ReaderSummaryScope,
   ScheduledReaderSummaryCadence,
 } from "../../domain";
+import type { PeriodicReaderSummaryContinuation } from "./schedule-periodic-reader-summaries.command";
 
 export type ScheduledPeriodicReaderSummaryResultItem = {
   readonly tenantId: string;
@@ -21,6 +22,7 @@ export type ScheduledPeriodicReaderSummaryResultItem = {
 };
 
 export type SchedulePeriodicReaderSummariesResult = {
+  readonly continuation?: PeriodicReaderSummaryContinuation;
   readonly evaluated: number;
   readonly scheduled: number;
   readonly existing: number;

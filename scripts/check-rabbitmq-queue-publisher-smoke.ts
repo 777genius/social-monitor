@@ -54,7 +54,7 @@ class FakeRabbitMqChannel implements RabbitMqQueueChannelPort {
 
   async publishAndConfirm(...args: Parameters<RabbitMqQueueChannelPort['publishAndConfirm']>): Promise<boolean> {
     const accepted = this.publish(...args);
-    if (accepted) await this.waitForConfirms();
+    await this.waitForConfirms();
     return accepted;
   }
 
@@ -143,17 +143,9 @@ async function main(): Promise<void> {
       workspaceId: 'workspace-rabbit-smoke',
       scanJobId: 'scan-job-rabbit-smoke-2',
     },
-  }).then(
-    () => {
-      throw new Error('publisher must fail on broker backpressure');
-    },
-    (error: unknown) => {
-      assert(
-        error instanceof Error && error.message.includes('backpressure'),
-        'publisher must expose broker backpressure',
-      );
-    },
-  );
+  });
+  assert(Number(channel.confirmCount) === 2, 'buffer-full send must still await its broker confirm');
+  assert(Number(channel.published.length) === 2, 'confirmed buffer-full send must not be duplicated');
 
   console.log('RabbitMQ queue publisher smoke OK');
 }

@@ -31,6 +31,10 @@ export class InMemoryReaderSummaryPolicyRepository implements ReaderSummaryPolic
 
         return (
           snapshot.schedule.enabled &&
+          (query.cursor === undefined ||
+            (query.cursor.inclusive
+              ? snapshot.id >= query.cursor.policyId
+              : snapshot.id > query.cursor.policyId)) &&
           (query.tenantId === undefined ||
             snapshot.tenantId === query.tenantId) &&
           (query.workspaceId === undefined ||
@@ -40,14 +44,8 @@ export class InMemoryReaderSummaryPolicyRepository implements ReaderSummaryPolic
       .sort((left, right) => {
         const leftSnapshot = left.toSnapshot();
         const rightSnapshot = right.toSnapshot();
-        const updatedAtDiff =
-          rightSnapshot.updatedAt.getTime() - leftSnapshot.updatedAt.getTime();
-
-        return updatedAtDiff === 0
-          ? readerSummaryScopeKey(leftSnapshot.scope).localeCompare(
-              readerSummaryScopeKey(rightSnapshot.scope),
-            )
-          : updatedAtDiff;
+        return leftSnapshot.id < rightSnapshot.id ? -1
+          : leftSnapshot.id > rightSnapshot.id ? 1 : 0;
       })
       .slice(0, query.limit);
   }

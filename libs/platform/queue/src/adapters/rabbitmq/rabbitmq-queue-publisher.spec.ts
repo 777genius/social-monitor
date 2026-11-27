@@ -53,7 +53,7 @@ class FakeRabbitMqChannel implements RabbitMqQueueChannelPort {
 
   async publishAndConfirm(...args: Parameters<RabbitMqQueueChannelPort['publishAndConfirm']>): Promise<boolean> {
     const accepted = this.publish(...args);
-    if (accepted) await this.waitForConfirms();
+    await this.waitForConfirms();
     return accepted;
   }
 
@@ -182,7 +182,7 @@ describe('RabbitMqQueuePublisher', () => {
     ]);
   });
 
-  it('fails fast when the broker reports publish backpressure', async () => {
+  it('accepts a broker-confirmed send when the local write buffer is full', async () => {
     const channel = new FakeRabbitMqChannel();
     channel.publishAccepted = false;
 
@@ -200,8 +200,9 @@ describe('RabbitMqQueuePublisher', () => {
       payload: {
         summaryJobId: 'summary-job-1',
       },
-    })).rejects.toThrow('RabbitMQ publish backpressure');
-    expect(channel.confirmCount).toBe(0);
+    })).resolves.toBeUndefined();
+    expect(channel.confirmCount).toBe(1);
+    expect(channel.published).toHaveLength(1);
   });
 
   it('rejects oversized command payloads before publishing', async () => {

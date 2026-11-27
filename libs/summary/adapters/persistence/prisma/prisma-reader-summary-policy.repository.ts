@@ -84,8 +84,13 @@ export class PrismaReaderSummaryPolicyRepository implements ReaderSummaryPolicyR
           tenantId: query.tenantId,
           workspaceId: query.workspaceId,
           scheduleEnabled: true,
+          ...(query.cursor === undefined ? {} : {
+            id: query.cursor.inclusive
+              ? { gte: query.cursor.policyId }
+              : { gt: query.cursor.policyId },
+          }),
         },
-        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        orderBy: [{ id: "asc" }],
         take: query.limit,
       });
     const records =

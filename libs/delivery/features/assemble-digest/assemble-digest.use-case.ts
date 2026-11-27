@@ -46,10 +46,7 @@ export class AssembleDigestUseCase {
     });
 
     if (existing !== null) {
-      return ok({
-        digest: presentDigest(existing),
-        created: false,
-      });
+      return this.ensureDelivery(existing, false, command.maxRetries);
     }
 
     const sourceWindow = await this.sources.readWindow({
@@ -110,29 +107,35 @@ export class AssembleDigestUseCase {
 
     await this.digests.save(digest);
 
-    if (status === 'empty') {
-      return ok({
-        digest: presentDigest(digest),
-        created: true,
-      });
+    return this.ensureDelivery(digest, true, command.maxRetries);
+  }
+
+  private async ensureDelivery(
+    digest: Digest,
+    created: boolean,
+    maxRetries?: number,
+  ): Promise<Result<AssembleDigestResult, AssembleDigestFailure>> {
+    const snapshot = digest.toSnapshot();
+    if (snapshot.status === 'empty') {
+      return ok({ digest: presentDigest(digest), created });
     }
 
     const queued = await this.queueDeliveryAttempt.execute({
-      tenantId: command.tenantId,
-      workspaceId: command.workspaceId,
+      tenantId: snapshot.tenantId,
+      workspaceId: snapshot.workspaceId,
       idempotencyKey: buildDeliveryIdempotencyKey({
-        tenantId: command.tenantId,
-        workspaceId: command.workspaceId,
-        recipientKey: command.recipientKey,
-        channel: command.channel,
-        windowId,
-        contentHash,
+        tenantId: snapshot.tenantId,
+        workspaceId: snapshot.workspaceId,
+        recipientKey: snapshot.recipientKey,
+        channel: snapshot.channel,
+        windowId: snapshot.window.windowId,
+        contentHash: snapshot.contentHash,
       }),
-      channel: command.channel,
-      recipientKey: command.recipientKey,
+      channel: snapshot.channel,
+      recipientKey: snapshot.recipientKey,
       resourceType: 'digest',
-      resourceId: digest.toSnapshot().id,
-      maxRetries: command.maxRetries,
+      resourceId: snapshot.id,
+      maxRetries,
     });
 
     if (!queued.ok) {
@@ -141,7 +144,7 @@ export class AssembleDigestUseCase {
 
     return ok({
       digest: presentDigest(digest),
-      created: true,
+      created,
       deliveryAttemptId: queued.value.deliveryAttemptId,
     });
   }
