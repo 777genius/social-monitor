@@ -19,6 +19,7 @@ export const lifecycleCommands: readonly LifecycleCommand[] = [
   { command: "bash ops/deploy/production-runtime/daily-run.test.sh", safe: true },
   { command: "bash ops/deploy/daily-deploy-lock-race.test.sh" },
   { command: "bash ops/deploy/social-monitor-production-deploy.test.sh" },
+  { command: "bash ops/deploy/reader-posts-proxy-readiness.test.sh", safe: true },
   { command: "bash ops/deploy/x-collector-image-deploy-lib.test.sh", safe: true },
   { command: "bash ops/deploy/production-component-classification.test.sh", safe: true },
   { command: "bash ops/deploy/production-release-a-transition.test.sh" },

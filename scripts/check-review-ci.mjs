@@ -263,13 +263,15 @@ if (lifecycleUsesRunner || preservedLifecycleSerial !== undefined) {
   const typedCheck = "tsc --project ops/ci/tsconfig.production-lifecycle.json && " +
     "node --experimental-strip-types --test --test-name-pattern='actual registry' ops/ci/production-lifecycle-runner.test.mts";
   if (!lifecycleUsesRunner || typeof preservedLifecycleSerial !== "string" ||
-      preservedLifecycleSerial.split(" && ").length !== 28 ||
+      preservedLifecycleSerial.split(" && ").length !== 29 ||
+      preservedLifecycleSerial.split(" && ").filter((command) =>
+        command === "bash ops/deploy/reader-posts-proxy-readiness.test.sh").length !== 1 ||
       packageJson.scripts?.["check:production-lifecycle-runner"] !== typedCheck ||
       packageJson.scripts?.["check:production-lifecycle-runner:containment"] !==
         "node --experimental-strip-types --test ops/ci/production-lifecycle-runner.test.mts" ||
       packageJson.scripts?.["check:code-quality"] !==
         "node scripts/check-code-quality.mjs && npm run check:production-lifecycle-runner && npm run check:telegram-channel-native") {
-    violations.push("package.json: typed lifecycle must retain all 28 serial commands and run portable registry checks plus mandatory native containment and Telegram native checks");
+    violations.push("package.json: typed lifecycle must retain all 29 serial commands and run portable registry checks plus mandatory native containment and Telegram native checks");
   }
 }
 const productionDeployLifecycleCommands = lifecycleUsesRunner
