@@ -34,10 +34,12 @@ const config: Config = {
     '^@social-monitor/social-research/(.*)$': '<rootDir>/libs/social-research/$1',
     '^@social-monitor/([^/]+)/(.*)$': '<rootDir>/libs/$1/$2',
   },
-  // The account-gateway SDK ships ESM only; ts-jest transpiles that package.
-  transformIgnorePatterns: ['/node_modules/(?!@agent-teams/account-gateway/)'],
+  // Match the unit runner: native ESM dependencies must not be transformed into CommonJS.
+  transformIgnorePatterns: ['/node_modules/'],
   testPathIgnorePatterns: ['/node_modules/', '/dist/', '/prisma/generated/'],
   testEnvironment: 'node',
+  // Recycle the serial E2E worker between suites before native ESM contexts exhaust the heap.
+  workerIdleMemoryLimit: '1GiB',
   setupFiles: ['<rootDir>/test/e2e/support/deterministic-runtime-env.ts'],
 };
 

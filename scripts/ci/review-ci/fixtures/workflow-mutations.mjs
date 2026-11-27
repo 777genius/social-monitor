@@ -32,7 +32,7 @@ export const unitMutations = [
   ...['--testPathPattern=small', '--onlyChanged', '--changedSince=main', '-t small', '--passWithNoTests', '--testPathIgnorePatterns=hidden', '--testNamePattern=small'].map((filter) =>
     [`narrowed candidate selector ${filter}`, (w) => lastRun(w, 'backend_unit_shards').run += ` ${filter}`]),
   ['subset inventory', (w) => replaceRun(w, 'backend_unit_shards', '--listTests --json', '--listTests --json --shard=${{ matrix.shard }}/6')],
-  ['unit timeout removed', (w) => replaceRun(w, 'backend_unit_shards', 'node scripts/run-with-timeout.mjs --timeout-ms 2700000 --node-options --max-old-space-size=4096 -- ', '')],
+  ['unit timeout removed', (w) => replaceRun(w, 'backend_unit_shards', 'node scripts/run-with-timeout.mjs --timeout-ms 2700000 --node-options "--max-old-space-size=4096 --experimental-vm-modules" -- ', '')],
   ['bare-unit memory budget restored accidentally', (w) => replaceRun(w, 'backend_unit_shards', '--max-old-space-size=4096', '--max-old-space-size=2048')],
   ['bare-unit execution deadline restored accidentally', (w) => replaceRun(w, 'backend_unit_shards', '--timeout-ms 2700000', '--timeout-ms 900000')],
   ['bare-unit job deadline restored accidentally', (w) => w.jobs.backend_unit_shards['timeout-minutes'] = 45],

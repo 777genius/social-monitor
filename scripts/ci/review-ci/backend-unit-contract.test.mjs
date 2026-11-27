@@ -132,7 +132,7 @@ test('unit worker argv is bounded to shard2 and inventory is always serial', () 
         const args = readFileSync(argvFile, 'utf8').split('\0').slice(0, -1);
         assert.deepEqual(args, [
           'scripts/run-with-timeout.mjs', '--timeout-ms', kind === 'inventory' ? '120000' : '2700000',
-          '--node-options', kind === 'inventory' ? '--max-old-space-size=2048' : '--max-old-space-size=4096',
+          '--node-options', kind === 'inventory' ? '--max-old-space-size=2048' : '--max-old-space-size=4096 --experimental-vm-modules',
           '--', './node_modules/.bin/jest', '--config', 'jest.config.ts',
           kind === 'runtime' && shard === 2 ? '--maxWorkers=2' : '--runInBand',
           ...(kind === 'runtime' ? [`--shard=${shard}/6`] : []),
@@ -147,4 +147,27 @@ test('unit worker argv is bounded to shard2 and inventory is always serial', () 
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test('local Node16 Jest launch preserves VM imports and nested ts-node alias resolution', () => {
+  const scripts = JSON.parse(readFileSync('package.json', 'utf8')).scripts;
+  for (const name of ['test', 'check:postgres-runtime-pool-unit']) {
+    assert.match(scripts[name],
+      /--node-options "--max-old-space-size=\d+ --experimental-vm-modules" --env TS_NODE_BASEURL=\. -- jest\b/u);
+  }
+});
+
+test('E2E Jest launch preserves native ESM and the existing test selection', () => {
+  const scripts = JSON.parse(readFileSync('package.json', 'utf8')).scripts;
+  assert.equal(scripts['test:e2e'],
+    'node scripts/run-with-timeout.mjs --timeout-ms 1200000 --node-options "--max-old-space-size=3072 --experimental-vm-modules" -- jest --config test/jest-e2e.config.ts --maxWorkers=1');
+  assert.equal(scripts['check:reader-surface-tenant-isolation'],
+    'node scripts/run-with-timeout.mjs --timeout-ms 150000 --clean-env --env READER_SUMMARY_MODEL_PROVIDER=deterministic --env READER_SUMMARY_TOPIC_LABELER=deterministic --node-options "--max-old-space-size=2048 --experimental-vm-modules" -- jest --config test/jest-e2e.config.ts --runInBand --runTestsByPath test/e2e/reader-surfaces.tenant-scope.e2e-spec.ts');
+  assert.equal(scripts['check:production-auth-matrix'],
+    'node scripts/check-production-auth-matrix.mjs && node scripts/run-with-timeout.mjs --timeout-ms 90000 --clean-env --node-options "--max-old-space-size=1024 --experimental-vm-modules" -- jest --config test/jest-e2e.config.ts --runInBand --runTestsByPath test/e2e/production-auth-boundary-matrix.e2e-spec.ts');
+  const authRunner = readFileSync('scripts/check-user-auth-boundary.mjs', 'utf8');
+  assert.match(authRunner, /'--clean-env',\s*'--node-options',\s*'--max-old-space-size=1536 --experimental-vm-modules',\s*'--',\s*jestPath,\s*'--config',\s*'test\/jest-e2e\.config\.ts'/u);
+  const config = readFileSync('test/jest-e2e.config.ts', 'utf8');
+  assert.match(config, /transformIgnorePatterns: \['\/node_modules\/'\]/u);
+  assert.match(config, /workerIdleMemoryLimit: '1GiB'/u);
 });

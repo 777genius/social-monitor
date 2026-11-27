@@ -18,6 +18,10 @@ const shell = (name: string, program: string, cancellation: 'group' | 'eof' = 'g
 });
 const quote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
 const delay = (ms: number): Promise<void> => new Promise(done => setTimeout(done, ms));
+const exitedProcess = (stat: string): boolean => {
+  const state = stat.slice(stat.lastIndexOf(')') + 2).split(' ')[0];
+  return state === 'Z' || state === 'X';
+};
 const observation = async (path: string): Promise<string> => {
   const deadline = performance.now() + 5000;
   while (performance.now() < deadline) {
@@ -135,7 +139,7 @@ async function fixture(root: string, scenario: string): Promise<number> {
     while (true) {
       try {
         const stat = await readFile(`/proc/${leader}/stat`, 'utf8');
-        if (stat.slice(stat.lastIndexOf(')') + 2).startsWith('Z ')) break;
+        if (exitedProcess(stat)) break;
       } catch (error) {
         const code = (error as NodeJS.ErrnoException).code;
         if (code === 'ENOENT' || code === 'ESRCH') break;
@@ -233,9 +237,9 @@ if (process.argv[2] === 'leaf') {
   };
   const gone = async (pid: number): Promise<boolean> => {
     try {
-      // A terminated adopted grandchild may briefly remain a zombie in a container.
+      // Reaping may expose Z (zombie), then X (dead), before /proc disappears.
       const stat = await readFile(`/proc/${pid}/stat`, 'utf8');
-      return stat.slice(stat.lastIndexOf(')') + 2).startsWith('Z ');
+      return exitedProcess(stat);
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code === 'ENOENT' || code === 'ESRCH') return true;
@@ -253,6 +257,14 @@ if (process.argv[2] === 'leaf') {
   // and any foreign PID. Monkeypatches run only in the fixture child. Root's
   // four checks and the production static command sequence remain serial.
   describe('isolated static supervision fixtures', { concurrency: 4 }, () => {
+  test('process exit observation stays terminal through Z-to-X reaping and rejects live states', () => {
+    const stat = (state: string): string => `123 (synthetic (worker)) ${state} 1 123 123 0 0`;
+    assert.deepStrictEqual(['Z', 'X'].map(state => exitedProcess(stat(state))), [true, true]);
+    for (const state of ['R', 'S', 'D', 'T', 't', 'I', 'P']) {
+      assert.equal(exitedProcess(stat(state)), false, `state ${state} is still live`);
+    }
+  });
+
   for (const scenario of ['overlap', 'root-fails', 'static-fails', 'both-fail', 'spawn-fails', 'drain']) {
     test(`join observes both children: ${scenario}`, { timeout: 10000 }, async () => {
       const root = await mkdtemp(join(tmpdir(), 'static-quality-proof-'));
@@ -371,8 +383,12 @@ if (process.argv[2] === 'leaf') {
             assert.equal(await marker(join(root, 'guardian-signal')), mode === 'SIGINT' ? '2' : '15',
               'guardian must actually receive cancellation before the early leader assertion');
           }
-          while (!await gone(leader) && performance.now() < deadline) await delay(20);
-          assert.equal(await gone(leader), true, 'command exits before TERM escalation');
+          let leaderExited = await gone(leader);
+          while (!leaderExited && performance.now() < deadline) {
+            await delay(20);
+            leaderExited = await gone(leader);
+          }
+          assert.equal(leaderExited, true, 'command exits before TERM escalation');
           assert.ok(group > 0 && group !== leader && group !== process.pid, 'separate owned group keeper');
           assert.equal(await gone(group), false, 'keeper pins group until drain completes');
           const result = await run.result;

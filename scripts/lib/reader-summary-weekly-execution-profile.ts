@@ -11,7 +11,7 @@ import {
   resolveSummaryAgentRuntimeTransport,
 } from "../../libs/summary/adapters/composition/reader-summary-agent-runtime-transport";
 import { gatewayLlmCanonicalRequestSha256 } from "../../libs/summary/adapters/model/gateway-llm/gateway-llm-request-identity";
-import { approvedGatewayLlmSdkIdentity } from "../../libs/summary/adapters/model/gateway-llm/gateway-llm-sdk-identity";
+import { approvedGatewayLlmSdkIdentity, isKnownGatewayLlmSdkIdentity } from "../../libs/summary/adapters/model/gateway-llm/gateway-llm-sdk-identity";
 import type {
   AgentRuntimeExecutionAttestation,
   AgentRuntimeTaskCommand,
@@ -49,15 +49,14 @@ export const resolveReaderSummaryWeeklyExecutionProfile = (
     gatewayMinOutputTokens: config.route.minOutputTokens });
 };
 
-/** Historical manifests keep their byte identity; gateway reads still bind the approved SDK. */
+/** Historical manifests keep their bytes and must bind one recognized complete SDK identity. */
 export const assertReaderSummaryWeeklyRuntimeIdentity = (
   attestation: AgentRuntimeExecutionAttestation,
 ): void => {
   if (attestation.runtimeEngine !== "gateway-llm") return;
   if (!isAttestedRuntimeIdentity(attestation) ||
       attestation.gateway.profileId !== readerSummaryWeeklyGatewayProfileId ||
-      attestation.runtimePackageVersion !== approvedGatewayLlmSdkIdentity.packageVersion ||
-      attestation.launcherSha256 !== approvedGatewayLlmSdkIdentity.archiveSha256) {
+      !isKnownGatewayLlmSdkIdentity(attestation.runtimePackageVersion, attestation.launcherSha256)) {
     throw new Error("Reader summary weekly gateway execution identity is invalid");
   }
 };
@@ -67,6 +66,7 @@ export const assertReaderSummaryWeeklyCommandExecution = (
   command: AgentRuntimeTaskCommand,
   attestation: AgentRuntimeExecutionAttestation,
   profile: ReaderSummaryWeeklyExecutionProfile,
+  sdkIdentity: "current" | "retained" = "current",
 ): void => {
   if (attestation.runtimeEngine !== (profile.transport === "gateway-llm"
     ? "gateway-llm" : "subscription-runtime-cli")) {
@@ -74,6 +74,13 @@ export const assertReaderSummaryWeeklyCommandExecution = (
   }
   assertReaderSummaryWeeklyRuntimeIdentity(attestation);
   if (attestation.runtimeEngine !== "gateway-llm") return;
+  // Only the saved-proof verifier opts into retained SDKs. New results must
+  // come from the currently installed archive, even if an old pair is known.
+  if (sdkIdentity !== "retained" &&
+      (attestation.runtimePackageVersion !== approvedGatewayLlmSdkIdentity.packageVersion ||
+       attestation.launcherSha256 !== approvedGatewayLlmSdkIdentity.archiveSha256)) {
+    throw new Error("Reader summary weekly gateway execution identity is invalid");
+  }
   if (!Number.isSafeInteger(profile.gatewayMinOutputTokens) || profile.gatewayMinOutputTokens! < 1 ||
       attestation.canonicalRequestSha256 !== gatewayLlmCanonicalRequestSha256(command, {
         profileId: readerSummaryWeeklyGatewayProfileId, model: profile.model,

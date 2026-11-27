@@ -1,4 +1,5 @@
 import { selectedAgentRuntimeOutput } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
+import { approvedGatewayLlmSdkIdentity } from "./gateway-llm/gateway-llm-sdk-identity";
 
 import type {
   AgentRuntimeTaskCommand,
@@ -53,8 +54,8 @@ export const withTestGatewayExecutionAttestation = (
       reasoningEffort: typeof command.controls.reasoningEffort === "string"
         ? command.controls.reasoningEffort : "default",
       runtimeEngine: "gateway-llm",
-      runtimePackageVersion: "0.1.0-llm.0f3827f",
-      launcherSha256: "c".repeat(64),
+      runtimePackageVersion: approvedGatewayLlmSdkIdentity.packageVersion,
+      launcherSha256: approvedGatewayLlmSdkIdentity.archiveSha256,
       gateway: { profileId: "kimi-code-global-responses-apikey-v1", taskId: "sm-task", attempt: 1,
         executionRef: "execution-1", requestRef: "request-1", accountRef: "account-1",
         observedModel: model, requestSha256: "d".repeat(64) },

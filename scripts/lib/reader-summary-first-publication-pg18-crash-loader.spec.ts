@@ -133,7 +133,8 @@ it("loads the exact crash child with the pinned test project and curated environ
   finally { jest.mocked(fork).mockReset(); }
 
   assertSharedUnchanged();
-  expect(capturedEnv).toEqual({ NODE_ENV: "test", TS_NODE_TRANSPILE_ONLY: "true", TS_NODE_PROJECT: resolve("test/tsconfig.jest.json") });
+  expect(capturedEnv).toEqual({ NODE_ENV: "test", TS_NODE_TRANSPILE_ONLY: "true",
+    TS_NODE_PROJECT: resolve("test/tsconfig.jest.json"), TS_NODE_BASEURL: process.cwd() });
   expect(observed).toMatchObject({ project: resolve("test/tsconfig.jest.json"), rootDir: process.cwd(),
     entry: resolve("scripts/lib/reader-summary-first-publication-pg18-crash.spec-support.ts") });
   expect(poolOptions).toEqual([{ host: "/proc/424242/cwd/.firstpub-native-pg18-TestOnly/socket", port: 5432,

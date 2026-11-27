@@ -1,5 +1,5 @@
 import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
-import { approvedGatewayLlmSdkIdentity as sdk } from "@social-monitor/summary/adapters/model/gateway-llm/gateway-llm-sdk-identity";
+import { approvedGatewayLlmSdkIdentity as sdk, historicalGatewayLlmSdkIdentity as historicalSdk } from "@social-monitor/summary/adapters/model/gateway-llm/gateway-llm-sdk-identity";
 import { gatewayLlmCanonicalRequestSha256 } from "@social-monitor/summary/adapters/model/gateway-llm/gateway-llm-request-identity";
 import { activeReaderSummaryPurposes } from "@social-monitor/summary/adapters/model/active-reader-summary-generation-profile";
 import type { AgentRuntimeTaskCommand, AgentRuntimeTaskResult } from "@social-monitor/summary/ports";
@@ -9,6 +9,7 @@ import { assertRefreshManifest, refreshOperation, type RefreshManifest } from ".
 import { guardedRefreshRuntime } from "./reader-summary-new-input-refresh-model";
 import { reconcileRefresh } from "./reader-summary-new-input-refresh-guard";
 import { sourceContentAssessmentPurpose } from "./reader-summary-new-input-refresh-assessment-runtime";
+import { successorManifest } from "./reader-summary-new-input-refresh-successor.spec-support";
 
 const gateway = { profileId: "TEST-codex", modelBackend: "openai-chatgpt", model: "gpt-6.1-sol",
   reasoningEffort: "low" as const, minOutputTokens: 16_384 };
@@ -55,6 +56,37 @@ it("versions gateway authority without changing dates, legacy hash inputs or con
   expect(() => reconcileRefresh(value, [{ operation: original.operation, jobId: "TEST-consumed", artifactId: null,
     status: "FAILED", jobSha256: "a".repeat(64) }], value.prior)).toThrow(/consumed/);
 });
+it("retains historical refresh evidence while requiring the current SDK for fresh execution", () => {
+  const draft = { ...manifest(), runtime: { engine: "gateway-llm",
+    packageVersion: historicalSdk.packageVersion, launcherSha256: historicalSdk.archiveSha256 } };
+  const historical = { ...draft, operation: refreshOperation(draft) };
+  const original = JSON.stringify(historical);
+  expect(() => assertRefreshManifest(historical, refreshNow, false)).not.toThrow();
+  expect(() => assertRefreshManifest(historical, refreshNow)).toThrow(/policy or identity/);
+  expect(JSON.stringify(historical)).toBe(original);
+  for (const runtime of [
+    { ...historical.runtime, launcherSha256: sdk.archiveSha256 },
+    { ...historical.runtime, packageVersion: sdk.packageVersion },
+  ]) {
+    const crossed = { ...historical, runtime };
+    crossed.operation = refreshOperation(crossed);
+    for (const fresh of [false, true]) {
+      expect(() => assertRefreshManifest(crossed, refreshNow, fresh)).toThrow(/policy or identity/);
+    }
+  }
+});
+it("admits a current successor over historical original bytes without extending execution authority", () => {
+  const historicalDraft = { ...manifest(), runtime: { engine: "gateway-llm",
+    packageVersion: historicalSdk.packageVersion, launcherSha256: historicalSdk.archiveSha256 } };
+  const original = { ...historicalDraft, operation: refreshOperation(historicalDraft) };
+  const originalManifestJson = JSON.stringify(original);
+  const draft = { ...manifest(), successor: { ...successorManifest().successor!, originalManifestJson } };
+  const current = { ...draft, operation: refreshOperation(draft) };
+  expect(() => assertRefreshManifest(current, refreshNow)).not.toThrow();
+  expect(current.successor.originalManifestJson).toBe(originalManifestJson);
+  expect(() => assertRefreshManifest({ ...current, runtime: original.runtime }, refreshNow))
+    .toThrow(/policy or identity/);
+});
 it.each([activeReaderSummaryPurposes.generate, activeReaderSummaryPurposes.storyRelations, sourceContentAssessmentPurpose])(
   "verifies real gateway identity for %s without CLI admission", async (purpose) => {
     const value = command(purpose), test = runtime(completed(value));
@@ -62,12 +94,14 @@ it.each([activeReaderSummaryPurposes.generate, activeReaderSummaryPurposes.story
     expect(test.runTask).toHaveBeenCalledTimes(1);
     await expect(test.client.runTask(value)).rejects.toThrow(/budget/);
   });
-it.each(["request", "output", "sdk", "profile", "nativeRequest", "execution", "observedModel"])(
+it.each(["request", "output", "sdk", "historicalSdk", "profile", "nativeRequest", "execution", "observedModel"])(
   "fails closed after a paid %s identity mismatch and never retries", async (kind) => {
     const value = command(), result = completed(value), a = result.executionAttestation!;
     if (kind === "request") Object.assign(a, { canonicalRequestSha256: "c".repeat(64) });
     if (kind === "output") Object.assign(result, { structuredOutput: { changed: true } });
     if (kind === "sdk") Object.assign(a, { launcherSha256: "c".repeat(64) });
+    if (kind === "historicalSdk") Object.assign(a, { runtimePackageVersion: historicalSdk.packageVersion,
+      launcherSha256: historicalSdk.archiveSha256 });
     if (a.runtimeEngine === "gateway-llm") {
       if (kind === "profile") Object.assign(a.gateway, { profileId: "TEST-other" });
       if (kind === "nativeRequest") Object.assign(a.gateway, { requestSha256: "invalid" });

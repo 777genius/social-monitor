@@ -1,4 +1,4 @@
-import { approvedGatewayLlmSdkIdentity } from "../../libs/summary/adapters/model/gateway-llm/gateway-llm-sdk-identity";
+import { approvedGatewayLlmSdkIdentity, historicalGatewayLlmSdkIdentity } from "../../libs/summary/adapters/model/gateway-llm/gateway-llm-sdk-identity";
 import type { ReaderSummaryWeeklyReviewExecutionAttestation } from "../../libs/summary/domain/value-objects/reader-summary-weekly-review-manifest";
 import {
   readerSummaryWeeklyHistoricalGitHubAuthorizationIdentity,
@@ -56,25 +56,36 @@ describe("reader summary weekly production manifest input admission", () => {
     }
   });
 
-  it("admits a gateway review receipt with exact sealed evidence and rejects an unapproved SDK on replay", () => {
+  it.each([approvedGatewayLlmSdkIdentity, historicalGatewayLlmSdkIdentity])(
+    "admits sealed gateway evidence from $packageVersion and rejects unknown or crossed identities", (sdk) => {
     const dbState = completeDbState();
     const old = reviewManifestFor(dbState).executionAttestation;
     const executionAttestation: ReaderSummaryWeeklyReviewExecutionAttestation = { ...old,
       purpose: "social_monitor.reader_summary.weekly.review.v2", model: "gpt-6.1-sol", reasoningEffort: "low",
-      runtimeEngine: "gateway-llm", runtimePackageVersion: approvedGatewayLlmSdkIdentity.packageVersion,
-      launcherSha256: approvedGatewayLlmSdkIdentity.archiveSha256,
+      runtimeEngine: "gateway-llm", runtimePackageVersion: sdk.packageVersion,
+      launcherSha256: sdk.archiveSha256,
       gateway: { profileId: "openai-codex-oauth-responses-v1", taskId: "weekly_review_test", attempt: 1,
         executionRef: "test_execution", requestRef: "test_request", accountRef: "test_account",
         observedModel: null, requestSha256: sha("wire") },
     };
     const manifest = reviewManifestFor(dbState, { executionAttestation });
+    const original = JSON.stringify(manifest);
     const built = buildModelInputFromDbState(dbState, manifest);
     expect(built.status).toBe("complete");
     if (built.status !== "complete") throw new Error("gateway fixture should be admitted");
     expect(built.input.citations).toHaveLength(manifest.citations.length);
-    const forged = reviewManifestFor(dbState, { executionAttestation: { ...executionAttestation,
-      launcherSha256: sha("different-sdk") } });
-    expect(buildModelInputFromDbState(dbState, forged).status).toBe("partial");
+    expect(JSON.stringify(manifest)).toBe(original);
+    for (const identity of [
+      { ...sdk, archiveSha256: sha("different-sdk") },
+      { packageVersion: historicalGatewayLlmSdkIdentity.packageVersion,
+        archiveSha256: approvedGatewayLlmSdkIdentity.archiveSha256 },
+      { packageVersion: approvedGatewayLlmSdkIdentity.packageVersion,
+        archiveSha256: historicalGatewayLlmSdkIdentity.archiveSha256 },
+    ]) {
+      const forged = reviewManifestFor(dbState, { executionAttestation: { ...executionAttestation,
+        runtimePackageVersion: identity.packageVersion, launcherSha256: identity.archiveSha256 } });
+      expect(buildModelInputFromDbState(dbState, forged).status).toBe("partial");
+    }
   });
 
   it("admits an archived sub-Top-10 GitHub board as truthful evidence", () => {

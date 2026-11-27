@@ -5,8 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { runInNewContext } from 'node:vm';
 import { artifacts, directory, fileHash, hash, canonical, history, manifest, owned, proof, ready, containerNetwork, object } from './candidate-runtime-contract.mts';
-import { failureReason, parseArgs } from './candidate-runtime.mts';
+import { API_PROCESS_IDENTITY, failureReason, parseArgs } from './candidate-runtime.mts';
 import type { Binding, Resource, RuntimeProof, Row } from './candidate-runtime-contract.mts';
 
 test('failure reasons admit only complete bounded lowercase tokens', () => {
@@ -53,7 +54,7 @@ const digest = (c: string): string => 'sha256:' + c.repeat(64);
 const sha = 'c9dd4f5b903c777a6a378e3233b5353d08702424';
 const pool = { name: 'postgres_runtime_pool', status: 'ok',
   detail: 'A query completed through the bounded shared Prisma pool.' };
-const response = (checks: unknown[]): unknown => ({ http_status: 200,
+const response = (checks: unknown[]): unknown => ({ http_status: 200, node_version: '24.22.3',
   body: { status: 'ok', service: 'api-gateway', checks } });
 const inventory = [{ name: '20260101000000_initial', checksum: 'e'.repeat(64) }];
 const fixture = () => manifest({ sha, ci_run_id: '123', image_id: digest('a'),
@@ -73,9 +74,49 @@ test('actual readiness contract requires one completed pool query and bounded un
     [pool, ...Array.from({ length: 32 }, (_, i) => ({ name: `metric_${i}`, status: 'ok' }))]]) {
     assert.throws(() => ready(response(checks)));
   }
-  assert.throws(() => ready({ http_status: 503, body: { status: 'ok', service: 'api-gateway', checks: [pool] } }));
-  assert.throws(() => ready({ http_status: 200,
+  assert.throws(() => ready({ http_status: 503, node_version: '24.22.3', body: { status: 'ok', service: 'api-gateway', checks: [pool] } }));
+  assert.throws(() => ready({ http_status: 200, node_version: '24.22.3',
     body: { status: 'ok', ready: false, service: 'api-gateway', checks: [pool] } }));
+});
+
+test('readiness probe binds its Node executable to the running API process', () => {
+  const executable = { dev: 1n, ino: 2n };
+  const command = 'node\0dist/apps/api-gateway/src/main.js\0';
+  const verify = (api: typeof executable, args: string): void => {
+    runInNewContext(API_PROCESS_IDENTITY, {
+      require: (name: string) => {
+        assert.equal(name, 'node:fs');
+        return {
+          statSync: (file: string, options: { bigint: boolean }) => {
+            assert.equal(options.bigint, true);
+            assert.ok(file === '/proc/1/exe' || file === '/proc/self/exe');
+            return file === '/proc/1/exe' ? api : executable;
+          },
+          readFileSync: (file: string, encoding: string) => {
+            assert.equal(file, '/proc/1/cmdline');
+            assert.equal(encoding, 'utf8');
+            return args;
+          },
+        };
+      },
+    });
+  };
+  assert.doesNotThrow(() => verify(executable, command));
+  assert.throws(() => verify({ ...executable, ino: 3n }, command), /candidate-api-process-identity/);
+  assert.throws(() => verify({ ...executable, dev: 3n }, command), /candidate-api-process-identity/);
+  for (const args of ['node\0other.js\0', 'node\0', command + 'extra\0', '']) {
+    assert.throws(() => verify(executable, args), /candidate-api-process-identity/);
+  }
+});
+
+test('in-container readiness must observe the selected Node runtime', () => {
+  const valid = object(response([pool]));
+  for (const version of ['22.23.4', '24.21.0', '24.22.2', '24.22.4', '26.11.1', undefined]) {
+    assert.throws(() => ready({ ...valid, node_version: version }), /candidate-node-runtime/);
+  }
+  const missingVersion = { ...valid };
+  delete missingVersion.node_version;
+  assert.throws(() => ready(missingVersion), /unknown-fields/);
 });
 
 test('history must equal the complete manifest with no pending, rolled, unknown or duplicate row', () => {

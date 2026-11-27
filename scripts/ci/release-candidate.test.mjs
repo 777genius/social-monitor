@@ -135,7 +135,12 @@ test('qualification/upload retry retains exact build and export and rereads iden
   const build = fixture.calls.find(c => c[1] === 'build');
   assert.ok(build.includes('--provenance=false'));
   assert.equal(build[build.indexOf('--build-context') + 1],
-    'node:22-bookworm-slim=docker-image://node:22.23.4-bookworm-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d');
+    'node:24.22.3-bookworm-slim=docker-image://node:24.22.3-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54');
+  // The immutable override must address the actual FROM image. A correct pin
+  // under an obsolete alias would silently leave the Dockerfile unqualified.
+  const sourceBase = (await readFile('Dockerfile', 'utf8')).match(/^FROM (\S+) AS app$/m)?.[1];
+  const nomadBase = (await readFile('ops/nomad/api.Dockerfile', 'utf8')).match(/^FROM (\S+) AS app$/m)?.[1];
+  assert.equal(build[build.indexOf('--build-context') + 1], `${sourceBase}=docker-image://${nomadBase}`);
   assert.ok(build.includes('linux/amd64'));
   assert.ok(!build.includes('--tag'));
   assert.equal(build.at(-1), '-');
@@ -449,7 +454,7 @@ test('runtime stderr opt-in crosses the helper process boundary without forwardi
   const fixtureEnv = { ...process.env, SM_CANDIDATE_STDERR_FIXTURE: '1' };
   delete fixtureEnv.NODE_TEST_CONTEXT;
   const result = spawnSync(process.execPath, ['--no-warnings', '--experimental-strip-types',
-    '--test', '--test-name-pattern', '^command stderr subprocess fixture$',
+    '--test', '--test-reporter=tap', '--test-name-pattern', '^command stderr subprocess fixture$',
     path.resolve('scripts/ci/release-candidate.test.mjs')], {
     env: fixtureEnv,
     encoding: 'utf8', timeout: 30_000, maxBuffer: 262_144,

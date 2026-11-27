@@ -233,7 +233,8 @@ export function history(value: unknown, m: Manifest): string {
   return hash(canonical(m.migrations));
 }
 export function ready(value: unknown): true {
-  const v = exact(value, ['http_status', 'body']), b = object(v.body);
+  const v = exact(value, ['http_status', 'node_version', 'body']), b = object(v.body);
+  need(v.node_version === '24.22.3', 'candidate-node-runtime');
   need(v.http_status === 200 && b.status === 'ok' && b.service === 'api-gateway'
     && (b.ready === undefined || b.ready === true), 'readiness-http');
   const checks = array(b.checks), names = new Set<string>();

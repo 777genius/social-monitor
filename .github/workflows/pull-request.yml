@@ -73,7 +73,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: 22
+          node-version: '24.22.3'
           cache: npm
 
       - name: Install exact dependencies
@@ -135,7 +135,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: 22
+          node-version: '24.22.3'
           cache: npm
 
       - name: Select fail-closed scope from reviewed trusted base
@@ -224,7 +224,7 @@ jobs:
         if: needs.security_contracts.outputs.tier == 'full'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: 22
+          node-version: '24.22.3'
           cache: npm
 
       - name: Install exact dependencies
@@ -293,6 +293,10 @@ jobs:
 
       - name: Run backend unit tests once with coverage
         if: needs.security_contracts.outputs.tier == 'full'
+        env:
+          # tsconfig-paths needs an explicit root for root-relative aliases
+          # when child processes select nested TS_NODE_PROJECT test configs.
+          TS_NODE_BASEURL: .
         run: |
           set -euo pipefail
           unit_ignore="$(node scripts/ci/verify-jest-shard-completeness.mjs --ignore-pattern ops/ci/jest-inventory-exclusions.txt)"
@@ -301,7 +305,7 @@ jobs:
           if [ "${{ matrix.shard }}" = 2 ]; then
             unit_workers=(--maxWorkers=2)
           fi
-          node scripts/run-with-timeout.mjs --timeout-ms 2700000 --node-options --max-old-space-size=4096 -- ./node_modules/.bin/jest --config jest.config.ts "${unit_workers[@]}" --shard=${{ matrix.shard }}/6 --testPathIgnorePatterns="$unit_ignore" --coverage --coverageDirectory=coverage --coverageReporters=lcovonly --json --outputFile=reports/execution.json
+          node scripts/run-with-timeout.mjs --timeout-ms 2700000 --node-options "--max-old-space-size=4096 --experimental-vm-modules" -- ./node_modules/.bin/jest --config jest.config.ts "${unit_workers[@]}" --shard=${{ matrix.shard }}/6 --testPathIgnorePatterns="$unit_ignore" --coverage --coverageDirectory=coverage --coverageReporters=lcovonly --json --outputFile=reports/execution.json
 
       - name: Upload unit execution and inventory data
         if: needs.security_contracts.outputs.tier == 'full'
@@ -339,7 +343,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: 22
+          node-version: '24.22.3'
           cache: npm
 
       - name: Install exact dependencies
@@ -446,7 +450,7 @@ jobs:
         if: needs.security_contracts.outputs.tier == 'full'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: 22
+          node-version: '24.22.3'
 
       - name: Download all unit report artifacts without merging
         if: needs.security_contracts.outputs.tier == 'full'
@@ -486,7 +490,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: 22
+          node-version: '24.22.3'
           cache: npm
 
       - name: Install exact dependencies
@@ -540,7 +544,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: 22
+          node-version: '24.22.3'
           cache: npm
 
       - name: Install exact dependencies
@@ -647,7 +651,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: 22
+          node-version: '24.22.3'
           cache: npm
 
       - name: Install exact dependencies
@@ -692,7 +696,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: 22
+          node-version: '24.22.3'
           cache: npm
 
       - name: Install exact dependencies
@@ -738,7 +742,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: 22
+          node-version: '24.22.3'
           cache: npm
 
       - name: Install exact dependencies
@@ -776,7 +780,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: 22
+          node-version: '24.22.3'
       - name: Set up the native candidate store
         uses: docker/setup-docker-action@2bf61fb9464cc67f0cbdeabed6aa0380accd1c70 # v5.5.0
         with:
@@ -836,7 +840,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: 22
+          node-version: '24.22.3'
       - name: Verify production container and deploy lifecycle
         run: |
           set -euo pipefail

@@ -28,7 +28,7 @@ function check(text: string) {
       { name: 'Check out the release commit', if: condition, uses: checkout,
         with: { 'fetch-depth': 0, ref: '${{ github.sha }}' } },
       { name: 'Set up Node.js', if: condition, uses: setup,
-        with: { 'node-version': 22, cache: 'npm' } },
+        with: { 'node-version': '24.22.3', cache: 'npm' } },
       { name: 'Prepare the same backend source and generated dependencies', if: condition,
         env: { DATABASE_URL: 'postgresql://fixture:social_monitor_local_password@127.0.0.1:5432/fixture' },
         run: 'set -euo pipefail\ntest "$(git rev-parse HEAD)" = "$GITHUB_SHA"\nnpm ci\nnpm run prisma:generate\nnpm run build\n' },
@@ -50,7 +50,7 @@ function check(text: string) {
   }
   expect(jobs.plan.if).toBe("${{ github.event_name != 'workflow_dispatch' || inputs.maintenance_action == 'none' }}");
   expect(JSON.parse(readFileSync('package.json', 'utf8')).scripts.test).toBe(
-    'node scripts/run-with-timeout.mjs --timeout-ms 600000 --node-options --max-old-space-size=2048 -- jest --config jest.config.ts --runInBand',
+    'node scripts/run-with-timeout.mjs --timeout-ms 600000 --node-options "--max-old-space-size=2048 --experimental-vm-modules" --env TS_NODE_BASEURL=. -- jest --config jest.config.ts --runInBand',
   );
 }
 

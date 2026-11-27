@@ -137,6 +137,18 @@ for (const [name, sourcePath, source, targetPath] of [
   ['legacy permission is specifier-exact', 'libs/summary/domain/policies/reader-promotion-ranking.ts',
     "import type { Foreign } from '@social-monitor/relevance/domain/reader-value/other';",
     'libs/relevance/domain/reader-value/other.ts'],
+  ['retired reader-v3 type-only edge', 'libs/summary/domain/policies/reader-post-promotion-v3.ts',
+    "import type { Foreign } from '@social-monitor/relevance/domain/reader-value/reader-value-assessment';",
+    'libs/relevance/domain/reader-value/reader-value-assessment.ts'],
+  ['retired ranking type-only edge', 'libs/summary/domain/policies/reader-promotion-ranking.ts',
+    "import type { Foreign } from '@social-monitor/relevance/domain/reader-value/reader-value-assessment';",
+    'libs/relevance/domain/reader-value/reader-value-assessment.ts'],
+  ['retired attestation type-only edge', 'libs/summary/domain/policies/reader-post-promotion-policy-contract.ts',
+    "import type { Foreign } from '@social-monitor/relevance/domain/reader-value/reader-value-assessment';",
+    'libs/relevance/domain/reader-value/reader-value-assessment.ts'],
+  ['retired archive metadata type-only edge', 'libs/summary/domain/policies/reader-summary-github-projection-audit-types.ts',
+    "import type { Metadata } from '@social-monitor/ingestion/domain';",
+    'libs/ingestion/domain/index.ts'],
 ]) {
   test('rejects ' + name, () => {
     const result = check({ [sourcePath]: source, [targetPath]: 'export type Foreign = number; export const foreign = 1;' });
@@ -177,15 +189,22 @@ test('permits foreign domain-only root aliases in non-domain composition', () =>
 
 test('permits the exact current-main cross-context domain debt, without broadening', () => {
   const result = check({
-    'libs/summary/domain/policies/reader-promotion-ranking.ts':
-      "import type { Foreign } from '@social-monitor/relevance/domain/reader-value/reader-value-assessment';",
-    'libs/relevance/domain/reader-value/reader-value-assessment.ts': 'export type Foreign = number;',
+    'libs/summary/domain/entities/reader-summary-promotion-order-validation.ts':
+      "import { validateReaderValueAnswers } from '@social-monitor/relevance/domain/reader-value/reader-value-assessment';",
+    'libs/relevance/domain/reader-value/reader-value-assessment.ts': 'export const validateReaderValueAnswers = () => true;',
     'libs/delivery/domain/reader-summary-ready-projection.ts':
       "import type { Foreign } from '@social-monitor/summary/domain/value-objects/reader-summary-scope';",
     'libs/summary/domain/value-objects/reader-summary-scope.ts': 'export type Foreign = number;',
     'libs/conversation/domain/services/conversation-bundle-builder.ts':
       "import { foreign } from '@social-monitor/feed/domain';",
     'libs/feed/domain/index.ts': 'export const foreign = 1;',
+    'libs/summary/domain/policies/reader-summary-github-archived-projection.ts':
+      "import { parseGitHubTrendingArchiveMetadata } from '@social-monitor/ingestion/domain';",
+    'libs/ingestion/domain/index.ts': 'export const parseGitHubTrendingArchiveMetadata = () => null;',
+    'libs/summary/domain/policies/reader-summary-github-projection-audit-types.ts':
+      "import type { Snapshot } from './reader-summary-github-archive-snapshot';",
+    'libs/summary/domain/policies/reader-summary-github-archive-snapshot.ts':
+      'export type Snapshot = { readonly kind: string };'
   });
   assert.equal(result.status, 0, result.output);
 });

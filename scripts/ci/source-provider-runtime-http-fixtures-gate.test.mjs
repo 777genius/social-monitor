@@ -6,7 +6,6 @@ import { fileURLToPath } from "node:url";
 test("source provider HTTP fixture regressions execute in static CI", () => {
   const target = fileURLToPath(new URL("../lib/source-provider-runtime-http-fixtures.test.mjs", import.meta.url));
   const result = spawnSync(process.execPath, [
-    "--experimental-default-type=module",
     "--experimental-strip-types",
     "--test",
     target,

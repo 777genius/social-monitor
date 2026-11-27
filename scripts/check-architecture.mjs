@@ -62,7 +62,7 @@ const compilerPaths = JSON.parse(readFileSync('tsconfig.json', 'utf8')).compiler
 const configuredAliases = Object.entries(compilerPaths)
   .sort(([left], [right]) => right.replace('*', '').length - left.replace('*', '').length);
 const boundedContexts = new Set(Object.values(compilerPaths).flat()
-  .map((target) => target.match(/^libs\/([^/]+)\//)?.[1])
+  .map((target) => target.match(/^(?:\.\/)?libs\/([^/]+)\//)?.[1])
   .filter((context) => context && !['platform', 'shared-kernel', 'contracts'].includes(context)));
 const businessContextImportPattern =
   /^@social-monitor\/([^/]+)\/(domain|features|adapters|interfaces)(?:\/|$)/;
@@ -284,11 +284,7 @@ function isDomainOnlyContextRoot(file) {
 const legacyCrossContextDomainImports = new Set([
   'libs/conversation/domain/value-objects/conversation-signal-baseline-sample.ts|@social-monitor/feed/domain',
   'libs/conversation/domain/services/conversation-bundle-builder.ts|@social-monitor/feed/domain',
-  'libs/summary/domain/policies/reader-summary-github-projection-audit-types.ts|@social-monitor/ingestion/domain',
   'libs/summary/domain/policies/reader-summary-github-archived-projection.ts|@social-monitor/ingestion/domain',
-  'libs/summary/domain/policies/reader-post-promotion-v3.ts|@social-monitor/relevance/domain/reader-value/reader-value-assessment',
-  'libs/summary/domain/policies/reader-promotion-ranking.ts|@social-monitor/relevance/domain/reader-value/reader-value-assessment',
-  'libs/summary/domain/policies/reader-post-promotion-policy-contract.ts|@social-monitor/relevance/domain/reader-value/reader-value-assessment',
   'libs/summary/domain/entities/reader-summary-promotion-order-validation.ts|@social-monitor/relevance/domain/reader-value/reader-value-assessment',
   'libs/delivery/domain/reader-summary-ready-projection.ts|@social-monitor/summary/domain/value-objects/reader-summary-period',
   'libs/delivery/domain/reader-summary-ready-projection.ts|@social-monitor/summary/domain/value-objects/reader-summary-scope',

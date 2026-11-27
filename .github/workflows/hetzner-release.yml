@@ -94,11 +94,11 @@ jobs:
           [[ "$TRUSTED_MAIN" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse --verify HEAD)" = "$TRUSTED_MAIN"
       - &node
-        name: Set up Node 22
+        name: Set up Node 24.22.3
         if: steps.mode.outputs.enabled == 'true'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: 22
+          node-version: '24.22.3'
       - name: Verify and download candidate data
         id: candidate
         if: steps.mode.outputs.enabled == 'true'

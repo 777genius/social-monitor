@@ -1,7 +1,6 @@
 import type { ReaderPromotionDiagnostics } from "../value-objects/reader-promotion-diagnostics";
 import type { ReaderPostPresentationFailureDetail } from "../services/reader-post-presentation-failure";
-import type { ReaderValueAnswers } from
-  "@social-monitor/relevance/domain/reader-value/reader-value-assessment";
+import type { ReaderPromotionAnswers } from "./reader-promotion-answer-snapshot";
 
 import type { ReaderPostPromotionEngagement } from "./reader-post-promotion-engagement";
 import {
@@ -38,7 +37,7 @@ export type ReaderPostPromotionV3Candidate = ReaderPromotionCandidateInput & {
   readonly rubricSha256: string;
   readonly modelConfigVersion: string;
   /** Authoritative answers; `usefulness`/`relevance` mirror their choices. */
-  readonly answers: ReaderValueAnswers;
+  readonly answers: ReaderPromotionAnswers;
   /** Frozen metric of a ranked source, `null` when unknown. */
   readonly engagement: ReaderPostPromotionEngagement | null;
   readonly presentation: ReaderPostPromotionV3Presentation;
