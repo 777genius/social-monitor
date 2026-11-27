@@ -95,3 +95,31 @@ def test_manifest_failure_keeps_client_available(caplog) -> None:
     assert client._transaction_id_provider.home_url == LEGACY_BOOTSTRAP_URL
     assert "Live manifest scrape failed" in caplog.text
     assert "sensitive fixture details" not in caplog.text
+
+
+def test_pinned_sdk_constructor_and_manifest_cache(tmp_path) -> None:
+    """Exercise the real SDK in a child process without polluting lazy imports."""
+    import subprocess
+
+    script = r'''
+from unittest.mock import patch
+from Scweet import Scweet, ScweetConfig
+from x_collector.scweet_bootstrap import LEGACY_BOOTSTRAP_URL, with_legacy_bootstrap
+import sys
+fixture = {
+    "query_ids": {"search_timeline": "fixture"},
+    "endpoints": {"search_timeline": "https://fixture.invalid/graphql/{query_id}/SearchTimeline"},
+}
+with patch("Scweet.manifest.scrape_manifest_from_x", return_value=fixture) as scrape:
+    client = with_legacy_bootstrap(Scweet)(
+        db_path=sys.argv[1], config=ScweetConfig(manifest_scrape_on_init=True), provision=False
+    )
+    assert client._transaction_id_provider.home_url == LEGACY_BOOTSTRAP_URL
+    assert scrape.call_args.kwargs["home_url"] == LEGACY_BOOTSTRAP_URL
+    assert client._manifest_provider.repo.get_cached("x-live-scrape") is not None
+'''
+    subprocess.run(
+        [sys.executable, "-c", script, str(tmp_path / "sdk-fixture.db")],
+        check=True,
+        timeout=30,
+    )
