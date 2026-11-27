@@ -2,11 +2,11 @@ import { loadPrismaRuntimeClient } from '@social-monitor/platform-persistence/pr
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { Client as PgClient } from 'pg';
-import { CryptoIdGenerator, FixedClock, redactSensitiveResponseText, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { CryptoIdGenerator, FixedClock, SystemClock, redactSensitiveResponseText, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 import { defaultPostgresRuntimePoolConfig, runWithTenantDatabaseAccess, PostgresRuntimePoolRegistry, type PrismaPgRuntimeClientConstructor } from '@social-monitor/platform-persistence';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { WorkerRuntime } from '@social-monitor/platform-worker';
-import { PrismaOutboxStoreAdapter, type PrismaEventStoreClient } from '@social-monitor/platform-events/adapters/prisma';
+import { PrismaOutboxStoreAdapter, PrismaEventRecoveryStoreAdapter, type PrismaEventStoreClient, type PrismaEventOutboxClient } from '@social-monitor/platform-events/adapters/prisma';
 import { OutboxDispatcher } from '@social-monitor/platform-events';
 import { PrismaDeliveryConnection } from '@social-monitor/delivery/adapters/persistence/prisma/prisma-delivery-connection';
 import { PrismaRealtimeEventRepository } from '@social-monitor/delivery/adapters/persistence/prisma/prisma-realtime-event.repository';
@@ -16,6 +16,7 @@ import { ProjectReaderSummaryReadyEventUseCase } from '@social-monitor/delivery/
 import { ProjectReaderSummaryReadyEventHandler } from '@social-monitor/delivery/interfaces/events/project-reader-summary-ready-event.handler';
 import { readerSummaryReadyFixture } from '@social-monitor/delivery/test-support/reader-summary-ready.fixture';
 import { withReaderDeliveryPostgresFixture } from './lib/reader-summary-ready-delivery-postgres-fixture';
+import { checkEventOutboxPostgresRecovery } from './lib/event-outbox-postgres-scenarios';
 
 async function main(): Promise<void> {
   await withReaderDeliveryPostgresFixture(async ({ runtimeUrl, adminUrl, database }) => {
@@ -25,10 +26,11 @@ async function main(): Promise<void> {
     // max=1 pool per worker. Sharing one registry would serialize the race and
     // reject the distinct admin URL before exercising the outbox adapter.
     const Client = loadPrismaRuntimeClient<PrismaPgRuntimeClientConstructor<
-      PrismaReaderSummaryProjectionClient & PrismaEventStoreClient & { $disconnect(): Promise<void> }
+      PrismaReaderSummaryProjectionClient & PrismaEventStoreClient & PrismaEventOutboxClient & { $disconnect(): Promise<void> }
     >>();
     const peer = await new PostgresRuntimePoolRegistry().acquire(config, Client);
     const events = await new PostgresRuntimePoolRegistry().acquire(defaultPostgresRuntimePoolConfig(adminUrl, 'event-relay'), Client);
+    const eventPeer = await new PostgresRuntimePoolRegistry().acquire(defaultPostgresRuntimePoolConfig(adminUrl, 'event-relay'), Client);
     const runtime = new WorkerRuntime({ serviceName: 'reader-delivery-postgres-fixture' });
     runtime.onModuleInit();
     const metrics = new InMemoryMetricsRecorder();
@@ -120,11 +122,11 @@ async function main(): Promise<void> {
         (id, tenant_id, workspace_id, event_type, schema_version, payload, correlation_id)
         VALUES ($1, $2, $3, 'reader_summary.ready', 1, $4, 'fixture')`,
         [outboxId, base.tenantId, base.workspaceId, JSON.stringify(base.payload)]);
-      const outbox = new PrismaOutboxStoreAdapter(events.client, new FixedClock(base.occurredAt));
+      const outbox = new PrismaOutboxStoreAdapter(events.client);
       const result = await new OutboxDispatcher(outbox, { publish: async () => {
         throw new Error('NO_ROUTE access_token=fixture-token\n' + 'x'.repeat(600));
-      } }).dispatchBatch(1);
-      assert.deepEqual(result, { published: 0, failed: 1 });
+      } }, new CryptoIdGenerator(), new SystemClock(), { maxAttempts: 1 }).dispatchBatch(1);
+      assert.deepEqual(result, { published: 0, retrying: 0, failed: 1 });
       const row = (await database.query('SELECT status, publish_attempts, last_error FROM outbox_events WHERE id=$1', [outboxId])).rows[0];
       assert.equal(row.status, 'FAILED');
       assert.equal(row.publish_attempts, 1);
@@ -133,14 +135,14 @@ async function main(): Promise<void> {
       // Ordinary relays never mutate FAILED outcomes. This standalone SQL
       // fixture explicitly models reviewed one-shot recovery; the real recovery
       // CLI additionally requires its manifest, xmin lock and durable receipts.
-      await assert.rejects(outbox.recordAttempt(outboxId), /no longer pending/);
-      const recovery = new PrismaOutboxStoreAdapter(events.client, new FixedClock(base.occurredAt), 'FAILED');
+      await assert.rejects(outbox.recordAttempt({ id: outboxId, leaseOwner: 'stale-owner' }), /ownership was lost/);
+      const recovery = new PrismaEventRecoveryStoreAdapter(events.client, new FixedClock(base.occurredAt));
       // Counter describes recorded starts, never historical total sends.
       await recovery.recordAttempt(outboxId);
       assert.equal((await database.query('SELECT publish_attempts FROM outbox_events WHERE id=$1', [outboxId])).rows[0].publish_attempts, 2);
       await recovery.markPublished(outboxId);
       assert.equal((await database.query('SELECT last_error FROM outbox_events WHERE id=$1', [outboxId])).rows[0].last_error, null);
-      await assert.rejects(recovery.markFailed(outboxId, 'stale replay'), /no longer pending/);
+      await assert.rejects(recovery.markFailed(outboxId, 'stale replay'), /no longer failed/);
       // A COMMAND sharing the same table must remain untouched by every
       // EVENT relay mutation, including attempt accounting.
       const commandId = randomUUID();
@@ -148,19 +150,26 @@ async function main(): Promise<void> {
         (id, tenant_id, workspace_id, event_type, schema_version, payload, correlation_id, message_kind)
         VALUES ($1, $2, $3, 'fixture.command', 1, $4, 'fixture', 'COMMAND')`,
         [commandId, base.tenantId, base.workspaceId, JSON.stringify({ synthetic: true })]);
-      await assert.rejects(outbox.recordAttempt(commandId), /no longer pending/);
-      await assert.rejects(outbox.markPublished(commandId), /no longer pending/);
-      await assert.rejects(outbox.markFailed(commandId, 'wrong kind'), /no longer pending/);
+      await assert.rejects(outbox.recordAttempt({ id: commandId, leaseOwner: 'wrong-kind' }), /ownership was lost/);
+      await assert.rejects(outbox.markPublished({ id: commandId, leaseOwner: 'wrong-kind', publishedAt: new Date(base.occurredAt) }), /ownership was lost/);
+      await assert.rejects(outbox.markFailed({ id: commandId, leaseOwner: 'wrong-kind', failedAt: base.occurredAt,
+        availableAt: base.occurredAt, reason: 'wrong kind', terminal: true }), /ownership was lost/);
       const command = (await database.query(
         'SELECT message_kind, status, publish_attempts, last_error FROM outbox_events WHERE id=$1', [commandId],
       )).rows[0];
       assert.deepEqual(command, { message_kind: 'COMMAND', status: 'PENDING', publish_attempts: 0, last_error: null });
-      console.log('Reader summary delivery PostgreSQL fixture OK: atomic rollback, concurrent dedupe, restart replay, RLS isolation, diagnostics');
+      await checkEventOutboxPostgresRecovery({
+        database, adminUrl, first: events.client, second: eventPeer.client,
+        event: { tenantId: base.tenantId, workspaceId: base.workspaceId, payload: base.payload, occurredAt: base.occurredAt },
+        project: async event => { await makeHandler(delivery).handle(JSON.parse(JSON.stringify(event))); },
+      });
+      console.log('Reader summary delivery PostgreSQL fixture OK: atomic rollback, concurrent dedupe, restart replay, RLS isolation, fenced EVENT recovery and heartbeat');
     } finally {
       await runtime.onApplicationShutdown('fixture complete');
       await delivery.close();
       await peer.close();
       await events.close();
+      await eventPeer.close();
     }
   });
 }

@@ -8,6 +8,7 @@ import {
   PrismaOutboxStoreAdapter,
   type PrismaEventOutboxRecord,
   type PrismaEventStoreClient,
+  type PrismaEventOutboxClient,
   type PrismaInboxRecord,
 } from '@social-monitor/platform-events/adapters/prisma';
 import { InMemoryEventPublisher } from '@social-monitor/platform-events/adapters/in-memory';
@@ -29,6 +30,7 @@ class SequenceIdGenerator implements IdGenerator {
 
 async function main(): Promise<void> {
   const prisma = new FakePrismaEventStoreClient();
+  const ids = new SequenceIdGenerator();
   prisma.seedOutbox({
     id: fixedEventId,
     tenantId: tenant,
@@ -47,7 +49,7 @@ async function main(): Promise<void> {
   });
 
   const publisher = new InMemoryEventPublisher();
-  const firstDispatcher = new OutboxDispatcher(new PrismaOutboxStoreAdapter(prisma, clock), publisher);
+  const firstDispatcher = new OutboxDispatcher(new PrismaOutboxStoreAdapter(prisma), publisher, ids, clock);
   const dispatchResult = await firstDispatcher.dispatchBatch(10);
 
   assertEqual(dispatchResult.published, 1, 'expected one published outbox event');
@@ -55,8 +57,9 @@ async function main(): Promise<void> {
   assertEqual(publisher.published.length, 1, 'expected publisher to receive one event');
   assertEqual(prisma.outboxEvents.get(fixedEventId)?.status, 'PUBLISHED', 'expected outbox status PUBLISHED');
 
-  const restartedOutbox = new PrismaOutboxStoreAdapter(prisma, clock);
-  assertEqual((await restartedOutbox.pending(10)).length, 0, 'expected no pending outbox after restart');
+  const restartedOutbox = new PrismaOutboxStoreAdapter(prisma);
+  assertEqual((await restartedOutbox.claimPending({ limit: 10, now: clock.now(), leaseOwner: ids.generate(),
+    leasedUntil: new Date(clock.now().getTime() + 30_000) })).length, 0, 'expected no pending outbox after restart');
 
   const failedEventId = '00000000-0000-7000-8000-000000000704';
   prisma.seedOutbox({
@@ -76,18 +79,17 @@ async function main(): Promise<void> {
     lastError: null,
   });
 
-  const failingDispatcher = new OutboxDispatcher(new PrismaOutboxStoreAdapter(prisma, clock), {
+  const failingDispatcher = new OutboxDispatcher(new PrismaOutboxStoreAdapter(prisma), {
     publish: async () => {
       throw new Error('broker unavailable');
     },
-  });
+  }, ids, clock, { maxAttempts: 1 });
   const failureResult = await failingDispatcher.dispatchBatch(10);
 
   assertEqual(failureResult.published, 0, 'expected no published events when broker fails');
   assertEqual(failureResult.failed, 1, 'expected one failed publish');
   assertEqual(prisma.outboxEvents.get(failedEventId)?.status, 'FAILED', 'expected failed outbox status');
 
-  const ids = new SequenceIdGenerator();
   const deduplicator = new InboxDeduplicator(new PrismaInboxStoreAdapter(prisma, ids));
   let handlerCalls = 0;
   const firstInboxResult = await deduplicator.runOnce({
@@ -116,8 +118,12 @@ async function main(): Promise<void> {
   console.log('Platform event store smoke OK');
 }
 
-class FakePrismaEventStoreClient implements PrismaEventStoreClient {
-  readonly outboxEvents = new Map<string, PrismaEventOutboxRecord>();
+type FixtureEvent = PrismaEventOutboxRecord & {
+  availableAt: Date; leaseOwner: string | null; leasedUntil: Date | null;
+};
+
+class FakePrismaEventStoreClient implements PrismaEventStoreClient, PrismaEventOutboxClient {
+  readonly outboxEvents = new Map<string, FixtureEvent>();
   readonly inboxRecords = new Map<string, PrismaInboxRecord>();
 
   readonly outboxEvent: PrismaEventStoreClient['outboxEvent'] = {
@@ -148,7 +154,7 @@ class FakePrismaEventStoreClient implements PrismaEventStoreClient {
         throw new Error(`outbox event ${args.where.id} not found`);
       }
 
-      const record: PrismaEventOutboxRecord = {
+      const record: FixtureEvent = {
         ...existing,
         status: args.data.status ?? existing.status,
         publishAttempts: existing.publishAttempts + (args.data.publishAttempts?.increment ?? 0),
@@ -187,8 +193,74 @@ class FakePrismaEventStoreClient implements PrismaEventStoreClient {
     },
   };
 
+
+  async $queryRaw<T>(sql: TemplateStringsArray, ...values: unknown[]): Promise<T> {
+    const statement = sql.join('?');
+    if (statement.includes('WITH eligible AS')) {
+      const [limit, owner, duration] = values as [number, string, number];
+      const records = [...this.outboxEvents.values()]
+        .filter(row => row.messageKind === 'EVENT' && row.status === 'PENDING' &&
+          row.availableAt <= clock.now() && (row.leasedUntil === null || row.leasedUntil <= clock.now()))
+        .sort((left, right) => left.availableAt.getTime() - right.availableAt.getTime() ||
+          left.createdAt.getTime() - right.createdAt.getTime() || left.id.localeCompare(right.id))
+        .slice(0, limit);
+      for (const row of records) this.outboxEvents.set(row.id, {
+        ...row, leaseOwner: owner, leasedUntil: new Date(clock.now().getTime() + duration),
+      });
+      return records as unknown as T;
+    }
+    if (statement.includes('RETURNING event."publish_attempts"')) {
+      const [id, owner] = values as [string, string];
+      const row = this.owned(id, owner);
+      if (!row) return [] as unknown as T;
+      const next = { ...row, publishAttempts: row.publishAttempts + 1,
+        lastError: 'Dispatch started; outcome unknown. Earlier uninstrumented attempts unknown.' };
+      this.outboxEvents.set(id, next);
+      return [{ publishAttempts: next.publishAttempts }] as unknown as T;
+    }
+    throw new Error('Unexpected event store smoke query');
+  }
+
+  async $executeRaw(sql: TemplateStringsArray, ...values: unknown[]): Promise<number> {
+    const statement = sql.join('?');
+    if (statement.includes('SET "leased_until"')) {
+      const [ids, owner, duration] = values as [string[], string, number];
+      let count = 0;
+      for (const id of ids) {
+        const row = this.owned(id, owner);
+        if (row) {
+          this.outboxEvents.set(id, { ...row, leasedUntil: new Date(clock.now().getTime() + duration) });
+          count += 1;
+        }
+      }
+      return count;
+    }
+    const [id, owner] = values as [string, string];
+    const row = this.owned(id, owner);
+    if (!row) return 0;
+    if (statement.includes('"status" = \'PUBLISHED\'')) {
+      this.outboxEvents.set(id, { ...row, status: 'PUBLISHED', publishedAt: values[2] as Date,
+        leaseOwner: null, leasedUntil: null, lastError: null });
+      return 1;
+    }
+    if (statement.includes('"status" = (CASE')) {
+      const [, , terminal, delay, reason] = values as [string, string, boolean, number, string];
+      this.outboxEvents.set(id, { ...row, status: terminal ? 'FAILED' : 'PENDING',
+        availableAt: new Date(clock.now().getTime() + delay), lastError: reason,
+        leaseOwner: null, leasedUntil: null, publishedAt: null });
+      return 1;
+    }
+    throw new Error('Unexpected event store smoke write');
+  }
+
+  private owned(id: string, owner: string): FixtureEvent | undefined {
+    const row = this.outboxEvents.get(id);
+    return row?.messageKind === 'EVENT' && row.status === 'PENDING' && row.leaseOwner === owner &&
+      row.leasedUntil !== null && row.leasedUntil > clock.now() ? row : undefined;
+  }
+
   seedOutbox(record: PrismaEventOutboxRecord): void {
-    this.outboxEvents.set(record.id, record);
+    this.outboxEvents.set(record.id, { ...record, availableAt: record.createdAt, leaseOwner: null, leasedUntil: null });
   }
 }
 

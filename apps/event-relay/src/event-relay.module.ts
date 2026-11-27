@@ -76,7 +76,7 @@ import { ScanCommandRelayLoop } from './scan-command-relay-loop';
     },
     {
       provide: PrismaOutboxStoreAdapter,
-      useFactory: (prisma: PrismaEventStoreConnection) => new PrismaOutboxStoreAdapter(prisma, new SystemClock()),
+      useFactory: (prisma: PrismaEventStoreConnection) => new PrismaOutboxStoreAdapter(prisma),
       inject: [PrismaEventStoreConnection],
     },
     {
@@ -118,7 +118,7 @@ import { ScanCommandRelayLoop } from './scan-command-relay-loop';
       useFactory: (
         outbox: PrismaOutboxStoreAdapter,
         publisher: RabbitMqEventPublisher,
-      ) => new OutboxDispatcher(outbox, publisher),
+      ) => new OutboxDispatcher(outbox, publisher, new CryptoIdGenerator(), new SystemClock()),
       inject: [PrismaOutboxStoreAdapter, RabbitMqEventPublisher],
     },
     OutboxRelayLoop,

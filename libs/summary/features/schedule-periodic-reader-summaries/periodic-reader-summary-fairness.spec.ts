@@ -2,7 +2,7 @@ import { tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import { ReaderSummaryPolicy } from "../../domain";
 import type { PeriodicReaderSummaryContinuation } from "./schedule-periodic-reader-summaries.command";
-import { fairnessNow, fairnessPolicy, fairnessTick, setupFairness } from "../../../../test/support/periodic-reader-summary-fairness-fixture";
+import { fairnessNow, fairnessPolicy, fairnessTick, setupFairness, setupHistoricalFairness } from "../../../../test/support/periodic-reader-summary-fairness-fixture";
 
 describe("periodic reader summary fairness and recovery", () => {
   it("visits every workspace when there are more enabled policies than the batch", async () => {
@@ -26,6 +26,29 @@ describe("periodic reader summary fairness and recovery", () => {
     expect(d.requests.map((request) => [request.workspaceId, request.cadence])).toEqual([
       ["workspace-a", "daily"], ["workspace-a", "weekly"], ["workspace-a", "monthly"], ["workspace-b", "daily"],
     ]);
+  });
+
+  it("resumes historical periods by identity when an admitted recovery disappears from discovery", async () => {
+    const d = await setupHistoricalFairness();
+    let continuation: PeriodicReaderSummaryContinuation | undefined;
+    const visited: { workspaceId: string; startedAt: string }[] = [];
+    for (let tick = 0; tick < 4; tick += 1) {
+      const result = await fairnessTick(d.useCase, {
+        now: d.now, limit: 1, readyAtUtc: { hour: 0, minute: 0 }, continuation,
+      });
+      continuation = result.continuation;
+      expect(result.scheduled).toBe(1);
+      visited.push(...result.summaries.map((summary) => ({
+        workspaceId: summary.workspaceId, startedAt: summary.period.startedAt,
+      })));
+    }
+    expect(visited).toEqual([
+      { workspaceId: "workspace-a", startedAt: "2026-11-26T00:00:00.000Z" },
+      { workspaceId: "workspace-a", startedAt: "2026-11-25T00:00:00.000Z" },
+      { workspaceId: "workspace-a", startedAt: "2026-11-27T00:00:00.000Z" },
+      { workspaceId: "workspace-b", startedAt: "2026-11-27T00:00:00.000Z" },
+    ]);
+    expect(d.queue.all()).toHaveLength(4);
   });
 
   it("wraps after an exactly full last page without another admission", async () => {
