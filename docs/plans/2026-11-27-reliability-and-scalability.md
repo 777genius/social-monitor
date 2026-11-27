@@ -408,10 +408,16 @@ particular production users-per-second capacity without representative load.
   persistence failures isolate the uncertain row and require fresh database proof
   of all remaining claims before another send; systemic proof failure stops.
   A native PostgreSQL trigger scenario proves healthy sibling progress.
-- F1 review: required atomic claim/complete/fail contract and constructor/DI
-  wiring reviewed. Requested create-only artifact insertion so an identity
-  collision cannot overwrite an existing result. New PostgreSQL/consumer tests
-  and final source review remain in progress.
+- F1 implementation and independent source acceptance complete. Required scoped
+  claim/complete/fail uses an opaque row version; artifact creation, terminal job
+  and EVENT are atomic. Review fixed artifact/event identity collisions, unsafe
+  public database error strings, provider-draft authority over scoped fields,
+  and native fixture concurrency assumptions. No source-review critical finding
+  remains open at this checkpoint; executable qualification is still required.
+- Local execution restored after integration work. The stale local reconstruction
+  was preserved separately, and the checkout is being synchronized to the
+  published combined commit before testing. Dependencies remain the exact
+  existing lock; package, toolchain and workflow changes are not included.
 - Qualification: full existing workflow dispatched on c905885a at
   https://github.com/777genius/social-monitor/actions/runs/45930518717.
   The run was queued at this checkpoint. Local execution became unavailable;

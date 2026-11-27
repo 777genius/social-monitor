@@ -1,3 +1,4 @@
+import { InMemorySummaryExecutionWorkflow } from '@social-monitor/summary/adapters/persistence/in-memory-summary-execution-workflow';
 import { FeedItem } from '@social-monitor/feed/domain';
 import { InMemoryFeedItemReadRepository } from '@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository';
 import { InMemoryRelevanceFeedbackLearningStore } from '@social-monitor/relevance/adapters/persistence/in-memory-relevance-feedback-learning.store';
@@ -191,7 +192,7 @@ async function executePersonalizedSummary(
     new NoopUserSummaryPreferenceReader(),
     new RelevanceSummaryEvidenceSelector(rankFeedItems, clock),
     new DeterministicSummaryModelAdapter(),
-    events,
+    new InMemorySummaryExecutionWorkflow(summaryJobs, summaryArtifacts, events),
     ids,
     clock,
   ).execute({

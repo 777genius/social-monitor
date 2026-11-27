@@ -1,3 +1,4 @@
+import { InMemorySummaryExecutionWorkflow } from '@social-monitor/summary/adapters/persistence/in-memory-summary-execution-workflow';
 import { DomainError, FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
 import { EmptySummaryEvidenceSelector } from '../libs/summary/adapters/evidence/empty-summary-evidence.selector';
@@ -103,7 +104,7 @@ async function main(): Promise<void> {
     new NoopUserSummaryPreferenceReader(),
     new EmptySummaryEvidenceSelector(clock),
     new FailOnceSummaryModel(new DeterministicSummaryModelAdapter()),
-    events,
+    new InMemorySummaryExecutionWorkflow(summaryJobs, artifacts, events),
     new SequenceIdGenerator(),
     clock,
   );

@@ -1,17 +1,33 @@
 import type { SummaryJob } from '../../domain';
-import type { SummaryJobRepositoryPort } from '../../ports';
+import type { SummaryExecutionClaim, SummaryExecutionVersion, SummaryJobRepositoryPort } from '../../ports';
 
 export class InMemorySummaryJobRepository implements SummaryJobRepositoryPort {
   private readonly jobsById = new Map<string, SummaryJob>();
   private readonly jobsByIdempotencyKey = new Map<string, SummaryJob>();
+  private readonly versions = new Map<string, SummaryExecutionVersion>();
+  private nextVersion = 0;
 
   async save(job: SummaryJob): Promise<void> {
+    this.store(job);
+  }
+
+  /** Synchronous adapter write used by the atomic in-memory execution workflow. */
+  store(job: SummaryJob): void {
     const snapshot = job.toSnapshot();
-    this.jobsById.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.id}`, job);
+    const key = `${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.id}`;
+    this.jobsById.set(key, job);
+    this.versions.set(key, String(++this.nextVersion) as SummaryExecutionVersion);
     this.jobsByIdempotencyKey.set(
       `${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.idempotencyKey}`,
       job,
     );
+  }
+
+  readForExecution(params: Parameters<SummaryJobRepositoryPort['findById']>[0]): SummaryExecutionClaim | null {
+    const key = `${params.tenantId}:${params.workspaceId}:${params.summaryJobId}`;
+    const job = this.jobsById.get(key);
+    const version = this.versions.get(key);
+    return job === undefined || version === undefined ? null : { job, version };
   }
 
   async findById(params: Parameters<SummaryJobRepositoryPort['findById']>[0]): Promise<SummaryJob | null> {

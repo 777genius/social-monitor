@@ -55,6 +55,8 @@ import {
 import { InMemoryAutoSummaryCandidateRepository } from "../../adapters/persistence/in-memory-auto-summary-candidate.repository";
 import { InMemorySummaryArtifactRepository } from "../../adapters/persistence/in-memory-summary-artifact.repository";
 import { InMemorySummaryFeedbackRepository } from "../../adapters/persistence/in-memory-summary-feedback.repository";
+import { InMemorySummaryExecutionWorkflow } from "../../adapters/persistence/in-memory-summary-execution-workflow";
+import { PrismaSummaryExecutionWorkflow } from "../../adapters/persistence/prisma/prisma-summary-execution-workflow";
 import { InMemorySummaryJobRepository } from "../../adapters/persistence/in-memory-summary-job.repository";
 import { InMemorySummaryPolicyRepository } from "../../adapters/persistence/in-memory-summary-policy.repository";
 import { PrismaAutoSummaryCandidateRepository } from "../../adapters/persistence/prisma/prisma-auto-summary-candidate.repository";
@@ -74,6 +76,7 @@ import {
   type SummaryArtifactRepositoryPort,
   type SummaryEvidenceSelectorPort,
   type SummaryEventPublisherPort,
+  type SummaryExecutionWorkflowPort,
   type SummaryFeedbackRepositoryPort,
   type SummaryJobQueuePort,
   type SummaryJobRepositoryPort,
@@ -87,6 +90,7 @@ import {
   SUMMARY_AUTO_SUMMARY_CANDIDATE_REPOSITORY,
   SUMMARY_EVIDENCE_SELECTOR,
   SUMMARY_EVENT_PUBLISHER,
+  SUMMARY_EXECUTION_WORKFLOW,
   SUMMARY_FEEDBACK_REPOSITORY,
   SUMMARY_JOB_QUEUE,
   SUMMARY_JOB_QUEUE_MODE,
@@ -279,6 +283,26 @@ export const summaryRestInfrastructureProviders = [
     ],
   },
   InMemorySummaryEventPublisher,
+  {
+    provide: SUMMARY_EXECUTION_WORKFLOW,
+    useFactory: (
+      mode: SummaryPersistenceMode,
+      prisma: PrismaSummaryClient | null,
+      jobs: InMemorySummaryJobRepository,
+      artifacts: InMemorySummaryArtifactRepository,
+      events: InMemorySummaryEventPublisher,
+    ): SummaryExecutionWorkflowPort =>
+      mode === "prisma"
+        ? new PrismaSummaryExecutionWorkflow(requirePrismaSummaryClient(prisma))
+        : new InMemorySummaryExecutionWorkflow(jobs, artifacts, events),
+    inject: [
+      SUMMARY_PERSISTENCE_MODE,
+      SUMMARY_PRISMA_CLIENT,
+      InMemorySummaryJobRepository,
+      InMemorySummaryArtifactRepository,
+      InMemorySummaryEventPublisher,
+    ],
+  },
   NoopSummaryMemoryAdapter,
   {
     provide: SUMMARY_MEMORY,
@@ -456,6 +480,7 @@ export const summaryRestInfrastructureExports = [
   SUMMARY_AUTO_SUMMARY_CANDIDATE_REPOSITORY,
   SUMMARY_EVIDENCE_SELECTOR,
   SUMMARY_EVENT_PUBLISHER,
+  SUMMARY_EXECUTION_WORKFLOW,
   SUMMARY_FEEDBACK_REPOSITORY,
   SUMMARY_JOB_QUEUE,
   SUMMARY_JOB_REPOSITORY,

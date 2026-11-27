@@ -17,6 +17,7 @@ import { ProjectReaderSummaryReadyEventHandler } from '@social-monitor/delivery/
 import { readerSummaryReadyFixture } from '@social-monitor/delivery/test-support/reader-summary-ready.fixture';
 import { withReaderDeliveryPostgresFixture } from './lib/reader-summary-ready-delivery-postgres-fixture';
 import { checkEventOutboxPostgresRecovery } from './lib/event-outbox-postgres-scenarios';
+import { checkSummaryExecutionPostgres } from './lib/summary-execution-postgres-scenarios';
 
 async function main(): Promise<void> {
   await withReaderDeliveryPostgresFixture(async ({ runtimeUrl, adminUrl, database }) => {
@@ -163,7 +164,8 @@ async function main(): Promise<void> {
         event: { tenantId: base.payload.tenantId, workspaceId: base.payload.workspaceId, payload: base.payload, occurredAt: base.occurredAt },
         project: async event => { await makeHandler(delivery).handle(JSON.parse(JSON.stringify(event))); },
       });
-      console.log('Reader summary delivery PostgreSQL fixture OK: atomic rollback, concurrent dedupe, restart replay, RLS isolation, fenced EVENT recovery and heartbeat');
+      await checkSummaryExecutionPostgres({ database, adminUrl, runtimeUrl });
+      console.log('Reader summary delivery PostgreSQL fixture OK: atomic rollback, concurrent dedupe, restart replay, RLS isolation, fenced EVENT recovery, heartbeat and atomic summary execution');
     } finally {
       await runtime.onApplicationShutdown('fixture complete');
       await delivery.close();

@@ -1,3 +1,4 @@
+import { InMemorySummaryExecutionWorkflow } from '@social-monitor/summary/adapters/persistence/in-memory-summary-execution-workflow';
 import { InMemoryInterestCreationState } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation-state';
 import { InMemoryInterestCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation.store';
 import assert from 'node:assert/strict';
@@ -604,7 +605,7 @@ async function runSummary(params: {
     new NoopUserSummaryPreferenceReader(),
     new FeedSummaryEvidenceSelector(params.feedItems, params.clock),
     new DeterministicSummaryModelAdapter(),
-    params.summaryEvents,
+    new InMemorySummaryExecutionWorkflow(params.summaryJobs, params.summaryArtifacts, params.summaryEvents),
     params.ids,
     params.clock,
     params.memory,

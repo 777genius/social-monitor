@@ -59,11 +59,10 @@ describe('RabbitMQ acquisition failures and replacement ownership', () => {
     });
     try {
       const first = send(adapter);
-      const rejected = expect(first).rejects.toThrow('connection unavailable');
       await expect(send(adapter, 'excess')).rejects.toMatchObject({ code: 'operation.backpressure' });
       expect(connect).toHaveBeenCalledTimes(1);
       connecting.reject(new Error('connection unavailable'));
-      await rejected;
+      await expect(first).rejects.toThrow('connection unavailable');
       await expect(send(adapter, 'recovered')).resolves.toBe(true);
       expect(connect).toHaveBeenCalledTimes(2);
       expect(native.publish).toHaveBeenCalledTimes(1);
@@ -85,13 +84,12 @@ describe('RabbitMQ acquisition failures and replacement ownership', () => {
     const adapter = new AmqplibRabbitMqChannel({ url: 'amqp://synthetic', connect });
     try {
       const old = send(adapter, 'old');
-      const rejected = expect(old).rejects.toThrow('closed during channel creation');
       await oldConnection.channelRequested.promise;
       expect(oldConnection.createConfirmChannel).toHaveBeenCalledTimes(1);
       oldConnection.emit('close');
       await expect(send(adapter, 'replacement')).resolves.toBe(true);
       creating.resolve(oldNative as unknown as ConfirmChannel);
-      await rejected;
+      await expect(old).rejects.toThrow('closed during channel creation');
       oldNative.emit('close');
       expect(oldNative.publish).not.toHaveBeenCalled();
       expect(freshNative.close).not.toHaveBeenCalled();

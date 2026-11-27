@@ -9,11 +9,10 @@ import type { PrismaSummaryClient } from './prisma-summary-client';
 import {
   encodeSummaryCursor,
   parseSummaryCursor,
-  serializeSummaryArtifact,
   summaryArtifactFromPrisma,
-  summaryArtifactStatusToPrisma,
-  summaryQualitySignalsToPrisma,
 } from './prisma-summary-records';
+
+import { summaryArtifactWrite } from './prisma-summary-execution-writes';
 
 const VISIBLE_SUMMARY_STATUSES = ['COMPLETED', 'NO_SIGNAL'] as const;
 
@@ -21,42 +20,7 @@ export class PrismaSummaryArtifactRepository implements SummaryArtifactRepositor
   constructor(private readonly prisma: PrismaSummaryClient) {}
 
   async save(artifact: SummaryArtifact): Promise<void> {
-    const snapshot = artifact.toSnapshot();
-    const status = summaryArtifactStatusToPrisma(artifact);
-    const artifactPayload = serializeSummaryArtifact(artifact);
-
-    await withPrismaWriteRetry(() => this.prisma.summaryArtifact.upsert({
-      where: { id: snapshot.summaryId },
-      update: {
-        status,
-        userId: snapshot.userId ?? null,
-        subscriptionId: snapshot.subscriptionId ?? null,
-        modelVersion: snapshot.lineage.modelVersion,
-        promptVersion: snapshot.lineage.promptVersion,
-        headline: snapshot.headline,
-        summaryText: snapshot.executiveSummary,
-        artifactPayload,
-        citations: snapshot.citationMap,
-        qualitySignals: summaryQualitySignalsToPrisma(artifact),
-      },
-      create: {
-        id: snapshot.summaryId,
-        tenantId: snapshot.tenantId,
-        workspaceId: snapshot.workspaceId,
-        interestId: snapshot.interestId,
-        userId: snapshot.userId ?? null,
-        subscriptionId: snapshot.subscriptionId ?? null,
-        status,
-        schemaVersion: 1,
-        modelVersion: snapshot.lineage.modelVersion,
-        promptVersion: snapshot.lineage.promptVersion,
-        headline: snapshot.headline,
-        summaryText: snapshot.executiveSummary,
-        artifactPayload,
-        citations: snapshot.citationMap,
-        qualitySignals: summaryQualitySignalsToPrisma(artifact),
-      },
-    }));
+    await withPrismaWriteRetry(() => this.prisma.summaryArtifact.upsert(summaryArtifactWrite(artifact)));
   }
 
   async list(query: ListSummaryArtifactsQuery): Promise<ListSummaryArtifactsResult> {
