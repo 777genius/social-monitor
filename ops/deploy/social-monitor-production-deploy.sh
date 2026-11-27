@@ -598,6 +598,14 @@ verify_backend_proxy_readiness() {
   status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 \
     -H 'Host: social-monitor.app' \
     http://127.0.0.1:13080/ready 2>/dev/null || true)
+  [[ $status == 200 ]] || return 1
+  # Public Likes needs the read-only reader-posts proxy, independently of /ready.
+  status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 \
+    -H 'Host: social-monitor.app' -H 'Accept: application/json' \
+    -H 'X-Tenant-Id: 00000000-0000-7000-8000-000000006101' \
+    -H 'X-Workspace-Id: 00000000-0000-7000-8000-000000006102' \
+    'http://127.0.0.1:13080/api/reader-posts?startedAt=2026-01-01T00%3A00%3A00Z&endedAt=2026-01-02T00%3A00%3A00Z&order=likes&limit=1' \
+    2>/dev/null || true)
   [[ $status == 200 ]]
 }
 
