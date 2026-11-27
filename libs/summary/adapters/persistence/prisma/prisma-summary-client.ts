@@ -133,6 +133,7 @@ export type PrismaSummaryClient = PrismaConversationClient &
       }): Promise<readonly PrismaSummaryJobRecord[]>;
     };
     readonly summaryArtifact: {
+      create(args: { readonly data: PrismaSummaryArtifactCreate }): Promise<PrismaSummaryArtifactRecord>;
       upsert(args: {
         readonly where: { readonly id: string };
         readonly update: PrismaSummaryArtifactMutation;

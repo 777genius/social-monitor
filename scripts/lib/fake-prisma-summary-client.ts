@@ -143,6 +143,14 @@ export class FakePrismaSummaryClient implements PrismaSummaryClient {
   };
 
   readonly summaryArtifact: PrismaSummaryClient["summaryArtifact"] = {
+    create: async (args) => {
+      if (this.artifacts.has(args.data.id)) {
+        throw Object.assign(new Error("Summary artifact identity already exists"), { code: "P2002" });
+      }
+      return this.summaryArtifact.upsert({
+        where: { id: args.data.id }, create: args.data, update: args.data,
+      });
+    },
     upsert: async (args) => {
       const existing = this.artifacts.get(args.where.id);
       const record: PrismaSummaryArtifactRecord = {

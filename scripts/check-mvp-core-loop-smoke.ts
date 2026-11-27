@@ -1,3 +1,4 @@
+import { InMemorySummaryExecutionWorkflow } from '@social-monitor/summary/adapters/persistence/in-memory-summary-execution-workflow';
 import { DirectScanDispatchAdapter } from '@social-monitor/monitoring/adapters/queue/direct-scan-dispatch.adapter';
 import { InMemoryInterestCreationState } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation-state';
 import { InMemoryInterestCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation.store';
@@ -343,7 +344,7 @@ async function main(): Promise<void> {
       new NoopUserSummaryPreferenceReader(),
       new FeedSummaryEvidenceSelector(feedItems, clock),
       new DeterministicSummaryModelAdapter(),
-      summaryEvents,
+      new InMemorySummaryExecutionWorkflow(summaryJobs, summaryArtifacts, summaryEvents),
       ids,
       clock,
     ).execute({

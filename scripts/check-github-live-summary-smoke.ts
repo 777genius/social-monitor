@@ -1,3 +1,4 @@
+import { InMemorySummaryExecutionWorkflow } from '@social-monitor/summary/adapters/persistence/in-memory-summary-execution-workflow';
 import { createHash } from 'node:crypto';
 import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
@@ -207,7 +208,7 @@ const main = async (): Promise<void> => {
     new NoopUserSummaryPreferenceReader(),
     new FeedSummaryEvidenceSelector(feedItems, clock),
     new DeterministicSummaryModelAdapter(),
-    summaryEvents,
+    new InMemorySummaryExecutionWorkflow(summaryJobs, summaryArtifacts, summaryEvents),
     summaryIds,
     clock,
   );

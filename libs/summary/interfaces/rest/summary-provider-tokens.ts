@@ -31,6 +31,7 @@ export type SummaryYoutubeVideoSummaryProviderMode =
   "disabled" | "deterministic" | "google-gemini";
 
 export const SUMMARY_PERSISTENCE_MODE = Symbol("SUMMARY_PERSISTENCE_MODE");
+export const SUMMARY_EXECUTION_WORKFLOW = Symbol("SUMMARY_EXECUTION_WORKFLOW");
 export const SUMMARY_JOB_QUEUE_MODE = Symbol("SUMMARY_JOB_QUEUE_MODE");
 export const SUMMARY_MODEL_PROVIDER_MODE = Symbol(
   "SUMMARY_MODEL_PROVIDER_MODE",

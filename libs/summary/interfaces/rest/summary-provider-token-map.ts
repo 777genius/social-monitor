@@ -17,6 +17,7 @@ import type {
   ReaderSummaryWeeklyProjectionReaderPort,
   SummaryArtifactRepositoryPort,
   SummaryEventPublisherPort,
+  SummaryExecutionWorkflowPort,
   SummaryEvidenceSelectorPort,
   SummaryFeedbackRepositoryPort,
   SummaryJobQueuePort,
@@ -44,6 +45,7 @@ import type {
   SUMMARY_AUTO_SUMMARY_CANDIDATE_REPOSITORY,
   SUMMARY_EVIDENCE_SELECTOR,
   SUMMARY_EVENT_PUBLISHER,
+  SUMMARY_EXECUTION_WORKFLOW,
   SUMMARY_FEEDBACK_REPOSITORY,
   SUMMARY_JOB_QUEUE,
   SUMMARY_JOB_QUEUE_MODE,
@@ -88,6 +90,7 @@ export type SummaryProviderTokenMap = {
   readonly [SUMMARY_FEEDBACK_REPOSITORY]: SummaryFeedbackRepositoryPort;
   readonly [SUMMARY_POLICY_REPOSITORY]: SummaryPolicyRepositoryPort;
   readonly [SUMMARY_EVENT_PUBLISHER]: SummaryEventPublisherPort;
+  readonly [SUMMARY_EXECUTION_WORKFLOW]: SummaryExecutionWorkflowPort;
   readonly [SUMMARY_MEMORY]: SummaryMemoryPort;
   readonly [SUMMARY_USER_SUMMARY_PREFERENCE_READER]: UserSummaryPreferenceReaderPort;
   readonly [SUMMARY_AUTO_SUMMARY_CANDIDATE_REPOSITORY]: AutoSummaryCandidateRepositoryPort;

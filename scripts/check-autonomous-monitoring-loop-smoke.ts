@@ -1,3 +1,4 @@
+import { InMemorySummaryExecutionWorkflow } from '@social-monitor/summary/adapters/persistence/in-memory-summary-execution-workflow';
 import { DirectScanDispatchAdapter } from '@social-monitor/monitoring/adapters/queue/direct-scan-dispatch.adapter';
 import { InMemoryInterestCreationState } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation-state';
 import { InMemoryInterestCreationStore } from '@social-monitor/monitoring/adapters/persistence/in-memory-interest-creation.store';
@@ -86,7 +87,6 @@ import { fixedNow, digestSchedulerNow, tenant, workspace, providerKeys, digestDu
 import { providerFixtureCount, hasIntentionalCrossProviderDuplicate } from "./lib/autonomous-monitoring-loop-support";
 import { FixturePersistedGitHubProjectionReader, hasCompleteCitedGitHubBoard } from "./lib/autonomous-monitoring-loop-github-projection";
 import { FixtureExactEvidenceReviewer, FixturePersistedPromotionFeedRepository, primaryCoverageIds } from "./lib/autonomous-monitoring-loop-promotion";
-
 async function main(): Promise<void> {
   const ids = new SequenceIdGenerator("autonomous-loop");
   const clock = new FixedClock(fixedNow);
@@ -143,7 +143,6 @@ async function main(): Promise<void> {
     ids,
     clock,
   );
-
   const interest = unwrap(
     await new CreateInterestUseCase(
       new InMemoryInterestCreationStore(interestCreationState),
@@ -598,7 +597,7 @@ async function main(): Promise<void> {
       new NoopUserSummaryPreferenceReader(),
       new RelevanceSummaryEvidenceSelector(rankFeedItems, clock),
       new DeterministicSummaryModelAdapter(),
-      summaryEvents,
+      new InMemorySummaryExecutionWorkflow(summaryJobs, summaryArtifacts, summaryEvents),
       ids,
       clock,
     ).execute({

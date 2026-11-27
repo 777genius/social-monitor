@@ -1,3 +1,4 @@
+import { InMemorySummaryExecutionWorkflow } from '@social-monitor/summary/adapters/persistence/in-memory-summary-execution-workflow';
 import { FixedClock, tenantId, workspaceId } from "@social-monitor/shared-kernel";
 
 import { SummaryJob } from "../../domain";
@@ -101,7 +102,7 @@ describe("OpenAI summary HTTP response boundary", () => {
           canonicalUrl: "https://example.test/source-1", observedAt: startedAt,
         }],
       }) },
-      adapter, events, { generate: () => "unused-summary-id" }, new FixedClock(requestedAt),
+      adapter, new InMemorySummaryExecutionWorkflow(jobs, artifacts, events), { generate: () => "unused-summary-id" }, new FixedClock(requestedAt),
     );
 
     const result = await useCase.execute({
