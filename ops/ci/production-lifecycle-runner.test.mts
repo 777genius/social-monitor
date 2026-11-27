@@ -122,16 +122,16 @@ if (process.argv[2] === '--fixture') {
   assert.ok(root && id && mode);
   await fixture(root, id, mode);
 } else {
-  test('actual registry preserves the independent original package chain and 18 SAFE positions', () => {
+  test('actual registry preserves the independent original package chain and 19 SAFE positions', () => {
     const current = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { scripts: Record<string, string> };
     const chain = current.scripts['check:production-deploy-lifecycle:serial'];
     assert.ok(chain, 'primary integration must preserve the original independent :serial package contract');
     const expected = chain.split(' && ');
-    assert.equal(expected.length, 28);
+    assert.equal(expected.length, 29);
     assert.deepEqual(lifecycleCommands.map(entry => entry.command), expected);
-    assert.equal(new Set(lifecycleCommands.map(entry => entry.command)).size, 28);
+    assert.equal(new Set(lifecycleCommands.map(entry => entry.command)).size, 29);
     assert.deepEqual(lifecycleCommands.flatMap((entry, index) => entry.safe === true ? [index + 1] : []),
-      [2, 3, 4, 7, 8, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 25, 27, 28]);
+      [2, 3, 4, 7, 8, 9, 11, 12, 13, 14, 16, 17, 18, 19, 20, 21, 26, 28, 29]);
   });
 
   for (const code of [0, 7]) {
