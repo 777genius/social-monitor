@@ -58,6 +58,7 @@ for (const exception of policy.allowedExceptions ?? []) {
 }
 
 let audit;
+let auditExit = 0;
 try {
   const auditJson =
     process.platform === 'win32'
@@ -66,13 +67,25 @@ try {
   audit = JSON.parse(auditJson);
 } catch (error) {
   const stdout = String(error.stdout ?? '').trim();
-  if (stdout.length === 0) {
+  if (error.status !== 1 || error.signal || stdout.length === 0) {
     throw error;
   }
   audit = JSON.parse(stdout);
+  auditExit = error.status;
 }
 
-for (const [packageName, vulnerability] of Object.entries(audit.vulnerabilities ?? {})) {
+// npm audit exits 1 for blocking findings, but registry failures also exit 1.
+// Never interpret a failed or incomplete report as an empty vulnerability list.
+const severities = new Set(['info', 'low', 'moderate', 'high', 'critical']);
+if (audit?.auditReportVersion !== 2 || Object.hasOwn(audit, 'error') ||
+    !audit.vulnerabilities || typeof audit.vulnerabilities !== 'object' || Array.isArray(audit.vulnerabilities) ||
+    Object.values(audit.vulnerabilities).some((v) => !severities.has(v?.severity)) ||
+    (auditExit !== 0 && !Object.values(audit.vulnerabilities).some((v) => blockSeverities.has(v.severity)))) {
+  console.error('Dependency audit did not return a valid npm audit report');
+  process.exit(1);
+}
+
+for (const [packageName, vulnerability] of Object.entries(audit.vulnerabilities)) {
   if (!blockSeverities.has(vulnerability.severity)) {
     continue;
   }
