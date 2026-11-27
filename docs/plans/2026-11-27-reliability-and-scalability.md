@@ -198,6 +198,16 @@ publications and prevent late callbacks from settling replacement sends. Never
 claim that a timed-out send was not delivered. Keep consumer delivery tags bound
 to their acquisition channel.
 
+Supply amqplib's native connection timeout with a 30,000 ms default, preserving
+all supplied socket/TLS options and an explicit timeout, including zero. This is
+socket inactivity during connection/AMQP handshake; activity can reset it and
+amqplib disables it after opening the connection. It does not bound a peer that
+keeps trickling bytes or later channel/topology RPCs. A silent peer otherwise
+holds the relay's current tick while its claims keep renewing. A worker shutdown
+warning reports the unfinished operation but does not cancel the native socket.
+Native timeout rejection closes that socket and lets existing connection-cache
+invalidation admit a fresh attempt.
+
 Remove closed channels from per-connection strong collections. Couple cached
 declarations to a live generation so reconnect can reassert required topology
 without doing multiple declaration RPCs on every healthy publish. Share one
@@ -207,6 +217,8 @@ Acceptance: slow/negative/missing confirms; false buffer plus successful confirm
 mandatory return; duplicate message ID; disconnect at each acquisition stage;
 late old callback; channel-only reconnect; consumer ACK on original channel;
 close/reopen; no orphan timers/listeners or retained closed-channel growth.
+Include a real silent TCP peer with the default timeout, a fresh connection after
+an explicit shorter timeout, and preserved socket options including timeout zero.
 Use a real disposable RabbitMQ broker for durable message round-trip/reconnect
 when available, and state the exact distinction from fault-injection fixtures.
 
@@ -470,11 +482,24 @@ particular production users-per-second capacity without representative load.
   is tracked separately. Local tenant-RLS and reader-summary publication gates
   stopped in their shared pinned-Docker psql prerequisite because Docker was
   unavailable; neither is claimed passed. Existing CI supplies that prerequisite.
+- Follow-up acquisition analysis found the silent-handshake gap before publisher
+  confirmation can begin. The two-file fix supplies the native inactivity timeout
+  described in B and tests the real amqplib path. Focused transport qualification
+  passed 8 suites / 53 tests; real RabbitMQ 4.3.8 / Erlang 27.3.4.1 qualification
+  passed 3 suites / 9 tests with no skips. The exact qualified two-file delta is
+  committed as `8b373a1b1b2131688acba7253dc7de92e4f929fd`; its original tracked
+  diff has SHA-256 `7cd2cc3ebac8040aa77f60a1baacef18ed00831be8abfbb6e49063ac7baa5dbe`.
+  Independent source review accepted the native socket ownership and timeout
+  semantics. The fresh complete-backend-E2E attempt is unqualified: several
+  suites failed to start after their workers received external SIGKILL. The earlier 84 / 176
+  result remains evidence for its recorded source; the new combined head requires
+  its own complete CI verdict.
 - Superseded workflow run 45930518717 targeted c905885a and was cancelled after
   remaining queued. A fresh full workflow_dispatch on the final head is required;
   its link and status belong in the PR description.
-- Final source review: no reported critical production-code findings remain.
-  Preserve all existing gates and keep the PR Draft as requested, including after
+- Record source-review acceptance and executable results against their exact
+  revisions; earlier acceptance does not qualify a subsequent patch. Preserve
+  all existing gates and keep the PR Draft as requested, including after
   successful checks. See the
   [validation record](../operations/backend-reliability-validation-2026-11-27.md)
   for commands, source identity and concrete local evidence. The

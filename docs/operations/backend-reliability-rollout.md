@@ -32,6 +32,7 @@ remains outside this PR's scope.
 | EVENT relay | Existing batch limit 1–500; default batch 50 | Claims only due PENDING EVENT rows. |
 | EVENT ownership | 30-second renewable lease | Stale owners cannot start or settle a row. |
 | EVENT retry | 10 recorded starts; 1-second base, 5-minute ceiling | Retries eligible attempts; exhausted rows become FAILED. |
+| RabbitMQ connection handshake | Default 30-second socket inactivity timeout | A silent peer is disconnected; the existing retry path can acquire a fresh connection. Explicit socket timeout options, including zero, are preserved. |
 | RabbitMQ confirmation | 30-second confirmation deadline | Unknown send retires its publication origin; retry can duplicate delivery. |
 | RabbitMQ buffer flow | 30-second drain deadline | Confirmed predecessor succeeds; new sends receive backpressure while blocked. |
 | RabbitMQ pending publishes | 128 per channel adapter | Excess sends fail admission; no internal payload queue. |
@@ -60,6 +61,15 @@ Their captured native ownership remains available for another cleanup attempt;
 cleanup does not close a replacement channel or connection.
 Terminal recovery cancellation is checked before topology acquisition, preventing
 an already cancelled attempt from opening a replacement channel.
+
+Connection setup also supplies amqplib's native 30,000 ms inactivity timeout,
+while preserving socket/TLS options and any explicit timeout; zero retains the
+caller's disabled-timeout policy. Amqplib closes the silent socket on timeout and
+disables this timer after opening the connection. Socket activity can reset it:
+this is not an absolute deadline against a trickling peer or a timer for later
+channel/topology RPCs. Without a native timeout, a silent handshake can retain
+the relay's current tick and its claim heartbeat; a shutdown warning alone does
+not cancel that work.
 
 **Scheduling:** continuation is bounded process-local progress, not a new durable
 scheduler checkpoint. Restart begins another sweep. Failed digest delivery
@@ -111,8 +121,9 @@ retains commands, source identities and receipts. The concrete local proof inclu
 
 | Evidence | Qualified result | Recorded source |
 | --- | --- | --- |
-| Fresh complete deterministic backend E2E | 84 unique suites / 176 tests; no failed, skipped, missing or duplicate cases | Reviewed contents committed as `4b2b58d22c00cedef10ccd11d4acd46f92eaae76` |
+| Complete deterministic backend E2E before the handshake follow-up | 84 unique suites / 176 tests; no failed, skipped, missing or duplicate cases | Reviewed contents committed as `4b2b58d22c00cedef10ccd11d4acd46f92eaae76` |
 | Actual RabbitMQ broker and focused transport units | Broker: 3 suites / 9 tests; units: 8 suites / 48 tests | Cancellation fix in `4b2b58d22c00cedef10ccd11d4acd46f92eaae76`; RabbitMQ 4.3.8 / Erlang 27.3.4.1 |
+| Native handshake timeout follow-up | Broker: 3 suites / 9 tests; focused units: 8 suites / 53 tests | Exact contents committed as `8b373a1b1b2131688acba7253dc7de92e4f929fd`; RabbitMQ 4.3.8 / Erlang 27.3.4.1 |
 | Four PostgreSQL entrypoints | Ready delivery with EVENT/F1, historical ready recovery, delivery workflow and source-binding status all passed | `05a50fdf0e08d6fd8235c4d647718f85ee6d11cd`; PostgreSQL 18.7 |
 | Architecture, code quality and source cap | Full npm aggregates passed; four optional Python PG-profile tests lacked their required URL and were not executed | Node 22.23.5; source cap scanned 6,463 files |
 | Exact native-helper dependency inventory | Complete spec: 78 tests passed; explicit fixture paths, unchanged production budgets | `6cdda418101fda17f086ca21eade9e924c3681dc` |
@@ -123,6 +134,13 @@ with its redaction assertion and does not relax the secret scanner. The inventor
 change admits only the three reviewed native helpers and does not enlarge runtime
 pools or loosen dependency detection. Overlapping test selections are not added
 together as an inflated total.
+
+The handshake follow-up has independent source acceptance and its own real TCP
+and broker evidence. Its complete-backend-E2E attempt is unqualified: several
+suites failed to start after their workers received external SIGKILL. The
+historical 84 / 176 receipt remains valid for its earlier source. The new combined
+head needs its own full CI result, recorded in the validation record and current
+PR checks.
 
 The initial full-unit attempt is triage, not qualification: SQLite availability,
 ENOSPC and SIGKILL affected that run. Final full-unit and compiler/build/lint
