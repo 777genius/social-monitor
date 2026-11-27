@@ -1,3 +1,5 @@
+import { DomainError } from '@social-monitor/shared-kernel';
+
 import type { DeliveryAttempt } from '../../domain';
 import type {
   DeliveryAttemptRepositoryPort,
@@ -13,12 +15,14 @@ export class InMemoryDeliveryAttemptRepository implements DeliveryAttemptReposit
 
   async save(attempt: DeliveryAttempt): Promise<void> {
     const snapshot = attempt.toSnapshot();
+    const key = `${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.idempotencyKey}`;
+    const existing = this.attemptsByIdempotencyKey.get(key);
+    if (existing !== undefined && existing.toSnapshot().id !== snapshot.id) {
+      throw new DomainError('operation.conflict', 'Delivery attempt idempotency key already exists');
+    }
 
     this.attemptsById.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.id}`, attempt);
-    this.attemptsByIdempotencyKey.set(
-      `${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.idempotencyKey}`,
-      attempt,
-    );
+    this.attemptsByIdempotencyKey.set(key, attempt);
   }
 
   async findById(params: Parameters<DeliveryAttemptRepositoryPort['findById']>[0]): Promise<DeliveryAttempt | null> {

@@ -11,4 +11,5 @@ export type ScheduleDueDigestsResult = {
   readonly assembled: number;
   readonly skipped: number;
   readonly digests: readonly ScheduledDigestResultItem[];
+  readonly failures?: readonly { readonly digestScheduleId: string; readonly message: string }[];
 };

@@ -32,6 +32,8 @@ export class DigestSchedulerLoop implements OnModuleInit, OnModuleDestroy {
       await this.runTick('startup');
     }
 
+    if (this.shuttingDown) return;
+
     this.timer = setInterval(() => {
       void this.runTick('interval');
     }, this.options.intervalMs);
@@ -93,6 +95,15 @@ export class DigestSchedulerLoop implements OnModuleInit, OnModuleDestroy {
               }),
         },
       });
+
+      for (const failure of result.failures ?? []) {
+        this.logger.error('digest scheduler item failed; schedule remains due', {
+          trigger,
+          digestScheduleId: failure.digestScheduleId,
+          error: failure.message,
+          worker: 'delivery-service',
+        });
+      }
 
       this.logger.info('digest scheduler tick completed', {
         trigger,

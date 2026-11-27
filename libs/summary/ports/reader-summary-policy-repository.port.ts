@@ -12,6 +12,8 @@ export type ListScheduledReaderSummaryPoliciesQuery = {
   readonly tenantId?: TenantId;
   readonly workspaceId?: WorkspaceId;
   readonly limit: number;
+  /** Immutable policy-ID keyset; inclusive only when resuming a partial policy. */
+  readonly cursor?: { readonly policyId: string; readonly inclusive: boolean };
 };
 
 export interface ReaderSummaryPolicyRepositoryPort {

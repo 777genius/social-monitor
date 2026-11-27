@@ -321,11 +321,9 @@ export type PrismaReaderSummaryClient = {
         readonly tenantId?: string;
         readonly workspaceId?: string;
         readonly scheduleEnabled: boolean;
+        readonly id?: { readonly gt?: string; readonly gte?: string };
       };
-      readonly orderBy: readonly [
-        { readonly updatedAt: "desc" },
-        { readonly id: "desc" },
-      ];
+      readonly orderBy: readonly [{ readonly id: "asc" }];
       readonly take: number;
     }): Promise<readonly PrismaReaderSummaryPolicyRecord[]>;
   };
