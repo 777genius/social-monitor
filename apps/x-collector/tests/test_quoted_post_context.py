@@ -121,7 +121,12 @@ def test_lookup_sdk_factory_disables_query_replay_without_changing_normal_search
     from x_collector.scweet_adapter import ScweetDailySearchCollector
     settings = XCollectorSettings.from_env({"X_COLLECTOR_SCWEET_DB_PATH": str(tmp_path / "synthetic.db")})
     configurations = []
-    with patch("Scweet.Scweet", side_effect=lambda **kwargs: configurations.append(kwargs["config"])):
+
+    class FakeScweet:
+        def __init__(self, **kwargs):
+            configurations.append(kwargs["config"])
+
+    with patch("Scweet.Scweet", FakeScweet):
         collector = ScweetDailySearchCollector.from_settings(settings)
         collector._post_lookup_factory()
         collector._scweet_factory()
