@@ -113,12 +113,13 @@ export class PrismaSourceBindingRepository implements SourceBindingRepositoryPor
   async listByInterest(query: ListSourceBindingsQuery): Promise<ListSourceBindingsResult> {
     const offset = parseOffsetCursor(query.cursor);
     const limit = Math.max(1, Math.min(query.limit, 100));
-    const sourceCatalogEntryIds = query.providerKeys === undefined
+    const selectedCatalogEntries = query.providerKeys === undefined
       ? undefined
-      : (await Promise.all(query.providerKeys.map((providerKey) =>
-          this.prisma.sourceCatalogEntry.findUnique({ where: { providerKey } }),
-        )))
-          .flatMap((entry) => entry === null ? [] : [entry.id]);
+      : await this.prisma.sourceCatalogEntry.findMany({
+          where: { providerKey: { in: [...new Set(query.providerKeys)] } },
+          select: { id: true, providerKey: true },
+        });
+    const sourceCatalogEntryIds = selectedCatalogEntries?.map((entry) => entry.id);
     const records = await this.prisma.sourceBinding.findMany({
       where: {
         tenantId: query.tenantId,
@@ -136,21 +137,23 @@ export class PrismaSourceBindingRepository implements SourceBindingRepositoryPor
       skip: offset,
       take: limit + 1,
     });
-    const sourceBindings = await Promise.all(
-      records.slice(0, limit).map(async (record) => {
-        const sourceCatalogEntry = await this.prisma.sourceCatalogEntry.findUnique({
-          where: { id: record.sourceCatalogEntryId },
+    const page = records.slice(0, limit);
+    const catalogEntries = selectedCatalogEntries ?? (page.length === 0 ? [] :
+      await this.prisma.sourceCatalogEntry.findMany({
+        where: { id: { in: [...new Set(page.map((record) => record.sourceCatalogEntryId))] } },
+        select: { id: true, providerKey: true },
+      }));
+    const catalogById = new Map(catalogEntries.map((entry) => [entry.id, entry]));
+    const sourceBindings = page.map((record) => {
+      const sourceCatalogEntry = catalogById.get(record.sourceCatalogEntryId);
+      if (sourceCatalogEntry === undefined) {
+        throw new DomainError('validation.failed', 'Source catalog entry is missing for persisted source binding', {
+          sourceBindingId: record.id,
+          sourceCatalogEntryId: record.sourceCatalogEntryId,
         });
-        if (sourceCatalogEntry === null) {
-          throw new DomainError('validation.failed', 'Source catalog entry is missing for persisted source binding', {
-            sourceBindingId: record.id,
-            sourceCatalogEntryId: record.sourceCatalogEntryId,
-          });
-        }
-
-        return sourceBindingFromPrisma(record, sourceCatalogEntry);
-      }),
-    );
+      }
+      return sourceBindingFromPrisma(record, sourceCatalogEntry);
+    });
     const nextOffset = offset + sourceBindings.length;
 
     return {

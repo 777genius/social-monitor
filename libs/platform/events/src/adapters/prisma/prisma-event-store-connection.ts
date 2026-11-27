@@ -8,14 +8,15 @@ import { loadPrismaRuntimeClient } from '@social-monitor/platform-persistence/pr
 import type { PrismaCommandOutboxClient } from '@social-monitor/platform-queue/adapters/prisma';
 
 import type { PrismaEventStoreClient } from './prisma-event-store-client';
+import type { PrismaEventOutboxClient } from './prisma-event-outbox-client';
 
 type PrismaEventStoreRuntimeClient = PrismaEventStoreClient &
-  PrismaCommandOutboxClient & {
+  PrismaCommandOutboxClient & PrismaEventOutboxClient & {
   $disconnect(): Promise<void>;
 };
 
 export class PrismaEventStoreConnection
-  implements PrismaEventStoreClient, PrismaCommandOutboxClient
+  implements PrismaEventStoreClient, PrismaCommandOutboxClient, PrismaEventOutboxClient
 {
   readonly outboxEvent: PrismaEventStoreClient['outboxEvent'] &
     PrismaCommandOutboxClient['outboxEvent'];
@@ -51,6 +52,10 @@ export class PrismaEventStoreConnection
 
   $executeRaw(query: TemplateStringsArray, ...values: unknown[]): Promise<number> {
     return this.client.$executeRaw(query, ...values);
+  }
+
+  $queryRaw<T>(query: TemplateStringsArray, ...values: unknown[]): Promise<T> {
+    return this.client.$queryRaw<T>(query, ...values);
   }
 
   $transaction<TValue>(

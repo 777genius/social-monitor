@@ -106,6 +106,12 @@ export type PrismaMonitoringClient = {
     }): Promise<readonly PrismaInterestRecord[]>;
   };
   readonly sourceCatalogEntry: {
+    findMany(args: {
+      readonly where:
+        | { readonly id: { readonly in: readonly string[] } }
+        | { readonly providerKey: { readonly in: readonly string[] } };
+      readonly select: { readonly id: true; readonly providerKey: true };
+    }): Promise<readonly PrismaSourceCatalogEntryRecord[]>;
     findUnique(args: {
       readonly where: { readonly providerKey?: string; readonly id?: string };
     }): Promise<PrismaSourceCatalogEntryRecord | null>;
@@ -177,6 +183,8 @@ export type PrismaMonitoringClient = {
         readonly tenantId: string;
         readonly workspaceId: string;
         readonly interestId: string;
+        readonly sourceCatalogEntryId?: { readonly in: readonly string[] };
+        readonly status?: { readonly in: readonly ('ENABLED' | 'PAUSED')[] };
         readonly deletedAt: null;
       };
       readonly orderBy: readonly [

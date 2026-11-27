@@ -31,6 +31,8 @@ export class OutboxRelayLoop implements OnModuleInit, OnModuleDestroy {
       await this.runTick('startup');
     }
 
+    if (this.shuttingDown) return;
+
     this.timer = setInterval(() => {
       void this.runTick('interval');
     }, this.options.intervalMs);
@@ -76,10 +78,11 @@ export class OutboxRelayLoop implements OnModuleInit, OnModuleDestroy {
 
   private async executeTick(trigger: 'startup' | 'interval'): Promise<void> {
     try {
-      const result = await this.dispatcher.dispatchBatch(this.options.limit);
+      const result = await this.dispatcher.dispatchBatch(this.options.limit, () => !this.shuttingDown);
       this.logger.info('outbox relay loop tick completed', {
         trigger,
         published: result.published,
+        retrying: result.retrying,
         failed: result.failed,
         worker: 'event-relay',
       });
