@@ -65,7 +65,8 @@
     {
       "moduleFile": "libs/summary/interfaces/rest/summary-rest-infrastructure.module.ts",
       "adapterSourceFiles": [
-        "libs/summary/interfaces/rest/summary-conversation-persistence.providers.ts"
+        "libs/summary/interfaces/rest/summary-conversation-persistence.providers.ts",
+        "libs/summary/interfaces/rest/summary-execution-workflow.provider.ts"
       ],
       "context": "summary-api",
       "owner": "summary-owner",
