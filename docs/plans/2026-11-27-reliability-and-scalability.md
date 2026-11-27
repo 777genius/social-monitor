@@ -16,13 +16,14 @@ Generated output, vendored code, lockfiles and copied audit inventories do not
 count toward the useful estimate.
 
 The user requested a Draft PR and autonomous end-to-end implementation/review.
-Keep the PR Draft; this work does not authorize a production rollout. Push each
+Keep the PR Draft after qualification; this work does not authorize a merge or
+production rollout. Push each
 completed commit immediately. Do not mark queued, skipped, cancelled, earlier-SHA
 checks, or synthetic fixtures as a successful live production verification.
 
 ## Existing work and collision boundaries
 
-| PR | Verified state at planning | Boundary for this PR |
+| PR | Verified state at planning or integration recheck | Boundary for this PR |
 | --- | --- | --- |
 | #665 | Merged, `c0b8b467` | Reuse model adapter separation; do not extract it again. |
 | #790 | Merged, `9b5f8db9` | Preserve domain import guard and exact existing exceptions. |
@@ -30,7 +31,7 @@ checks, or synthetic fixtures as a successful live production verification.
 | #793 | Open, `6789d767` | Independently owns Node/TS7/SDK, summary snapshot contracts, package/Jest/toolchain/CI. |
 | #783 | Draft, `e26517c1` | Independently owns external-beta evidence/readiness and dependency audit admission. |
 | #798 | Open, `60430924` | Weekly OpenAI response-envelope fix; leave its files alone. |
-| #799 | Open, `05b361a6` | Public Likes deployment readiness and lifecycle registry. |
+| #799 | Open, `ceb0ba66` (integration recheck) | Public Likes deployment readiness and lifecycle registry; no file overlap with this PR. |
 | #800 | Open, `ca627da2` | Scweet dependency update; not proof of live X recovery. |
 | #795 | Open, `41c80491` | November archive admission scripts. |
 | #620 | Open, `008cbd82` | Historical deployment membership fix; do not integrate blindly. |
@@ -40,6 +41,11 @@ Recheck this matrix before integration. Do not retarget, close, overwrite, merge
 or claim completion of another owner's PR as part of this program. Root package,
 Jest and CI files may change only for a necessary qualified test registration,
 after checking the current overlapping diff. Prefer the existing discovery paths.
+
+The integration recheck found #793, #783, #798 and #800 unchanged at the recorded
+heads. #799 had advanced to `ceb0ba66`; its changed-file inventory still had no
+overlap with this PR. These are recorded comparisons, not permission to merge
+either branch or a claim about subsequent updates to those PRs.
 
 ## Concrete problems found in the baseline
 
@@ -407,14 +413,15 @@ particular production users-per-second capacity without representative load.
   due-time/ID continuation and retries earlier failures on bounded wrap. EVENT
   persistence failures isolate the uncertain row and require fresh database proof
   of all remaining claims before another send; systemic proof failure stops.
-  A native PostgreSQL trigger scenario covers healthy sibling progress;
-  its execution still requires qualification.
+  A native PostgreSQL trigger scenario covers healthy sibling progress and
+  passed in the existing reader-summary delivery entrypoint on PostgreSQL 18.7.
 - F1 implementation and independent source acceptance complete. Required scoped
   claim/complete/fail uses an opaque row version; artifact creation, terminal job
   and EVENT are atomic. Review fixed artifact/event identity collisions, unsafe
   public database error strings, provider-draft authority over scoped fields,
   and native fixture concurrency assumptions. No source-review critical finding
-  remains open at this checkpoint; executable qualification is still required.
+  remains open at this checkpoint. The native delivery entrypoint subsequently
+  passed the F1 claim, collision, rollback and commit-acknowledgement scenarios.
 - Local execution restored and the checkout synchronized to the combined source.
   Dependencies stayed on the existing lock; no package or workflow changes were
   introduced. Prisma generation completed.
@@ -422,25 +429,58 @@ particular production users-per-second capacity without representative load.
   existing 500-line guard. Extracted only its required summary workflow factory;
   the 493-line module and 41-line provider preserve all five dependencies.
   Independent review and the complete Nest E2E inventory accepted the result.
-- Executed focused unit qualification: 40 disjoint suites / 243 tests passed.
-  Core architecture, code-quality and source-line-cap guards passed.
-- Executed complete deterministic backend E2E qualification: 84 unique suites /
-  176 tests passed on Node 22.23.5. Canonical discovery, per-file JSON receipts
-  and final union accounting found no missing, duplicate, skipped or todo tests.
-  Resource-interrupted attempts were not counted; successful retained receipts
-  correspond to unchanged source recorded in commit
+- Earlier focused qualification passed 40 disjoint suites / 243 tests. Its
+  aggregate is historical evidence, not a total to add to later overlapping
+  focused or full runs. The initial complete E2E receipts were retained against
   `301cbb8ac0ca33425bef866793bc3d1e02c370e7`.
-- Native PostgreSQL attempts received SIGKILL before a scenario verdict. The
-  real RabbitMQ harness was prepared but not executed. The executor became
-  unavailable again before native gates, full types/lint/build and the complete
-  unit inventory could be qualified. These checks remain open.
+- Restored execution on `05a50fdf0e08d6fd8235c4d647718f85ee6d11cd`
+  qualified four existing native PostgreSQL entrypoints: reader-summary ready
+  delivery (including EVENT and F1), historical ready recovery, delivery workflow
+  and source-binding status. All passed on PostgreSQL 18.7 / Node 22.23.5 using
+  disposable databases. Earlier SIGKILL attempts did not count as passes.
+- The complete architecture, code-quality and source-line-cap npm aggregates
+  passed under Node 22.23.5. Architecture executed 247 passing TAP tests; the
+  code-quality chain also passed its production lifecycle contract and Python
+  fixtures. Four existing optional PostgreSQL-profile Python tests were skipped
+  because their explicit test URL was absent; they are not counted as executed.
+  The source cap inspected 6,463 files. Three affected smoke entrypoints
+  (`check:event-store`, `check:event-relay`, `check:monitoring-persistence`) passed.
+- Full-unit triage exposed a cancelled recovery publisher opening a new connection
+  to assert topology. Reused the existing cancellation guard at that
+  boundary, then independently reviewed and tested the source recorded by
+  `4b2b58d22c00cedef10ccd11d4acd46f92eaae76`: the full broker inventory passed
+  3 suites / 9 tests on RabbitMQ 4.3.8 / Erlang 27.3.4.1, and the focused
+  publisher, channel and recovery selection passed 8 suites / 48 tests.
+- The same commit replaces only noncompliant synthetic credential literals in
+  three fixtures with already documented placeholders. Injected values and
+  redaction assertions stay paired; the secret scanner and its policy are
+  unchanged. A fresh full deterministic backend E2E run on the reviewed contents
+  recorded by that commit passed 84 unique suites / 176 tests on Node 22.23.5
+  in 70.348 seconds, with zero missing, duplicate, skipped or todo tests. This
+  complete run supersedes the earlier resource-interrupted qualification attempts.
+- The raw database-dependency inventory required the three new native helper
+  paths to be listed explicitly. Commit
+  `6cdda418101fda17f086ca21eade9e924c3681dc` adds only those paths and ownership
+  comments; production pool budgets, constructors and detection rules are
+  unchanged. Independent review accepted the update and the complete inventory
+  spec passed all 78 tests against the actual source tree.
+- The initial full-unit run is unqualified triage: SQLite runtime availability,
+  ENOSPC and SIGKILL affected execution, and its receipts are not a complete
+  successful inventory. The final full-unit and compiler/build/lint qualification
+  is tracked separately. Local tenant-RLS and reader-summary publication gates
+  stopped in their shared pinned-Docker psql prerequisite because Docker was
+  unavailable; neither is claimed passed. Existing CI supplies that prerequisite.
 - Superseded workflow run 45930518717 targeted c905885a and was cancelled after
   remaining queued. A fresh full workflow_dispatch on the final head is required;
   its link and status belong in the PR description.
 - Final source review: no reported critical production-code findings remain.
-  Full release qualification is incomplete. Keep the PR Draft and preserve all
-  existing gates. See the [executed validation checkpoint](../operations/backend-reliability-validation-2026-11-27.md)
-  for exact commands, source identity, results and remaining checks.
+  Preserve all existing gates and keep the PR Draft as requested, including after
+  successful checks. See the
+  [validation record](../operations/backend-reliability-validation-2026-11-27.md)
+  for commands, source identity and concrete local evidence. The
+  [PR #801 validation and current checks](https://github.com/777genius/social-monitor/pull/801/checks)
+  are authoritative for the final combined head; this dated execution log does
+  not replace later results or authorize merge or deployment.
 
 Primary transport references reviewed: [amqplib channel API](https://amqp-node.github.io/amqplib/channel_api.html)
 and [RabbitMQ reliability guide](https://www.rabbitmq.com/docs/reliability).

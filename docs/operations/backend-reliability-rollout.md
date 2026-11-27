@@ -1,7 +1,9 @@
 # Backend reliability: rollout and qualification
 
-This document covers the bounded recovery changes in Draft PR #801.
-It does not authorize a production rollout. No database migration, new service,
+This document covers the bounded recovery changes in
+[Draft PR #801](https://github.com/777genius/social-monitor/pull/801).
+The PR stays Draft as requested after qualification; neither successful checks
+nor this document authorize merge or production rollout. No database migration, new service,
 dependency upgrade, pool enlargement or public protocol version is required.
 
 ## Deployment compatibility
@@ -19,7 +21,9 @@ An old process must not resume after the cutover while the new executors run.
 A rollback needs the same drain boundary. Stored events, artifacts and jobs use
 the existing schema, but schema compatibility alone does not make mixed executor
 versions safe. Existing deployment readiness and lifecycle changes in #799 remain
-a separate PR.
+a separate PR. The integration recheck at its head `ceb0ba66` found no changed-file
+overlap. The recorded #793, #783, #798 and #800 heads were unchanged; their work
+remains outside this PR's scope.
 
 ## Resource limits and expected behavior
 
@@ -54,6 +58,8 @@ of that remaining ownership. A failed proof stops further sends.
 An unsuccessful native close is not proof that acquired deliveries were requeued.
 Their captured native ownership remains available for another cleanup attempt;
 cleanup does not close a replacement channel or connection.
+Terminal recovery cancellation is checked before topology acquisition, preventing
+an already cancelled attempt from opening a replacement channel.
 
 **Scheduling:** continuation is bounded process-local progress, not a new durable
 scheduler checkpoint. Restart begins another sweep. Failed digest delivery
@@ -98,8 +104,34 @@ Live provider/user production probes are not implied by successful fixture tests
 Record source SHA and actual results; queued, cancelled, skipped or earlier-SHA
 runs cannot qualify the final implementation.
 
-## Current execution checkpoint
+## Recorded local qualification
 
-See [the 2026-11-27 validation record](backend-reliability-validation-2026-11-27.md)
-for the qualified source, complete backend E2E result and still-open native/CI
-gates. The PR remains Draft until those remaining checks are resolved.
+The [2026-11-27 validation record](backend-reliability-validation-2026-11-27.md)
+retains commands, source identities and receipts. The concrete local proof includes:
+
+| Evidence | Qualified result | Recorded source |
+| --- | --- | --- |
+| Fresh complete deterministic backend E2E | 84 unique suites / 176 tests; no failed, skipped, missing or duplicate cases | Reviewed contents committed as `4b2b58d22c00cedef10ccd11d4acd46f92eaae76` |
+| Actual RabbitMQ broker and focused transport units | Broker: 3 suites / 9 tests; units: 8 suites / 48 tests | Cancellation fix in `4b2b58d22c00cedef10ccd11d4acd46f92eaae76`; RabbitMQ 4.3.8 / Erlang 27.3.4.1 |
+| Four PostgreSQL entrypoints | Ready delivery with EVENT/F1, historical ready recovery, delivery workflow and source-binding status all passed | `05a50fdf0e08d6fd8235c4d647718f85ee6d11cd`; PostgreSQL 18.7 |
+| Architecture, code quality and source cap | Full npm aggregates passed; four optional Python PG-profile tests lacked their required URL and were not executed | Node 22.23.5; source cap scanned 6,463 files |
+| Exact native-helper dependency inventory | Complete spec: 78 tests passed; explicit fixture paths, unchanged production budgets | `6cdda418101fda17f086ca21eade9e924c3681dc` |
+
+The cancellation, documented-placeholder and exact-inventory corrections received
+independent review. The placeholder change keeps the injected error value paired
+with its redaction assertion and does not relax the secret scanner. The inventory
+change admits only the three reviewed native helpers and does not enlarge runtime
+pools or loosen dependency detection. Overlapping test selections are not added
+together as an inflated total.
+
+The initial full-unit attempt is triage, not qualification: SQLite availability,
+ENOSPC and SIGKILL affected that run. Final full-unit and compiler/build/lint
+results require their own successful receipts. Local tenant-RLS and publication
+entrypoints stopped before their contracts at a shared Docker-based psql
+prerequisite; those local attempts do not establish a pass. The existing CI
+environment supplies Docker and retains these checks.
+
+Use the [PR #801 validation and current checks](https://github.com/777genius/social-monitor/pull/801/checks)
+as the authoritative final aggregate result for the combined head. This historical
+checkpoint neither predicts later CI results nor authorizes a rollout. Keep the
+requested Draft status regardless of the check outcome.

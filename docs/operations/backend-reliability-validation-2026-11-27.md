@@ -1,120 +1,188 @@
-# Backend reliability validation — 2026-11-27
+# Backend reliability qualification — 2026-11-27
 
-This is an execution checkpoint for Draft PR #801, not release approval.
-The complete deterministic backend E2E inventory passed. Native PostgreSQL,
-real-broker qualification and the remaining repository-wide gates are still open.
+This record preserves the executed local evidence for Draft PR #801. The final
+repository-wide unit, compiler and GitHub Actions verdicts are maintained in the
+[PR validation table and checks](https://github.com/777genius/social-monitor/pull/801).
+A queued, skipped, interrupted or earlier-source run is not a completed check.
+
+The requested deliverable remains a Draft PR. Fixture qualification does not
+authorize a merge or a production rollout.
 
 ## Source identity
 
-The qualified executable source is commit `301cbb8ac0ca33425bef866793bc3d1e02c370e7`
-(tree `f5a6b5ad5b1591c7171e8863873bfdca6abdc150`).
+The final production source was recorded in
+`4b2b58d22c00cedef10ccd11d4acd46f92eaae76`.
+Commit `6cdda418101fda17f086ca21eade9e924c3681dc` adds only the exact
+native-fixture inventory test update.
 
-Tests ran on `9084700f66fdaa05ec08704086e7aa774e5a3094` with exactly two
-pending source files: `summary-rest-infrastructure.module.ts` and
-`summary-execution-workflow.provider.ts`, both under
-`libs/summary/interfaces/rest/`. Commit `301cbb8ac0ca33425bef866793bc3d1e02c370e7`
-records those exact tested contents. Subsequent checkpoint changes are documentation only.
+The fresh complete E2E and real-broker runs used a physical source snapshot with
+exactly the contents of `4b2b58d`. Its four-file candidate manifest was identical
+before and after execution. Root independently compared every path changed since
+`05a50fdf` with the synchronized checkout at `6cdda418`.
 
-The extraction fixes the existing 500-line production-file guard: the composition
-module is now 493 lines and the required workflow factory is a separate 41-line
-file. Its token, five injected dependencies, adapter selection and null-client
-failure remain the same. An independent reviewer accepted the extraction, and
-the complete E2E run exercised the resulting Nest composition.
+The earlier composition extraction is recorded in
+`301cbb8ac0ca33425bef866793bc3d1e02c370e7`: the module is 493 lines and
+its required workflow provider is 41 lines. Independent review confirmed the
+same token, five injected dependencies, adapter selection and null-client failure.
 
-## Executed results
+No package, lockfile, Jest configuration, test timeout, schema or CI policy was
+changed for these checks.
 
-| Check | Actual result | Scope and runtime |
+## Executed local evidence
+
+| Check | Actual result | Scope |
 | --- | --- | --- |
-| Complete backend E2E | **84 suites / 176 tests passed** | Existing `test/jest-e2e.config.ts`, Node 22.23.5 |
-| Scheduler, digest repair and generic summary execution units | 12 suites / 81 tests passed | Existing unit config, Node 24.22.3 |
-| Bootstrap cache, query and realtime units | 7 suites / 59 tests passed | Existing unit config, Node 24.22.3 |
-| RabbitMQ channel/publisher units | 7 suites / 42 tests passed | Existing unit config, Node 24.22.3; fake transport fixtures |
-| EVENT outbox, heartbeat, relay, tenant context and batched reads units | 13 suites / 58 tests passed | Existing unit config, Node 24.22.3 |
-| Digest adapter keyset parity units | 1 suite / 3 tests passed | Existing unit config, Node 22.23.5 |
-| Core architecture guard | Passed | `node scripts/check-architecture.mjs` |
-| Core code-quality guard | Passed after composition split | `node scripts/check-code-quality.mjs` |
-| Source/test line cap | Passed, 6,463 files scanned | `node scripts/check-source-line-cap.mjs` |
+| Fresh complete backend E2E | **84 suites / 176 tests passed** | Final production source, Node 22.23.5; unchanged canonical E2E configuration |
+| Real RabbitMQ E2E after the cancellation fix | **3 suites / 9 tests passed** | RabbitMQ 4.3.8, Erlang/OTP 27.3.4.1, Node 22.23.5 |
+| RabbitMQ units and existing terminal recovery cancellation | **8 suites / 48 tests passed** | All seven B unit suites plus the unchanged recovery cancellation suite |
+| EVENT/F1 native delivery gate | **Passed** | PostgreSQL 18.7, Prisma 7.9.1, Node 22.23.5 |
+| Historical EVENT recovery native gate | **Passed** | Same native runtime; immutable evidence, fenced recovery and ACK uncertainty |
+| Existing delivery-workflow PostgreSQL gate | **Passed** | COMMAND ownership, rollback, renewal, stale settlement and workspace isolation |
+| Existing source-binding-status PostgreSQL gate | **Passed** | Resume quota, receipt replay, rollback and concurrent resume |
+| Exact database-pool fixture inventory | **1 suite / 78 tests passed** | Three explicit native helper paths registered; production budgets unchanged |
+| Full secret scan | **Passed** | Complete synchronized checkout at `6cdda418`; unchanged scanner and allowlist |
+| Changed smoke entrypoints | **All passed** | `check:event-store`, `check:event-relay`, `check:monitoring-persistence` |
+| Complete architecture npm aggregate | **Passed** | 247 TAP test executions, zero failures or skips |
+| Complete code-quality npm aggregate | **Passed** | Source guard, production-lifecycle typecheck/test, Telegram Python and shell checks |
+| Source/test line cap | **Passed** | 6,463 files scanned against the existing 1,000-line cap |
+| Earlier full TypeScript check | **Passed on `9f3d3ae` equivalent source** | TypeScript 6.0.3, 6,659 files; final aggregate status belongs to the PR checks |
+| README-preview typecheck | **Passed** | Existing isolated subproject with its locked TypeScript 7.0.2 |
 
-The focused unit selections are disjoint: **40 suites / 243 tests** total.
-Earlier targeted E2E runs (10 suites / 18 tests and 2 suites / 9 tests) are
-subsets of the complete inventory and are not added to the 84 / 176 result.
-Core architecture and quality guards are not a claim that every command in the
-larger npm aggregate scripts completed.
+The code-quality aggregate's existing Telegram Python suite reports 37 tests:
+33 execute and four optional native PostgreSQL tests are skipped without their
+explicit isolated database URL. Those four skips are separate from the complete
+backend E2E result, which has zero skips.
 
-## Complete E2E accounting
+Earlier focused unit selections passed 40 disjoint suites / 243 tests. They
+overlap with subsequent RabbitMQ and integration verification, so these totals
+must not be added together. The original targeted E2E selections also overlap
+with the full 84-suite inventory.
 
-Discovery came from the unchanged canonical Jest configuration. It includes
+## Complete backend E2E accounting
+
+Discovery came from the unchanged `test/jest-e2e.config.ts`. It includes
 `apps/ingestion-worker/src/reddit-conversation-summary-flow.e2e-spec.ts`
-as well as the files under `test/e2e/`.
+as well as the suites under `test/e2e/`.
 
-The final aggregation checked all of the following:
+The fresh single canonical run and its independently checked JSON report show:
 
-- 84 discovered suites and 84 distinct successfully executed suites;
-- 176 passed tests, zero failed, pending or todo tests;
-- no missing, unexpected or duplicate suite paths;
-- no skipped tests or suites;
-- unchanged source and configuration across retained successful receipts.
+- 84 discovered and 84 distinct executed suites;
+- 176 passed tests and zero failed, pending or todo tests;
+- no missing, unexpected, duplicate or skipped suite paths;
+- unchanged candidate and configuration hashes before and after execution.
 
-All qualified E2E receipts use Node 22.23.5 and a clean deterministic environment.
-The existing setup file and three deterministic model selectors were retained.
-Real HTTP requests and Socket.IO clients were used where the fixtures require them.
-
-The constrained executor intermittently killed processes with SIGKILL before
-Jest produced a verdict, including processes with low observed RSS. These attempts
-were not counted as passes. Affected files were executed again; successful
-receipts were retained once per file and the complete inventory was reconciled.
-No assertions, timeouts, test files or discovery rules were disabled to get a pass.
-
-The successful final resource setting used direct Node processes with
-`--max-old-space-size=256 --max-semi-space-size=4`; earlier qualified files
-used 384 or 512 MB heaps. The test command remained:
+The existing deterministic setup and synthetic CI environment were retained.
+The scenarios use real HTTP requests and Socket.IO clients where applicable.
+Node 22.23.5 ran one recycling worker; the CLI resource settings were:
 
 ```sh
-node --max-old-space-size=256 --max-semi-space-size=4 \
-  node_modules/jest/bin/jest.js \
-  --config test/jest-e2e.config.ts --runInBand \
-  --runTestsByPath "$reliability_test_file" \
-  --json --outputFile "$reliability_report_file"
+node --max-old-space-size=768 node_modules/jest/bin/jest.js \
+  --config test/jest-e2e.config.ts \
+  --maxWorkers=1 --workerIdleMemoryLimit=384MB \
+  --json --outputFile="$reliability_e2e_report"
 ```
 
-The detailed local receipts and aggregate
-`/tmp/social-monitor-reliability-evidence/backend-e2e-summary.json`
-were read and verified before the executor became unavailable. They are local
-execution evidence, not uploaded GitHub Actions artifacts. This document retains
-the verified compact result; a new CI run must produce its own evidence.
+Jest completed in 69.85 seconds, with a maximum reported heap of 437 MiB.
+This fresh run supersedes the earlier resource-constrained per-file aggregation
+for the final production source.
 
-## Native and repository-wide gates still open
+The local evidence bundle contains discovery, raw execution JSON, source/config
+hashes, a compact summary, and a proof listing all suite/assertion verdicts.
+These local receipts are distinct from artifacts produced by GitHub Actions.
 
-| Gate | Exact checkpoint status |
-| --- | --- |
-| PostgreSQL EVENT ownership, consumer dedupe and atomic generic summary completion | **Unqualified.** PostgreSQL 18.7 and its disposable fixture database started, but the entrypoint received SIGKILL before a scenario verdict. |
-| Historical reader-summary recovery PostgreSQL gate | Not reached after the first native gate stopped. |
-| Real RabbitMQ broker E2E | Not executed. RabbitMQ 4.3.8 / Erlang 27.3.4.1 were prepared in an isolated temporary directory; no broker pass is claimed. |
-| Full unit inventory and six-shard completeness | Not executed locally. The prepared inventory contains 1,398 eligible tracked suites after the existing five exclusions. |
-| Full TypeScript check and backend build | Not executed after the environment recovery. |
-| Full ESLint check | Not executed after the environment recovery. |
-| Entire architecture/code-quality npm aggregates | Incomplete. The Node 24 architecture attempt passed 62 fixture tests and then stopped at a baseline Node flag unsupported by that runtime; the core guards above passed. |
+## Native failure and recovery proof
 
-The last confirmed PostgreSQL attempt used Node 22.23.5, the CI transpile-only
-and rootDir settings, the unchanged entrypoint/assertions and a 120-second bound.
-It reached the original reader-delivery WorkerRuntime, then exited 137 after
-9.4379 seconds. Its cleanup trap stopped the disposable server. The next
-instrumented attempt lost the execution environment before returning a result.
-These interruptions do not establish a PostgreSQL assertion failure or a pass.
+The unchanged native entrypoints used disposable PostgreSQL 18.7 and the locked
+Prisma 7.9.1 client:
 
-The earlier workflow run [45930518717](https://github.com/777genius/social-monitor/actions/runs/45930518717)
-targeted superseded commit `c905885a`, remained queued, and was cancelled.
-It cannot qualify the current implementation. The PR description links the new
-full workflow_dispatch run for the final documentation/source head.
+```sh
+npm run check:reader-summary-ready-delivery-postgres
+npm run check:reader-summary-ready-recovery-postgres
+npm run check:delivery-workflow-postgres
+npm run check:source-binding-status-postgres
+```
 
-## Review and completion boundary
+The first pair used the same transpile-only/rootDir environment as its CI step.
+The second pair used the default typechecking entrypoints without those overrides.
 
-Independent source review found no remaining reported critical production-code
-finding in A–F1. Previously reported ownership, collision, fairness, stale-write
-and error-redaction findings were addressed. Executable gates above remain
-necessary before changing the Draft/release status.
+The EVENT/F1 scenarios prove concurrent bounded claims, row-lock expiry fencing,
+renewal, retry exhaustion, stale-owner rejection, consumer rollback/dedupe/RLS,
+healthy sibling progress after an isolated storage fault, systemic-failure stop,
+and atomic artifact/job/EVENT completion. Summary scenarios include concurrent
+claims, row-version ownership, identity collisions and lost completion ACKs.
+
+The historical recovery gate also proves immutable supersession, microsecond
+`xmin` compare-and-set, concurrent writers, durable consumer replay, uncertain
+confirmation/DB outcomes and preservation of the no-resend boundary.
+
+The existing delivery and source-status gates independently cover COMMAND/delivery
+ownership and quota/receipt transactions. They are not substitutes for the separate
+full tenant-RLS and reader-publication CI gates.
+
+The real broker was RabbitMQ 4.3.8 / Erlang 27.3.4.1, verified by an actual AMQP
+handshake. The unchanged `test/jest-broker-e2e.config.ts` passed all three suites
+and nine tests. They cover topology loss/reconnect, mandatory returns, concurrent
+confirmed sends, redelivery, poison metadata and captured-origin delivery cleanup.
+All owned broker and PostgreSQL processes were stopped after their runs.
+
+## Findings from full-inventory triage
+
+The broad local unit run used the canonical 1,398 eligible suites: 1,403 tracked
+unit candidates minus the existing five exact exclusions. It found three
+integration issues, all corrected and independently reviewed:
+
+1. **Terminal recovery cancellation:** reasserting topology after close could open
+   a new connection before the send guard rejected a cancelled publication.
+   Reusing the existing guard at channel acquisition fixes this with one line.
+   All five originally failing cancellation phases now pass unchanged; ordinary
+   reconnect and captured-delivery cleanup still pass on the real broker.
+2. **Synthetic credential literals:** three new test files used values outside
+   the existing documented placeholder policy. Values were replaced with
+   `token-value` / `raw-password`, with redaction assertions preserved. The
+   complete original secret scanner passes; no exception was added.
+3. **Native fixture inventory:** the exact raw-dependency list now names the
+   three added EVENT/summary helpers. They borrow the gate-owned pool and close
+   temporary clients; summary contention uses two independent max=1 registries.
+   Runtime budgets, constructor detection and production import restrictions
+   remain unchanged. The complete inventory spec passes all 78 tests.
+
+The same triage run encountered an absent SQLite CLI, temporary-filesystem
+exhaustion in a real local clone fixture, and a killed worker. It was stopped and
+is not counted as complete unit qualification. SQLite was restored from official
+checksum-verified packages with its matching native library. Final execution uses
+isolated temporary space and preserves the existing discovery and completeness
+checker. Its actual six-shard result is recorded in the PR validation table.
+
+## Canonical CI and execution limits
+
+The final full `Pull request checks` workflow is dispatched on this branch while
+the PR stays Draft. Its exact run link, source SHA and result are recorded in the
+PR description. A Draft job that the workflow skips is not E2E evidence.
+
+Two historical native gates call a pinned Docker/psql regression fixture:
+
+- `check:tenant-rls-postgres`;
+- `check:reader-summary-publication-postgres`.
+
+The local executor has no Docker CLI or reachable Docker Engine. Their local
+attempts stopped at that prerequisite and do not qualify either gate. The
+standard CI environment provides the required runtime. No Docker shim, weakened
+fixture or replacement database role was used.
+
+Monolithic local compiler/lint attempts also received SIGKILL under shared-memory
+pressure. Earlier TypeScript success and resource-interrupted later attempts are
+reported separately. Final compiler, build, unit-completeness, security, native
+and release-fixture outcomes must be read from completed checks for the qualified
+source; no interrupted attempt is promoted to a pass.
+
+## Review and rollout boundary
+
+Independent reviews accepted the ownership, collision, fairness, stale-write,
+redaction and final cancellation fixes. The final aggregate checks remain part of
+acceptance even when source review has no outstanding reported critical finding.
 
 The [rollout runbook](backend-reliability-rollout.md) retains the old-executor
-drain requirement, at-least-once delivery semantics and explicit boundary around
-genuinely interrupted paid model work. No production rollout, migration, new
-service, dependency upgrade or CI/test-policy relaxation is included.
+drain requirement, at-least-once delivery semantics and the explicit limit around
+genuinely interrupted paid model work. Schema compatibility does not make mixed
+old/new executors safe. Production deployment and provider/user probes are
+outside this Draft PR's authorization.
