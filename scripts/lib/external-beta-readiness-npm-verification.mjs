@@ -1,7 +1,7 @@
-// Preserve original npm verification/backend-safe admission and diagnostic order.
+// Require the exact readiness script token or its backend-safe inventory entry.
 export function validateExternalBetaNpmVerification({ scripts, verifyScript, backendSafeScripts, packagePath, violations }) {
   const hasVerificationScript = (scriptName) =>
-    verifyScript.includes(`npm run ${scriptName}`) || backendSafeScripts.has(scriptName);
+    new RegExp(`npm run ${scriptName}(?=\\s|[;&|]|$)`).test(verifyScript) || backendSafeScripts.has(scriptName);
 
   if (!scripts['check:external-beta-readiness']) {
     violations.push(`${packagePath}: missing check:external-beta-readiness`);

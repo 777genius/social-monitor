@@ -301,7 +301,7 @@ export function validateRunnerImplementationMarkers({
   }
 
   if (!/^import \{ createExternalBetaEvidencePathAdmission \} from '\.\/lib\/external-beta-evidence-path-admission\.mjs';$/m.test(activeRunnerSource)
-    || !/^const \{\s*validateExternalBetaEnvFilePath, validateExecutableOutputArtifactPathEnv,\s*validatePlannedEvidencePathEnv, validateEvidencePathEnv,\s*evidencePathMaxBytes, formatBytes, isFixtureLikeArtifactPath,\s*\} = createExternalBetaEvidencePathAdmission\(\{\s*contract, env: process\.env, cwd: \(\) => process\.cwd\(\), jobInputEnvNames,\s*accessSync, existsSync, lstatSync, readFileSync, realpathSync, statSync,\s*execFileSync, writableMode: constants\.W_OK,\s*\}\);$/m.test(activeRunnerSource)) {
+    || !/^const \{\s*validateExternalBetaEnvFilePath, validateExecutableOutputArtifactPathEnv,\s*validatePlannedEvidencePathEnv, validateEvidencePathEnv,\s*evidencePathMaxBytes, formatBytes, isFixtureLikeArtifactPath,\s*\} = createExternalBetaEvidencePathAdmission\(\{\s*contract, env: process\.env, cwd: \(\) => process\.cwd\(\), jobInputEnvNames,\s*accessSync, existsSync, lstatSync, readFileSync, realpathSync: realpathSync\.native, statSync,\s*execFileSync, writableMode: constants\.W_OK,\s*\}\);$/m.test(activeRunnerSource)) {
     violations.push(`${runnerFile}: runner must bind evidence path admission to live dependencies`);
   }
   for (const call of [

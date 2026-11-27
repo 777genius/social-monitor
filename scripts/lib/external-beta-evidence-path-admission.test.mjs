@@ -35,8 +35,9 @@ function sandbox(t) {
   const dependencies = {
     contract, env, cwd: () => currentDirectory,
     jobInputEnvNames: item => [...item.requiredEnv, ...item.optionalEnv],
-    accessSync, existsSync, lstatSync, readFileSync, realpathSync, statSync,
-    execFileSync, writableMode: constants.W_OK,
+    accessSync, existsSync, lstatSync, readFileSync, realpathSync: realpathSync.native, statSync,
+    execFileSync: () => { throw Object.assign(new Error('untracked sandbox evidence'), { status: 1 }); },
+    writableMode: constants.W_OK,
   };
   return {
     root, workspace, evidence, env, contract, dependencies,
@@ -147,6 +148,58 @@ test('existing output aliases cannot target workspace, fixture or non-JSON files
     assert.equal(readFileSync(target, 'utf8'), '{"schemaVersion":1}');
     rmSync(alias);
   }
+});
+
+test('symlink parent traversal cannot admit workspace evidence in any stage', t => {
+  const s = sandbox(t);
+  const child = join(s.workspace, 'child');
+  mkdirSync(child);
+  symlinkSync(child, join(s.evidence, 'link'), 'dir');
+  for (const directory of [s.workspace, s.evidence]) {
+    writePrivate(join(directory, 'capture.json'));
+    writePrivate(join(directory, 'private.env'), 'SAFE_MODE=workspace-test-value\n');
+  }
+  // Preserve .. after the symlink: path.join would erase the traversal being tested.
+  s.env.OUTPUT_PATH = `${s.evidence}/link/../capture.json`;
+  for (const name of ['validatePlannedEvidencePathEnv', 'validateExecutableOutputArtifactPathEnv', 'validateEvidencePathEnv']) {
+    assert.ok(stage(s.policy, name).violations.some(value => value.includes('inside the git workspace')), name);
+  }
+  let reads = 0;
+  const loader = createExternalBetaEnvFileLoader({
+    parseDotenv, env: s.env, validateExternalBetaEnvFilePath: s.policy.validateExternalBetaEnvFilePath,
+    readFileSync: (...args) => { reads += 1; return readFileSync(...args); },
+  });
+  assert.ok(loader.loadExternalBetaEnvFiles([`${s.evidence}/link/../private.env`])
+    .some(value => value.includes('inside the git workspace')));
+  assert.equal(reads, 0);
+  assert.equal(s.env.SAFE_MODE, undefined);
+});
+
+test('safe symlink parent traversal admits existing evidence and future outputs', t => {
+  const s = sandbox(t);
+  const child = join(s.evidence, 'child');
+  mkdirSync(child);
+  symlinkSync(child, join(s.root, 'parent-alias'), 'dir');
+  writePrivate(join(s.evidence, 'capture.json'));
+  s.env.OUTPUT_PATH = `${s.root}/parent-alias/../capture.json`;
+  for (const name of ['validatePlannedEvidencePathEnv', 'validateExecutableOutputArtifactPathEnv', 'validateEvidencePathEnv']) {
+    assert.deepStrictEqual(stage(s.policy, name).violations, []);
+  }
+  s.env.OUTPUT_PATH = `${s.root}/parent-alias/../future.json`;
+  for (const name of ['validatePlannedEvidencePathEnv', 'validateExecutableOutputArtifactPathEnv']) {
+    assert.deepStrictEqual(stage(s.policy, name).violations, []);
+  }
+});
+
+test('Git tracking is checked in the injected workspace independently of the caller directory', t => {
+  const s = sandbox(t);
+  execFileSync('git', ['init', '--quiet'], { cwd: s.workspace });
+  s.contract.executionSafety.evidencePathEnvForbidsWorkspacePath = false;
+  s.env.OUTPUT_PATH = writePrivate(join(s.workspace, 'capture.json'));
+  const policy = createExternalBetaEvidencePathAdmission({ ...s.dependencies, execFileSync });
+  assert.deepStrictEqual(stage(policy, 'validateEvidencePathEnv').violations, []);
+  execFileSync('git', ['add', 'capture.json'], { cwd: s.workspace });
+  assert.match(stage(policy, 'validateEvidencePathEnv').violations[0], /must not point to a git-tracked file/);
 });
 
 test('dangling output aliases are rejected while genuinely absent files stay allowed', t => {
@@ -350,6 +403,36 @@ test('real CLI rejects env-file workspace aliases before parsing or echoing thei
   assert.equal(result.status, 1, result.stderr);
   assert.match(result.stderr, /realpath must not be inside the git workspace/);
   assert.doesNotMatch(result.stdout + result.stderr, /private-content-must-stay-unread/);
+});
+
+test('real CLI rejects symlink parent traversal in plan, artifact and execute admission', t => {
+  const s = cliSandbox(t);
+  const child = join(s.workspace, 'child');
+  mkdirSync(child);
+  symlinkSync(child, join(s.evidence, 'link'), 'dir');
+  const target = writePrivate(join(s.workspace, 'protected.json'), '{"untouched":true}');
+  writePrivate(join(s.evidence, 'protected.json'));
+  const output = `${s.evidence}/link/../protected.json`;
+  for (const args of [['--plan', '--require-env'], ['--validate-artifacts'], ['--execute']]) {
+    const result = s.run(args, { EXTERNAL_BETA_EVIDENCE_CONFIRM: 'run-live', OUTPUT_PATH: output });
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, /inside the git workspace/);
+    assert.equal(existsSync(join(s.workspace, 'producer-invoked')), false);
+    assert.equal(readFileSync(target, 'utf8'), '{"untouched":true}');
+  }
+});
+
+test('real CLI rejects env-file symlink parent traversal before loading values', t => {
+  const s = cliSandbox(t);
+  const child = join(s.workspace, 'child');
+  mkdirSync(child);
+  symlinkSync(child, join(s.evidence, 'link'), 'dir');
+  writePrivate(join(s.workspace, 'private.env'), 'SAFE_MODE=workspace-value-must-stay-unread\n');
+  writePrivate(join(s.evidence, 'private.env'), 'SAFE_MODE=outside-test-value\n');
+  const result = s.run(['--plan', '--json', '--env-file', `${s.evidence}/link/../private.env`]);
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /realpath must not be inside the git workspace/);
+  assert.doesNotMatch(result.stdout + result.stderr, /workspace-value-must-stay-unread/);
 });
 
 test('real CLI accepts a future output through a safe parent alias and live env-file injection', t => {

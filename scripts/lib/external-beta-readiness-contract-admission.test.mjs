@@ -122,7 +122,12 @@ test('npm admission preserves verification through either verify or backend-safe
   };
   assert.deepStrictEqual(validate('npm run check:external-beta-readiness'), []);
   assert.deepStrictEqual(validate('echo noop', ['check:external-beta-readiness']), []);
-  assert.deepStrictEqual(validate('npm run check:external-beta-readiness-extra'), []);
+  assert.deepStrictEqual(validate('npm run check:external-beta-readiness && npm run check:other'), []);
+  assert.deepStrictEqual(validate('npm run check:external-beta-readiness; npm run check:other'), []);
+  assert.deepStrictEqual(validate('npm run check:external-beta-readiness -- --flag'), []);
+  assert.deepStrictEqual(validate('npm run check:external-beta-readiness-extra'), [
+    'package.json: npm run verify or verify:backend must include check:external-beta-readiness',
+  ]);
   assert.deepStrictEqual(validate('echo noop'), [
     'package.json: npm run verify or verify:backend must include check:external-beta-readiness',
   ]);

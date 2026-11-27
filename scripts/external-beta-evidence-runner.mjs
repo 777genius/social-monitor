@@ -44,7 +44,7 @@ const {
   evidencePathMaxBytes, formatBytes, isFixtureLikeArtifactPath,
 } = createExternalBetaEvidencePathAdmission({
   contract, env: process.env, cwd: () => process.cwd(), jobInputEnvNames,
-  accessSync, existsSync, lstatSync, readFileSync, realpathSync, statSync,
+  accessSync, existsSync, lstatSync, readFileSync, realpathSync: realpathSync.native, statSync,
   execFileSync, writableMode: constants.W_OK,
 });
 const args = process.argv.slice(2);

@@ -530,13 +530,14 @@ export function createExternalBetaEvidencePathAdmission({
   }
 
   function isGitTrackedPath(path) {
-    const pathspec = isAbsolute(path) ? relative(cwd(), path) : path;
+    const workspace = cwd();
+    const pathspec = isAbsolute(path) ? relative(workspace, path) : path;
     if (isParentRelativePath(pathspec)) {
       return false;
     }
 
     try {
-      execFileSync('git', ['ls-files', '--error-unmatch', '--', pathspec], { stdio: 'ignore' });
+      execFileSync('git', ['ls-files', '--error-unmatch', '--', pathspec], { cwd: workspace, stdio: 'ignore' });
       return true;
     } catch (error) {
       if (error?.status === 1) {

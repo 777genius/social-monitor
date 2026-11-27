@@ -57,7 +57,7 @@ function assertPathAdmissionBinding(text) {
   assert.ok(ts.isObjectLiteralExpression(dependencies));
   assert.deepStrictEqual(dependencies.properties.map(node => node.getText(root)), [
     'contract', 'env: process.env', 'cwd: () => process.cwd()', 'jobInputEnvNames',
-    'accessSync', 'existsSync', 'lstatSync', 'readFileSync', 'realpathSync', 'statSync',
+    'accessSync', 'existsSync', 'lstatSync', 'readFileSync', 'realpathSync: realpathSync.native', 'statSync',
     'execFileSync', 'writableMode: constants.W_OK',
   ]);
   const loader = declarations.find(node => node.initializer
@@ -472,3 +472,4 @@ test('runner cannot bypass live private env admission by commenting out its bind
 test('real checker reads the extracted private env-file policy for owner-marker enforcement', () => {
   assert.match(sources.checkSource, /envFileLoaderSource:\s*readFileSync\(envFileLoaderPath,\s*'utf8'\)/);
 });
+
