@@ -24,7 +24,8 @@ type Fixture = { readonly database: Pool; readonly adminUrl: string; readonly ru
 export async function checkSummaryExecutionPostgres(f: Fixture): Promise<void> {
   await installSummaryExecutionTables(f.database, f.runtimeUrl);
   const PrismaClient = loadPrismaRuntimeClient<PrismaPgRuntimeClientConstructor<SummaryExecutionPostgresClient>>();
-  const config = defaultPostgresRuntimePoolConfig(f.runtimeUrl, 'intelligence-worker');
+  const config = defaultPostgresRuntimePoolConfig(f.runtimeUrl, 'admin-tool');
+  assert.equal(config.max, 1, 'each independent fixture worker must use a single connection');
   const first = await new PostgresRuntimePoolRegistry().acquire(config, PrismaClient);
   const peer = await new PostgresRuntimePoolRegistry().acquire(config, PrismaClient).catch(async (error) => {
     await first.close();
@@ -53,6 +54,8 @@ export async function checkSummaryExecutionPostgres(f: Fixture): Promise<void> {
       await locker.query('BEGIN');
       await locker.query('SELECT id FROM summary_jobs WHERE id=$1 FOR UPDATE', [start.summaryJobId]);
       pending = Promise.all([left.tryStart(start), right.tryStart(start)]);
+      // Observe a rejected connection/query while the lock latch is still pending.
+      void pending.catch(() => undefined);
       await waitForBlockedSummaryClaims(f.database);
       await locker.query('ROLLBACK');
       claims = await pending;
