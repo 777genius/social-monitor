@@ -3,6 +3,7 @@ import type { QueueCommandEnvelope } from '@social-monitor/platform-queue';
 import type { WorkerRuntime } from '@social-monitor/platform-worker';
 import { DomainError, tenantId, workspaceId } from '@social-monitor/shared-kernel';
 
+import type { DueDigestContinuation } from '../../features/schedule-due-digests/schedule-due-digests.command';
 import type { ScheduleDueDigestsUseCase } from '../../features/schedule-due-digests/schedule-due-digests.use-case';
 import type { ScheduleDueDigestsResult } from '../../features/schedule-due-digests/schedule-due-digests.result';
 
@@ -21,7 +22,10 @@ export class ScheduleDueDigestsCommandHandler {
     private readonly runtime: WorkerRuntime,
   ) {}
 
-  async handle(command: QueueCommandEnvelope<Readonly<Record<string, unknown>>>): Promise<ScheduleDueDigestsResult> {
+  async handle(
+    command: QueueCommandEnvelope<Readonly<Record<string, unknown>>>,
+    continuation?: DueDigestContinuation,
+  ): Promise<ScheduleDueDigestsResult> {
     if (command.commandType !== 'delivery.digests.schedule_due') {
       throw new Error(`Unsupported command type: ${command.commandType}`);
     }
@@ -36,6 +40,7 @@ export class ScheduleDueDigestsCommandHandler {
           tenantId: payload.tenantId === undefined ? undefined : tenantId(payload.tenantId),
           workspaceId: payload.workspaceId === undefined ? undefined : workspaceId(payload.workspaceId),
           limit: payload.limit ?? 20,
+          ...(continuation === undefined ? {} : { continuation }),
         });
 
         if (!result.ok) {

@@ -2,7 +2,7 @@ import { type Clock, DomainError, err, ok, redactSensitiveText, type Result } fr
 
 import type { DigestScheduleRepositoryPort } from '../../ports';
 import type { AssembleDigestUseCase } from '../assemble-digest/assemble-digest.use-case';
-import type { ScheduleDueDigestsCommand } from './schedule-due-digests.command';
+import type { DueDigestContinuation, ScheduleDueDigestsCommand } from './schedule-due-digests.command';
 import type { ScheduledDigestResultItem, ScheduleDueDigestsResult } from './schedule-due-digests.result';
 
 type ScheduleDueDigestsFailure = DomainError | Error;
@@ -19,13 +19,27 @@ export class ScheduleDueDigestsUseCase {
       return err(new DomainError('validation.failed', 'Schedule due digests limit must be between 1 and 100'));
     }
 
+    if ((command.tenantId === undefined) !== (command.workspaceId === undefined)) {
+      return err(new DomainError('tenant.scope_missing', 'Digest schedule scope must include tenant and workspace'));
+    }
     const now = this.clock.now();
-    const schedules = await this.digestSchedules.findDue({
+    const continuation = command.continuation?.tenantId === command.tenantId &&
+      command.continuation?.workspaceId === command.workspaceId
+      ? command.continuation : undefined;
+    const readPage = (cursor?: DueDigestContinuation) => this.digestSchedules.findDue({
       tenantId: command.tenantId,
       workspaceId: command.workspaceId,
       now,
       limit: command.limit,
+      ...(cursor === undefined ? {} : { cursor: { nextRunAt: cursor.nextRunAt, id: cursor.id } }),
     });
+    let schedules = await readPage(continuation);
+    if (schedules.length === 0 && continuation !== undefined) {
+      schedules = await readPage();
+    }
+    // Advance past the original page, including failed schedules. Successful
+    // schedule writes change nextRunAt and must not move this page boundary.
+    const last = schedules.at(-1)?.toSnapshot();
     const digests: ScheduledDigestResultItem[] = [];
     let skipped = 0;
     const failures: { digestScheduleId: string; message: string }[] = [];
@@ -71,6 +85,14 @@ export class ScheduleDueDigestsUseCase {
 
     return ok({
       scannedAt: now,
+      ...(schedules.length === command.limit && last !== undefined ? {
+        continuation: {
+          tenantId: command.tenantId,
+          workspaceId: command.workspaceId,
+          nextRunAt: last.nextRunAt,
+          id: last.id,
+        },
+      } : {}),
       evaluated: schedules.length,
       assembled: digests.length,
       skipped,

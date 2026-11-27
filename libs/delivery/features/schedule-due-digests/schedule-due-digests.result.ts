@@ -1,3 +1,5 @@
+import type { DueDigestContinuation } from './schedule-due-digests.command';
+
 export type ScheduledDigestResultItem = {
   readonly digestScheduleId: string;
   readonly digestId: string;
@@ -7,6 +9,7 @@ export type ScheduledDigestResultItem = {
 
 export type ScheduleDueDigestsResult = {
   readonly scannedAt: Date;
+  readonly continuation?: DueDigestContinuation;
   readonly evaluated: number;
   readonly assembled: number;
   readonly skipped: number;
