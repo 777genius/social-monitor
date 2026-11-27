@@ -80,7 +80,7 @@ export async function checkEventOutboxPostgresRecovery(f: Fixture): Promise<void
       assert.equal(record.event.workspaceId, f.event.workspaceId);
       assert.equal(record.event.occurredAt.getTime(), f.event.occurredAt.getTime());
       assert.equal(record.event.causationId, 'fixture-cause');
-      assert.deepEqual(record.event.payload, f.event.payload);
+      assert.deepEqual(record.event.payload, JSON.parse(JSON.stringify(f.event.payload)));
     }
 
     const owned = { id: left[0]!.id, leaseOwner: 'relay-a' };
