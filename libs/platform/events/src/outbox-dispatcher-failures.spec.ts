@@ -13,17 +13,18 @@ function seeded() {
 describe('OutboxDispatcher interrupted persistence and lease ownership', () => {
   afterEach(() => { jest.restoreAllMocks(); jest.useRealTimers(); });
 
-  it('does not send if recording the start fails and recovers untouched siblings after expiry', async () => {
+  it('isolates a failed start, proves sibling ownership and leaves only the uncertain row for expiry', async () => {
     const f = seeded();
     jest.spyOn(f.store, 'recordAttempt').mockRejectedValueOnce(new Error('start storage unavailable'));
     const publish = jest.fn().mockResolvedValue(undefined);
     const dispatcher = f.dispatcher({ publish });
     await expect(dispatcher.dispatchBatch(2)).rejects.toThrow('start storage unavailable');
-    expect(publish).not.toHaveBeenCalled();
+    expect(publish).toHaveBeenCalledTimes(1);
+    expect(publish.mock.calls[0]?.[0].eventId).toBe('event-2');
     expect(f.store.snapshot('event-1')?.publishAttempts).toBe(0);
-    expect(f.store.snapshot('event-2')?.publishAttempts).toBe(0);
+    expect(f.store.snapshot('event-2')).toMatchObject({ status: 'PUBLISHED', publishAttempts: 1 });
     f.advance(30_000);
-    expect(await dispatcher.dispatchBatch(2)).toEqual(recovered);
+    expect(await dispatcher.dispatchBatch(2)).toEqual({ published: 1, retrying: 0, failed: 0 });
   });
 
   it('retains recovery of all siblings when saving the failed outcome also fails', async () => {
@@ -32,13 +33,52 @@ describe('OutboxDispatcher interrupted persistence and lease ownership', () => {
     const publish = jest.fn().mockRejectedValueOnce(new Error('broker failure')).mockResolvedValue(undefined);
     const dispatcher = f.dispatcher({ publish });
     await expect(dispatcher.dispatchBatch(2)).rejects.toThrow('failure storage unavailable');
-    expect(publish).toHaveBeenCalledTimes(1);
+    expect(publish).toHaveBeenCalledTimes(2);
     expect(f.store.snapshot('event-1')).toMatchObject({ status: 'PENDING', publishAttempts: 1 });
-    expect(f.store.snapshot('event-2')).toMatchObject({ status: 'PENDING', publishAttempts: 0 });
+    expect(f.store.snapshot('event-2')).toMatchObject({ status: 'PUBLISHED', publishAttempts: 1 });
     f.advance(30_000);
-    expect(await dispatcher.dispatchBatch(2)).toEqual(recovered);
+    expect(await dispatcher.dispatchBatch(2)).toEqual({ published: 1, retrying: 0, failed: 0 });
     expect(f.store.snapshot('event-1')?.publishAttempts).toBe(2);
     expect(f.store.snapshot('event-2')?.publishAttempts).toBe(1);
+  });
+
+  it('waits for the fresh remaining-claim proof before admitting a healthy sibling', async () => {
+    const f = seeded();
+    const proofStarted = deferred();
+    const releaseProof = deferred();
+    const renew = f.store.renewClaims.bind(f.store);
+    jest.spyOn(f.store, 'recordAttempt').mockRejectedValueOnce(new Error('row-specific start failure'));
+    jest.spyOn(f.store, 'renewClaims').mockImplementationOnce(async params => {
+      proofStarted.resolve();
+      await releaseProof.promise;
+      return renew(params);
+    });
+    const publish = jest.fn().mockResolvedValue(undefined);
+    const dispatch = f.dispatcher({ publish }).dispatchBatch(2);
+    const rejected = expect(dispatch).rejects.toThrow('row-specific start failure');
+    try {
+      await proofStarted.promise;
+      expect(publish).not.toHaveBeenCalled();
+    } finally {
+      releaseProof.resolve();
+      await rejected;
+    }
+    expect(publish).toHaveBeenCalledTimes(1);
+    expect(publish.mock.calls[0]?.[0].eventId).toBe('event-2');
+  });
+
+  it('stops before any sibling send when a fresh ownership proof also loses database access', async () => {
+    const f = seeded();
+    const start = jest.spyOn(f.store, 'recordAttempt').mockRejectedValueOnce(new Error('start storage unavailable'));
+    const renew = jest.spyOn(f.store, 'renewClaims').mockRejectedValueOnce(new Error('database still unavailable'));
+    const publish = jest.fn().mockResolvedValue(undefined);
+    await expect(f.dispatcher({ publish }).dispatchBatch(2)).rejects.toThrow('start storage unavailable');
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(publish).not.toHaveBeenCalled();
+    expect(renew).toHaveBeenCalledWith(expect.objectContaining({ ids: ['event-2'], leaseOwner: 'relay-owner-1' }));
+    expect(f.store.snapshot('event-2')?.publishAttempts).toBe(0);
+    f.advance(30_000);
+    expect(await f.dispatcher({ publish }).dispatchBatch(2)).toEqual(recovered);
   });
 
   it('does not misclassify a broker ACK as failed when its durable settlement is lost', async () => {
@@ -99,7 +139,7 @@ describe('OutboxDispatcher interrupted persistence and lease ownership', () => {
     const f = seeded();
     const entered = deferred();
     const finish = deferred();
-    jest.spyOn(f.store, 'renewClaims').mockResolvedValueOnce(false);
+    jest.spyOn(f.store, 'renewClaims').mockResolvedValueOnce(false).mockResolvedValueOnce(false);
     const publish = jest.fn(async () => { entered.resolve(); await finish.promise; });
     const first = f.dispatcher({ publish }, { leaseMs: 30 }).dispatchBatch(2);
     const rejected = expect(first).rejects.toThrow('ownership was lost');

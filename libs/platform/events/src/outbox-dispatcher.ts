@@ -59,59 +59,80 @@ export class OutboxDispatcher {
     let published = 0;
     let retrying = 0;
     let failed = 0;
+    let hadFailure = false;
+    let firstFailure: unknown;
 
     try {
       for (const record of records) {
         if (!shouldContinue()) break;
         await heartbeat.assertOwned();
         if (!shouldContinue()) break;
-        const owner = { id: record.id, leaseOwner };
-        if (record.publishAttempts >= this.policy.maxAttempts) {
-          // A crash after the final recorded start must not buy another send.
-          const failedAt = this.clock.now();
-          heartbeat.completed(record.id);
-          await this.outbox.markFailed({
-            ...owner, failedAt, availableAt: failedAt, terminal: true,
-            reason: 'Event publication exhausted recorded dispatch starts; last outcome may be unknown.',
-          });
-          failed += 1;
-          continue;
-        }
-
-        const attempt = await this.outbox.recordAttempt(owner);
-        await heartbeat.assertOwned();
-        if (!shouldContinue()) break;
-        let publishFailed = false;
-        let publishError: unknown;
         try {
-          await this.publisher.publish(record.event);
+          const owner = { id: record.id, leaseOwner };
+          if (record.publishAttempts >= this.policy.maxAttempts) {
+            // A crash after the final recorded start must not buy another send.
+            const failedAt = this.clock.now();
+            heartbeat.completed(record.id);
+            await this.outbox.markFailed({
+              ...owner, failedAt, availableAt: failedAt, terminal: true,
+              reason: 'Event publication exhausted recorded dispatch starts; last outcome may be unknown.',
+            });
+            failed += 1;
+            continue;
+          }
+
+          const attempt = await this.outbox.recordAttempt(owner);
+          await heartbeat.assertOwned();
+          if (!shouldContinue()) break;
+          let publishFailed = false;
+          let publishError: unknown;
+          try {
+            await this.publisher.publish(record.event);
+          } catch (error) {
+            publishFailed = true;
+            publishError = error;
+          }
+          await heartbeat.assertOwned();
+          heartbeat.completed(record.id);
+          if (publishFailed) {
+            const terminal = attempt >= this.policy.maxAttempts;
+            const failedAt = this.clock.now();
+            await this.outbox.markFailed({
+              ...owner, failedAt, terminal,
+              availableAt: new Date(failedAt.getTime() + eventOutboxRetryDelay(this.policy, attempt)),
+              reason: safeDispatchFailure(publishError),
+            });
+            if (terminal) failed += 1;
+            else retrying += 1;
+            continue;
+          }
+          // A broker ACK followed by a failed database write remains uncertain.
+          // Leave the row leased for recovery; never rewrite it as a publish failure.
+          await this.outbox.markPublished({ ...owner, publishedAt: this.clock.now() });
+          published += 1;
         } catch (error) {
-          publishFailed = true;
-          publishError = error;
+          if (!hadFailure) firstFailure = error;
+          hadFailure = true;
+          // A row-specific storage failure must not poison its whole page.
+          // Stop renewing the uncertain row; its own lease expires for recovery.
+          heartbeat.completed(record.id);
+          if (!shouldContinue()) break;
+          try {
+            // A successful fresh DB proof is required before any sibling send.
+            // Systemic storage loss or a lost remaining owner stops the batch.
+            await heartbeat.verifyRemainingClaims();
+          } catch {
+            throw firstFailure;
+          }
         }
-        await heartbeat.assertOwned();
-        heartbeat.completed(record.id);
-        if (publishFailed) {
-          const terminal = attempt >= this.policy.maxAttempts;
-          const failedAt = this.clock.now();
-          await this.outbox.markFailed({
-            ...owner, failedAt, terminal,
-            availableAt: new Date(failedAt.getTime() + eventOutboxRetryDelay(this.policy, attempt)),
-            reason: safeDispatchFailure(publishError),
-          });
-          if (terminal) failed += 1;
-          else retrying += 1;
-          continue;
-        }
-        // A broker ACK followed by a failed database write remains uncertain.
-        // Leave the row leased for recovery; never rewrite it as a publish failure.
-        await this.outbox.markPublished({ ...owner, publishedAt: this.clock.now() });
-        published += 1;
       }
+    } catch (error) {
+      throw hadFailure ? firstFailure : error;
     } finally {
       // Unsettled claims expire naturally. There is no cross-owner release.
       await heartbeat.stop();
     }
+    if (hadFailure) throw firstFailure;
     return { published, retrying, failed };
   }
 }
