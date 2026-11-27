@@ -46,7 +46,7 @@ export class AssembleDigestUseCase {
     });
 
     if (existing !== null) {
-      return this.ensureDelivery(existing, false);
+      return this.ensureDelivery(existing, false, command.maxRetries);
     }
 
     const sourceWindow = await this.sources.readWindow({

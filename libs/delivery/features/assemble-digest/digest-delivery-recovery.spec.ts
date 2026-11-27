@@ -31,6 +31,15 @@ describe('digest delivery handoff recovery', () => {
     expect(d.sources.readWindow).toHaveBeenCalledTimes(1);
   });
 
+  it('retains an explicit retry policy when the same command repairs a failed admission', async () => {
+    const d = setupDigestRecovery();
+    jest.spyOn(d.attempts, 'save').mockRejectedValueOnce(new Error('database unavailable'));
+    const command = { ...recoveryCommand, maxRetries: 0 };
+    expect((await d.assemble.execute(command)).ok).toBe(false);
+    expect((await d.assemble.execute(command)).ok).toBe(true);
+    expect((await d.listAttempts())[0]?.toSnapshot().maxRetries).toBe(0);
+  });
+
   it('keeps the retry policy of an already admitted delivery attempt', async () => {
     const d = setupDigestRecovery();
     const first = await d.assemble.execute({ ...recoveryCommand, maxRetries: 7 });
