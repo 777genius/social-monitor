@@ -1,5 +1,5 @@
 import { RabbitMqEventPublisher } from '@social-monitor/platform-events/adapters/rabbitmq';
-import type { EventEnvelope } from '@social-monitor/shared-kernel';
+import { correlationId, eventId, type EventEnvelope } from '@social-monitor/shared-kernel';
 
 import { brokerCommand, RabbitMqBrokerFixture, rabbitMqBrokerTestUrl } from './support/rabbitmq-broker-fixture';
 
@@ -35,8 +35,8 @@ describe('RabbitMQ publisher recovery against a real quorum broker', () => {
     await f.start();
     const publisher = new RabbitMqEventPublisher(f.channel, { exchange: f.exchange });
     const event: EventEnvelope<Readonly<Record<string, unknown>>> = {
-      eventId: 'event-before-reconnect', eventType: 'synthetic.ready', schemaVersion: 1,
-      occurredAt: new Date('2026-11-04T00:00:00.000Z'), correlationId: 'synthetic-correlation',
+      eventId: eventId('event-before-reconnect'), eventType: 'synthetic.ready', schemaVersion: 1,
+      occurredAt: new Date('2026-11-04T00:00:00.000Z'), correlationId: correlationId('synthetic-correlation'),
       payload: { summaryId: 'synthetic-summary' },
     };
     await f.admin.bindQueue(f.queue, f.exchange, event.eventType);
@@ -45,7 +45,7 @@ describe('RabbitMQ publisher recovery against a real quorum broker', () => {
     await f.channel.ack(first!);
     await f.channel.close();
     await f.admin.deleteExchange(f.exchange);
-    const retry = { ...event, eventId: 'event-after-reconnect' };
+    const retry = { ...event, eventId: eventId('event-after-reconnect') };
     // The exchange is repaired, but a missing route must still be reported.
     await expect(publisher.publish(retry)).rejects.toThrow('mandatory publish returned');
     await f.admin.bindQueue(f.queue, f.exchange, event.eventType);

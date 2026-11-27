@@ -1,21 +1,26 @@
 import type { RabbitMqQueueChannelPort } from '@social-monitor/platform-queue/adapters/rabbitmq';
-import type { EventEnvelope } from '@social-monitor/shared-kernel';
+import { correlationId, eventId, tenantId, workspaceId, type EventEnvelope } from '@social-monitor/shared-kernel';
 
 import { RabbitMqEventPublisher } from './rabbitmq-event-publisher';
 
 const event: EventEnvelope<Readonly<Record<string, unknown>>> = {
-  eventId: 'synthetic-event', eventType: 'summary.ready', schemaVersion: 1,
-  occurredAt: new Date('2026-11-04T00:00:00.000Z'), correlationId: 'synthetic-correlation',
-  tenantId: 'synthetic-tenant', workspaceId: 'synthetic-workspace', payload: { summaryId: 'synthetic-summary' },
+  eventId: eventId('synthetic-event'), eventType: 'summary.ready', schemaVersion: 1,
+  occurredAt: new Date('2026-11-04T00:00:00.000Z'), correlationId: correlationId('synthetic-correlation'),
+  tenantId: tenantId('synthetic-tenant'), workspaceId: workspaceId('synthetic-workspace'),
+  payload: { summaryId: 'synthetic-summary' },
 };
 
 describe('RabbitMqEventPublisher publication outcome', () => {
   const fixture = () => {
     const channel: jest.Mocked<RabbitMqQueueChannelPort> = {
-      assertExchange: jest.fn(async () => undefined),
-      assertQueue: jest.fn(async () => undefined),
-      bindQueue: jest.fn(async () => undefined),
-      publishAndConfirm: jest.fn(async () => true),
+      assertExchange: jest.fn<ReturnType<RabbitMqQueueChannelPort['assertExchange']>,
+        Parameters<RabbitMqQueueChannelPort['assertExchange']>>().mockResolvedValue(undefined),
+      assertQueue: jest.fn<ReturnType<RabbitMqQueueChannelPort['assertQueue']>,
+        Parameters<RabbitMqQueueChannelPort['assertQueue']>>().mockResolvedValue(undefined),
+      bindQueue: jest.fn<ReturnType<RabbitMqQueueChannelPort['bindQueue']>,
+        Parameters<RabbitMqQueueChannelPort['bindQueue']>>().mockResolvedValue(undefined),
+      publishAndConfirm: jest.fn<ReturnType<RabbitMqQueueChannelPort['publishAndConfirm']>,
+        Parameters<RabbitMqQueueChannelPort['publishAndConfirm']>>().mockResolvedValue(true),
     };
     return { channel, publisher: new RabbitMqEventPublisher(channel, { exchange: 'synthetic-events' }) };
   };
