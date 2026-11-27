@@ -407,23 +407,40 @@ particular production users-per-second capacity without representative load.
   due-time/ID continuation and retries earlier failures on bounded wrap. EVENT
   persistence failures isolate the uncertain row and require fresh database proof
   of all remaining claims before another send; systemic proof failure stops.
-  A native PostgreSQL trigger scenario proves healthy sibling progress.
+  A native PostgreSQL trigger scenario covers healthy sibling progress;
+  its execution still requires qualification.
 - F1 implementation and independent source acceptance complete. Required scoped
   claim/complete/fail uses an opaque row version; artifact creation, terminal job
   and EVENT are atomic. Review fixed artifact/event identity collisions, unsafe
   public database error strings, provider-draft authority over scoped fields,
   and native fixture concurrency assumptions. No source-review critical finding
   remains open at this checkpoint; executable qualification is still required.
-- Local execution restored after integration work. The stale local reconstruction
-  was preserved separately, and the checkout is being synchronized to the
-  published combined commit before testing. Dependencies remain the exact
-  existing lock; package, toolchain and workflow changes are not included.
-- Qualification: full existing workflow dispatched on c905885a at
-  https://github.com/777genius/social-monitor/actions/runs/45930518717.
-  The run was queued at this checkpoint. Local execution became unavailable;
-  implementation test success is not claimed. Final combined SHA still needs
-  executed focused, native and deterministic E2E qualification.
-- Final review/qualification: not yet complete.
+- Local execution restored and the checkout synchronized to the combined source.
+  Dependencies stayed on the existing lock; no package or workflow changes were
+  introduced. Prisma generation completed.
+- Core quality execution found a 515-line composition module exceeding the
+  existing 500-line guard. Extracted only its required summary workflow factory;
+  the 493-line module and 41-line provider preserve all five dependencies.
+  Independent review and the complete Nest E2E inventory accepted the result.
+- Executed focused unit qualification: 40 disjoint suites / 243 tests passed.
+  Core architecture, code-quality and source-line-cap guards passed.
+- Executed complete deterministic backend E2E qualification: 84 unique suites /
+  176 tests passed on Node 22.23.5. Canonical discovery, per-file JSON receipts
+  and final union accounting found no missing, duplicate, skipped or todo tests.
+  Resource-interrupted attempts were not counted; successful retained receipts
+  correspond to unchanged source recorded in commit
+  `301cbb8ac0ca33425bef866793bc3d1e02c370e7`.
+- Native PostgreSQL attempts received SIGKILL before a scenario verdict. The
+  real RabbitMQ harness was prepared but not executed. The executor became
+  unavailable again before native gates, full types/lint/build and the complete
+  unit inventory could be qualified. These checks remain open.
+- Superseded workflow run 45930518717 targeted c905885a and was cancelled after
+  remaining queued. A fresh full workflow_dispatch on the final head is required;
+  its link and status belong in the PR description.
+- Final source review: no reported critical production-code findings remain.
+  Full release qualification is incomplete. Keep the PR Draft and preserve all
+  existing gates. See the [executed validation checkpoint](../operations/backend-reliability-validation-2026-11-27.md)
+  for exact commands, source identity, results and remaining checks.
 
 Primary transport references reviewed: [amqplib channel API](https://amqp-node.github.io/amqplib/channel_api.html)
 and [RabbitMQ reliability guide](https://www.rabbitmq.com/docs/reliability).

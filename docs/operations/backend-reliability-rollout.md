@@ -97,3 +97,9 @@ Only sandbox fixtures and disposable services are part of this qualification.
 Live provider/user production probes are not implied by successful fixture tests.
 Record source SHA and actual results; queued, cancelled, skipped or earlier-SHA
 runs cannot qualify the final implementation.
+
+## Current execution checkpoint
+
+See [the 2026-11-27 validation record](backend-reliability-validation-2026-11-27.md)
+for the qualified source, complete backend E2E result and still-open native/CI
+gates. The PR remains Draft until those remaining checks are resolved.
