@@ -143,13 +143,13 @@ describe('App bootstrap bounded admission and recovery (e2e)', () => {
     const recovered = await get('three').expect(200);
     expect(recovered.body.readerSummaries.tenantId).toBe('tenant-three');
 
-    secondRead.reject(new Error('postgres://user:synthetic-private-marker@host/database'));
+    secondRead.reject(new Error('postgres://user:raw-password@host/database'));
     const failed = await second;
     expect(failed.body).toMatchObject({
       code: 'internal.unexpected',
       detail: 'Unexpected server error',
     });
-    expect(JSON.stringify(failed.body)).not.toContain('synthetic-private-marker');
+    expect(JSON.stringify(failed.body)).not.toContain('raw-password');
     const retried = await get('two').expect(200);
     expect(retried.body.readerSummaries.tenantId).toBe('tenant-two');
     expect(latest).toHaveBeenCalledTimes(4);

@@ -248,6 +248,7 @@ export class AmqplibRabbitMqChannel implements RabbitMqQueueChannelPort {
 
   private async channel(): Promise<ConfirmChannel> {
     if (this.shuttingDown) throw new Error('RabbitMQ channel is shutting down');
+    this.assertPublishAllowed();
     const active = this.channelPromise;
     if (active !== undefined) {
       return active;

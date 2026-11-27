@@ -246,7 +246,7 @@ describe('Realtime subscription recovery over Socket.IO (e2e)', () => {
     const client = await connect('tenant-one');
     const peer = serverSocket(client);
     jest.spyOn(repository, 'list').mockRejectedValueOnce(
-      new Error('postgres://user:synthetic-private-marker@host/database'),
+      new Error('postgres://user:raw-password@host/database'),
     );
     expect(await acknowledge(client, 'realtime.subscribe', { channel: CHANNEL })).toEqual({
       ok: false,

@@ -66,7 +66,7 @@ describe('RealtimeEventsGateway replay ownership', () => {
   it('authorizes before joining and joins before reading replay', async () => {
     const { gateway, execute, authorize } = createGateway();
     const socket = createSocket();
-    socket.handshake.headers.authorization = 'Bearer synthetic-api-key';
+    socket.handshake.headers.authorization = 'Bearer token-value';
     const authorization = deferred<void>();
     authorize.mockReturnValue(authorization.promise);
     const order: string[] = [];
@@ -216,7 +216,7 @@ describe('RealtimeEventsGateway replay ownership', () => {
     const authorization = deferred<void>();
     authorize.mockReturnValue(authorization.promise);
     const socket = createSocket();
-    socket.handshake.headers.authorization = 'Bearer synthetic-api-key';
+    socket.handshake.headers.authorization = 'Bearer token-value';
     const pending = gateway.subscribe({ channel: CHANNEL }, asSocket(socket));
     socket.disconnect();
     authorization.resolve(undefined);
@@ -300,7 +300,7 @@ describe('RealtimeEventsGateway replay ownership', () => {
       'external.dependency_unavailable',
       'Upstream token=synthetic-secret-marker',
       { accessToken: 'synthetic-secret-marker', endpoint: 'https://example.test/?token=synthetic-secret-marker' },
-    )).mockRejectedValueOnce(new Error('postgres://user:synthetic-secret-marker@host/db'));
+    )).mockRejectedValueOnce(new Error('postgres://user:raw-password@host/db'));
 
     const domain = await gateway.refresh({ channel: CHANNEL }, asSocket(socket));
     expect(domain).toMatchObject({
