@@ -96,29 +96,39 @@ for (const [packageName, vulnerability] of Object.entries(audit.vulnerabilities)
     continue;
   }
 
-  // An exception that names advisories covers only those at blocking severity: advisory objects must match by id
-  // (advisories below blockSeverities are ignored, like everywhere else in this gate), and a derived entry (a
-  // package name in `via`) must itself be an excepted package.
+  // The root exception must cover every blocking advisory reached through npm's
+  // derived package entries, even when a child has its own package-wide exception.
   if (exception.advisories !== undefined) {
     const evidenceSeverity = (via) => typeof via === 'string'
       ? (Object.hasOwn(audit.vulnerabilities, via) ? audit.vulnerabilities[via].severity : undefined)
       : via?.severity;
-    if (!Array.isArray(vulnerability.via) || vulnerability.via.length === 0 ||
-        vulnerability.via.some((via) => !severities.has(evidenceSeverity(via))) ||
-        !vulnerability.via.some((via) => blockSeverities.has(evidenceSeverity(via)))) {
-      violations.push(`${packageName}: incomplete advisory evidence for approved exception`);
-      continue;
-    }
-    for (const via of vulnerability.via) {
-      const covered =
-        typeof via === 'string'
-          ? allowedExceptions.has(via)
-          : !blockSeverities.has(via.severity) ||
-            exception.advisories.some((id) => String(via.url ?? '').endsWith(`/${id}`));
-      if (!covered) {
-        const label = typeof via === 'string' ? via : (via.url ?? via.title ?? 'unknown advisory');
-        violations.push(`${packageName}: ${label} is not covered by the approved exception`);
+    const visiting = new Set();
+    const checked = new Set();
+    const visit = (name) => {
+      if (checked.has(name)) return true;
+      if (visiting.has(name)) return false;
+      visiting.add(name);
+      const { via } = audit.vulnerabilities[name];
+      if (!Array.isArray(via) || via.length === 0 ||
+          via.some((entry) => !severities.has(evidenceSeverity(entry))) ||
+          !via.some((entry) => blockSeverities.has(evidenceSeverity(entry)))) {
+        return false;
       }
+      for (const entry of via) {
+        if (typeof entry === 'string') {
+          if (!allowedExceptions.has(entry) ||
+              (blockSeverities.has(evidenceSeverity(entry)) && !visit(entry))) return false;
+        } else if (blockSeverities.has(entry.severity) &&
+            !exception.advisories.some((id) => String(entry.url ?? '').endsWith(`/${id}`))) {
+          return false;
+        }
+      }
+      visiting.delete(name);
+      checked.add(name);
+      return true;
+    };
+    if (!visit(packageName)) {
+      violations.push(`${packageName}: incomplete or out-of-scope advisory evidence for approved exception`);
     }
   }
 }
