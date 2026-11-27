@@ -2,6 +2,8 @@
 
 Status: **Stage A merged in #790; B1 (#791), B2 (#792), and the separate dependency/runtime slice (#793) are implemented or under qualification as stated below.** Audit baseline: `main` `c0f3ea3dd2f546ab5fd25f395e341cd2c5093541` (2026-11-22). Owner: `social-monitor` backend. Production access and manual deployment are outside this program.
 
+**Current #793 compiler scope (2026-11-27):** the [native TS7 implementation decision](../iterations/2026-11-27-typescript7-native-toolchain.md) assigns build/typecheck to 7.0.2 and explicitly retains the supported JavaScript API compatibility package. The original all-consumers-TS7 target remains incomplete and is not claimed by this transition.
+
 This document is the reviewable, normative **plan**. Its two companion per-source audit indexes are **non-authoritative scope ledgers**, not mandates to edit every indexed file. A line count is never a proof of changed architecture or working E2E.
 
 Detailed, exact-path baseline and change-admission inventory:
@@ -104,7 +106,7 @@ The remaining active exception set is **six** exact (source path, specifier) tup
 
 Registry and artifact inspection confirmed Core/Assembly `0.8.0` and Engineering Foundation `3.1.0`. Account Gateway [PR #123](https://github.com/agent-teams-ai/account-gateway/pull/123) owns the producer's removed-Assembly-API migration and its existing development-only Foundation upgrade. Social Monitor consumes the reviewed private SDK archive; it does not introduce Foundation as a new checker or replace NestJS composition. The broader tooling/adoption proposals in slices D/E remain separate decisions.
 
-Social Monitor #793 selects Node `24.22.3`, aligns its existing image/CI/runtime contracts, fixes the host artifact's omitted nested SDK archive, and preserves TypeScript 6 compiler compatibility. The consumer supports the Node 24 line; the producer independently qualifies Node 24 and 26. The [bounded qualification plan](../iterations/2026-11-23-backend-sdk-runtime-qualification.md) records the actual scope and gates.
+Social Monitor #793 selects Node `24.22.3`, aligns its existing image/CI/runtime contracts, fixes the host artifact's omitted nested SDK archive, and uses native TypeScript 7.0.2 for build/typecheck with explicit TypeScript 6 JavaScript API compatibility for existing tools. The consumer supports the Node 24 line; the producer independently qualifies Node 24 and 26. The [bounded qualification plan](../iterations/2026-11-23-backend-sdk-runtime-qualification.md) records the actual scope and gates.
 
 The SDK archive's version/hash pair is part of retained publication evidence. Updating it therefore also requires a narrow additive SQL function migration and retained-reader compatibility: admit the old and new complete pairs for historical evidence, reject mixed pairs, and keep new executions bound to the current artifact. Historical migrations, persisted evidence bytes, model/effort policy, tenant access, canonical hashes and runtime lifecycle ownership remain unchanged. This is a compatibility prerequisite discovered by the source audit, not a new data model or a blanket identity allowlist. An older binary's ability to read newly emitted identities is not claimed.
 

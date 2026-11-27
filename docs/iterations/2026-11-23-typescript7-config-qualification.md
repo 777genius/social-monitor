@@ -1,6 +1,8 @@
 # TypeScript 7 compatibility — Stage T0 (configuration preparation)
 
-**Status: T0 included in consolidated #793 / NOT MERGE QUALIFIED.** Original baseline: `main` after architecture #790. Superseded #791 and #792 must not be retargeted or merged separately. T0 is a bounded configuration prerequisite, not a substitute for #793's full native end-to-end gates or the T1 toolchain HOLD.
+**Historical T0 checkpoint.** The [2026-11-27 native compiler and explicit API compatibility decision](2026-11-27-typescript7-native-toolchain.md) records the current #793 implementation scope. It does not claim completion of the original all-consumers-TS7 target below.
+
+**Original T0 status: included in consolidated #793 / NOT MERGE QUALIFIED.** Original baseline: `main` after architecture #790. Superseded #791 and #792 must not be retargeted or merged separately. T0 is a bounded configuration prerequisite, not a substitute for #793's full native end-to-end gates or the T1 toolchain HOLD.
 
 ## Verified blocker
 

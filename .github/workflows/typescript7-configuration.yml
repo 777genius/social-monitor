@@ -1,4 +1,4 @@
-name: Native TypeScript 7 configuration qualification
+name: Native TypeScript 7 toolchain qualification
 
 on:
   pull_request:
@@ -13,6 +13,9 @@ on:
       - package.json
       - package-lock.json
       - scripts/rewrite-build-aliases.mjs
+      - scripts/rewrite-build-aliases.test.mjs
+      - apps/agent-runtime/bin/host-release.mjs
+      - apps/agent-runtime/bin/host-release-archive.test.mjs
       - scripts/check-architecture.mjs
       - scripts/ci/typescript7-config-contract.test.ts
       - .github/workflows/typescript7-configuration.yml
@@ -23,7 +26,7 @@ permissions:
 
 jobs:
   native_ts7:
-    name: Native TypeScript 7 compatibility (non-merge qualification)
+    name: Native TypeScript 7 build and compatibility APIs
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -39,7 +42,7 @@ jobs:
           node-version: '24.22.3'
           cache: npm
 
-      - name: Install declared project dependencies without running legacy compiler hooks
+      - name: Install the locked native compiler and compatibility APIs
         run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Generate the real Prisma client from the checked-in schema
@@ -49,27 +52,14 @@ jobs:
           DATABASE_URL: postgresql://ci@127.0.0.1:5432/social_monitor_ci
         run: ./node_modules/.bin/prisma generate --schema prisma/schema.prisma
 
-      - name: Install an isolated exact native TypeScript 7.0.2 compiler
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/native-ts7"
-          npm --prefix "$RUNNER_TEMP/native-ts7" install \
-            --no-save --ignore-scripts --no-audit --no-fund \
-            --package-lock=false --save-exact typescript@7.0.2
-          TS7_DIR="$RUNNER_TEMP/native-ts7" node --input-type=module -e '
-            import { readFileSync } from "node:fs";
-            const p = JSON.parse(readFileSync(process.env.TS7_DIR + "/node_modules/typescript/package.json", "utf8"));
-            if (p.version !== "7.0.2") throw new Error("Expected the exact native TypeScript 7.0.2 compiler");
-            console.log("Native TypeScript:", p.version);
-          '
+      - name: Prove compiler identity, strict options, and native Nest decorator metadata
+        run: npm run check:typescript-toolchain
 
-      - name: Prove unchanged alias identity and strict options without legacy compiler APIs
-        run: node --experimental-strip-types --test scripts/ci/typescript7-config-contract.test.ts
+      - name: Check the full project with the locked native TypeScript 7 compiler
+        run: npm run typecheck
 
-      - name: Run the real native TypeScript 7.0.2 compiler on the root project
-        shell: bash
-        run: |
-          set -euo pipefail
-          "$RUNNER_TEMP/native-ts7/node_modules/.bin/tsc" --version
-          "$RUNNER_TEMP/native-ts7/node_modules/.bin/tsc" -p tsconfig.json --noEmit
+      - name: Build production output with native TypeScript 7 and rewrite aliases
+        run: npm run build
+
+      - name: Verify native output and the standalone host release fixture
+        run: node --test scripts/rewrite-build-aliases.test.mjs apps/agent-runtime/bin/host-release-archive.test.mjs

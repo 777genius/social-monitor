@@ -19,7 +19,7 @@ From the repository root, using the existing read-only node_modules:
 ```sh
 TS_NODE_PROJECT=scripts/evals/reader-story-grouping/tsconfig.json node -r ts-node/register/transpile-only -r tsconfig-paths/register scripts/evals/reader-story-grouping/run.ts offline
 TS_NODE_PROJECT=scripts/evals/reader-story-grouping/tsconfig.json node -r ts-node/register/transpile-only -r tsconfig-paths/register scripts/evals/reader-story-grouping/regression.ts
-node node_modules/typescript/bin/tsc -p scripts/evals/reader-story-grouping/tsconfig.json
+npx tsc -p scripts/evals/reader-story-grouping/tsconfig.json
 NODE_OPTIONS=--max-old-space-size=1024 node node_modules/jest/bin/jest.js --config jest.config.ts --runInBand --runTestsByPath scripts/evals/reader-story-grouping/focused.spec.ts scripts/evals/reader-story-grouping/source-identity.spec.ts scripts/evals/reader-story-grouping/report-html.spec.ts
 node node_modules/eslint/bin/eslint.js scripts/evals/reader-story-grouping/*.ts
 npm run check:architecture

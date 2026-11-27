@@ -607,7 +607,10 @@ test("fixture launch is transpile-only while the strict build remains a gate", a
     /node_modules\/ts-node\/dist\/bin\.js"\),\s*"--transpile-only",\s*"--compiler-options",\s*'\{"rootDir":"\."\}',\s*"-r",\s*"tsconfig-paths\/register"/u,
   );
   const manifest = JSON.parse(packageManifest);
-  assert.match(manifest.scripts.build, /^tsc -p /u);
+  assert.equal(
+    manifest.scripts.build,
+    "node node_modules/@typescript/native/bin/tsc -p tsconfig.build.json && node scripts/rewrite-build-aliases.mjs -p tsconfig.build.json",
+  );
   assert.equal(manifest.devDependencies["@electric-sql/pglite"], "0.4.3");
   assert.equal(
     manifest.devDependencies["@electric-sql/pglite-socket"],
