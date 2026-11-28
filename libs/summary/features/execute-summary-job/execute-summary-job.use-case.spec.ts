@@ -1,17 +1,19 @@
-import { type EventEnvelope, FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import {
+  InMemorySummaryJobRepository as FakeSummaryJobs,
+  InMemorySummaryArtifactRepository as FakeSummaryArtifacts,
+  InMemorySummaryEventPublisher as FakeSummaryEvents,
+  InMemorySummaryExecutionWorkflow,
+} from '../../../../test/support/summary-execution-workflow-fixture';
 
-import { SummaryJob, type SummaryArtifact, type SummaryPolicy } from '../../domain';
+import { FixedClock, type IdGenerator, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+
+import { SummaryJob, type SummaryPolicy } from '../../domain';
 import type {
-  ListSummaryArtifactsQuery,
-  ListSummaryArtifactsResult,
   ProviderSummaryAttempt,
-  SummaryArtifactRepositoryPort,
   SummaryMemoryContext,
   SummaryMemoryPort,
   SummaryEvidenceSelection,
   SummaryEvidenceSelectorPort,
-  SummaryEventPublisherPort,
-  SummaryJobRepositoryPort,
   SummaryModelBudget,
   SummaryModelEstimate,
   SummaryModelFailure,
@@ -32,53 +34,6 @@ class SequenceIdGenerator implements IdGenerator {
     const id = `summary-artifact-${this.nextId}`;
     this.nextId += 1;
     return id;
-  }
-}
-
-class FakeSummaryJobs implements SummaryJobRepositoryPort {
-  private readonly jobs = new Map<string, SummaryJob>();
-
-  async save(job: SummaryJob): Promise<void> {
-    const snapshot = job.toSnapshot();
-    this.jobs.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.id}`, job);
-  }
-
-  async findById(params: Parameters<SummaryJobRepositoryPort['findById']>[0]): Promise<SummaryJob | null> {
-    return this.jobs.get(`${params.tenantId}:${params.workspaceId}:${params.summaryJobId}`) ?? null;
-  }
-
-  async findByIdempotencyKey(): Promise<SummaryJob | null> {
-    return null;
-  }
-
-  async findRequested(): Promise<readonly SummaryJob[]> {
-    return [];
-  }
-}
-
-class FakeSummaryArtifacts implements SummaryArtifactRepositoryPort {
-  private readonly artifacts = new Map<string, SummaryArtifact>();
-
-  async save(artifact: SummaryArtifact): Promise<void> {
-    const snapshot = artifact.toSnapshot();
-    this.artifacts.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.summaryId}`, artifact);
-  }
-
-  async list(query: ListSummaryArtifactsQuery): Promise<ListSummaryArtifactsResult> {
-    return {
-      items: [...this.artifacts.values()].filter((artifact) => {
-        const snapshot = artifact.toSnapshot();
-
-        return snapshot.tenantId === query.tenantId && snapshot.workspaceId === query.workspaceId;
-      }),
-      nextCursor: undefined,
-    };
-  }
-
-  async findById(
-    params: Parameters<SummaryArtifactRepositoryPort['findById']>[0],
-  ): Promise<SummaryArtifact | null> {
-    return this.artifacts.get(`${params.tenantId}:${params.workspaceId}:${params.summaryId}`) ?? null;
   }
 }
 
@@ -357,14 +312,6 @@ class TransientFailureSummaryModel extends NoSignalSummaryModel {
   }
 }
 
-class FakeSummaryEvents implements SummaryEventPublisherPort {
-  readonly events: EventEnvelope<Readonly<Record<string, unknown>>>[] = [];
-
-  async publish(event: EventEnvelope<Readonly<Record<string, unknown>>>): Promise<void> {
-    this.events.push(event);
-  }
-}
-
 describe('ExecuteSummaryJobUseCase', () => {
   it('creates a validated no-signal artifact when no evidence exists', async () => {
     const jobs = new FakeSummaryJobs();
@@ -389,7 +336,7 @@ describe('ExecuteSummaryJobUseCase', () => {
       new FakeUserSummaryPreferenceReader(),
       new EmptyEvidenceSelector(),
       new NoSignalSummaryModel(),
-      events,
+      new InMemorySummaryExecutionWorkflow(jobs, artifacts, events),
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-06T00:00:02.000Z')),
     );
@@ -421,8 +368,8 @@ describe('ExecuteSummaryJobUseCase', () => {
         summaryId: 'summary-artifact-1',
       }),
     ).resolves.not.toBeNull();
-    expect(events.events).toHaveLength(1);
-    expect(events.events[0]).toMatchObject({
+    expect(events.all()).toHaveLength(1);
+    expect(events.all()[0]).toMatchObject({
       eventType: 'summary.ready',
       schemaVersion: 1,
       payload: {
@@ -456,7 +403,7 @@ describe('ExecuteSummaryJobUseCase', () => {
       new FakeUserSummaryPreferenceReader(),
       new SelectedEvidenceSelector(),
       new InvalidCitationSummaryModel(),
-      events,
+      new InMemorySummaryExecutionWorkflow(jobs, artifacts, events),
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-06T00:00:02.000Z')),
     );
@@ -486,7 +433,7 @@ describe('ExecuteSummaryJobUseCase', () => {
       items: [],
       nextCursor: undefined,
     });
-    expect(events.events).toHaveLength(0);
+    expect(events.all()).toHaveLength(0);
     expect((await jobs.findById({
       tenantId: tenant,
       workspaceId: workspace,
@@ -533,7 +480,7 @@ describe('ExecuteSummaryJobUseCase', () => {
       new FakeUserSummaryPreferenceReader(),
       new SelectedEvidenceSelector(),
       model,
-      events,
+      new InMemorySummaryExecutionWorkflow(jobs, artifacts, events),
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-06T00:00:02.000Z')),
       memory,
@@ -591,7 +538,7 @@ describe('ExecuteSummaryJobUseCase', () => {
       new FakeUserSummaryPreferenceReader(),
       new SelectedEvidenceSelector(),
       model,
-      events,
+      new InMemorySummaryExecutionWorkflow(jobs, artifacts, events),
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-06T00:00:02.000Z')),
       new FailingSummaryMemory(),
@@ -645,7 +592,7 @@ describe('ExecuteSummaryJobUseCase', () => {
       new FakeUserSummaryPreferenceReader(),
       new EmptyEvidenceSelector(),
       new InvalidRawResponseSummaryModel(),
-      events,
+      new InMemorySummaryExecutionWorkflow(jobs, artifacts, events),
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-06T00:00:02.000Z')),
     );
@@ -673,7 +620,7 @@ describe('ExecuteSummaryJobUseCase', () => {
       items: [],
       nextCursor: undefined,
     });
-    expect(events.events).toHaveLength(0);
+    expect(events.all()).toHaveLength(0);
     expect((await jobs.findById({
       tenantId: tenant,
       workspaceId: workspace,
@@ -707,7 +654,7 @@ describe('ExecuteSummaryJobUseCase', () => {
       new FakeUserSummaryPreferenceReader(),
       new EmptyEvidenceSelector(),
       new TransientFailureSummaryModel(),
-      events,
+      new InMemorySummaryExecutionWorkflow(jobs, artifacts, events),
       new SequenceIdGenerator(),
       new FixedClock(new Date('2026-06-06T00:00:02.000Z')),
     );
@@ -760,7 +707,7 @@ describe('ExecuteSummaryJobUseCase', () => {
     });
     expect(completedSnapshot?.failureReason).toBeUndefined();
     expect(completedSnapshot?.failedAt).toBeUndefined();
-    expect(events.events).toHaveLength(1);
+    expect(events.all()).toHaveLength(1);
     await expect(artifacts.findById({
       tenantId: tenant,
       workspaceId: workspace,

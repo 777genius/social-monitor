@@ -1,3 +1,4 @@
+import { InMemorySummaryExecutionWorkflow } from '@social-monitor/summary/adapters/persistence/in-memory-summary-execution-workflow';
 import { InMemoryFeedItemReadRepository } from '@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import {
@@ -166,7 +167,7 @@ describe('X/Twitter fake collector summary flow (e2e)', () => {
       NOOP_USER_SUMMARY_PREFERENCE_READER,
       new RelevanceSummaryEvidenceSelector(rankFeedItems, clock),
       new DeterministicSummaryModelAdapter(),
-      new InMemorySummaryEventPublisher(),
+      new InMemorySummaryExecutionWorkflow(summaryJobs, summaryArtifacts, new InMemorySummaryEventPublisher()),
       ids,
       clock,
     );
@@ -368,7 +369,7 @@ describe('X/Twitter fake collector summary flow (e2e)', () => {
       NOOP_USER_SUMMARY_PREFERENCE_READER,
       new RelevanceSummaryEvidenceSelector(rankFeedItems, clock),
       new DeterministicSummaryModelAdapter(),
-      new InMemorySummaryEventPublisher(),
+      new InMemorySummaryExecutionWorkflow(summaryJobs, summaryArtifacts, new InMemorySummaryEventPublisher()),
       ids,
       clock,
     );

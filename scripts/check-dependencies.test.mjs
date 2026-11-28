@@ -112,7 +112,12 @@ test('derived exceptions preserve the original advisory scope across the graph',
     ['grandchild with unrelated advisory', { child: derived('grandchild'), grandchild: wrong }, [broad('child'), broad('grandchild')], false],
     ['matching multihop chain', { child: derived('grandchild'), grandchild: high }, [scoped('child'), scoped('grandchild')], true],
     ['cycle without leaf', { child: derived('example') }, [broad('child')], false],
-    ['cycle with direct matching leaf', { child: derived('example', ...high.via) }, [broad('child')], false],
+    ['cycle with direct matching leaf', { child: derived('example', ...high.via) }, [broad('child')], true],
+    ['cycle with unrelated advisory', { child: derived('example', ...wrong.via) }, [broad('child')], false],
+    ['cycle reaches matching leaf through sibling', { child: derived('left', 'right'), left: derived('child'), right: high }, ['child', 'left', 'right'].map((name) => broad(name)), true],
+    ['matching sibling cannot cover a leafless cycle', { child: derived('left', 'right'), left: high, right: derived('loop'), loop: derived('right') }, ['child', 'left', 'right', 'loop'].map((name) => broad(name)), false],
+    ['nonblocking child of broad package needs no exception', { child: derived('low', ...high.via), low: { severity: 'low' } }, [broad('child')], true],
+    ['nonblocking child of scoped package needs no exception', { child: derived('moderate', ...high.via), moderate: { severity: 'moderate' } }, [scoped('child')], true],
     ['package-wide child without evidence', { child: { severity: 'high' } }, [broad('child')], false],
     ['package-wide child with invalid evidence', { child: derived(null, ...high.via) }, [broad('child')], false],
     ['unexcepted grandchild', { child: derived('grandchild'), grandchild: high }, [broad('child')], false],
@@ -132,5 +137,17 @@ test('derived exceptions preserve the original advisory scope across the graph',
         assert.doesNotMatch(result.stdout, /Dependency audit contract OK/);
       }
     });
+  }
+});
+
+test('separate roots cannot share advisory approval regardless of traversal order', (t) => {
+  const root = { severity: 'high', via: ['child'] };
+  const other = { ...exception, packageName: 'other', advisories: ['GHSA-2222-2222-2222'] };
+  const child = { ...exception, packageName: 'child', advisories: undefined };
+  for (const roots of [{ example: root, other: root }, { other: root, example: root }]) {
+    const result = run(t, report({ ...roots, child: high }), 1, [exception, other, child]);
+    assert.notEqual(result.status, 0, result.stdout);
+    assert.match(result.stderr, /other: incomplete or out-of-scope advisory evidence/);
+    assert.doesNotMatch(result.stdout, /Dependency audit contract OK/);
   }
 });

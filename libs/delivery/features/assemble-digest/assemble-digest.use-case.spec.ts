@@ -205,6 +205,7 @@ describe('AssembleDigestUseCase', () => {
     expect(second.value).toEqual({
       digest: first.value.digest,
       created: false,
+      deliveryAttemptId: first.value.deliveryAttemptId,
     });
   });
 

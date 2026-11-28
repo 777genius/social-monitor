@@ -1,4 +1,4 @@
-import { PrismaOutboxStoreAdapter } from '@social-monitor/platform-events/adapters/prisma';
+import { PrismaEventRecoveryStoreAdapter } from '@social-monitor/platform-events/adapters/prisma';
 import type { PrismaEventStoreClient, PrismaInboxRecord } from '@social-monitor/platform-events/adapters/prisma/prisma-event-store-client';
 import { runWithSystemDatabaseAccess } from '@social-monitor/platform-persistence';
 import type { Clock } from '@social-monitor/shared-kernel';
@@ -51,7 +51,7 @@ export function recoveryPersistence(db: RecoveryDatabase, clock: Clock): Recover
     transition: async (row, action) => {
       let updated: RecoveryRow | undefined;
       const unavailable = (): never => { throw new Error('Recovery adapter method unavailable'); };
-      // The standard adapter owns diagnostics and start/ack/failure semantics.
+      // The explicit recovery adapter owns diagnostics and start/ack/failure semantics.
       // Compare PostgreSQL tuple versions under an exact row lock. Comparing
       // Date values in Prisma WHERE loses PostgreSQL sub-millisecond precision.
       requireRecovery(row.messageKind === 'EVENT' && row.status === 'FAILED',
@@ -76,7 +76,7 @@ export function recoveryPersistence(db: RecoveryDatabase, clock: Clock): Recover
         },
         inboxRecord: { findUnique: unavailable, create: unavailable },
       };
-      const outbox = new PrismaOutboxStoreAdapter(guarded, clock, 'FAILED');
+      const outbox = new PrismaEventRecoveryStoreAdapter(guarded, clock);
       if (action === 'start') await outbox.recordAttempt(row.id);
       else if (action === 'published') await outbox.markPublished(row.id);
       else await outbox.markFailed(row.id, 'Reader ready recovery publish uncertain; inspect durable operation receipts.');

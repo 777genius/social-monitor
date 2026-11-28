@@ -87,6 +87,7 @@ import {
   SUMMARY_AUTO_SUMMARY_CANDIDATE_REPOSITORY,
   SUMMARY_EVIDENCE_SELECTOR,
   SUMMARY_EVENT_PUBLISHER,
+  SUMMARY_EXECUTION_WORKFLOW,
   SUMMARY_FEEDBACK_REPOSITORY,
   SUMMARY_JOB_QUEUE,
   SUMMARY_JOB_QUEUE_MODE,
@@ -113,6 +114,7 @@ import {
   resolveSummaryYoutubeVideoSummaryMaxPreviewCharacters,
 } from "./summary-provider-tokens";
 import { summaryConversationPersistenceProviders } from "./summary-conversation-persistence.providers";
+import { summaryExecutionWorkflowProvider } from "./summary-execution-workflow.provider";
 
 export const summaryRestInfrastructureProviders = [
   {
@@ -279,6 +281,7 @@ export const summaryRestInfrastructureProviders = [
     ],
   },
   InMemorySummaryEventPublisher,
+  summaryExecutionWorkflowProvider,
   NoopSummaryMemoryAdapter,
   {
     provide: SUMMARY_MEMORY,
@@ -456,6 +459,7 @@ export const summaryRestInfrastructureExports = [
   SUMMARY_AUTO_SUMMARY_CANDIDATE_REPOSITORY,
   SUMMARY_EVIDENCE_SELECTOR,
   SUMMARY_EVENT_PUBLISHER,
+  SUMMARY_EXECUTION_WORKFLOW,
   SUMMARY_FEEDBACK_REPOSITORY,
   SUMMARY_JOB_QUEUE,
   SUMMARY_JOB_REPOSITORY,

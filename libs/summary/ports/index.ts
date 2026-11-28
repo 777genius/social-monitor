@@ -42,3 +42,4 @@ export * from "./summary-quota.port";
 export * from "./story-ranking-metrics.port";
 export * from "./user-summary-preference-reader.port";
 export * from "./youtube-video-summary-provider.port";
+export * from "./summary-execution-workflow.port";

@@ -1,3 +1,4 @@
+import { InMemorySummaryExecutionWorkflow } from '@social-monitor/summary/adapters/persistence/in-memory-summary-execution-workflow';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
@@ -189,7 +190,7 @@ async function buildRuntimeStaleMarkerProof(): Promise<{
     new NoopUserSummaryPreferenceReader(),
     new FeedSummaryEvidenceSelector(feedItems, clock),
     new DeterministicSummaryModelAdapter(),
-    events,
+    new InMemorySummaryExecutionWorkflow(summaryJobs, summaryArtifacts, events),
     new SequenceIdGenerator('summary-quality-artifact'),
     clock,
   ).execute({

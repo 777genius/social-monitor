@@ -1,3 +1,4 @@
+import { InMemorySummaryExecutionWorkflow } from '@social-monitor/summary/adapters/persistence/in-memory-summary-execution-workflow';
 import { maxEvidenceItems } from "./lib/live-multi-provider-summary-config";
 import { liveCheckConfiguredInterests } from "./lib/live-multi-provider-summary-interests";
 import { ConversationUnitProjectionAdapter } from "@social-monitor/conversation/adapters/ingestion/conversation-unit-projection.adapter";
@@ -358,7 +359,7 @@ const main = async (): Promise<void> => {
       clock,
     ),
     summaryModel,
-    summaryEvents,
+    new InMemorySummaryExecutionWorkflow(summaryJobs, summaryArtifacts, summaryEvents),
     summaryIds,
     clock,
   );

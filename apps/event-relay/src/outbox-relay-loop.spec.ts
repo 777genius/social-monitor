@@ -19,7 +19,7 @@ describe('OutboxRelayLoop diagnostics', () => {
     );
     try {
       await relay.onModuleInit();
-      expect(dispatchBatch).toHaveBeenCalledWith(1);
+      expect(dispatchBatch).toHaveBeenCalledWith(1, expect.any(Function));
       expect(log).toHaveBeenCalledWith('outbox relay loop tick failed',
         expect.objectContaining({ trigger: 'startup', error: expect.any(String) }));
       const context = log.mock.calls[0]?.[1] as { error?: string } | undefined;

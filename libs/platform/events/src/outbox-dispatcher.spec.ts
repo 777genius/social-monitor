@@ -1,74 +1,128 @@
-import { correlationId, eventId, tenantId, workspaceId } from '@social-monitor/shared-kernel';
+import { REDACTED_VALUE } from '@social-monitor/shared-kernel';
 
-import { InMemoryEventPublisher, InMemoryOutboxStore } from './adapters/in-memory';
-import { OutboxDispatcher } from './outbox-dispatcher';
+import { InMemoryEventPublisher } from './adapters/in-memory';
+import { outboxFixture } from './outbox-dispatcher.spec-support';
 
-describe('OutboxDispatcher', () => {
-  it('publishes pending events and marks them published', async () => {
-    const outbox = new InMemoryOutboxStore();
+const nothing = { published: 0, retrying: 0, failed: 0 };
+
+describe('OutboxDispatcher recovery', () => {
+  it('publishes the original scoped envelope and clears its live ownership', async () => {
+    const f = outboxFixture();
     const publisher = new InMemoryEventPublisher();
-    outbox.add({
-      id: 'outbox-1',
-      event: {
-        eventId: eventId('event-1'),
-        eventType: 'test.event',
-        schemaVersion: 1,
-        occurredAt: new Date('2026-06-05T00:00:00.000Z'),
-        tenantId: tenantId('tenant-1'),
-        workspaceId: workspaceId('workspace-1'),
-        correlationId: correlationId('correlation-1'),
-        payload: {},
-      },
+    const record = f.record();
+    f.store.add(record);
+    const dispatcher = f.dispatcher(publisher);
+
+    expect(await dispatcher.dispatchBatch(10)).toEqual({ published: 1, retrying: 0, failed: 0 });
+    expect(publisher.published).toEqual([record.event]);
+    expect(f.store.snapshot(record.id)).toMatchObject({
+      status: 'PUBLISHED', publishAttempts: 1, lastError: null,
+      publishedAt: f.clock.now(), leaseOwner: null, leasedUntil: null,
     });
-
-    const result = await new OutboxDispatcher(outbox, publisher).dispatchBatch(10);
-
-    expect(result).toEqual({ published: 1, failed: 0 });
+    expect(await dispatcher.dispatchBatch(10)).toEqual(nothing);
     expect(publisher.published).toHaveLength(1);
-    await expect(outbox.pending(10)).resolves.toHaveLength(0);
-  });
-  it('preserves a terminal published event against a stale failing relay', async () => {
-    const outbox = new InMemoryOutboxStore();
-    outbox.add({
-      id: 'outbox-2',
-      event: {
-        eventId: eventId('event-2'),
-        eventType: 'test.event',
-        schemaVersion: 1,
-        occurredAt: new Date('2026-06-05T00:01:00.000Z'),
-        correlationId: correlationId('correlation-2'),
-        payload: {},
-      },
-    });
-    // Two workers have already read the same PENDING record. The second may
-    // not move the acknowledged terminal row backwards.
-    const pending = await outbox.pending(1);
-    expect(pending).toHaveLength(1);
-    await outbox.recordAttempt('outbox-2');
-    await outbox.markPublished('outbox-2');
-    await expect(outbox.markFailed('outbox-2', 'delayed broker failure')).rejects.toThrow('no longer pending');
-    await expect(outbox.markPublished('outbox-2')).rejects.toThrow('no longer pending');
-    await expect(outbox.recordAttempt('outbox-2')).rejects.toThrow('no longer pending');
-    await expect(outbox.pending(10)).resolves.toHaveLength(0);
   });
 
-  it('preserves a failed event from late success without automatically requeuing it', async () => {
-    const outbox = new InMemoryOutboxStore();
-    outbox.add({
-      id: 'outbox-3',
-      event: {
-        eventId: eventId('event-3'),
-        eventType: 'test.event',
-        schemaVersion: 1,
-        occurredAt: new Date('2026-06-05T00:02:00.000Z'),
-        correlationId: correlationId('correlation-3'),
-        payload: {},
-      },
-    });
-    await outbox.recordAttempt('outbox-3');
-    await outbox.markFailed('outbox-3', 'broker unavailable');
-    await expect(outbox.markPublished('outbox-3')).rejects.toThrow('no longer pending');
-    await expect(outbox.pending(10)).resolves.toHaveLength(0);
+  it('recovers a temporary broker failure on a later tick without spinning before the retry time', async () => {
+    const f = outboxFixture();
+    const record = f.record();
+    f.store.add(record);
+    const publish = jest.fn().mockRejectedValueOnce(new Error('broker temporarily unavailable')).mockResolvedValue(undefined);
+    const dispatcher = f.dispatcher({ publish });
+
+    expect(await dispatcher.dispatchBatch(1)).toEqual({ published: 0, retrying: 1, failed: 0 });
+    expect(f.store.snapshot(record.id)).toMatchObject({ status: 'PENDING', publishAttempts: 1, leaseOwner: null });
+    expect(await dispatcher.dispatchBatch(1)).toEqual(nothing);
+    f.advance(999);
+    expect(await dispatcher.dispatchBatch(1)).toEqual(nothing);
+    expect(publish).toHaveBeenCalledTimes(1);
+    f.advance(1);
+    expect(await dispatcher.dispatchBatch(1)).toEqual({ published: 1, retrying: 0, failed: 0 });
+    expect(publish.mock.calls).toEqual([[record.event], [record.event]]);
+    expect(f.store.snapshot(record.id)?.publishAttempts).toBe(2);
   });
 
+  it('counts dispatch starts before the send, caps backoff and eventually makes permanent errors terminal', async () => {
+    const f = outboxFixture();
+    f.store.add(f.record());
+    let starts = 0;
+    const publish = jest.fn(async () => {
+      starts += 1;
+      expect(f.store.snapshot('event-1')?.publishAttempts).toBe(starts);
+      throw new Error('NO_ROUTE access_token=fixture-token\n' + 'x'.repeat(800));
+    });
+    const dispatcher = f.dispatcher({ publish }, { maxAttempts: 4, retryBaseMs: 10, retryMaxMs: 25 });
+    for (const delay of [10, 20, 25]) {
+      expect(await dispatcher.dispatchBatch(1)).toEqual({ published: 0, retrying: 1, failed: 0 });
+      expect(f.store.snapshot('event-1')?.availableAt.getTime()).toBe(f.clock.now().getTime() + delay);
+      f.advance(delay);
+    }
+    expect(await dispatcher.dispatchBatch(1)).toEqual({ published: 0, retrying: 0, failed: 1 });
+    const row = f.store.snapshot('event-1');
+    expect(row).toMatchObject({ status: 'FAILED', publishAttempts: 4, leaseOwner: null, publishedAt: null });
+    expect(row?.lastError).toContain(`NO_ROUTE access_token=${REDACTED_VALUE}`);
+    expect(row?.lastError).not.toMatch(/fixture-token|[\r\n\t]/);
+    expect(row?.lastError?.length).toBeLessThanOrEqual(500);
+    f.advance(100_000);
+    expect(await dispatcher.dispatchBatch(1)).toEqual(nothing);
+    expect(publish).toHaveBeenCalledTimes(4);
+  });
+
+  it('settles independent healthy siblings after a publication failure', async () => {
+    const f = outboxFixture();
+    f.store.add(f.record('event-1'));
+    f.store.add(f.record('event-2'));
+    const publish = jest.fn().mockRejectedValueOnce(new Error('unroutable event')).mockResolvedValue(undefined);
+    expect(await f.dispatcher({ publish }).dispatchBatch(2)).toEqual({ published: 1, retrying: 1, failed: 0 });
+    expect(f.store.snapshot('event-1')?.status).toBe('PENDING');
+    expect(f.store.snapshot('event-2')?.status).toBe('PUBLISHED');
+  });
+
+  it('terminalizes an exhausted interrupted attempt on reclaim without spending another send', async () => {
+    const f = outboxFixture();
+    f.store.add(f.record('event-1'), { publishAttempts: 10 });
+    f.store.add(f.record('event-2'));
+    const publish = jest.fn().mockResolvedValue(undefined);
+    expect(await f.dispatcher({ publish }).dispatchBatch(2)).toEqual({ published: 1, retrying: 0, failed: 1 });
+    expect(publish).toHaveBeenCalledTimes(1);
+    expect(publish.mock.calls[0]?.[0].eventId).toBe('event-2');
+    expect(f.store.snapshot('event-1')).toMatchObject({ status: 'FAILED', publishAttempts: 10 });
+    expect(f.store.snapshot('event-1')?.lastError).toContain('last outcome may be unknown');
+  });
+
+  it('never automatically replays a historical FAILED row, even with unused retry budget', async () => {
+    const f = outboxFixture();
+    f.store.add(f.record(), { status: 'FAILED', publishAttempts: 1 });
+    const before = f.store.snapshot('event-1');
+    const publish = jest.fn();
+    expect(await f.dispatcher({ publish }).dispatchBatch(1)).toEqual(nothing);
+    expect(publish).not.toHaveBeenCalled();
+    expect(f.store.snapshot('event-1')).toEqual(before);
+  });
+
+  it('does not acquire work after stop and leaves unstarted siblings outside the attempt count', async () => {
+    const f = outboxFixture();
+    f.store.add(f.record('event-1'));
+    f.store.add(f.record('event-2'));
+    let running = true;
+    const publish = jest.fn(async () => { running = false; });
+    const dispatcher = f.dispatcher({ publish });
+    expect(await dispatcher.dispatchBatch(2, () => running)).toEqual({ published: 1, retrying: 0, failed: 0 });
+    expect(f.store.snapshot('event-2')).toMatchObject({ status: 'PENDING', publishAttempts: 0 });
+    expect(await dispatcher.dispatchBatch(2, () => running)).toEqual(nothing);
+    f.advance(30_000);
+    expect(await f.dispatcher(new InMemoryEventPublisher()).dispatchBatch(2))
+      .toEqual({ published: 1, retrying: 0, failed: 0 });
+    expect(f.store.snapshot('event-2')?.publishAttempts).toBe(1);
+  });
+
+  it('rejects an unbounded batch before calling the store', async () => {
+    const f = outboxFixture();
+    const claim = jest.spyOn(f.store, 'claimPending');
+    const dispatcher = f.dispatcher(new InMemoryEventPublisher());
+    await expect(dispatcher.dispatchBatch(501)).rejects.toThrow('batch limit');
+    await expect(dispatcher.dispatchBatch(-1)).rejects.toThrow('batch limit');
+    expect(await dispatcher.dispatchBatch(0)).toEqual(nothing);
+    expect(claim).not.toHaveBeenCalled();
+  });
 });

@@ -16,7 +16,6 @@ import { PrismaReaderSummaryPolicyRepository } from "@social-monitor/summary/ada
 import { PrismaSummaryJobRepository } from "@social-monitor/summary/adapters/persistence/prisma/prisma-summary-job.repository";
 import {
   CryptoIdGenerator,
-  FixedClock,
   tenantId,
 } from "@social-monitor/shared-kernel";
 
@@ -65,8 +64,7 @@ describe("background tenant database access", () => {
       new CryptoIdGenerator(),
     );
     const outbox = new PrismaOutboxStoreAdapter(
-      { outboxEvent: { findMany } } as never,
-      new FixedClock(new Date(0)),
+      { $queryRaw: queryRaw } as never,
     );
     const inbox = new PrismaInboxStoreAdapter(
       {
@@ -92,7 +90,9 @@ describe("background tenant database access", () => {
     await scanPolicies.findDue({ now: new Date(0), limit: 1 });
     await relevanceProjections.findDue({ now: new Date(0), limit: 1 });
     await scanRetries.claimRetries({ limit: 1, now: new Date(0), visibilityTimeoutSeconds: 300 });
-    await outbox.pending(1);
+    await outbox.claimPending({
+      limit: 1, now: new Date(0), leasedUntil: new Date(30_000), leaseOwner: "tenant-scope-test",
+    });
     await inbox.hasProcessed({
       consumerName: "tenant-scope-test",
       eventId: "event-1",

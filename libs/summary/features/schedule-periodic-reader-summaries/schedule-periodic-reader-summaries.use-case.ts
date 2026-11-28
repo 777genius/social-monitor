@@ -2,6 +2,7 @@ import {
   DomainError,
   err,
   ok,
+  redactSensitiveText,
   type Result,
 } from "@social-monitor/shared-kernel";
 
@@ -17,7 +18,10 @@ import {
 import { readerSummaryTransientRecoveryKey } from "../../domain/policies/reader-summary-transient-recovery";
 import type { ReaderSummaryJobRepositoryPort, ReaderSummaryPolicyRepositoryPort } from "../../ports";
 import type { RequestReaderSummaryUseCase } from "../request-reader-summary/request-reader-summary.use-case";
-import type { SchedulePeriodicReaderSummariesCommand } from "./schedule-periodic-reader-summaries.command";
+import type {
+  PeriodicReaderSummaryContinuation,
+  SchedulePeriodicReaderSummariesCommand,
+} from "./schedule-periodic-reader-summaries.command";
 import type {
   ScheduledPeriodicReaderSummaryResultItem,
   SchedulePeriodicReaderSummariesResult,
@@ -26,6 +30,7 @@ import type {
 type SchedulePeriodicReaderSummariesFailure = DomainError | Error;
 
 const MAX_LIMIT = 100;
+const CADENCES: readonly ScheduledReaderSummaryCadence[] = ["daily", "weekly", "monthly"];
 
 export class SchedulePeriodicReaderSummariesUseCase {
   constructor(
@@ -70,41 +75,111 @@ export class SchedulePeriodicReaderSummariesUseCase {
       );
     }
 
-    const policies = await this.readerSummaryPolicies.listScheduled({
-      tenantId: command.tenantId,
-      workspaceId: command.workspaceId,
-      limit: command.limit,
-    });
+    const day = command.now.toISOString().slice(0, 10);
+    let continuation = command.continuation;
+    if (continuation !== undefined) {
+      if (continuation.tenantId !== command.tenantId ||
+          continuation.workspaceId !== command.workspaceId) {
+        continuation = undefined;
+      } else if (continuation.day !== day) {
+        // A sweep can span a day at scale. Keep the fair policy/cadence position,
+        // but do not carry relative recovery progress into a different period.
+        continuation = { ...continuation, day, periodDay: undefined };
+      }
+    }
+
+    const readPage = (cursor: PeriodicReaderSummaryContinuation | undefined) =>
+      this.readerSummaryPolicies.listScheduled({
+        tenantId: command.tenantId,
+        workspaceId: command.workspaceId,
+        limit: command.limit,
+        ...(cursor === undefined ? {} : {
+          cursor: { policyId: cursor.policyId, inclusive: cursor.cadence !== undefined },
+        }),
+      });
+    let policies = await readPage(continuation);
+    if (policies.length === 0 && continuation !== undefined) {
+      continuation = undefined;
+      policies = await readPage(undefined);
+    }
     const summaries: ScheduledPeriodicReaderSummaryResultItem[] = [];
     const failures: {
       readonly scopeKey: string;
       readonly cadence: ScheduledReaderSummaryCadence;
       readonly message: string;
     }[] = [];
-    const scheduleWindow = new ReaderSummaryScheduleWindowPolicy(
-      command.readyAtUtc,
-    );
+    const scheduleWindow = new ReaderSummaryScheduleWindowPolicy(command.readyAtUtc);
     let evaluated = 0;
     let scheduled = 0;
     let existing = 0;
     let notReady = 0;
+    let inspected = 0;
+
+    const next = (
+      policyId: string,
+      cadence?: ScheduledReaderSummaryCadence,
+      periodDay?: string,
+    ): PeriodicReaderSummaryContinuation => ({
+      tenantId: command.tenantId,
+      workspaceId: command.workspaceId,
+      day,
+      policyId,
+      cadence,
+      periodDay,
+    });
+    const finish = (cursor?: PeriodicReaderSummaryContinuation) => ok({
+      evaluated,
+      scheduled,
+      existing,
+      notReady,
+      failed: failures.length,
+      summaries,
+      failures,
+      ...(cursor === undefined ? {} : { continuation: cursor }),
+    });
+    // Historical unchanged failures do not consume admission slots, but must
+    // still consume a bounded amount of work per tick.
+    const budgetReached = () => evaluated >= command.limit || inspected >= command.limit * 3;
+    const periodDays = [1, 2, 0].map((days) =>
+      new Date(command.now.getTime() - days * 86_400_000).toISOString().slice(0, 10));
 
     for (const policy of policies) {
-      for (const cadence of policy.toScheduleSettings().cadences) {
-        const recoveryTimes = cadence === "daily" && scheduleWindow.canSchedule({ cadence, now: command.now })
-          ? await this.recoveryTimes(policy, command.now) : [];
-        for (const periodNow of [...recoveryTimes, command.now]) {
-          if (evaluated >= command.limit) {
-            break;
+      const snapshot = policy.toSnapshot();
+      const resume = continuation?.policyId === snapshot.id ? continuation : undefined;
+      const cadences = CADENCES.filter((cadence) =>
+        snapshot.schedule.cadences.includes(cadence) &&
+        (resume?.cadence === undefined || CADENCES.indexOf(cadence) >= CADENCES.indexOf(resume.cadence)));
+
+      for (const cadence of cadences) {
+        if (budgetReached()) return finish(next(snapshot.id, cadence));
+
+        let recoveryTimes: readonly Date[];
+        try {
+          recoveryTimes = cadence === "daily" && scheduleWindow.canSchedule({ cadence, now: command.now })
+            ? await this.recoveryTimes(policy, command.now) : [];
+        } catch (error) {
+          evaluated += 1;
+          inspected += 1;
+          failures.push({
+            scopeKey: readerSummaryScopeKey(snapshot.scope),
+            cadence,
+            message: safeSchedulingFailure(error),
+          });
+          continue;
+        }
+
+        const firstPeriod = resume?.cadence === cadence && resume.periodDay !== undefined
+          ? periodDays.indexOf(resume.periodDay) : 0;
+        const periods = [...recoveryTimes, command.now].filter((periodNow) =>
+          periodDays.indexOf(periodNow.toISOString().slice(0, 10)) >= firstPeriod);
+        for (const periodNow of periods) {
+          if (budgetReached()) {
+            return finish(next(snapshot.id, cadence, periodNow.toISOString().slice(0, 10)));
           }
 
+          inspected += 1;
           evaluated += 1;
-          if (
-            !scheduleWindow.canSchedule({
-              cadence,
-              now: command.now,
-            })
-          ) {
+          if (!scheduleWindow.canSchedule({ cadence, now: command.now })) {
             notReady += 1;
             continue;
           }
@@ -126,32 +201,18 @@ export class SchedulePeriodicReaderSummariesUseCase {
 
           if (item.ok) {
             summaries.push(item.value);
-            if (item.value.created) {
-              scheduled += 1;
-            } else {
-              existing += 1;
-            }
-            continue;
+            if (item.value.created) scheduled += 1;
+            else existing += 1;
+          } else {
+            failures.push(item.failure);
           }
-
-          failures.push(item.failure);
         }
-      }
-
-      if (evaluated >= command.limit) {
-        break;
       }
     }
 
-    return ok({
-      evaluated,
-      scheduled,
-      existing,
-      notReady,
-      failed: failures.length,
-      summaries,
-      failures,
-    });
+    const lastPolicy = policies.at(-1);
+    return finish(policies.length === command.limit && lastPolicy !== undefined
+      ? next(lastPolicy.toSnapshot().id) : undefined);
   }
 
   /** Revisit only existing failed daily periods; never backfill missing days.
@@ -237,7 +298,7 @@ export class SchedulePeriodicReaderSummariesUseCase {
           failure: {
             scopeKey,
             cadence: params.cadence,
-            message: result.error.message,
+            message: safeSchedulingFailure(result.error),
           },
         };
       }
@@ -262,10 +323,7 @@ export class SchedulePeriodicReaderSummariesUseCase {
         failure: {
           scopeKey,
           cadence: params.cadence,
-          message:
-            error instanceof Error
-              ? error.message
-              : "Periodic reader summary scheduling failed",
+          message: safeSchedulingFailure(error),
         },
       };
     }
@@ -297,3 +355,8 @@ const periodToResult = (period: ReaderSummaryPeriod) => ({
   timezone: period.timezone,
   periodKey: period.periodKey,
 });
+
+const safeSchedulingFailure = (error: unknown): string =>
+  redactSensitiveText(error instanceof Error ? error.message : "Periodic reader summary scheduling failed")
+    .replace(/[\r\n]+/g, " ")
+    .slice(0, 240);

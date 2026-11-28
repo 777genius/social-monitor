@@ -2,10 +2,10 @@
 
 ## Status
 
-Locked for MVP implementation. The platform layer now contains executable ports/adapters for:
+MVP foundation, updated for the bounded recovery implementation in PR #801. The platform layer contains executable ports/adapters for:
 
 - polling outbox dispatch through `OutboxDispatcher`;
-- durable Prisma outbox reads and published/failed state transitions through `PrismaOutboxStoreAdapter`;
+- atomic leased EVENT claims, retry/backoff and fenced published/failed transitions through `PrismaOutboxStoreAdapter`;
 - RabbitMQ event publication through `RabbitMqEventPublisher`;
 - a dedicated `event-relay` worker app started with `npm run start:event-relay`;
 - durable Prisma inbox processed-event dedupe through `PrismaInboxStoreAdapter`;
@@ -37,9 +37,15 @@ correlation_id text not null
 causation_id text null
 created_at timestamptz not null
 published_at timestamptz null
+message_kind enum(EVENT, COMMAND) not null
+available_at timestamptz not null
+lease_owner text null
+leased_until timestamptz null
+publish_attempts int not null default 0
+last_error text null
 ```
 
-`id` is the canonical domain event id. The relay reconstructs the event envelope with `created_at` as `occurredAt`. This is acceptable for the MVP because event producers write the row at event creation time; a later production hardening pass can add explicit `occurred_at`, attempts, `available_at`, `last_error` and row-lock leasing without changing domain code.
+`id` is the canonical domain event id. The relay reconstructs the event envelope with `created_at` as `occurredAt`. Event producers write the row at event creation time. Retry, availability and lease columns already exist; the current implementation reuses them without adding a schema migration.
 
 ## Long-Term Outbox Table
 
@@ -66,7 +72,9 @@ last_error text null
 
 ## Relay
 
-The MVP implementation uses `OutboxDispatcher` against `OutboxStorePort` and `EventPublisherPort`. The Prisma adapter reads pending events in deterministic `createdAt/id` order, publishes through an injected publisher, marks success as `PUBLISHED` with `publishedAt`, and marks publisher failures as `FAILED`.
+The implementation uses `OutboxDispatcher` against `OutboxStorePort` and `EventPublisherPort`. The Prisma adapter atomically claims due PENDING EVENT rows with `FOR UPDATE SKIP LOCKED`, ordered by availability, creation time and ID. A live database-time owner is required to record each dispatch start and settle its result. Success becomes PUBLISHED; publication failures retry with bounded exponential backoff and become FAILED only when the recorded-start budget is exhausted. The batch heartbeat protects slow admitted work and later claimed rows.
+
+A broker ACK with failed database settlement stays uncertain and may be delivered again after lease expiry. A row-specific persistence error requires a fresh database proof of remaining claims before healthy siblings proceed. Historical FAILED rows retain the explicit manifest/row-version recovery boundary; see [EVENT recovery operations](../operations/event-outbox-recovery.md).
 
 The executable relay process is `apps/event-relay`. It requires `DATABASE_URL` and `RABBITMQ_URL`, reads from the Prisma outbox, publishes event envelopes to `RABBITMQ_EVENT_EXCHANGE` (default `social-monitor.events`), and can tune `EVENT_RELAY_BATCH_SIZE`, `EVENT_RELAY_INTERVAL_MS` and `EVENT_RELAY_RUN_ON_START`.
 
@@ -86,7 +94,7 @@ after the configured attempt budget. Because publication and the final status
 write cannot be one transaction, delivery is at least once; `scanJobId` is the
 stable command id and consumers must remain idempotent.
 
-Later hardening should switch the Prisma query to a leasing query with `FOR UPDATE SKIP LOCKED` or move relay publication to Debezium CDC without changing domain use cases.
+EVENT and COMMAND dispatch remain separate capabilities over the same table. Every claim and mutation filters the message kind; neither path can settle the other kind's work.
 
 Polling relay requirements:
 
@@ -142,13 +150,13 @@ Transactional outbox solves the database-vs-broker dual-write problem. It does n
 `npm run check:event-store` must stay in the release script. It proves:
 
 - pending outbox events are dispatched and marked `PUBLISHED`;
-- publisher failures are marked `FAILED`;
+- publication failures preserve bounded retry, and exhausted recorded starts become `FAILED`;
 - a new inbox adapter instance deduplicates a previously processed event.
 
 `npm run check:event-relay` must stay in the release script. It proves the dedicated relay loop publishes outbox events through the RabbitMQ event publisher and removes them from the pending outbox.
 
 Related queue transport guardrails:
 
-- `npm run check:rabbitmq-queue-publisher` proves command publisher route assertion and RabbitMQ publish metadata;
+- `npm run check:rabbitmq-queue-publisher` proves command route/metadata and successful broker confirmation even when the local write buffer was full;
 - `npm run check:scan-queue-drain-loop` proves scan command reader ack/nack semantics;
 - `npm run check:summary-queue-drain-loop` proves summary command reader ack/nack semantics and worker command execution.

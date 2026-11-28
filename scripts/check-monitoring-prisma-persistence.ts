@@ -505,6 +505,9 @@ class FakePrismaMonitoringClient implements PrismaMonitoringClient {
   };
 
   readonly sourceCatalogEntry: PrismaMonitoringClient['sourceCatalogEntry'] = {
+    findMany: async ({ where }) => [...this.sourceCatalogEntries.values()].filter((entry) =>
+      'id' in where ? where.id.in.includes(entry.id) : where.providerKey.in.includes(entry.providerKey)),
+
     findUnique: async (args) => {
       this.reindexSourceCatalog();
       if (args.where.providerKey !== undefined) {

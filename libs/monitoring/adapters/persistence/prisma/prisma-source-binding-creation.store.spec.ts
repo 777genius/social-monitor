@@ -43,7 +43,7 @@ const fixture = () => {
       })),
       create: unused, count: unused, upsert: unused, updateMany: unused, findMany: unused,
     },
-    sourceCatalogEntry: { findUnique: catalog },
+    sourceCatalogEntry: { findUnique: catalog, findMany: unused },
     sourceBinding: {
       create: createBinding, findFirst: jest.fn(async () => null),
       count: jest.fn(async () => 0), upsert: unused, updateMany: unused, findMany: unused,

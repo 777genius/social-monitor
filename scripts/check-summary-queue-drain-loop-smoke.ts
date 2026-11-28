@@ -1,3 +1,4 @@
+import { InMemorySummaryExecutionWorkflow } from '@social-monitor/summary/adapters/persistence/in-memory-summary-execution-workflow';
 import { InMemoryFeedItemReadRepository } from '@social-monitor/feed/adapters/persistence/in-memory-feed-item-read.repository';
 import { InMemoryMetricsRecorder } from '@social-monitor/platform-metrics';
 import { InMemoryQueuePublisher } from '@social-monitor/platform-queue/adapters/in-memory';
@@ -93,7 +94,7 @@ async function verifyInMemoryDrainLoop(): Promise<void> {
         new NoopUserSummaryPreferenceReader(),
         new FeedSummaryEvidenceSelector(new InMemoryFeedItemReadRepository(), clock),
         new DeterministicSummaryModelAdapter(),
-        events,
+        new InMemorySummaryExecutionWorkflow(summaryJobs, summaryArtifacts, events),
         new SequenceIdGenerator(),
         clock,
       ),

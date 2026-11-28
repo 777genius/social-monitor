@@ -37,7 +37,8 @@ const assert: (condition: unknown, message: string) => asserts condition = (cond
 };
 
 async function main(): Promise<void> {
-  const outbox = new InMemoryOutboxStore();
+  const clock = new FixedClock(new Date('2026-06-16T02:00:00.000Z'));
+  const outbox = new InMemoryOutboxStore(clock);
   const channel = new FakeRabbitMqEventChannel();
   outbox.add({
     id: '00000000-0000-7000-8000-000000000801',
@@ -64,6 +65,8 @@ async function main(): Promise<void> {
         durable: true,
         persistent: true,
       }),
+      new FixedIdGenerator(),
+      clock,
     ),
     {
       enabled: true,
@@ -82,7 +85,7 @@ async function main(): Promise<void> {
   assert(channel.published[0]?.routingKey === 'summary.ready', 'event routing key must be event type');
   assert(channel.published[0]?.options.messageId === '00000000-0000-7000-8000-000000000801', 'event message id mismatch');
   assert(channel.published[0]?.options.type === 'summary.ready', 'event publish type mismatch');
-  assert((await outbox.pending(10)).length === 0, 'event relay must remove published event from pending outbox');
+  assert(outbox.snapshot('00000000-0000-7000-8000-000000000801')?.status === 'PUBLISHED', 'event relay must acknowledge the published event');
 
   const commandChannel = new FakeRabbitMqEventChannel();
   const commandOutbox = new FakeCommandOutbox();
@@ -212,7 +215,7 @@ class FakeRabbitMqEventChannel implements RabbitMqQueueChannelPort {
 
   async publishAndConfirm(...args: Parameters<RabbitMqQueueChannelPort['publishAndConfirm']>): Promise<boolean> {
     const accepted = this.publish(...args);
-    if (accepted) await this.waitForConfirms();
+    await this.waitForConfirms();
     return accepted;
   }
 

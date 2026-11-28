@@ -1,3 +1,5 @@
+import { DomainError } from '@social-monitor/shared-kernel';
+
 import type { SummaryArtifact } from '../../domain';
 import type {
   ListSummaryArtifactsQuery,
@@ -9,8 +11,23 @@ export class InMemorySummaryArtifactRepository implements SummaryArtifactReposit
   private readonly artifactsById = new Map<string, SummaryArtifact>();
 
   async save(artifact: SummaryArtifact): Promise<void> {
+    this.store(artifact);
+  }
+
+  /** Synchronous adapter write used by the atomic in-memory execution workflow. */
+  store(artifact: SummaryArtifact): void {
     const snapshot = artifact.toSnapshot();
     this.artifactsById.set(`${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.summaryId}`, artifact);
+  }
+
+  /** Validate a create-only write before the workflow commits any of its stores. */
+  prepareCreate(artifact: SummaryArtifact): () => void {
+    const snapshot = artifact.toSnapshot();
+    if ([...this.artifactsById.values()].some((stored) => stored.toSnapshot().summaryId === snapshot.summaryId)) {
+      throw new DomainError('operation.conflict', 'Summary artifact identity already exists');
+    }
+    const key = `${snapshot.tenantId}:${snapshot.workspaceId}:${snapshot.summaryId}`;
+    return () => { this.artifactsById.set(key, artifact); };
   }
 
   async list(query: ListSummaryArtifactsQuery): Promise<ListSummaryArtifactsResult> {

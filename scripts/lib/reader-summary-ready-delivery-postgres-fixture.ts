@@ -88,6 +88,7 @@ async function installDeliveryTables(database: Pool, role: string, systemRole: s
   }
   await database.query(required(commands, /CREATE TYPE "OutboxMessageKind"[^;]+;/));
   await database.query(required(commands, /ALTER TABLE "outbox_events"[\s\S]*?;/));
+  await database.query(required(commands, /CREATE INDEX "outbox_events_dispatch_idx"[^;]+;/));
   for (const fn of rls.matchAll(/CREATE OR REPLACE FUNCTION public\.social_monitor_rls_[\s\S]*?\$\$;/g)) {
     // Preserve canonical policies with an isolated capability role, never alter
     // roles belonging to another project/server fixture.

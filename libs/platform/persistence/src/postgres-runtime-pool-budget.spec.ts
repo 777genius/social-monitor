@@ -231,6 +231,8 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
     // Catalog seed metadata and the Telegram sandbox checker import Prisma types only;
     // Telegram entrypoints acquire bounded shared factories rather than raw constructors.
     // Durable E2E pollers and evidence adapters import pg types only and receive the runner-owned Pool.
+    // Native EVENT/summary helpers borrow the gate-owned Pool and close lock Clients in finally.
+    // Summary contenders use two independent max=1 registries, both closed in finally.
     expect(rawDependencyFiles).toEqual(expectedSourceList(`
       libs/ingestion/adapters/persistence/prisma/article-capture-postgres.spec-support.ts
       libs/platform/persistence/src/commit-ack-wiring.spec.ts
@@ -286,6 +288,7 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/import-rss-sep24-verified.ts
       scripts/lib/durable-backend-e2e-evidence-pollers.ts
       scripts/lib/durable-backend-e2e-pg-evidence.ts
+      scripts/lib/event-outbox-postgres-scenarios.ts
       scripts/lib/github-trending-durable-snapshot-reuse-postgres-fixture.ts
       scripts/lib/github-trending-durable-snapshot-reuse.postgres.spec.ts
       scripts/lib/github-trending-durable-snapshot-reuse.prisma.spec.ts
@@ -357,6 +360,8 @@ describe('production PostgreSQL construction and entrypoint inventory', () => {
       scripts/lib/reader-value-postgres-fixture.ts
       scripts/lib/social-source-private-input-database.spec.ts
       scripts/lib/social-source-private-input-database.ts
+      scripts/lib/summary-execution-postgres-fixture.ts
+      scripts/lib/summary-execution-postgres-scenarios.ts
       scripts/lib/telegram-channel-collection-database.ts
       scripts/lib/yesterday-reader-summary-artifact-quality-store.spec.ts
       scripts/lib/yesterday-reader-summary-artifact-quality-store.ts

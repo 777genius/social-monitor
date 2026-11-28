@@ -23,7 +23,8 @@ import {
   type SummaryArtifactRepositoryPort,
   type SummaryEvidenceSelection,
   type SummaryEvidenceSelectorPort,
-  type SummaryEventPublisherPort,
+  type SummaryExecutionClaim,
+  type SummaryExecutionWorkflowPort,
   type SummaryJobRepositoryPort,
   type SummaryModelBudget,
   type SummaryModelFailure,
@@ -61,7 +62,7 @@ export class ExecuteSummaryJobUseCase {
     private readonly userSummaryPreferences: UserSummaryPreferenceReaderPort,
     private readonly evidenceSelector: SummaryEvidenceSelectorPort,
     private readonly summaryModel: SummaryModelPort,
-    private readonly events: SummaryEventPublisherPort,
+    private readonly executionWorkflow: SummaryExecutionWorkflowPort,
     private readonly ids: IdGenerator,
     private readonly clock: Clock,
     private readonly memory: SummaryMemoryPort = NOOP_SUMMARY_MEMORY,
@@ -95,77 +96,125 @@ export class ExecuteSummaryJobUseCase {
       return err(new DomainError('operation.conflict', 'Summary job is already running'));
     }
 
-    const executableJob = snapshot.status === 'failed'
-      ? job.retry({ requestedAt: this.clock.now() })
-      : job;
-    const runningJob = executableJob.start({ startedAt: this.clock.now() });
-    await this.summaryJobs.save(runningJob);
-
+    let execution: SummaryExecutionClaim | null;
     try {
-      const result = await this.runModelPipeline(runningJob, command.maxEvidenceItems ?? 20);
-
-      if (!result.ok) {
-        const failedJob = runningJob.fail({
-          failedAt: this.clock.now(),
-          failureReason: result.error.message,
-        });
-        await this.summaryJobs.save(failedJob);
-
-        return err(new DomainError('external.dependency_unavailable', result.error.message, {
-          kind: result.error.kind,
-        }));
-      }
-
-      await this.summaryArtifacts.save(result.value.artifact);
-
-      const artifactSnapshot = result.value.artifact.toSnapshot();
-      const finalJob = artifactSnapshot.qualityFlags.includes('no_signal')
-        ? runningJob.markNoSignal({
-            completedAt: this.clock.now(),
-            summaryId: artifactSnapshot.summaryId,
-          })
-        : runningJob.complete({
-            completedAt: this.clock.now(),
-            summaryId: artifactSnapshot.summaryId,
+      execution = await this.executionWorkflow.tryStart({
+        tenantId: command.tenantId,
+        workspaceId: command.workspaceId,
+        summaryJobId: command.summaryJobId,
+        startedAt: this.clock.now(),
       });
-      await this.summaryJobs.save(finalJob);
+    } catch {
+      return err(new DomainError('external.dependency_unavailable', 'Summary execution start could not be confirmed', {
+        kind: 'summary.claim_unconfirmed',
+      }));
+    }
+    if (execution === null) {
+      return err(new DomainError('operation.conflict', 'Summary job was claimed or changed by another execution'));
+    }
 
-      const finalSnapshot = finalJob.toSnapshot();
-      await this.events.publish({
-        eventId: eventId(this.ids.generate()),
-        eventType: 'summary.ready',
-        schemaVersion: 1,
-        occurredAt: this.clock.now(),
-        tenantId: finalSnapshot.tenantId,
-        workspaceId: finalSnapshot.workspaceId,
-        correlationId: correlationId(command.summaryJobId),
-        causationId: causationId(finalSnapshot.id),
-        payload: {
-          summaryJobId: finalSnapshot.id,
-          summaryId: artifactSnapshot.summaryId,
-          tenantId: finalSnapshot.tenantId,
-          workspaceId: finalSnapshot.workspaceId,
-          interestId: finalSnapshot.interestId,
-          userId: finalSnapshot.userId,
-          subscriptionId: finalSnapshot.subscriptionId,
-          status: finalSnapshot.status === 'no_signal' ? 'no_signal' : 'completed',
-        },
-      } satisfies SummaryReadyEvent);
-
-      return ok({
-        summaryJobId: finalSnapshot.id,
-        status: finalSnapshot.status,
-        summaryId: finalSnapshot.summaryId,
-      });
+    let result: SummaryModelPipelineResult;
+    try {
+      result = await this.runModelPipeline(execution.job, command.maxEvidenceItems ?? 20);
     } catch (error) {
-      const failure = this.summaryModel.classifyError(error);
-      const failedJob = runningJob.fail({
-        failedAt: this.clock.now(),
-        failureReason: failure.message,
-      });
-      await this.summaryJobs.save(failedJob);
+      return this.failExecution(execution, this.summaryModel.classifyError(error));
+    }
+    if (!result.ok) return this.failExecution(execution, result.error);
 
-      return err(new DomainError('external.dependency_unavailable', failure.message, { kind: failure.kind }));
+    // A persistence failure after a paid model call is not a model failure.
+    // Its outcome remains visible for reconciliation; it never triggers a new call.
+    return this.completeExecution(execution, result.value.artifact);
+  }
+
+  private async failExecution(
+    execution: SummaryExecutionClaim,
+    failure: SummaryModelFailure,
+  ): Promise<Result<ExecuteSummaryJobResult, ExecuteSummaryJobFailure>> {
+    const message = redactSensitiveText(failure.message).slice(0, 240);
+    try {
+      const saved = await this.executionWorkflow.fail({
+        execution, failedAt: this.clock.now(), failureReason: message,
+      });
+      if (!saved) {
+        return err(new DomainError('operation.conflict', 'Summary execution no longer owns the running job'));
+      }
+    } catch {
+      return err(new DomainError('external.dependency_unavailable', 'Summary failure could not be persisted', {
+        kind: 'summary.failure_unconfirmed',
+      }));
+    }
+    return err(new DomainError('external.dependency_unavailable', message, { kind: failure.kind }));
+  }
+
+  private async completeExecution(
+    execution: SummaryExecutionClaim,
+    artifact: SummaryArtifact,
+  ): Promise<Result<ExecuteSummaryJobResult, ExecuteSummaryJobFailure>> {
+    const job = execution.job.toSnapshot();
+    const artifactSnapshot = artifact.toSnapshot();
+    const completedAt = this.clock.now();
+    const status = artifactSnapshot.qualityFlags.includes('no_signal') ? 'no_signal' : 'completed';
+    const event: SummaryReadyEvent = {
+      eventId: eventId(this.ids.generate()),
+      eventType: 'summary.ready',
+      schemaVersion: 1,
+      occurredAt: completedAt,
+      tenantId: job.tenantId,
+      workspaceId: job.workspaceId,
+      correlationId: correlationId(job.id),
+      causationId: causationId(job.id),
+      payload: {
+        summaryJobId: job.id,
+        summaryId: artifactSnapshot.summaryId,
+        tenantId: job.tenantId,
+        workspaceId: job.workspaceId,
+        interestId: job.interestId,
+        userId: job.userId,
+        subscriptionId: job.subscriptionId,
+        status,
+      },
+    };
+    try {
+      const completed = await this.executionWorkflow.complete({ execution, artifact, event, completedAt });
+      if (completed !== null) return ok(presentJob(completed));
+      const confirmed = await this.confirmCompletion(execution, artifact, status);
+      return confirmed === null
+        ? err(new DomainError('operation.conflict', 'Summary execution no longer owns the running job'))
+        : ok(presentJob(confirmed));
+    } catch {
+      const confirmed = await this.confirmCompletion(execution, artifact, status);
+      if (confirmed !== null) return ok(presentJob(confirmed));
+      return err(new DomainError('external.dependency_unavailable', 'Summary completion could not be confirmed', {
+        kind: 'summary.finalization_unconfirmed',
+      }));
+    }
+  }
+
+  /** A lost commit acknowledgement can be resolved only by this exact artifact. */
+  private async confirmCompletion(
+    execution: SummaryExecutionClaim,
+    artifact: SummaryArtifact,
+    expectedStatus: 'completed' | 'no_signal',
+  ): Promise<SummaryJob | null> {
+    const expected = execution.job.toSnapshot();
+    const intended = artifact.toSnapshot();
+    try {
+      const job = await this.summaryJobs.findById({
+        tenantId: expected.tenantId, workspaceId: expected.workspaceId, summaryJobId: expected.id,
+      });
+      const current = job?.toSnapshot();
+      if (current?.status !== expectedStatus || current.id !== expected.id ||
+          current.tenantId !== expected.tenantId || current.workspaceId !== expected.workspaceId ||
+          current.summaryId !== intended.summaryId) return null;
+      const stored = (await this.summaryArtifacts.findById({
+        tenantId: expected.tenantId, workspaceId: expected.workspaceId, summaryId: intended.summaryId,
+      }))?.toSnapshot();
+      if (stored?.summaryId !== intended.summaryId || stored.tenantId !== expected.tenantId ||
+          stored.workspaceId !== expected.workspaceId || stored.interestId !== expected.interestId ||
+          stored.userId !== expected.userId || stored.subscriptionId !== expected.subscriptionId) return null;
+      return job;
+    } catch {
+      return null;
     }
   }
 
@@ -224,6 +273,7 @@ export class ExecuteSummaryJobUseCase {
     }
 
     const artifact = SummaryArtifact.create({
+      ...attempt.draft,
       schemaVersion: 'summary.artifact.v1',
       summaryId: this.ids.generate(),
       tenantId: snapshot.tenantId,
@@ -232,7 +282,6 @@ export class ExecuteSummaryJobUseCase {
       userId: snapshot.userId,
       subscriptionId: snapshot.subscriptionId,
       sourceWindow: evidence.sourceWindow,
-      ...attempt.draft,
     });
 
     return ok({ artifact });
@@ -269,4 +318,9 @@ const safeMemoryErrorMessage = (error: unknown): string => {
   const message = error instanceof Error ? error.message : 'Summary memory context unavailable';
 
   return redactSensitiveText(message).slice(0, 240);
+};
+
+const presentJob = (job: SummaryJob): ExecuteSummaryJobResult => {
+  const snapshot = job.toSnapshot();
+  return { summaryJobId: snapshot.id, status: snapshot.status, summaryId: snapshot.summaryId };
 };
