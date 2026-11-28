@@ -14,13 +14,13 @@ Dependencies are the existing installation, not a hermetic build; Git identifies
 
 The full offline replay is a single command: `regression.ts` below first materializes **fresh** offline requests/results, then constructs explicitly non-live mechanical responses and imports them on that same source. It never calls a model. The standalone `run.ts offline` is useful when only requests and deterministic results are needed.
 
-From the repository root, using the existing read-only node_modules:
+From the repository root, using the existing read-only node_modules. Set `TS_NODE_BASEURL=.` when selecting the nested evaluator project so `tsconfig-paths` resolves inherited aliases from the repository root; the native compiler configuration remains unchanged.
 
 ```sh
-TS_NODE_PROJECT=scripts/evals/reader-story-grouping/tsconfig.json node -r ts-node/register/transpile-only -r tsconfig-paths/register scripts/evals/reader-story-grouping/run.ts offline
-TS_NODE_PROJECT=scripts/evals/reader-story-grouping/tsconfig.json node -r ts-node/register/transpile-only -r tsconfig-paths/register scripts/evals/reader-story-grouping/regression.ts
+TS_NODE_BASEURL=. TS_NODE_PROJECT=scripts/evals/reader-story-grouping/tsconfig.json node -r ts-node/register/transpile-only -r tsconfig-paths/register scripts/evals/reader-story-grouping/run.ts offline
+TS_NODE_BASEURL=. TS_NODE_PROJECT=scripts/evals/reader-story-grouping/tsconfig.json node -r ts-node/register/transpile-only -r tsconfig-paths/register scripts/evals/reader-story-grouping/regression.ts
 npx tsc -p scripts/evals/reader-story-grouping/tsconfig.json
-NODE_OPTIONS=--max-old-space-size=1024 node node_modules/jest/bin/jest.js --config jest.config.ts --runInBand --runTestsByPath scripts/evals/reader-story-grouping/focused.spec.ts scripts/evals/reader-story-grouping/source-identity.spec.ts scripts/evals/reader-story-grouping/report-html.spec.ts
+TS_NODE_BASEURL=. NODE_OPTIONS="--max-old-space-size=1024 --experimental-vm-modules" node node_modules/jest/bin/jest.js --config jest.config.ts --runInBand --runTestsByPath scripts/evals/reader-story-grouping/focused.spec.ts scripts/evals/reader-story-grouping/source-identity.spec.ts scripts/evals/reader-story-grouping/report-html.spec.ts
 node node_modules/eslint/bin/eslint.js scripts/evals/reader-story-grouping/*.ts
 npm run check:architecture
 npm run check:code-quality
@@ -67,7 +67,7 @@ A live operator writes one receipt per response plus the final aggregate; starte
 Import:
 
 ```sh
-TS_NODE_PROJECT=scripts/evals/reader-story-grouping/tsconfig.json node -r ts-node/register/transpile-only -r tsconfig-paths/register scripts/evals/reader-story-grouping/run.ts import .cache/real-story-grouping-eval/live-import /absolute/path/to/receipt.json TRUSTED_RECEIPT_FILE_SHA256
+TS_NODE_BASEURL=. TS_NODE_PROJECT=scripts/evals/reader-story-grouping/tsconfig.json node -r ts-node/register/transpile-only -r tsconfig-paths/register scripts/evals/reader-story-grouping/run.ts import .cache/real-story-grouping-eval/live-import /absolute/path/to/receipt.json TRUSTED_RECEIPT_FILE_SHA256
 ```
 
 Import rematerializes the requests and compares them to `.cache/real-story-grouping-eval/offline/requests.json`; use that default offline directory before import. It requires exact current source, fixture, schema, request and response identities, native production adapter attestation verification and complete decision reconciliation. After any source commit, regenerate offline requests and obtain new responses; never reuse a historical request manifest. Live mode requires the **independently supplied file hash** obtained by the parent from its authenticated capture. JSON attestations/hashes are not signatures and cannot establish who produced a file on their own: authentication relies on that external trusted composition and operator provenance. A self-labelled receipt is not proof of a model invocation. Unknown/altered/missing/duplicate responses fail import. Missing transport, approved disposable scope, runtime health/launcher identity or independently trusted receipt means live stays NOT_RUN. No fabricated receipts are offered as live evidence. The reusable-eval worker does not invoke the live entrypoint.
@@ -86,6 +86,7 @@ controls and e001/e002 tenant/workspace stay unchanged. Run identity is not time
 
 ```sh
 export TS_NODE_PROJECT=scripts/evals/reader-story-grouping/tsconfig.json
+export TS_NODE_BASEURL=.
 export NODE_OPTIONS=--max-old-space-size=3072
 node -r ts-node/register/transpile-only -r tsconfig-paths/register scripts/evals/reader-story-grouping/run.ts offline --run-id reviewed-example-01
 # Or fresh offline + mechanical replay together (choose a different explicit id):

@@ -1,6 +1,6 @@
 # Reader promotion consumer-owned assessment snapshot — Stage B1
 
-Status: **Draft / not merge-ready**. Stacked on #790. Do not merge or retarget to `main` before #790's actual final-head success and merge. This stage intentionally changes no runtime behavior.
+Status: **Consolidated into #793 / merge HOLD**. Stage A (#790) is merged; this stage (#791) must not merge separately. This stage intentionally changes no runtime behavior.
 
 ## Observed baseline
 - Four exact `summary/domain` files refer to `relevance/domain/reader-value/reader-value-assessment`. Three of them import **only a type** named `ReaderValueAnswers`; the fourth calls `validateReaderValueAnswers` at runtime and is **out of scope**.
@@ -19,7 +19,7 @@ Status: **Draft / not merge-ready**. Stacked on #790. Do not merge or retarget t
 - Type safety: both directions of type assignability; runtime label-array equality to detect any future provider vocabulary change.
 - Security: no new dependency, no provider calls, no tenant/security context alteration or runtime branching.
 - Regression: full final-head `check:architecture`, typecheck, source cap, focused Jest, native PostgreSQL18/backend E2E and security success; skipped/queued/cancelled are not PASS.
-- Integration: protect #665 and other PRs; after #790 lands, retarget to `main` and rerun exact-head qualification before squash merge.
+- Integration: preserve the merged #790 baseline and #665 changes; qualify consolidated #793 against current `main` at its exact final head, including all required checks and independent review. Use an ordinary merge commit with expected-head protection to preserve #801 ancestry, then verify main-push native 20/20 and API image success.
 
 ## Exclusions
 No changes to `validateReaderValueAnswers`, archived GitHub trending validation, `delivery` or `conversation` contracts; no schema, payload or persistence change. No Foundation/Get Modular/toolchain update here. Those belong in separately reviewed steps in #790's program.
