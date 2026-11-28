@@ -2,7 +2,7 @@
 
 ## Decision and scope
 
-The 2026-11-27 completion request for #793 asks to use the current TypeScript release and finish the PR without waiting for CI. The implementation uses the upstream-supported side-by-side installation: native TypeScript **7.0.2** owns project compilation and type checking, while a separately identified compatibility package supplies the JavaScript Compiler API required by existing tools.
+The 2026-11-27 completion request for #793 asks to use the current TypeScript release and avoid idle CI waits; merge remains conditional on the complete final-head qualification below. The implementation uses the upstream-supported side-by-side installation: native TypeScript **7.0.2** owns project compilation and type checking, while a separately identified compatibility package supplies the JavaScript Compiler API required by existing tools.
 
 This is an explicit transition profile. It does **not** complete the earlier target that every embedded compiler/parser run TypeScript >=7.0.2. That broader target remains future tooling work; it must not be described as fulfilled by a native preflight or by the compatibility alias. The earlier T0 document is retained as historical evidence, with this decision linked from its status.
 
@@ -76,6 +76,6 @@ Independent review covered the manifest, generated lock delta, workflow, actual 
 
 ## Completion boundary
 
-The owner requested immediate merge after the code is finished and reviewed. GitHub's current merge rules remain enforced; no queued or skipped result is converted into success. This instruction is specific to the current PR completion request and does not change repository protection settings or authorize production deployment.
+Merge #793 only after all 17 required check contexts, the complete exact-head native CI (20/20), native TS7 qualification, API image and independent review gates pass. This requirement takes precedence over avoiding idle CI waits. GitHub's current merge rules remain enforced; queued, skipped or cancelled checks are not success. Use an ordinary merge commit with expected-head protection to preserve #801 ancestry, and verify main-push native CI and API image before merging #801. This does not change repository protection settings or authorize manual production deployment.
 
 Remove the compatibility profile only when supported native programmatic APIs and their consumers can preserve decorators, AST behavior, type-aware lint and the full test inventory. Until then, native build/typecheck results and compatibility-tool results must remain separately identified.
