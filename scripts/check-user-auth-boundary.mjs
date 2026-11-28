@@ -32,7 +32,7 @@ execFileSync(
     '600000',
     '--clean-env',
     '--node-options',
-    '--max-old-space-size=1536',
+    '--max-old-space-size=1536 --experimental-vm-modules',
     '--',
     jestPath,
     '--config',

@@ -1,4 +1,4 @@
-import type { GitHubTrendingArchiveMetadata } from "@social-monitor/ingestion/domain";
+import type { ReaderSummaryGitHubArchiveSnapshot } from "./reader-summary-github-archive-snapshot";
 import type { ArchivedGitHubProjectionBinding } from "./reader-summary-github-archived-projection";
 import type { ReaderSummaryGitHubProjectionCollectionTelemetry } from "./reader-summary-github-projection-collection-window";
 
@@ -15,7 +15,7 @@ export type ReaderSummaryGitHubProjectionViolationCode =
 
 export type ReaderSummaryGitHubProjectionItem = {
   readonly observationKind?: "archived";
-  readonly archivedObservation?: GitHubTrendingArchiveMetadata;
+  readonly archivedObservation?: ReaderSummaryGitHubArchiveSnapshot;
   readonly sourceExternalId?: string;
   readonly feedItemId: string;
   readonly sourceItemId: string;

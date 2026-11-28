@@ -14,7 +14,7 @@ const upload = 'actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
 const download = 'actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131';
 const codecov = 'codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f';
 const shard = '${{ matrix.shard }}';
-const jest = 'node scripts/run-with-timeout.mjs --timeout-ms 2700000 --node-options --max-old-space-size=4096 -- ./node_modules/.bin/jest --config jest.config.ts';
+const jest = 'node scripts/run-with-timeout.mjs --timeout-ms 2700000 --node-options "--max-old-space-size=4096 --experimental-vm-modules" -- ./node_modules/.bin/jest --config jest.config.ts';
 const ignore = 'unit_ignore="$(node scripts/ci/verify-jest-shard-completeness.mjs --ignore-pattern ops/ci/jest-inventory-exclusions.txt)"';
 const selector = '--testPathIgnorePatterns="$unit_ignore"';
 const inventory = 'node scripts/run-with-timeout.mjs --timeout-ms 120000 --node-options --max-old-space-size=2048 -- ./node_modules/.bin/jest --config jest.config.ts --runInBand --testPathIgnorePatterns="$unit_ignore" --listTests --json > reports/inventory.json';
@@ -67,7 +67,7 @@ function jobChecks(job, id, expectedName, expectedSteps, errors, extra = [], req
 const checkoutStep = (full = false) => ({ uses: checkout, with: {
   ref: '${{ github.sha }}', 'persist-credentials': false, ...(full ? { 'fetch-depth': 0 } : {}),
 } });
-const nodeStep = (cache = true) => ({ uses: node, with: { 'node-version': 22, ...(cache ? { cache: 'npm' } : {}) } });
+const nodeStep = (cache = true) => ({ uses: node, with: { 'node-version': '24.22.3', ...(cache ? { cache: 'npm' } : {}) } });
 const setup = (full = false) => [checkoutStep(full), nodeStep(), { run: 'npm ci' }, { run: 'npm run prisma:generate' }];
 // Exact authenticated, nonroot, runner-only prerequisite; no shard-specific admission.
 const nativePg18 = [
@@ -190,7 +190,7 @@ export function backendUnitShardingViolations(source) {
     ...setup().map((step) => step.run === 'npm ci' ? { run: 'npm ci --prefer-offline --no-audit' } : step),
     { run: nativePg18, env: nativeRunnerEnvironment },
     { run: `set -euo pipefail\nmkdir -p reports\n${ignore}\n${inventory}` },
-    { run: `set -euo pipefail\n${ignore}\n# Provisional shard2 pilot; keep all other executions serial.\nunit_workers=(--runInBand)\nif [ "${shard}" = 2 ]; then\n  unit_workers=(--maxWorkers=2)\nfi\n${jest} "\${unit_workers[@]}" --shard=${shard}/6 ${selector} --coverage --coverageDirectory=coverage --coverageReporters=lcovonly --json --outputFile=reports/execution.json` },
+    { run: `set -euo pipefail\n${ignore}\n# Provisional shard2 pilot; keep all other executions serial.\nunit_workers=(--runInBand)\nif [ "${shard}" = 2 ]; then\n  unit_workers=(--maxWorkers=2)\nfi\n${jest} "\${unit_workers[@]}" --shard=${shard}/6 ${selector} --coverage --coverageDirectory=coverage --coverageReporters=lcovonly --json --outputFile=reports/execution.json`, env: { TS_NODE_BASEURL: '.' } },
     { uses: upload, with: { name: `backend-unit-report-${shard}`, path: 'reports/*.json', 'if-no-files-found': 'error', 'retention-days': 1 } },
     { uses: upload, with: { name: `backend-unit-coverage-${shard}`, path: 'coverage/lcov.info', 'if-no-files-found': 'error', 'retention-days': 1 } },
   ], errors, ['strategy', 'if'], 60);

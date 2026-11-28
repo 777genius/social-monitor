@@ -93,7 +93,7 @@ export function candidateWorkflowViolations(workflow: unknown, fragment: unknown
   if (job.name !== 'Production immutable candidate' || (job.steps as Mapping[]).length !== 7 ||
       lifecycle.name !== 'Production deploy lifecycle fixtures' || lifecycleSteps.length !== 8 ||
       !action(lifecycleSteps[0], CHECKOUT, checkoutOptions) ||
-      !action(lifecycleSteps[1], NODE, { 'node-version': 22 }) ||
+      !action(lifecycleSteps[1], NODE, { 'node-version': '24.22.3' }) ||
       !run(lifecycleSteps[2], ['set -euo pipefail', ...GATES].join('\n')) ||
       !action(lifecycleSteps[3], PYTHON, { 'python-version': '3.13' }) ||
       !run(lifecycleSteps[4], ['set -euo pipefail',
@@ -119,7 +119,7 @@ export function candidateWorkflowViolations(workflow: unknown, fragment: unknown
   if (!action(steps[0], CHECKOUT, {
     ref: '${{ github.sha }}',
     'fetch-depth': 0, 'persist-credentials': false,
-  }) || !action(steps[1], NODE, { 'node-version': 22 }) ||
+  }) || !action(steps[1], NODE, { 'node-version': '24.22.3' }) ||
       !action(steps[2], DOCKER, {
         version: 'v29.8.2', 'set-host': true,
         'daemon-config': '{"features":{"containerd-snapshotter":true}}',

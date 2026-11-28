@@ -1,6 +1,5 @@
 import type { ReaderDisplayHeadlineSeal } from "../value-objects/summary-reader-headline";
-import type { ReaderValueAnswers } from
-  "@social-monitor/relevance/domain/reader-value/reader-value-assessment";
+import type { ReaderPromotionAnswers } from "./reader-promotion-answer-snapshot";
 
 import { READER_PROMOTION_PROVIDER_ALIASES } from
   "@social-monitor/shared-kernel";
@@ -265,9 +264,9 @@ export type ReaderPostPromotionPlacement = "top" | "additional" | "news";
 export type ReaderPostPromotionComparator = {
   readonly block: ReaderPromotionEngagementClass;
   readonly providerFamily: string;
-  readonly usefulness: ReaderValueAnswers["usefulness"]["choice"];
+  readonly usefulness: ReaderPromotionAnswers["usefulness"]["choice"];
   /** Gate only (relevant or central); not an order key. */
-  readonly relevance: ReaderValueAnswers["relevance"]["choice"];
+  readonly relevance: ReaderPromotionAnswers["relevance"]["choice"];
   /** Frozen metric of a ranked source, `null` when unknown. */
   readonly engagement: ReaderPostPromotionEngagement | null;
   readonly metricMature: boolean;
@@ -313,7 +312,7 @@ export type ReaderPostPromotionAttestationV3 = {
     readonly rubricVersion: string;
     readonly rubricSha256: string;
     readonly modelConfigVersion: string;
-    readonly answers: ReaderValueAnswers;
+    readonly answers: ReaderPromotionAnswers;
   };
   readonly comparator: ReaderPostPromotionComparator;
   readonly presentation: {

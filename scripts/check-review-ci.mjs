@@ -48,7 +48,7 @@ export function releaseGateCiViolations(source, assets) {
       gate.env?.CI_NATIVE_ENVIRONMENT !== nativeRunnerEnvironment.CI_NATIVE_ENVIRONMENT ||
       !safe(node, ["name", "uses", "with"]) ||
       node.uses !== "actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e" ||
-      Object.keys(node.with ?? {}).length !== 2 || node.with?.["node-version"] !== 22 || node.with?.cache !== "npm" ||
+      Object.keys(node.with ?? {}).length !== 2 || node.with?.["node-version"] !== "24.22.3" || node.with?.cache !== "npm" ||
       ![install, prisma, hetzner, proof].every((step) => safe(step, ["name", "run", "shell"])) ||
       !safe(join, ["name", "run", "shell", "env"]) || Object.keys(join.env ?? {}).length !== 1 ||
       join.env?.NODE_OPTIONS !== "--max-old-space-size=4096" ||
@@ -125,7 +125,7 @@ export function releaseGateCiViolations(source, assets) {
 }
 
 export function hetznerReleaseCiViolations(source, scripts) {
-  const fail = ["Static architecture and quality must run the exact unconditional Hetzner strict typecheck and native tests once after Node 22 and npm ci"];
+  const fail = ["Static architecture and quality must run the exact unconditional Hetzner strict typecheck and native tests once after Node 24.22.3 and npm ci"];
   const expected = {
     "check:hetzner-release-typecheck": "tsc -p scripts/ci/tsconfig.hetzner-release.json",
     "check:hetzner-release-tests": "node --experimental-strip-types --test scripts/ci/hetzner-release-client.test.mjs scripts/ci/hetzner-release-authority.test.mts scripts/ci/hetzner-release-observe.test.mts scripts/ci/hetzner-release-host-denials.test.mts scripts/ci/review-ci/release-workflow-contract.test.mts scripts/ci/review-ci/candidate-workflow-contract.test.mts scripts/ci/candidate-runtime.test.mts",
@@ -142,7 +142,7 @@ export function hetznerReleaseCiViolations(source, scripts) {
   const nodes = steps.filter((step) => step.uses === "actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e");
   const installs = steps.filter((step) => step.run?.trim() === "npm ci");
   const node = nodes[0], install = installs[0];
-  if (nodes.length !== 1 || installs.length !== 1 || node.with?.["node-version"] !== 22 ||
+  if (nodes.length !== 1 || installs.length !== 1 || node.with?.["node-version"] !== "24.22.3" ||
       steps.indexOf(node) >= steps.indexOf(install)) return fail;
   const commands = ["npm run check:hetzner-release-typecheck", "npm run check:hetzner-release-tests"];
   const matches = steps.filter((step) => commands.some((command) => step.run?.includes(command)));

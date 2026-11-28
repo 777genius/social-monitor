@@ -1,5 +1,5 @@
 import { gatewayLlmCanonicalRequestSha256 } from "../../libs/summary/adapters/model/gateway-llm/gateway-llm-request-identity";
-import { approvedGatewayLlmSdkIdentity } from "../../libs/summary/adapters/model/gateway-llm/gateway-llm-sdk-identity";
+import { approvedGatewayLlmSdkIdentity, historicalGatewayLlmSdkIdentity } from "../../libs/summary/adapters/model/gateway-llm/gateway-llm-sdk-identity";
 import { createHash } from "node:crypto";
 
 import { canonicalJsonSha256 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
@@ -150,7 +150,36 @@ describe("reader summary weekly review producer", () => {
     expect(replayStore.persist).not.toHaveBeenCalled();
   });
 
-  it("rejects an unapproved gateway SDK before persistence", async () => {
+  it("replays a retained gateway manifest byte-for-byte without model or write calls", async () => {
+    const source = authority();
+    const candidate = deriveReaderSummaryWeeklyReviewStoryCandidates(source)[0]!;
+    const outputHash = sha("historical-selected-output");
+    const existing = createReaderSummaryWeeklyReviewManifest({ authority: source,
+      selections: [{ story: candidate.story, label: "observation",
+        citationSelectors: [candidate.citations[0]!.selector] }],
+      modelResponseSha256: outputHash,
+      executionAttestation: { ...attestation(outputHash), model: "gpt-6.1-sol", reasoningEffort: "low",
+        runtimeEngine: "gateway-llm", runtimePackageVersion: historicalGatewayLlmSdkIdentity.packageVersion,
+        launcherSha256: historicalGatewayLlmSdkIdentity.archiveSha256,
+        gateway: { profileId: "openai-codex-oauth-responses-v1", taskId: "historical_weekly_task", attempt: 1,
+          executionRef: "historical_execution", requestRef: "historical_request", accountRef: "test_account",
+          observedModel: "gpt-6.1-sol", requestSha256: sha("historical-wire") } },
+    });
+    const original = JSON.stringify(existing), runtime = fakeRuntime(), store = fakeStore(existing);
+    const replay = await runReaderSummaryWeeklyReviewProducer({ authorityLoader: { load: async () => source },
+      manifestStore: store, agentRuntime: runtime, executionProfile: { transport: "gateway-llm",
+        model: "gpt-6.1-sol", reasoningEffort: "low", gatewayMinOutputTokens: 16_384 } });
+    expect(replay).toMatchObject({ outcome: "replayed", modelCallPerformed: false, writePerformed: false });
+    expect(JSON.stringify(replay.manifest)).toBe(original);
+    expect(runtime.runTask).not.toHaveBeenCalled();
+    expect(store.persist).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { label: "unknown", changedIdentity: { launcherSha256: "e".repeat(64) } },
+    { label: "historical", changedIdentity: { runtimePackageVersion: historicalGatewayLlmSdkIdentity.packageVersion,
+      launcherSha256: historicalGatewayLlmSdkIdentity.archiveSha256 } },
+  ])("rejects a new result from a $label gateway SDK before persistence", async ({ changedIdentity }) => {
     const source = authority();
     const candidate = deriveReaderSummaryWeeklyReviewStoryCandidates(source)[0]!;
     const structuredOutput = { schemaVersion: "reader_summary.weekly_review_response.v1",
@@ -159,7 +188,7 @@ describe("reader summary weekly review producer", () => {
     const real = runtime.runTask.getMockImplementation()!;
     runtime.runTask.mockImplementation(async (command) => {
       const result = await real(command);
-      return { ...result, executionAttestation: { ...result.executionAttestation!, launcherSha256: sha("unapproved-sdk") } };
+      return { ...result, executionAttestation: { ...result.executionAttestation!, ...changedIdentity } };
     });
     const store = fakeStore(null);
     await expect(runReaderSummaryWeeklyReviewProducer({ authorityLoader: { load: async () => source },

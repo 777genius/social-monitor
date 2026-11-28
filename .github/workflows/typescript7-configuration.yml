@@ -1,0 +1,65 @@
+name: Native TypeScript 7 toolchain qualification
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - tsconfig.json
+      - tsconfig.build.json
+      - test/tsconfig.jest.json
+      - jest.config.ts
+      - test/jest-e2e.config.ts
+      - test/jest-broker-e2e.config.ts
+      - package.json
+      - package-lock.json
+      - scripts/rewrite-build-aliases.mjs
+      - scripts/rewrite-build-aliases.test.mjs
+      - apps/agent-runtime/bin/host-release.mjs
+      - apps/agent-runtime/bin/host-release-archive.test.mjs
+      - scripts/check-architecture.mjs
+      - scripts/ci/typescript7-config-contract.test.ts
+      - .github/workflows/typescript7-configuration.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native_ts7:
+    name: Native TypeScript 7 build and compatibility APIs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact proposed source
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up supported backend Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: '24.22.3'
+          cache: npm
+
+      - name: Install the locked native compiler and compatibility APIs
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Generate the real Prisma client from the checked-in schema
+        # Prisma config validates DATABASE_URL even when generation does not connect to a DB.
+        # Deliberately local and credential-free; no production database is used.
+        env:
+          DATABASE_URL: postgresql://ci@127.0.0.1:5432/social_monitor_ci
+        run: ./node_modules/.bin/prisma generate --schema prisma/schema.prisma
+
+      - name: Prove compiler identity, strict options, and native Nest decorator metadata
+        run: npm run check:typescript-toolchain
+
+      - name: Check the full project with the locked native TypeScript 7 compiler
+        run: npm run typecheck
+
+      - name: Build production output with native TypeScript 7 and rewrite aliases
+        run: npm run build
+
+      - name: Verify native output and the standalone host release fixture
+        run: node --test scripts/rewrite-build-aliases.test.mjs apps/agent-runtime/bin/host-release-archive.test.mjs

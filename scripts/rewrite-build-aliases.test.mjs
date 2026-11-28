@@ -8,7 +8,7 @@ import test from "node:test";
 import ts from "typescript";
 
 const require = createRequire(import.meta.url);
-const compiler = require.resolve("typescript/bin/tsc");
+const compiler = join(dirname(require.resolve("@typescript/native/package.json")), "bin/tsc");
 const cli = resolve("scripts/rewrite-build-aliases.mjs");
 function put(root, file, text) {
   mkdirSync(dirname(join(root, file)), { recursive: true });
@@ -22,12 +22,12 @@ function fixture(t, override) {
   t.after(() => rmSync(root, { recursive: true, force: true }));
   put(root, "tsconfig.json", JSON.stringify({ compilerOptions: {
     module: "commonjs", target: "ES2022", rootDir: "source", outDir: "dist",
-    baseUrl: ".", ignoreDeprecations: "6.0", declaration: true, sourceMap: true,
+    declaration: true, sourceMap: true,
     strict: true, types: [], paths: {
-      "@social-monitor/*": ["source/wrong/*"],
-      "@social-monitor/lib/*": ["source/libs/*"],
-      "@social-monitor/lib/special": ["source/exact.ts"],
-      "@social-monitor/lib": ["source/missing.ts", "source/libs/index.ts"],
+      "@social-monitor/*": ["./source/wrong/*"],
+      "@social-monitor/lib/*": ["./source/libs/*"],
+      "@social-monitor/lib/special": ["./source/exact.ts"],
+      "@social-monitor/lib": ["./source/missing.ts", "./source/libs/index.ts"],
     },
   }, include: ["source/**/*.ts"] }));
   put(root, "config/tsconfig.build.json", JSON.stringify({ extends: "../tsconfig.json" }));

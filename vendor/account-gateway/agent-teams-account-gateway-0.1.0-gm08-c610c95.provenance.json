@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "kind": "private_sdk_reviewed_pack",
+  "package": "@agent-teams/account-gateway",
+  "packageVersion": "0.1.0",
+  "identityLabel": "0.1.0-gm08.c610c95",
+  "private": true,
+  "published": false,
+  "sourceRepository": "https://github.com/agent-teams-ai/account-gateway",
+  "sourcePullRequest": "https://github.com/agent-teams-ai/account-gateway/pull/123",
+  "sourcePullRequestState": "merged",
+  "sourcePullRequestDraft": false,
+  "sourceBranch": "chore/get-modular-08-foundation-31-20261123",
+  "sourceCommit": "c610c95acfdadab1e2feeaef7af2d9881bb4a48c",
+  "sourceMergeCommit": "b6da5f410e60d2b855d7ba311ff170bba5fa3664",
+  "sourceTree": "a602f855d4ee93b4707bb406eeaab7f0fe2bd560",
+  "sourceCommitReviewed": true,
+  "build": "pnpm install --frozen-lockfile && pnpm build && pnpm --dir packages/account-gateway pack --pack-destination <output> (engine-strict=true, pnpm 11.28.2, TypeScript 7.0.2; clean builds on Node 24.21.0 and 26.11.1 produced identical 48-file dist and archive bytes)",
+  "purpose": "Reviewed private SDK refresh for Get Modular Core/Assembly 0.8.0 and the merged ./llm entry consumed by Social Monitor GatewayLlmClient. The producing pull request is merged with the same source tree as the reproducible build; no public npm publication or production activation is implied.",
+  "vendoredArchive": "vendor/account-gateway/agent-teams-account-gateway-0.1.0-gm08-c610c95.tgz",
+  "bytes": 60756,
+  "sha256": "2d7861f4f88cc34b7461228e190122a3e946d3ad7986ee1c18dfcc403444e8a7",
+  "integrity": "sha512-INRmCvUEqeWTWWRf3QMeCEPXeOIZpRgFG13GtatuYu57xbJqwTycZRhXajKw15LvYOIsbPSlFe4aR3QrFXmAog==",
+  "engines": ">=24.21.0 <25 || >=26.10.0 <27",
+  "dependencies": {
+    "@get-modular/assembly": "0.8.0",
+    "@get-modular/core": "0.8.0",
+    "zod": "4.6.7"
+  },
+  "providerCalls": 0,
+  "productionEffects": 0
+}

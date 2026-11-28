@@ -69,7 +69,7 @@ export const assertReaderSummaryWeeklyProductionModelProof = (
   assertReaderSummaryWeeklyCommandExecution(command, attestation, {
     transport: "gateway-llm", model: proof.model, reasoningEffort: proof.reasoningEffort,
     gatewayMinOutputTokens: proof.gatewayMinOutputTokens,
-  });
+  }, "retained");
   if (attestation.schemaVersion !== 1 || attestation.requestId !== command.requestId ||
       attestation.purpose !== command.purpose || attestation.provider !== "codex" ||
       attestation.model !== proof.model || attestation.reasoningEffort !== proof.reasoningEffort ||

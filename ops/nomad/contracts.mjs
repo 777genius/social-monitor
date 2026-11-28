@@ -18,9 +18,9 @@ const REGISTRY_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9.-]*(?::\d+)?$/u;
 // despite covering the same idea: this file's own module contract above
 // forbids importing from libs/, and libs/shared-kernel is TypeScript run
 // through the app's build - importing it from a plain, buildless .mjs run
-// directly by `node --test` would only work by accident of the local Node
-// version's TS support (CI pins Node 22, which does not strip types by
-// default), matching the same standalone-pattern precedent already used by
+// directly by `node --test` would couple this isolated deployment runner to
+// the application's TypeScript loader and import-resolution contracts,
+// matching the same standalone-pattern precedent already used by
 // scripts/check-secrets.mjs. This pattern is deliberately narrower in scope
 // than shared-kernel's (DeployTarget.hostBinding and HealthResult.reason
 // only) - it is not a substitute for the app-wide redaction policy.

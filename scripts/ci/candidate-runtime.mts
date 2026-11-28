@@ -49,12 +49,21 @@ const ENV: Record<string, string> = {
 };
 const ROLES_SQL = "CREATE ROLE sm_e2e_migrator LOGIN NOSUPERUSER NOCREATEDB CREATEROLE INHERIT NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-e2e-only'; CREATE ROLE e2e_api LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-e2e-only'; CREATE ROLE e2e_system LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT NOREPLICATION NOBYPASSRLS; CREATE ROLE social_monitor_summary_once NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; CREATE ROLE social_monitor_reader_summary_daily_terminal LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS; ALTER ROLE social_monitor_reader_summary_daily_terminal SET search_path TO pg_catalog, public; GRANT social_monitor_reader_summary_daily_terminal TO sm_e2e_migrator WITH ADMIN TRUE, INHERIT FALSE, SET FALSE; GRANT e2e_api TO sm_e2e_migrator WITH ADMIN TRUE, INHERIT FALSE, SET TRUE; ALTER DATABASE e2e OWNER TO e2e_api; GRANT CREATE ON DATABASE e2e TO sm_e2e_migrator; GRANT USAGE,CREATE ON SCHEMA public TO sm_e2e_migrator;";
 const HISTORICAL_SQL = 'SET ROLE social_monitor_public_schema_owner; GRANT CREATE ON SCHEMA public TO social_monitor_reader_summary_publication_owner GRANTED BY social_monitor_public_schema_owner; RESET ROLE;';
-const HTTP = String.raw`const http = require('node:http');
+export const API_PROCESS_IDENTITY = String.raw`const fs = require('node:fs');
+const apiExecutable = fs.statSync('/proc/1/exe', {bigint: true});
+const probeExecutable = fs.statSync('/proc/self/exe', {bigint: true});
+const apiArgs = fs.readFileSync('/proc/1/cmdline', 'utf8').split('\0');
+if (apiExecutable.dev !== probeExecutable.dev || apiExecutable.ino !== probeExecutable.ino
+    || apiArgs.length !== 3 || apiArgs[1] !== 'dist/apps/api-gateway/src/main.js' || apiArgs[2] !== '') {
+  throw new Error('candidate-api-process-identity');
+}
+`;
+const HTTP = API_PROCESS_IDENTITY + String.raw`const http = require('node:http');
 const req = http.get('http://127.0.0.1:3000/ready', {timeout: 4000}, res => {
   let size = 0; const chunks = [];
   res.on('data', b => { size += b.length; if (size > 262144) req.destroy(); else chunks.push(b); });
   res.on('end', () => {
-    try { process.stdout.write(JSON.stringify({http_status: res.statusCode,
+    try { process.stdout.write(JSON.stringify({http_status: res.statusCode, node_version: process.versions.node,
       body: JSON.parse(Buffer.concat(chunks).toString('utf8'))})); }
     catch { process.exitCode = 1; }
   });
@@ -460,7 +469,11 @@ export async function runtime(o: Options): Promise<RuntimeProof> {
       need(same(await stamp(), before), 'api-restarted-after-probe');
       if (response.code === 0) {
         const value: unknown = JSON.parse(response.stdout);
-        if (object(value).http_status === 200) { poolOk = ready(value); break; }
+        if (object(value).http_status === 200) {
+          poolOk = ready(value);
+          process.stderr.write(`candidate-runtime: observed-api-node-version=${String(object(value).node_version)}\n`);
+          break;
+        }
       }
       await delay(1000);
     }

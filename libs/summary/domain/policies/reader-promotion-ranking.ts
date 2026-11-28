@@ -1,5 +1,4 @@
-import type { ReaderValueAnswers } from
-  "@social-monitor/relevance/domain/reader-value/reader-value-assessment";
+import type { ReaderPromotionAnswers } from "./reader-promotion-answer-snapshot";
 
 import { canonicalReaderSummaryPreparationTimestamp } from
   "../value-objects/reader-summary-preparation";
@@ -52,8 +51,8 @@ export const READER_PROMOTION_LIMITS = Object.freeze({
 export const READER_PROMOTION_PRESENTATION_BUDGET =
   READER_PROMOTION_LIMITS.rankedTotal + READER_PROMOTION_LIMITS.news;
 
-export type ReaderPromotionUsefulness = ReaderValueAnswers["usefulness"]["choice"];
-export type ReaderPromotionRelevance = ReaderValueAnswers["relevance"]["choice"];
+export type ReaderPromotionUsefulness = ReaderPromotionAnswers["usefulness"]["choice"];
+export type ReaderPromotionRelevance = ReaderPromotionAnswers["relevance"]["choice"];
 
 export type ReaderPromotionEngagementInput = {
   /** Provider signal value (see ReaderPostPromotionSignalMethod). */

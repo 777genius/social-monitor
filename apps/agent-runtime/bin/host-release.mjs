@@ -290,11 +290,18 @@ export async function verify(args) {
   process.stdout.write("Host release staging verified\n");
 }
 
-async function build(args) {
-  if (target.platform !== "linux" || !["x64", "arm64"].includes(target.arch) ||
-      Number(process.versions.node.split(".")[0]) < 22) {
-    throw new Error("Host release requires Linux x64/arm64 and Node 22 or newer");
+export function assertSupportedNodeRuntime(version) {
+  const match = /^24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(version);
+  if (!match || Number(match[1]) < 21) {
+    throw new Error("Host release requires Node >=24.21.0 <25");
   }
+}
+
+async function build(args) {
+  if (target.platform !== "linux" || !["x64", "arm64"].includes(target.arch)) {
+    throw new Error("Host release requires Linux x64/arm64");
+  }
+  assertSupportedNodeRuntime(process.versions.node);
   const output = resolve(option(args, "--output-dir"));
   if (inside(sourceRoot, output)) throw new Error("Host release output must be outside the product checkout");
   const scratch = await mkdtemp(join(tmpdir(), "sm-agent-host-release-"));
@@ -312,10 +319,22 @@ async function build(args) {
     if (await gitOutput(["status", "--porcelain", "--untracked-files=all"])) {
       throw new Error("Host release requires a clean product checkout");
     }
-    const lockedTraverse = JSON.parse(await readFile(join(sourceRoot, "package-lock.json"), "utf8"))
-      .packages?.[inspectedTraverse];
+    const lock = JSON.parse(await readFile(join(sourceRoot, "package-lock.json"), "utf8"));
+    const lockedTraverse = lock.packages?.[inspectedTraverse];
     if (lockedTraverse?.version !== "0.4.1" || lockedTraverse.dev !== true) {
       throw new Error("Inspected json-schema-traverse distribution is not the locked dev-only root");
+    }
+    // npm ci resolves the locked local archive closure, including nested SDK
+    // archives. Keep paths from the lock rather than a second filename list.
+    const vendorArchives = [...new Set(Object.values(lock.packages)
+      .map((pkg) => pkg.resolved).filter((value) => typeof value === "string" && value.startsWith("file:")))]
+      .map((value) => value.slice("file:".length));
+    for (const archive of vendorArchives) {
+      if (!/^vendor\/(?:[A-Za-z0-9][A-Za-z0-9._-]*\/)*[A-Za-z0-9][A-Za-z0-9._-]*\.tgz$/.test(archive) ||
+          await realpath(join(sourceRoot, archive)) !== join(sourceRoot, archive)) {
+        throw new Error("Locked local dependency must be a regular archive inside vendor");
+      }
+      await requireFile(sourceRoot, archive);
     }
     await assertPinnedHelperClosure(join(sourceRoot, "apps/agent-runtime/bin"));
     await run("npm", ["run", "prisma:generate"], sourceRoot, {
@@ -341,8 +360,9 @@ async function build(args) {
       await copyFile(join(sourceRoot, name), join(install, name));
       await copyFile(join(sourceRoot, name), join(stage, name));
     }
-    for (const name of ["infinity-context-sdk-0.1.0.tgz", "vioxen-subscription-runtime-0.1.0-main.42-sm.3.tgz", `vioxen-subscription-runtime-${mimoRuntimeVersion}.tgz`]) {
-      await copyFile(join(sourceRoot, "vendor", name), join(install, "vendor", name));
+    for (const archive of vendorArchives) {
+      await mkdir(dirname(join(install, archive)), { recursive: true });
+      await copyFile(join(sourceRoot, archive), join(install, archive));
     }
     await run("npm", ["ci", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"], install);
     await cp(join(compiled, "apps/agent-runtime"), join(stage, "dist/apps/agent-runtime"), { recursive: true });

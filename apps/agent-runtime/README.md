@@ -3,7 +3,8 @@
 ## Host release for the disabled systemd bridge
 
 The host release is a tarball built from a clean product checkout. It
-does not contain a `bridge.mjs`. Build on a Linux host with Node 22 or newer,
+does not contain a `bridge.mjs`. Build on a Linux host with Node 24.22.3
+(the supported consumer range is `>=24.21.0 <25`),
 `tar`, the checked-in vendor archives, and the lockfile. The command runs the
 existing Prisma codegen with a synthetic, nonconnecting database URL, compiles
 TypeScript into fresh temporary output with fresh incremental state, and
@@ -73,7 +74,7 @@ the verified release and its parent owned by root; its archived directories
 and files have no group or other write bits.
 The systemd service UID must be non-root and must receive write access only to
 separate state, logs and auth-pool mounts. Set `AGENT_RUNTIME_CLI_PATH` to the absolute
-extracted wrapper path. Start Node with the absolute extracted entrypoint and
+extracted wrapper path. Use the supported Node 24 runtime to start the absolute extracted entrypoint and
 the release root as working directory; `node_modules` resolution and the
 wrapper's relative vendored import depend on this layout. The auth pool,
 local encryption key and state root are operator-managed external paths and

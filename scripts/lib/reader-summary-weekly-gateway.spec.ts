@@ -1,11 +1,12 @@
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import {
   canonicalJsonSha256,
 } from "@social-monitor/contracts/grpc/agent_runtime/v1/execution-attestation";
 import { gatewayLlmCanonicalRequestSha256 } from "../../libs/summary/adapters/model/gateway-llm/gateway-llm-request-identity";
-import { approvedGatewayLlmSdkIdentity } from "../../libs/summary/adapters/model/gateway-llm/gateway-llm-sdk-identity";
+import { approvedGatewayLlmSdkIdentity, historicalGatewayLlmSdkIdentity } from "../../libs/summary/adapters/model/gateway-llm/gateway-llm-sdk-identity";
+import { canonicalizeReaderSummaryWeeklyJson } from "../../libs/summary/domain/value-objects/reader-summary-weekly-canonical-json";
 import type {
   AgentRuntimeClientPort,
   AgentRuntimeExecutionAttestation,
@@ -49,12 +50,13 @@ const runtime = (change?: (proof: AgentRuntimeExecutionAttestation) => AgentRunt
 });
 
 describe("weekly gateway execution evidence", () => {
-  it("keeps genuine selected structured output in the proof and replays with zero paid calls", async () => {
+  it.each([approvedGatewayLlmSdkIdentity, historicalGatewayLlmSdkIdentity])(
+    "replays saved $packageVersion selected-output proof without model calls or byte changes", async (sdk) => {
     const client = runtime();
     const model = new AgentRuntimeReaderSummaryWeeklyTextModel({ client, executionProfile: profile });
     const args = admittedRunnerInput();
-    const outputDirectory = mkdtempSync(join(tmpdir(), "weekly-gateway-proof-"));
-    const first = await runReaderSummaryWeeklyProduction({ ...args, outputDirectory, model,
+    const captureDirectory = mkdtempSync(join(tmpdir(), "weekly-gateway-proof-"));
+    const first = await runReaderSummaryWeeklyProduction({ ...args, outputDirectory: captureDirectory, model,
       replay: false,
       generatedAt: new Date("2026-07-27T06:30:00.000Z") });
     expect(first.status).toBe("complete");
@@ -62,12 +64,26 @@ describe("weekly gateway execution evidence", () => {
     expect(proof.model).toMatchObject({ provider: "gateway-llm", model: "gpt-6.1-terra",
       reasoningEffort: "medium", runtimeOutput: "structured_output",
       executionAttestation: { runtimeEngine: "gateway-llm", gateway: { executionRef: "test_weekly_execution" } } });
+    // Seed a separate retained fixture before invoking its reader. The real
+    // published files stay read-only and are never rewritten by this test.
+    const outputDirectory = mkdtempSync(join(tmpdir(), "weekly-retained-sdk-proof-"));
+    const proofPath = join(outputDirectory, basename(first.proofPath!));
+    const artifactPath = join(outputDirectory, basename(first.artifactPath!));
+    Object.assign(proof.model.executionAttestation, {
+      runtimePackageVersion: sdk.packageVersion, launcherSha256: sdk.archiveSha256,
+    });
+    writeFileSync(proofPath, canonicalizeReaderSummaryWeeklyJson(proof, "retained weekly fixture").toBytes());
+    writeFileSync(artifactPath, readFileSync(first.artifactPath!));
+    const proofBytes = readFileSync(proofPath);
+    const artifactBytes = readFileSync(artifactPath);
     const replayModel = { generate: jest.fn(async () => { throw new Error("paid replay"); }) };
     const replay = await runReaderSummaryWeeklyProduction({ ...args, outputDirectory, model: replayModel,
       replay: true, generatedAt: new Date("2026-07-27T06:31:00.000Z") });
     expect(replay).toMatchObject({ status: "complete", replayed: true, modelCallPerformed: false });
     expect(replayModel.generate).not.toHaveBeenCalled();
     expect(client.runTask).toHaveBeenCalledTimes(1);
+    expect(readFileSync(proofPath)).toEqual(proofBytes);
+    expect(readFileSync(artifactPath)).toEqual(artifactBytes);
     const admitted = buildModelInputFromDbState(args.dbState, args.reviewManifest);
     if (admitted.status !== "complete") throw new Error("fixture admission failed");
     const changed = { ...proof.model, rawStructuredOutput: { ...proof.model.rawStructuredOutput, headline: "Tampered" } };
@@ -77,6 +93,13 @@ describe("weekly gateway execution evidence", () => {
 
   it.each([
     ["SDK digest", (proof: AgentRuntimeExecutionAttestation) => ({ ...proof, launcherSha256: sha("unapproved") })],
+    ["historical SDK", (proof: AgentRuntimeExecutionAttestation) => ({ ...proof,
+      runtimePackageVersion: historicalGatewayLlmSdkIdentity.packageVersion,
+      launcherSha256: historicalGatewayLlmSdkIdentity.archiveSha256 })],
+    ["historical version with current digest", (proof: AgentRuntimeExecutionAttestation) => ({ ...proof,
+      runtimePackageVersion: historicalGatewayLlmSdkIdentity.packageVersion })],
+    ["current version with historical digest", (proof: AgentRuntimeExecutionAttestation) => ({ ...proof,
+      launcherSha256: historicalGatewayLlmSdkIdentity.archiveSha256 })],
     ["canonical request", (proof: AgentRuntimeExecutionAttestation) => ({ ...proof, canonicalRequestSha256: sha("different-prompt") })],
     ["request id", (proof: AgentRuntimeExecutionAttestation) => ({ ...proof, requestId: "another-week" })],
     ["selected output", (proof: AgentRuntimeExecutionAttestation) => ({ ...proof, selectedOutputSha256: sha("different-output") })],

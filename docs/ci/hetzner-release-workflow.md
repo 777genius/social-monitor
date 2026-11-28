@@ -50,7 +50,7 @@ Unproven reconciliation fails and requires operator review; there is no write re
 
 ## Static verification and remaining qualification
 
-After Node 22 and locked dependencies are installed, `static_quality` runs the
+After Node 24.22.3 and locked dependencies are installed, `static_quality` runs the
 standalone strict NodeNext typecheck once and each authority, observer and YAML
 contract test once. Its first checkout and root controller gate retain their
 original order. The existing `check:review-ci` also invokes the canonical parsed

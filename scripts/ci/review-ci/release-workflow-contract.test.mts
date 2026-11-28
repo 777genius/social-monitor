@@ -83,6 +83,8 @@ test('event checkout, command, environment, cancellation and branch-gate mutatio
     ['missing main observation', value => { const sequence = job(value, 'candidate').steps; assert.ok(Array.isArray(sequence)); sequence.splice(1, 1); }],
     ['head check moved after script', value => { const sequence = job(value, 'candidate').steps; assert.ok(Array.isArray(sequence)); const [head] = sequence.splice(3, 1); sequence.push(head); }],
     ['head check changed', value => { steps(value, 'candidate')[3]!.run = 'git rev-parse HEAD'; }],
+    ['legacy Node runtime', value => { map(steps(value, 'candidate')[4]!.with)['node-version'] = 22; }],
+    ['floating Node runtime', value => { map(steps(value, 'activate')[4]!.with)['node-version'] = '24'; }],
     ['candidate command changed', value => { steps(value, 'candidate')[5]!.run = 'node candidate.mts'; }],
     ['activation command changed', value => { steps(value, 'activate')[6]!.run = 'echo activate'; }],
     ['host environment changed', value => { job(value, 'activate').environment = '${{ github.event.inputs.environment }}'; }],

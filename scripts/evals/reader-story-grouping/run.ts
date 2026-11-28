@@ -35,7 +35,8 @@ export const run = async (args: string[]): Promise<void> => {
     const schema = readJson<object>("scripts/evals/reader-story-grouping/receipt.schema.json");
     const validator = new Ajv({ allErrors: true }).compile(schema);
     check(validator(receipt), `Invalid receipt schema: ${JSON.stringify(validator.errors)}`);
-    checkReceiptBinding(manifest, receipt);
+    // Retained SDK identities are allowed only after exact current-source manifest validation.
+    checkReceiptBinding(manifest, receipt, "retained");
     if (receipt.captureKind !== "offline_fixture") {
       check(trustedReceiptSha && fileSha(receiptPath!) === trustedReceiptSha,
         "Live import requires independently supplied trusted receipt file SHA256; a self-asserted live flag is insufficient");
