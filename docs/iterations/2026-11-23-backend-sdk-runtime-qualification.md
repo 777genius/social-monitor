@@ -11,7 +11,7 @@ Account Gateway PR123 owns the narrow producer migration to immutable module ent
 ## Consumer scope
 
 1. Qualify the existing backend on supported Node 24.22.3. Limit the consumer root engine contract and host artifact admission to `>=24.21.0 <25`; align canonical backend CI pins, application Docker bases, immutable candidate context/digest, and their existing executable contracts.
-2. Remove only the unsupported `--experimental-default-type=module` option from the architecture command and two typed-test launchers. Keep the required TypeScript transformation flags, CommonJS application semantics and TypeScript 6.0.3.
+2. Remove only the unsupported `--experimental-default-type=module` option from the architecture command and two typed-test launchers. Keep the required TypeScript transformation flags and CommonJS application semantics. The later [native toolchain decision](2026-11-27-typescript7-native-toolchain.md) assigns build and typecheck to native TypeScript 7.0.2 and retains TypeScript 6.0.3 only as the underlying JavaScript Compiler API compatibility implementation.
 3. Preserve independent frontend and release-controller toolchains that do not install or execute this backend dependency graph. Do not blanket-rewrite historical fixtures or alter any workflow's enabled/disabled state.
 4. Keep the private host artifact's supported runtime and vendored dependency closure accurate. Its current packaging omits the nested Account Gateway archive; cover the complete required file-dependency closure with the existing isolated archive test.
 5. After upstream source review and qualification, build the real SDK package twice and verify identical hashes. Preserve its public HTTP/contracts and merged experimental LLM entry; inspect the exact producer delta and qualify the existing downstream adapter fixtures.
@@ -20,7 +20,7 @@ Account Gateway PR123 owns the narrow producer migration to immutable module ent
 
 ## Compatibility boundaries
 
-The consumer keeps its existing NestJS, TypeScript 6, ts-jest and ts-node compiler APIs. The published TypeScript 7 root no longer offers the same compiler API; a compiler/framework migration is a separate scope, not a prerequisite to consuming compatible SDK declarations emitted upstream by TypeScript 7.
+The consumer uses native TypeScript 7.0.2 for build/typecheck and retains the JavaScript Compiler API for NestJS, ts-jest, ts-node, typed ESLint and AST tools through the explicitly locked compatibility package (`@typescript/typescript6@6.0.2`, backed by `@typescript/old@6.0.3`). Consuming compatible SDK declarations does not require migrating those embedded APIs. Full native compiler/parser parity remains separate future tooling work, not a result claimed by this transition.
 
 Account Gateway independently supports Node 24 and 26. Social Monitor qualifies only the Node 24 line in this slice: an actual Node 26.11.1 probe rejects `--experimental-transform-types` with exit 9, while the existing architecture fixtures still require that option. Advertising Node 26 for the consumer would therefore promise an unsupported toolchain. Preserve the transformation flags and historical Node 26 archive reproductions; broader consumer runtime support requires separate qualification.
 
@@ -45,6 +45,6 @@ Retained weekly proofs and refresh reconciliation/successor originals may recogn
 - Full deterministic API/worker E2E, followed by all protected final-head native unit shards, PostgreSQL 18, RabbitMQ, security, candidate/lifecycle and frontend checks.
 - Real offline candidate build/runtime proof, including the selected Node version and immutable image/source binding.
 - Independent source and scope review; preserve open refactor PR changes, especially shared package script registrations.
-- Qualify consolidated PR #793 at its exact final head and obtain independent approval; #791 and #792 are superseded and must not merge separately. Preserve the owner TS7 HOLD until full supported toolchain parity is proven or the owner explicitly revises the scope. Merge only with expected-head protection; inspect postmerge main native and API image results. Queued, skipped or cancelled jobs are not PASS.
+- Qualify consolidated PR #793 at its exact final head and obtain independent approval; #791 and #792 are superseded and must not merge separately. Apply the later native-build and compatibility-consumer qualification profile in the linked toolchain decision; full native compiler/parser parity remains unfulfilled and any broader owner HOLD requires explicit owner authorization to revise. Merge #793 only with expected-head protection and an ordinary merge commit to preserve #801 ancestry; inspect postmerge main native 20/20 and API image results. Queued, skipped or cancelled jobs are not PASS.
 
 No real provider/account call, production database query, manual production activation or public npm publication is part of this implementation. Source and package qualification use isolated fixtures and disposable CI environments.
